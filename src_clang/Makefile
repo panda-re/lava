@@ -6,8 +6,8 @@
 
 
 # Set path to LLVM source / build / bin
-LLVM_SRC_PATH := /Users/app/Documents/Columbia/IDS/clang-llvm/llvm
-LLVM_BUILD_PATH := /Users/app/Documents/Columbia/IDS/clang-llvm/build
+LLVM_SRC_PATH := /home/panda/git/llvm
+LLVM_BUILD_PATH := /home/panda/git/llvm
 LLVM_BIN_PATH := $(LLVM_BUILD_PATH)/Debug+Asserts/bin
 
 # Run make BUILD_NINJA=1 to enable these paths
@@ -23,7 +23,7 @@ $(info Using LLVM_BIN_PATH = $(LLVM_BIN_PATH))
 $(info -----------------------------------------------)
 
 CXX := g++
-CXXFLAGS := -fno-rtti -O0 -g -stdlib=libc++ 
+CXXFLAGS := -fno-rtti -O0 -g
 PLUGIN_CXXFLAGS := -fpic
 
 LLVM_CXXFLAGS := `$(LLVM_BIN_PATH)/llvm-config --cxxflags`
@@ -36,7 +36,7 @@ CLANG_INCLUDES := \
 	-I$(LLVM_SRC_PATH)/tools/clang/include \
 	-I$(LLVM_BUILD_PATH)/tools/clang/include
 
-CLANG_LIBS := \
+CLANG_LIBS := -Wl,--start-group \
 	-lclangAST \
 	-lclangAnalysis \
 	-lclangBasic \
@@ -57,6 +57,7 @@ CLANG_LIBS := \
 	-lclangSerialization \
 	-lclangToolingCore \
 	-lclangTooling \
+	-Wl,--end-group
 
 BUILDDIR := build
 

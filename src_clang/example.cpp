@@ -28,14 +28,15 @@ public:
             
             std::stringstream query;
             query << "// Check if arguments of " << n.getAsString() << " are tainted\n";
-            query << "query_taint( ";
             
             for (auto it = f->param_begin(); it != f->param_end(); ++it) {
+                query << "vm_query_buffer(";
                 ParmVarDecl *param = *it;
-                query << param->getNameAsString() << " ";
+                query << "&" << param->getNameAsString() << ", ";
+                query << "sizeof(" << param->getNameAsString() << ")";
+                query << ", 0);\n";
             }
 
-            query << ")\n";
 
             CompoundStmt *funcBody;
             if (!(funcBody = dyn_cast<CompoundStmt>(f->getBody())))
@@ -82,13 +83,16 @@ public:
         llvm::errs() << "** EndSourceFileAction for: "
                      << sm.getFileEntryForID(sm.getMainFileID())->getName() << "\n";
 
+        // Last thing: include the right file
+        rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()), "#include \"pirate_mark.h\"\n", true, true);
+
         rewriter.getEditBuffer(sm.getMainFileID()).write(llvm::outs());
     }
 
     std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
                                                      StringRef file) override {
-        llvm::errs() << "** Creating AST consumer for: " << file << "\n";
         rewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
+        llvm::errs() << "** Creating AST consumer for: " << file << "\n";
         return llvm::make_unique<MyASTConsumer>(rewriter);
     }
 
