@@ -42,7 +42,7 @@ public:
             if (!(funcBody = dyn_cast<CompoundStmt>(f->getBody())))
                     return true;
 
-            SourceLocation loc = funcBody->body_front()->getLocStart();
+            SourceLocation loc = (*funcBody->body_begin())->getLocStart();
             rewriter.InsertText(loc, query.str(), true, true);
         }
   

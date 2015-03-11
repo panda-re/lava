@@ -6,9 +6,9 @@
 
 
 # Set path to LLVM source / build / bin
-LLVM_SRC_PATH := /home/panda/git/llvm
-LLVM_BUILD_PATH := /home/panda/git/llvm
-LLVM_BIN_PATH := $(LLVM_BUILD_PATH)/Debug+Asserts/bin
+LLVM_SRC_PATH := /home/rwhelan/llvm/llvm-3.6-svn/llvm/
+LLVM_BUILD_PATH := /home/rwhelan/llvm/llvm-3.6-svn/llvm/
+LLVM_BIN_PATH := $(LLVM_BUILD_PATH)/Release+Asserts/bin
 
 # Run make BUILD_NINJA=1 to enable these paths
 ifdef BUILD_NINJA
