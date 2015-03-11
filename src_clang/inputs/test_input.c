@@ -2,11 +2,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+int f1 = 3;
+
+char * f2;
+
+extern int f4;
+
+int test(int, int);
+
+static int f5;
+
 void test1(char *buf)
 {
     printf("You entered: %s\n", buf);
     return;
 }
+
+double f3;
 
 int test2(int a, int b) {
     return (a+b);
