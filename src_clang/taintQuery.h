@@ -22,7 +22,9 @@ static llvm::cl::OptionCategory TransformationCategory("Taint Query Transformati
 
 class TaintQueryASTVisitor : public RecursiveASTVisitor<TaintQueryASTVisitor> {
 public:
-    TaintQueryASTVisitor(Rewriter &rewriter, std::vector<std::string> &globalVars) : rewriter(rewriter), globalVars(globalVars)  {}
+    TaintQueryASTVisitor(Rewriter &rewriter, std::vector< std::pair<std::string,
+        const Type *> > &globalVars) :
+            rewriter(rewriter), globalVars(globalVars)  {}
 
     bool VisitFunctionDecl(FunctionDecl *f) {
         if (f->hasBody()) {
@@ -35,14 +37,33 @@ public:
                 query << "&(" << param->getNameAsString() << "), ";
                 query << "sizeof(" << param->getNameAsString() << ")";
                 query << ", 0);\n";
+            
+                const Type *t = param->getType().getTypePtr();
+                if (t->isPointerType() && !t->isNullPtrType()) {
+                    query << "if (" << param->getNameAsString() << ") ";
+                    query << "vm_query_buffer(";
+                    query << param->getNameAsString() << ", ";
+                    query << "sizeof(" << QualType::getAsString(t->getPointeeType().split()) << ")";
+                    query << ", 0);\n";
+                }
+
             }
 
             query << "// Check if global variables are tainted\n";
             for (auto it = globalVars.begin(); it != globalVars.end(); ++it) {
                 query << "vm_query_buffer(";
-                query << "&" << *it << ", ";
-                query << "sizeof(" << *it << ")";
+                query << "&" << it->first << ", ";
+                query << "sizeof(" << it->first << ")";
                 query << ", 0);\n";
+                
+                const Type *t = it->second;
+                if (t->isPointerType() && !t->isNullPtrType()) {
+                    query << "if (" << it->first << ") ";
+                    query << "vm_query_buffer(";
+                    query << it->first << ", ";
+                    query << "sizeof(" << QualType::getAsString(t->getPointeeType().split()) << ")";
+                    query << ", 0);\n";
+                }
             }
 
 
@@ -58,7 +79,7 @@ public:
 
 
 private:
-    std::vector<std::string> &globalVars;
+    std::vector< std::pair< std::string, const Type *> > &globalVars;
     Rewriter &rewriter;
 };
 
@@ -76,7 +97,7 @@ public:
             if (vd) {
                 if (vd->isFileVarDecl() && vd->hasGlobalStorage())
                 {
-                    globalVars.push_back(vd->getDeclName().getAsString());
+                    globalVars.push_back(std::make_pair(vd->getDeclName().getAsString(), vd->getType().getTypePtr()));
                 }  
             }
             else
@@ -87,7 +108,7 @@ public:
 
 private:
     TaintQueryASTVisitor visitor;
-    std::vector<std::string> globalVars;
+    std::vector< std::pair<std::string, const Type *> > globalVars;
 };
 
 
