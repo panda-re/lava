@@ -1,4 +1,9 @@
+
 #include "taintQuery.h"
+
+/*
+ * Usage: build/taintQueryTool <C file> --
+ */
 
 using namespace clang;
 using namespace clang::driver;

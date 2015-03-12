@@ -1,3 +1,4 @@
+
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -18,7 +19,9 @@ using namespace clang;
 using namespace clang::driver;
 using namespace clang::tooling;
 
-static llvm::cl::OptionCategory TransformationCategory("Taint Query Transformation");
+static llvm::cl::OptionCategory
+    TransformationCategory("Taint Query Transformation");
+
 
 class TaintQueryASTVisitor : public RecursiveASTVisitor<TaintQueryASTVisitor> {
 public:
@@ -30,7 +33,8 @@ public:
         if (f->hasBody()) {
             DeclarationName n = f->getNameInfo().getName();
             std::stringstream query;
-            query << "// Check if arguments of " << n.getAsString() << " are tainted\n";
+            query << "// Check if arguments of "
+                << n.getAsString() << " are tainted\n";
             for (auto it = f->param_begin(); it != f->param_end(); ++it) {
                 query << "vm_query_buffer(";
                 ParmVarDecl *param = *it;
@@ -43,7 +47,8 @@ public:
                     query << "if (" << param->getNameAsString() << ") ";
                     query << "vm_query_buffer(";
                     query << param->getNameAsString() << ", ";
-                    query << "sizeof(" << QualType::getAsString(t->getPointeeType().split()) << ")";
+                    query << "sizeof(" << QualType::getAsString(
+                        t->getPointeeType().split()) << ")";
                     query << ", 0);\n";
                 }
 
@@ -61,11 +66,11 @@ public:
                     query << "if (" << it->first << ") ";
                     query << "vm_query_buffer(";
                     query << it->first << ", ";
-                    query << "sizeof(" << QualType::getAsString(t->getPointeeType().split()) << ")";
+                    query << "sizeof(" << QualType::getAsString(
+                        t->getPointeeType().split()) << ")";
                     query << ", 0);\n";
                 }
             }
-
 
             CompoundStmt *funcBody;
             if (!(funcBody = dyn_cast<CompoundStmt>(f->getBody())))
@@ -76,7 +81,6 @@ public:
         }
         return true;
     }
-
 
 private:
     std::vector< std::pair< std::string, const Type *> > &globalVars;
@@ -97,7 +101,9 @@ public:
             if (vd) {
                 if (vd->isFileVarDecl() && vd->hasGlobalStorage())
                 {
-                    globalVars.push_back(std::make_pair(vd->getDeclName().getAsString(), vd->getType().getTypePtr()));
+                    globalVars.push_back(std::make_pair(
+                        vd->getDeclName().getAsString(),
+                        vd->getType().getTypePtr()));
                 }  
             }
             else
@@ -112,26 +118,39 @@ private:
 };
 
 
-class TaintQueryFrontendAction : public ASTFrontendAction {
+class TaintQueryFrontendAction : public PluginASTAction {
 public:
     TaintQueryFrontendAction() {}
   
     void EndSourceFileAction() override {
         SourceManager &sm = rewriter.getSourceMgr();
         llvm::errs() << "** EndSourceFileAction for: "
-                     << sm.getFileEntryForID(sm.getMainFileID())->getName() << "\n";
+                     << sm.getFileEntryForID(sm.getMainFileID())->getName()
+                     << "\n";
 
         // Last thing: include the right file
-        rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()), "#include \"pirate_mark.h\"\n", true, true);
-
+        rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
+            "#include \"pirate_mark.h\"\n", true, true);
         rewriter.getEditBuffer(sm.getMainFileID()).write(llvm::outs());
     }
 
     std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
-                                                     StringRef file) override {
+                                                     StringRef file) {
         rewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
         llvm::errs() << "** Creating AST consumer for: " << file << "\n";
         return llvm::make_unique<TaintQueryASTConsumer>(rewriter);
+    }
+
+    /**************************************************************************/
+    // Plugin-specific functions
+    bool ParseArgs(const CompilerInstance &CI,
+            const std::vector<std::string>& args) {
+        // No args currently
+        return true;
+    }
+    
+    void PrintHelp(llvm::raw_ostream& ros) {
+        ros << "Help for taint-query plugin goes here\n";
     }
 
 private:
