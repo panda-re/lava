@@ -20,9 +20,9 @@ using namespace clang::tooling;
 
 static llvm::cl::OptionCategory TransformationCategory("Taint Query Transformation");
 
-class MyASTVisitor : public RecursiveASTVisitor<MyASTVisitor> {
+class TaintQueryASTVisitor : public RecursiveASTVisitor<TaintQueryASTVisitor> {
 public:
-    MyASTVisitor(Rewriter &rewriter, std::vector<std::string> &globalVars) : rewriter(rewriter), globalVars(globalVars)  {}
+    TaintQueryASTVisitor(Rewriter &rewriter, std::vector<std::string> &globalVars) : rewriter(rewriter), globalVars(globalVars)  {}
 
     bool VisitFunctionDecl(FunctionDecl *f) {
         if (f->hasBody()) {
@@ -63,9 +63,9 @@ private:
 };
 
 
-class MyASTConsumer : public ASTConsumer {
+class TaintQueryASTConsumer : public ASTConsumer {
 public:
-    MyASTConsumer(Rewriter &rewriter) : visitor(rewriter, globalVars) {}
+    TaintQueryASTConsumer(Rewriter &rewriter) : visitor(rewriter, globalVars) {}
 
     bool HandleTopLevelDecl(DeclGroupRef DR) override {
     // iterates through decls
@@ -86,14 +86,14 @@ public:
     }
 
 private:
-    MyASTVisitor visitor;
+    TaintQueryASTVisitor visitor;
     std::vector<std::string> globalVars;
 };
 
 
-class MyFrontendAction : public ASTFrontendAction {
+class TaintQueryFrontendAction : public ASTFrontendAction {
 public:
-    MyFrontendAction() {}
+    TaintQueryFrontendAction() {}
   
     void EndSourceFileAction() override {
         SourceManager &sm = rewriter.getSourceMgr();
@@ -110,18 +110,10 @@ public:
                                                      StringRef file) override {
         rewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
         llvm::errs() << "** Creating AST consumer for: " << file << "\n";
-        return llvm::make_unique<MyASTConsumer>(rewriter);
+        return llvm::make_unique<TaintQueryASTConsumer>(rewriter);
     }
 
 private:
     Rewriter rewriter;
 };
 
-
-int main(int argc, const char **argv) {
-    CommonOptionsParser op(argc, argv, TransformationCategory);
-  
-    ClangTool Tool(op.getCompilations(), op.getSourcePathList());
-    
-    return Tool.run(newFrontendActionFactory<MyFrontendAction>().get());
-}
