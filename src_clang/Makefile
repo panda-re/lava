@@ -2,13 +2,19 @@
 # Revised by Ruoxin(Amy) Jiang
 #-------------------------------------------------------------------------------
 
-# Run: build/<tooling_file>   inputs/<input_file>  -- 
-
-
-# Set path to LLVM source / build / bin
-LLVM_SRC_PATH := /home/rwhelan/llvm/llvm-3.6-svn/llvm/
-LLVM_BUILD_PATH := /home/rwhelan/llvm/llvm-3.6-svn/llvm/
-LLVM_BIN_PATH := $(LLVM_BUILD_PATH)/Release+Asserts/bin
+ifneq ($(wildcard config.mak),)
+    include config.mak
+else
+    $(info )
+    $(info Error: config.mak not found.  Create one with your LLVM build info.)
+    $(info Example:)
+    $(info )
+    $(info LLVM_SRC_PATH := /home/llvm/llvm-3.6-svn/llvm/)
+    $(info LLVM_BUILD_PATH := /home/llvm/llvm-3.6-svn/llvm/)
+    $(info LLVM_BIN_PATH := $$(LLVM_BUILD_PATH)/Release+Asserts/bin/)
+    $(info )
+    $(error Exiting...)
+endif
 
 # Run make BUILD_NINJA=1 to enable these paths
 ifdef BUILD_NINJA
@@ -90,4 +96,5 @@ $(BUILDDIR)/lavaTaintQueryPlugin.so: lavaTaintQueryPlugin.cpp
 
 .PHONY: clean
 clean:
-	rm -rf $(BUILDDIR)/* *~ 
+	rm -rf $(BUILDDIR)/* *~
+
