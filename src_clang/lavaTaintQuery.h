@@ -20,13 +20,14 @@ using namespace clang::driver;
 using namespace clang::tooling;
 
 static llvm::cl::OptionCategory
-    TransformationCategory("Taint Query Transformation");
+    TransformationCategory("Lava Taint Query Transformation");
 
 
-class TaintQueryASTVisitor : public RecursiveASTVisitor<TaintQueryASTVisitor> {
+class LavaTaintQueryASTVisitor :
+    public RecursiveASTVisitor<LavaTaintQueryASTVisitor> {
 public:
-    TaintQueryASTVisitor(Rewriter &rewriter, std::vector< std::pair<std::string,
-        const Type *> > &globalVars) :
+    LavaTaintQueryASTVisitor(Rewriter &rewriter,
+        std::vector< std::pair<std::string, const Type *> > &globalVars) :
             rewriter(rewriter), globalVars(globalVars)  {}
 
     bool VisitFunctionDecl(FunctionDecl *f) {
@@ -88,9 +89,10 @@ private:
 };
 
 
-class TaintQueryASTConsumer : public ASTConsumer {
+class LavaTaintQueryASTConsumer : public ASTConsumer {
 public:
-    TaintQueryASTConsumer(Rewriter &rewriter) : visitor(rewriter, globalVars) {}
+    LavaTaintQueryASTConsumer(Rewriter &rewriter) :
+        visitor(rewriter, globalVars) {}
 
     bool HandleTopLevelDecl(DeclGroupRef DR) override {
     // iterates through decls
@@ -113,14 +115,25 @@ public:
     }
 
 private:
-    TaintQueryASTVisitor visitor;
+    LavaTaintQueryASTVisitor visitor;
     std::vector< std::pair<std::string, const Type *> > globalVars;
 };
 
 
-class TaintQueryFrontendAction : public PluginASTAction {
+/*
+ * clang::FrontendAction
+ *      ^
+ * clang::ASTFrontendAction
+ *      ^
+ * clang::PluginASTAction
+ *
+ * This inheritance pattern allows this class (and the classes above) to be used
+ * as both a libTooling tool, and a Clang plugin.  In the libTooling case, the
+ * plugin-specific methods just aren't utilized.
+ */
+class LavaTaintQueryFrontendAction : public PluginASTAction {
 public:
-    TaintQueryFrontendAction() {}
+    LavaTaintQueryFrontendAction() {}
   
     void EndSourceFileAction() override {
         SourceManager &sm = rewriter.getSourceMgr();
@@ -138,7 +151,7 @@ public:
                                                      StringRef file) {
         rewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
         llvm::errs() << "** Creating AST consumer for: " << file << "\n";
-        return llvm::make_unique<TaintQueryASTConsumer>(rewriter);
+        return llvm::make_unique<LavaTaintQueryASTConsumer>(rewriter);
     }
 
     /**************************************************************************/

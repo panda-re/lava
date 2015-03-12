@@ -65,8 +65,8 @@ BUILDDIR := build
 all: make_builddir \
 	emit_build_config \
 	$(BUILDDIR)/example \
-	$(BUILDDIR)/taintQueryTool \
-	$(BUILDDIR)/taintQueryPlugin.so
+	$(BUILDDIR)/lavaTaintQueryTool \
+	$(BUILDDIR)/lavaTaintQueryPlugin.so
 
 .PHONY: emit_build_config
 emit_build_config: make_builddir
@@ -80,11 +80,11 @@ $(BUILDDIR)/example: example.cpp
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^ \
 		$(CLANG_LIBS) $(LLVM_LDFLAGS) -o $@
 
-$(BUILDDIR)/taintQueryTool: taintQueryTool.cpp
+$(BUILDDIR)/lavaTaintQueryTool: lavaTaintQueryTool.cpp
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^ \
 		$(CLANG_LIBS) $(LLVM_LDFLAGS) -o $@
 
-$(BUILDDIR)/taintQueryPlugin.so: taintQueryPlugin.cpp
+$(BUILDDIR)/lavaTaintQueryPlugin.so: lavaTaintQueryPlugin.cpp
 	$(CXX) $(PLUGIN_CXXFLAGS) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) \
 		$^ $(PLUGIN_LDFLAGS) $(LLVM_LDFLAGS_NOLIBS) -o $@
 

@@ -1,5 +1,5 @@
 
-#include "taintQuery.h"
+#include "lavaTaintQuery.h"
 
 /*
  * Usage: build/taintQueryTool <C file> --
@@ -14,6 +14,7 @@ int main(int argc, const char **argv) {
   
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
     
-    return Tool.run(newFrontendActionFactory<TaintQueryFrontendAction>().get());
+    return Tool.run(
+        newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
 }
 
