@@ -65,7 +65,8 @@ BUILDDIR := build
 all: make_builddir \
 	emit_build_config \
 	$(BUILDDIR)/example \
-	$(BUILDDIR)/taintQueryTool
+	$(BUILDDIR)/taintQueryTool \
+	$(BUILDDIR)/taintQueryPlugin.so
 
 .PHONY: emit_build_config
 emit_build_config: make_builddir
@@ -82,6 +83,10 @@ $(BUILDDIR)/example: example.cpp
 $(BUILDDIR)/taintQueryTool: taintQueryTool.cpp
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^ \
 		$(CLANG_LIBS) $(LLVM_LDFLAGS) -o $@
+
+$(BUILDDIR)/taintQueryPlugin.so: taintQueryPlugin.cpp
+	$(CXX) $(PLUGIN_CXXFLAGS) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) \
+		$^ $(PLUGIN_LDFLAGS) $(LLVM_LDFLAGS_NOLIBS) -o $@
 
 .PHONY: clean
 clean:
