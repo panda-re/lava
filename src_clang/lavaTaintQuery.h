@@ -44,7 +44,7 @@ public:
                 query << ", 0);\n";
             
                 const Type *t = param->getType().getTypePtr();
-                if (t->isPointerType() && !t->isNullPtrType()) {
+                if (t->isPointerType() && !t->isNullPtrType() && !t->getPointeeType()->isIncompleteType()) {
                     query << "if (" << param->getNameAsString() << ") ";
                     query << "vm_query_buffer(";
                     query << param->getNameAsString() << ", ";
@@ -144,7 +144,7 @@ public:
         // Last thing: include the right file
         rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
             "#include \"pirate_mark.h\"\n", true, true);
-        rewriter.getEditBuffer(sm.getMainFileID()).write(llvm::outs());
+        rewriter.overwriteChangedFiles();
     }
 
     std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
