@@ -10,6 +10,8 @@ Assuming you have some program source in directory `foo`.
 5. Place `pirate_mark.h` in each subdirectory of `foo` that contains source code.
 6. Make a backup of the source dir `foo` so that we have a copy of the unmodified source.
 7. Do the source-to-source transformation:
+
         ./get_c_files.py <foo> | parallel build/lavaTaintQueryTool -p=foo {}
+
 8. Go back to the source directory and run `make clean` and finally `make` to build the modified source.
 
