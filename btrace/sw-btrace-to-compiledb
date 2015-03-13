@@ -1,0 +1,175 @@
+#!/usr/bin/env python
+# Python 2 or 3 -- works on 2.6 and up.
+from __future__ import absolute_import, print_function, unicode_literals
+import json
+import os
+import re
+import subprocess
+import sys
+
+if sys.version_info.major >= 3:
+    # Provide aliases for things that Python 3 renamed.
+    unicode = str
+    xrange = range
+
+kDrivers = [
+    "cc", "c++",
+    "gcc", "g++",
+    "clang", "clang++",
+]
+
+kSourceExtensions = [".c", ".cc", ".cpp", ".cxx", ".c++"]
+kAssemblyExtensions = [".s", ".S"]
+
+
+class Command(object):
+    def __init__(self, cwd, parent, argv, line):
+        assert isinstance(cwd, unicode)
+        assert parent is None or isinstance(parent, Command)
+        self.cwd = cwd
+        self.parent = parent
+        self.argv = argv
+        self.line = line
+        self.isCompilerDriver = (os.path.basename(self.argv[0]) in kDrivers)
+
+
+def readPidList(pidlist):
+    """The pidlist field of a record is a flattened list of
+    (pidDelta, startTimeDelta) pairs, where each successive pair is the delta
+    from the previous pair to the new pair.  Return a list of
+    (pid, startTime) pairs.
+    """
+    assert len(pidlist) % 2 == 0 and len(pidlist) >= 2
+    ret = [(pidlist[0], pidlist[1])]
+    for i in xrange(2, len(pidlist), 2):
+        ret.append((ret[-1][0] + pidlist[i], ret[-1][1] + pidlist[i + 1]))
+    return ret
+
+
+def readFile(path):
+    commandList = []
+    commandIDToCommand = {}
+    fp = open(path)
+    line = 0
+
+    while True:
+        recordString = unicode(fp.readline())
+        if recordString == "":
+            break
+        line += 1
+        record = json.loads(recordString)
+        parent = None
+        procList = readPidList(record["pidlist"])
+        for procID in procList[:-1]:
+            parent = commandIDToCommand.get(procID, parent)
+        command = Command(record["cwd"], parent, record["argv"], line)
+        commandList.append(command)
+        commandIDToCommand[procList[-1]] = command
+
+    return commandList
+
+
+def endsWithOneOf(text, extensions):
+    for extension in extensions:
+        if text.endswith(extension):
+            return True
+    return False
+
+
+def joinCommandLine(argv):
+    # TODO: Actually get this right -- quotes,spaces,escapes,newlines
+    # TODO: Review what Clang's libtooling and CMake do, especially on Windows.
+    return " ".join(argv)
+
+
+def isChildOfCompilerDriver(command):
+    parent = command.parent
+    while parent is not None:
+        if parent.isCompilerDriver:
+            return True
+        parent = parent.parent
+    return False
+
+
+def compileMode(argv):
+    """Return the last compile-mode argument in a command line."""
+    kModes = ["-c", "-S", "-E"]
+    mode = None
+    for arg in argv:
+        if arg in kModes:
+            mode = arg
+    return mode
+
+
+def extractSourceFile(command):
+    """Attempt to extract a compile step from a driver command line."""
+
+    # Accommodate ccache.  With ccache, a parent process will be exec'ed using
+    # a program name like "g++", but the g++ is really a symlink to a ccache
+    # program.  ccache invokes children g++ subprocesses, but with altered
+    # arguments.  e.g. Instead of:
+    #    g++ -c file.cc -o file.o
+    # we get something like this:
+    #    g++ -E file.cc   [output redirected to a tmp file]
+    #    g++ -c $HOME/.ccache/tmp/tmp.i -o $HOME/.ccache/tmp.o.1234
+    # The translation unit compilation is now split into two, and the output
+    # filename is lost.  The approach taken here is to ignore any subprocesses
+    # of a compiler driver invocation.
+
+    if not command.isCompilerDriver or isChildOfCompilerDriver(command) or \
+            compileMode(command.argv) != "-c":
+        return None
+
+    args = command.argv[1:]
+    inputFile = None
+
+    while len(args) > 0:
+        arg = args.pop(0)
+        if arg[0] == "-":
+            pass
+        elif endsWithOneOf(arg, kSourceExtensions):
+            assert inputFile is None
+            inputFile = arg
+        elif endsWithOneOf(arg, kAssemblyExtensions):
+            return None
+
+    if inputFile is None:
+        return None
+    if not os.path.isdir(command.cwd):
+        print('warning: line %d: directory %s does not exist, skipping' %
+            (command.line, command.cwd))
+        return None
+    absoluteInputFile = os.path.join(command.cwd, inputFile)
+    if not os.path.isfile(absoluteInputFile):
+        print('warning: line %d: input file %s does not exist, skipping' %
+            (command.line, absoluteInputFile))
+        return None
+
+    output =  '{\n'
+    output += '  "directory" : %s,\n' % json.dumps(command.cwd)
+    output += '  "command" : %s,\n' % json.dumps(joinCommandLine(command.argv))
+    output += '  "file" : %s\n' % json.dumps(inputFile)
+    output += '}'
+
+    return output
+
+
+def main():
+    firstFile = True
+    commands = readFile("btrace.log")
+    f = open("compile_commands.json", "w")
+    f.write("[")
+    for x in commands:
+        sourceFile = extractSourceFile(x)
+        if sourceFile is not None:
+            if not firstFile:
+                f.write(",")
+            firstFile = False
+            f.write("\n")
+            f.write(sourceFile)
+    f.write("\n]")
+    f.close()
+
+
+if __name__ == "__main__":
+    main()
