@@ -55,6 +55,7 @@ public:
 
             }
 
+#if 0
             query << "// Check if global variables are tainted\n";
             for (auto it = globalVars.begin(); it != globalVars.end(); ++it) {
                 query << "vm_query_buffer(";
@@ -63,7 +64,7 @@ public:
                 query << ", 0);\n";
                 
                 const Type *t = it->second;
-                if (t->isPointerType() && !t->isNullPtrType()) {
+                if (t->isPointerType() && !t->isNullPtrType() && !t->getPointeeType()->isIncompleteType()) {
                     query << "if (" << it->first << ") ";
                     query << "vm_query_buffer(";
                     query << it->first << ", ";
@@ -72,6 +73,7 @@ public:
                     query << ", 0);\n";
                 }
             }
+#endif
 
             CompoundStmt *funcBody;
             if (!(funcBody = dyn_cast<CompoundStmt>(f->getBody())))
