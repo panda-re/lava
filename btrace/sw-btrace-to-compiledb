@@ -101,7 +101,7 @@ def compileMode(argv):
     return mode
 
 
-def extractSourceFile(command):
+def extractSourceFile(command, include_path):
     """Attempt to extract a compile step from a driver command line."""
 
     # Accommodate ccache.  With ccache, a parent process will be exec'ed using
@@ -147,7 +147,7 @@ def extractSourceFile(command):
 
     output =  '{\n'
     output += '  "directory" : %s,\n' % json.dumps(command.cwd)
-    output += '  "command" : %s,\n' % json.dumps(joinCommandLine(command.argv))
+    output += '  "command" : %s,\n' % json.dumps(joinCommandLine(command.argv) + " -I" + include_path)
     output += '  "file" : %s\n' % json.dumps(inputFile)
     output += '}'
 
@@ -155,12 +155,19 @@ def extractSourceFile(command):
 
 
 def main():
+    import sys
+    if len(sys.argv) < 2:
+        print("Need to specify include path.")
+        print("usage: %s <clang_system_headers>" % sys.argv[0])
+        return
+    include_path = sys.argv[1]
+
     firstFile = True
     commands = readFile("btrace.log")
     f = open("compile_commands.json", "w")
     f.write("[")
     for x in commands:
-        sourceFile = extractSourceFile(x)
+        sourceFile = extractSourceFile(x, include_path)
         if sourceFile is not None:
             if not firstFile:
                 f.write(",")
