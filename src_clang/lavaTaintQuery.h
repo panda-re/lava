@@ -27,30 +27,41 @@ class LavaTaintQueryASTVisitor :
     public RecursiveASTVisitor<LavaTaintQueryASTVisitor> {
 public:
     LavaTaintQueryASTVisitor(Rewriter &rewriter,
-        std::vector< std::pair<std::string, const Type *> > &globalVars) :
+        std::vector< VarDecl* > &globalVars) :
             rewriter(rewriter), globalVars(globalVars)  {}
 
     bool VisitFunctionDecl(FunctionDecl *f) {
         if (f->hasBody()) {
             DeclarationName n = f->getNameInfo().getName();
             std::stringstream query;
+            query << "PirateMarkLavaInfo pmli;\n\n";
             query << "// Check if arguments of "
                 << n.getAsString() << " are tainted\n";
             for (auto it = f->param_begin(); it != f->param_end(); ++it) {
+                populateLavaInfo(query,
+                    (*it)->getASTContext().getFullLoc((*it)->getLocStart()),
+                    (*it)->getNameAsString(), false);
                 query << "vm_query_buffer(";
                 ParmVarDecl *param = *it;
                 query << "&(" << param->getNameAsString() << "), ";
                 query << "sizeof(" << param->getNameAsString() << ")";
-                query << ", 0);\n";
+                query << ", 0";
+                query << ", &pmli);\n";
             
                 const Type *t = param->getType().getTypePtr();
-                if (t->isPointerType() && !t->isNullPtrType() && !t->getPointeeType()->isIncompleteType()) {
-                    query << "if (" << param->getNameAsString() << ") ";
-                    query << "vm_query_buffer(";
+                if (t->isPointerType() && !t->isNullPtrType()
+                        && !t->getPointeeType()->isIncompleteType()) {
+                    query << "if (" << param->getNameAsString() << "){\n";
+                    populateLavaInfo(query,
+                        (*it)->getASTContext().getFullLoc((*it)->getLocStart()),
+                        (*it)->getNameAsString(), true);
+                    query << "    vm_query_buffer(";
                     query << param->getNameAsString() << ", ";
                     query << "sizeof(" << QualType::getAsString(
                         t->getPointeeType().split()) << ")";
-                    query << ", 0);\n";
+                    query << ", 0";
+                    query << ", &pmli);\n";
+                    query << "}\n";
                 }
 
             }
@@ -58,19 +69,29 @@ public:
 #if 0
             query << "// Check if global variables are tainted\n";
             for (auto it = globalVars.begin(); it != globalVars.end(); ++it) {
+                populateLavaInfo(query,
+                    (*it)->getASTContext().getFullLoc((*it)->getLocStart()),
+                    (*it)->getNameAsString(), false);
                 query << "vm_query_buffer(";
-                query << "&" << it->first << ", ";
-                query << "sizeof(" << it->first << ")";
-                query << ", 0);\n";
+                query << "&" << (*it)->getNameAsString() << ", ";
+                query << "sizeof(" << (*it)->getNameAsString() << ")";
+                query << ", 0";
+                query << ", &pmli);\n";
                 
-                const Type *t = it->second;
-                if (t->isPointerType() && !t->isNullPtrType() && !t->getPointeeType()->isIncompleteType()) {
-                    query << "if (" << it->first << ") ";
-                    query << "vm_query_buffer(";
-                    query << it->first << ", ";
+                const Type *t = (*it)->getType().getTypePtr();
+                if (t->isPointerType() && !t->isNullPtrType()
+                        && !t->getPointeeType()->isIncompleteType()) {
+                    query << "if (" << (*it)->getNameAsString() << "){\n";
+                    populateLavaInfo(query,
+                        (*it)->getASTContext().getFullLoc((*it)->getLocStart()),
+                        (*it)->getNameAsString(), true);
+                    query << "    vm_query_buffer(";
+                    query << (*it)->getNameAsString() << ", ";
                     query << "sizeof(" << QualType::getAsString(
                         t->getPointeeType().split()) << ")";
-                    query << ", 0);\n";
+                    query << ", 0";
+                    query << ", &pmli);\n";
+                    query << "}\n";
                 }
             }
 #endif
@@ -85,9 +106,59 @@ public:
         return true;
     }
 
+#if 0
+    // x = 17 is a BinaryOperator with name '='
+    virtual bool VisitBinaryOperator(BinaryOperator *bo) {
+        llvm::errs() << "In a binary op\n";
+        switch (bo->getOpcode()) {
+        case BO_Assign:
+        case BO_MulAssign:
+        case BO_DivAssign:
+        case BO_RemAssign:
+        case BO_AddAssign:
+        case BO_SubAssign:
+        case BO_ShlAssign:
+        case BO_ShrAssign:
+        case BO_AndAssign:
+        case BO_XorAssign:
+        case BO_OrAssign: {
+            llvm::errs() << "At the thing\n";
+            if (DeclRefExpr *lhs = dyn_cast<DeclRefExpr>(bo->getLHS())) {
+                auto lhs_name =  lhs->getDecl()->getName().str() ;
+                llvm::errs() << " bo assignment lhs = " << lhs->getDecl()->getName() << "\n";
+                std::stringstream query;
+                query << "query_taint(&" << lhs_name << ", sizeof(" << lhs_name << ");\n";
+                SourceLocation ST = bo->getLocStart();
+
+                rewriter.InsertText(ST, query.str(), true, true);
+
+                
+                llvm::errs() << query.str() << "\n";
+            }
+            break;
+        }
+        default:
+            break;
+        }
+        return true;
+    }
+#endif
+
 private:
-    std::vector< std::pair< std::string, const Type *> > &globalVars;
+    std::vector< VarDecl* > &globalVars;
     Rewriter &rewriter;
+
+    void populateLavaInfo(std::stringstream &ss, FullSourceLoc loc,
+            StringRef nodeStr, bool indent){
+        SourceManager &sm = rewriter.getSourceMgr();
+        if (indent) ss << "    ";
+        ss << "pmli.filenamePtr = \"" << sm.getFilename(loc).str() << "\";\n";
+        if (indent) ss << "    ";
+        ss << "pmli.lineNum = " << loc.getExpansionLineNumber() << ";\n";
+        if (indent) ss << "    ";
+        ss << "pmli.astNodePtr = \"" << nodeStr.str() << "\";\n";
+    }
+
 };
 
 
@@ -105,9 +176,7 @@ public:
             if (vd) {
                 if (vd->isFileVarDecl() && vd->hasGlobalStorage())
                 {
-                    globalVars.push_back(std::make_pair(
-                        vd->getDeclName().getAsString(),
-                        vd->getType().getTypePtr()));
+                    globalVars.push_back(vd);
                 }  
             }
             else
@@ -118,7 +187,7 @@ public:
 
 private:
     LavaTaintQueryASTVisitor visitor;
-    std::vector< std::pair<std::string, const Type *> > globalVars;
+    std::vector< VarDecl* > globalVars;
 };
 
 
@@ -144,8 +213,9 @@ public:
                      << "\n";
 
         // Last thing: include the right file
+        // Now using our separate LAVA version
         rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
-            "#include \"pirate_mark.h\"\n", true, true);
+            "#include \"pirate_mark_lava.h\"\n", true, true);
         rewriter.overwriteChangedFiles();
     }
 
