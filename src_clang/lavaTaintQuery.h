@@ -41,7 +41,7 @@ public:
                 populateLavaInfo(query,
                     (*it)->getASTContext().getFullLoc((*it)->getLocStart()),
                     (*it)->getNameAsString(), false);
-                query << "vm_query_buffer(";
+                query << "vm_lava_query_buffer(";
                 ParmVarDecl *param = *it;
                 query << "&(" << param->getNameAsString() << "), ";
                 query << "sizeof(" << param->getNameAsString() << ")";
@@ -55,7 +55,7 @@ public:
                     populateLavaInfo(query,
                         (*it)->getASTContext().getFullLoc((*it)->getLocStart()),
                         (*it)->getNameAsString(), true);
-                    query << "    vm_query_buffer(";
+                    query << "    vm_lava_query_buffer(";
                     query << param->getNameAsString() << ", ";
                     query << "sizeof(" << QualType::getAsString(
                         t->getPointeeType().split()) << ")";
@@ -72,7 +72,7 @@ public:
                 populateLavaInfo(query,
                     (*it)->getASTContext().getFullLoc((*it)->getLocStart()),
                     (*it)->getNameAsString(), false);
-                query << "vm_query_buffer(";
+                query << "vm_lava_query_buffer(";
                 query << "&" << (*it)->getNameAsString() << ", ";
                 query << "sizeof(" << (*it)->getNameAsString() << ")";
                 query << ", 0";
@@ -85,7 +85,7 @@ public:
                     populateLavaInfo(query,
                         (*it)->getASTContext().getFullLoc((*it)->getLocStart()),
                         (*it)->getNameAsString(), true);
-                    query << "    vm_query_buffer(";
+                    query << "    vm_lava_query_buffer(";
                     query << (*it)->getNameAsString() << ", ";
                     query << "sizeof(" << QualType::getAsString(
                         t->getPointeeType().split()) << ")";

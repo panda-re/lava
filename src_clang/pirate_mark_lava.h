@@ -121,6 +121,16 @@ void vm_query_buffer(void *buf, unsigned long len, int offset,
   return;
 }
 
+/* buf is the address of the buffer to be queried
+ * len is the length of the buffer to be queried
+ * offset is currently managed by file seeking in the utils */
+static inline
+void vm_lava_query_buffer(void *buf, unsigned long len, int offset,
+    PirateMarkLavaInfo *pmli) {
+  hypercall(buf, len, 0, offset, pmli, LAVA_QUERY_BUFFER);
+  return;
+}
+
 static inline
 void vm_guest_util_done(){
     printf("Guest util done\n");
