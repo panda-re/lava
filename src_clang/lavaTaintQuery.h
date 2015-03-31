@@ -32,38 +32,35 @@ public:
 
     bool VisitFunctionDecl(FunctionDecl *f) {
         if (f->hasBody()) {
+            SourceManager &sm = rewriter.getSourceMgr();
             DeclarationName n = f->getNameInfo().getName();
             std::stringstream query;
-            query << "PirateMarkLavaInfo pmli;\n\n";
+            FullSourceLoc fullLoc;
             query << "// Check if arguments of "
                 << n.getAsString() << " are tainted\n";
             for (auto it = f->param_begin(); it != f->param_end(); ++it) {
-                populateLavaInfo(query,
-                    (*it)->getASTContext().getFullLoc((*it)->getLocStart()),
-                    (*it)->getNameAsString(), false);
+                fullLoc = (*it)->getASTContext().getFullLoc((*it)->getLocStart());
                 query << "vm_lava_query_buffer(";
-                ParmVarDecl *param = *it;
-                query << "&(" << param->getNameAsString() << "), ";
-                query << "sizeof(" << param->getNameAsString() << ")";
-                query << ", 0";
-                query << ", &pmli);\n";
+                query << "&(" << (*it)->getNameAsString() << "), ";
+                query << "sizeof(" << (*it)->getNameAsString() << "), ";
+                query << "\"" << sm.getFilename(fullLoc).str() << "\"" << ", ";
+                query << "\"" << (*it)->getNameAsString() << "\"" << ", ";
+                query << fullLoc.getExpansionLineNumber() << ");\n";
             
-                const Type *t = param->getType().getTypePtr();
+                const Type *t = (*it)->getType().getTypePtr();
                 if (t->isPointerType() && !t->isNullPtrType()
                         && !t->getPointeeType()->isIncompleteType()) {
-                    query << "if (" << param->getNameAsString() << "){\n";
-                    populateLavaInfo(query,
-                        (*it)->getASTContext().getFullLoc((*it)->getLocStart()),
-                        (*it)->getNameAsString(), true);
+                    query << "if (" << (*it)->getNameAsString() << "){\n";
                     query << "    vm_lava_query_buffer(";
-                    query << param->getNameAsString() << ", ";
+                    query << (*it)->getNameAsString() << ", ";
                     query << "sizeof(" << QualType::getAsString(
-                        t->getPointeeType().split()) << ")";
-                    query << ", 0";
-                    query << ", &pmli);\n";
+                        t->getPointeeType().split()) << "), ";
+                    query << "\"" << sm.getFilename(fullLoc).str() << "\""
+                            << ", ";
+                    query << "\"" << (*it)->getNameAsString() << "\"" << ", ";
+                    query << fullLoc.getExpansionLineNumber() << ");\n";
                     query << "}\n";
                 }
-
             }
 
 #if 0
