@@ -50,6 +50,11 @@ std::map <uint32_t, float> read_dead_data(char *pandalog_filename) {
 
 int main (int argc, char **argv) {
 
+    printf ("argv 2 = %s\n", argv[2]);
+    
+    float max_liveness = atof(argv[2]);
+    printf ("maximum liveness score of %.2f\n", max_liveness);
+
     // read in dead data 
     std::map <uint32_t, float> dd = read_dead_data(argv[1]);
     printf ("done reading in dead data\n");
@@ -60,12 +65,17 @@ int main (int argc, char **argv) {
     pandalog_open(argv[2], "r");
     Panda__LogEntry *ple;
     std::map <uint64_t, std::set<uint32_t> > ptr_to_set;
-    std::set <uint32_t> avail_data;
+    std::map <uint32_t, Panda__TaintQuery> avail_data;
     uint64_t ii=0;
     while (1) {
         ii ++;
         if ((ii % 10000) == 0) {
-            printf ("processed %d of taint queries log\n", ii);
+            printf ("processed %d of taint queries log avail dead data = %d\n", ii, avail_data.size());
+            for ( auto kvp : avail_data) {
+                printf ("label=%d \n", kvp.first);
+                for ( auto tq : kvp.second ) {
+                    printf ("  file=[%s] line=%d ast=[%s] offs=%d\n", 
+                            tq.filename
         }
 
         ple = pandalog_read_entry();
@@ -73,7 +83,6 @@ int main (int argc, char **argv) {
             break;
         }
         if (ple->taint_query_unique_label_set) {
-            //            printf (" taint query unqiue label set: ptr=%llu labels: ", ple->taint_query_unique_label_set->ptr);
             uint32_t i;
             for (i=0; i<ple->taint_query_unique_label_set->n_label; i++) {
                 ptr_to_set[ple->taint_query_unique_label_set->ptr].insert(ple->taint_query_unique_label_set->label[i]);
@@ -81,13 +90,11 @@ int main (int argc, char **argv) {
         }        
         if (ple->taint_query) {
             for ( auto el : ptr_to_set[ple->taint_query->ptr] ) {
-                avail_data.insert(el);
+                if (dd[el] <= max_liveness) {
+                    avail_data[el] = ple->taint_query;
+                }
             }
         }
     }
     pandalog_close();
-
-    for ( auto el : avail_data ) {
-        printf ("avail %d %.2f\n", el, dd[el]);
-    }
 }
