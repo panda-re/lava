@@ -97,8 +97,28 @@ public:
             if (!(funcBody = dyn_cast<CompoundStmt>(f->getBody())))
                     return true;
 
-            SourceLocation loc = (*funcBody->body_begin())->getLocStart();
-            rewriter.InsertText(loc, query.str(), true, true);
+            Stmt **s = funcBody->body_begin();
+            if (s) {
+                SourceLocation loc = (*s)->getLocStart();
+                rewriter.InsertText(loc, query.str(), true, true);
+            }
+        }
+        return true;
+    }
+
+    bool VisitCallExpr(CallExpr *e) {
+        SourceManager &sm = rewriter.getSourceMgr();
+        FunctionDecl *f = e->getDirectCallee();
+        std::stringstream query;
+        if (f) {
+            if (f->getNameInfo().getName().getAsString() == "memcpy") {
+                FullSourceLoc fullLoc(e->getLocStart(), sm);
+                llvm::errs() << "Found memcpy at " << sm.getFilename(fullLoc).str() << ":" << fullLoc.getExpansionLineNumber() << "\n";
+                query << "vm_lava_attack_point(";
+                query << "\"" << sm.getFilename(fullLoc).str() << "\", " << fullLoc.getExpansionLineNumber();
+                query << ");\n";
+                rewriter.InsertText(e->getLocStart(), query.str(), true, true);
+            }
         }
         return true;
     }
