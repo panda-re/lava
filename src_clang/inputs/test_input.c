@@ -33,6 +33,8 @@ int main(int argc, char **argv) {
         return 1;
     }
     
+    memcpy(buf, argv[1], strlen(argv[1]));
+    
     test1(buf);
 
     test2(3, 5);
