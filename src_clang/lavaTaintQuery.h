@@ -114,10 +114,11 @@ public:
             if (f->getNameInfo().getName().getAsString() == "memcpy") {
                 FullSourceLoc fullLoc(e->getLocStart(), sm);
                 llvm::errs() << "Found memcpy at " << sm.getFilename(fullLoc).str() << ":" << fullLoc.getExpansionLineNumber() << "\n";
-                query << "vm_lava_attack_point(";
+                query << "( { vm_lava_attack_point(";
                 query << "\"" << sm.getFilename(fullLoc).str() << "\", " << fullLoc.getExpansionLineNumber();
                 query << ");\n";
                 rewriter.InsertText(e->getLocStart(), query.str(), true, true);
+		rewriter.InsertTextAfterToken(e->getLocEnd(), "; } )\n");
             }
         }
         return true;
