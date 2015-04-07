@@ -30,6 +30,16 @@ public:
         std::vector< VarDecl* > &globalVars) :
             rewriter(rewriter), globalVars(globalVars)  {}
 
+    bool TraverseDecl(Decl *d) {
+        if (!d) return true;
+
+        SourceManager &sm = rewriter.getSourceMgr();
+        if (!sm.isInSystemHeader(d->getLocation()))
+            return RecursiveASTVisitor<LavaTaintQueryASTVisitor>::TraverseDecl(d);
+        
+        return true;
+    }
+
     bool VisitFunctionDecl(FunctionDecl *f) {
         if (f->hasBody()) {
             SourceManager &sm = rewriter.getSourceMgr();
@@ -39,6 +49,9 @@ public:
             query << "// Check if arguments of "
                 << n.getAsString() << " are tainted\n";
             for (auto it = f->param_begin(); it != f->param_end(); ++it) {
+                // Skip register variables
+                if ((*it)->getStorageClass() == SC_Register) continue;
+
                 fullLoc = (*it)->getASTContext().getFullLoc((*it)->getLocStart());
                 query << "vm_lava_query_buffer(";
                 query << "&(" << (*it)->getNameAsString() << "), ";
