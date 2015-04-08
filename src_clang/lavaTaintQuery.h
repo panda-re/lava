@@ -133,25 +133,25 @@ public:
                           
     // Collect list of all lvals buried in an expr
     std::vector<Expr *> CollectLvals(Expr *e) {
-        printf ("\nparentBegin\n");
-        e->dump();
-        printf ("\nparentEnd\n");
+        //        printf ("\nparentBegin\n");
+        //        e->dump();
+        //        printf ("\nparentEnd\n");
         std::vector<Expr *> lvals;
         Stmt *s = dyn_cast<Stmt>(e);
         if (s) {
             for ( auto &child : s->children() ) {            
                 Expr *ce = dyn_cast<Expr>(child)->IgnoreCasts();
                 if (ce) {
-                    printf ("\nChildBegin\n");
-                    ce->dump();
+                    //                    printf ("\nChildBegin\n");
+                    //                    ce->dump();
                     if (ce->isLValue()) {
-                        printf ("is an lval\n");
+                        //                        printf ("is an lval\n");
                         lvals.push_back(ce);
                     }
                     else {
-                        printf ("is not an lval\n");
+                        //                        printf ("is not an lval\n");
                     }
-                    printf ("\nChildEnd\n");                
+                    //                    printf ("\nChildEnd\n");                
                 }
             }
         }
@@ -161,7 +161,7 @@ public:
     // e must be an lval.
     // return taint query for that lval
     std::string ComposeTaintQueryLval (Expr *e) {
-        printf ("ComposeTaintQueryLval\n");
+        //        printf ("ComposeTaintQueryLval\n");
         assert (e->isLValue());
         std::stringstream query;
         std::string lv_name = ExprStr(e);
@@ -256,7 +256,7 @@ public:
             after_part << queries.str();
             if ( has_retval ) {
                 // make sure to compose a query for the ret val too
-                after_part << "vm_laval_query_buffer(&(ret), sizeof(ret), ";
+                after_part << "vm_lava_query_buffer(&(ret), sizeof(ret), ";
                 after_part << "\"" << src_filename << "\", \"ret\", " << src_linenum << ");";
                 // make sure to return retval 
                 after_part << " ret; ";
