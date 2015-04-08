@@ -119,28 +119,119 @@ public:
         return true;
     }
 
+#if 0
+    void CollectLvals_aux(std::vector<Expr *> lvals, Expr *e) {
+        if (e->isLValue()) {
+            lvals.push_back(e);
+        }
+        
+        
+    // Collect list of all lvals buried in an expr
+    std::vector<Expr *> CollectLvals(Expr *e) {
+        std::vector<Expr *> lvals;
+        CollectLvals_aux(e, lvals) {
+#endif
+
+    // XXX: recursively descend this expr and compose all appropriate taint queries
+    // XXX: I am a fake for now
+    std::vector<Expr *> CollectLvals(Expr *e) {
+        std::vector<Expr *> lvals;
+        if (e->isLValue()) {
+            lvals.push_back(e);
+        }
+        return lvals;
+    }
+
+    // e must be an lval.
+    // return taint query for that lval
+    std::string ComposeTaintQueryLval (Expr *e) {
+        assert (e->isLValue());
+        std::stringstream query;
+        DeclRefExpr *lv = dyn_cast<DeclRefExpr>(e->IgnoreCasts());
+        if (lv) {
+            // its an lval and we've found the DeclRefExpr
+            std::string lv_name = lv->getNameInfo().getName().getAsString();
+            SourceManager &sm = rewriter.getSourceMgr();
+            FullSourceLoc fullLoc(lv->getLocStart(), sm);
+            query << "vm_lava_query_buffer(";
+            query << "&(" << lv_name << "), ";
+            query << "sizeof(" << lv_name << "), ";
+            query << "\"" << sm.getFilename(fullLoc).str() << "\"" << ", ";
+            query << "\"" << lv_name << "\"" << ", ";
+            query << fullLoc.getExpansionLineNumber() << ");\n";
+        }
+        return query.str();
+    } 
+
+    std::string ComposeTaintQueriesExpr(Expr *e) {
+        std::vector<Expr *> lvals = CollectLvals(e);
+        std::stringstream queries;
+        for ( auto *lv : lvals ) {
+            queries << (ComposeTaintQueryLval(lv));
+        }
+        return queries.str();
+    }
+
+    
     bool VisitCallExpr(CallExpr *e) {
         SourceManager &sm = rewriter.getSourceMgr();
-        FunctionDecl *f = e->getDirectCallee();
-        std::stringstream query;
-        if (f) {
-            if (f->getNameInfo().getName().getAsString() == "memcpy") {
-                FullSourceLoc fullLoc(e->getLocStart(), sm);
-                llvm::errs() << "Found memcpy at " << sm.getFilename(fullLoc).str() << ":" << fullLoc.getExpansionLineNumber() << "\n";
-                query << "( { vm_lava_attack_point(";
-                query << "\"" << sm.getFilename(fullLoc).str() << "\", " << fullLoc.getExpansionLineNumber();
-                query << ");\n";
-                rewriter.InsertText(e->getLocStart(), query.str(), true, true);
-		rewriter.InsertTextAfterToken(e->getLocEnd(), "; } )\n");
+        /*
+          insert "i'm at an attack point (memcpy)" hypercalls	
+          we replace mempcy(...) with
+          ({vm_lava_attack_point(...); memcpy(...);})       
+        */
+        {
+            FunctionDecl *f = e->getDirectCallee();
+            std::stringstream query;
+            if (f) {
+                if (f->getNameInfo().getName().getAsString() == "memcpy") {
+                    FullSourceLoc fullLoc(e->getLocStart(), sm);
+                    llvm::errs() << "Found memcpy at " << sm.getFilename(fullLoc).str() << ":" << fullLoc.getExpansionLineNumber() << "\n";
+                    query << "( { vm_lava_attack_point(";
+                    query << "\"" << sm.getFilename(fullLoc).str() << "\", " << fullLoc.getExpansionLineNumber();
+                    query << ");\n";
+                    rewriter.InsertText(e->getLocStart(), query.str(), true, true);
+                    rewriter.InsertTextAfterToken(e->getLocEnd(), "; } )\n");
+                }	    
             }
+        }
+        /*
+          insert taint queries *after* call for every arg to fn        
+          For example, replace call
+          int x = foo(a,b,...);
+          with
+          int x = ({ int ret = foo(a,b,...);  vm_lava_query_buffer(&a,...); vm_lava_query(&b,...); ret })
+        */          
+        {
+            std::stringstream before_part;
+            QualType rt = e->getCallReturnType(); 
+            before_part << "({";
+            if (!(rt->isVoidType())) {
+                // call retval is caught -- handle
+                before_part << (rt->getAsString()) << " ret = ";
+            }
+            rewriter.InsertText(e->getLocStart(), before_part.str(), true, true);            
+            std::stringstream queries;
+            for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
+                // for each expression, compose all taint queries we know how to create
+                Expr *arg = dyn_cast<Expr>(*it);
+                queries << (ComposeTaintQueriesExpr(e));
+            }            
+            std::stringstream after_part;
+            after_part << queries;
+            if (!(rt->isVoidType())) {
+                // call retval 
+                after_part << " ret; ";
+            }
+            after_part << ")}";
+            rewriter.InsertTextAfterToken(e->getLocEnd(), after_part.str());            
         }
         return true;
     }
 
+
 #if 0
-    // x = 17 is a BinaryOperator with name '='
     virtual bool VisitBinaryOperator(BinaryOperator *bo) {
-        llvm::errs() << "In a binary op\n";
         switch (bo->getOpcode()) {
         case BO_Assign:
         case BO_MulAssign:
