@@ -119,51 +119,27 @@ public:
         return true;
     }
 
-
-    void CollectLvals_aux(std::vector<Expr *> &lvals, Expr *e) {
-        Expr *e_nc = e->IgnoreCasts();
-        if (e_nc->isLValue()) {
-            lvals.push_back(e);
-        }
-        else {
-            BinaryOperator *bo = dyn_cast<BinaryOperator>(e_nc);
-            if (bo) {
-                CollectLvals_aux(lvals, bo->getLHS());
-                CollectLvals_aux(lvals, bo->getRHS());
-            }
-            UnaryOperator *uo = dyn_cast<UnaryOperator>(e_nc);
-            if (uo) {
-                CollectLvals_aux(lvals, uo->getSubExpr());
-            }
-        }
-    }
-
-            
+           
                
     // Collect list of all lvals buried in an expr
     std::vector<Expr *> CollectLvals(Expr *e) {
         std::vector<Expr *> lvals;
-        return CollectLvals_aux(e, lvals);
-    }
-
-
-#if 0
-    // XXX: recursively descend this expr and compose all appropriate taint queries
-    // XXX: I am a fake for now
-    std::vector<Expr *> CollectLvals(Expr *e) {
-        std::vector<Expr *> lvals;
-        CollectLvals_aux(lvals, e);
-
-        Expr *e_nc = e->IgnoreCasts();
-        //        e_nc->dump();
-        DeclRefExpr *lv = dyn_cast<DeclRefExpr>(e_nc);
-        //        lv->dump();
-        if (lv && e_nc->isLValue()) {
-            lvals.push_back(lv);
+        Stmt *s = dyn_cast<Stmt>(e);
+        if (s) {
+            for ( auto &child : s->children() ) {            
+                Expr *ce = dyn_cast<Expr>(child);
+                if (ce) {
+                    if (ce->isLValue()) {
+                        lvals.push_back(ce);
+                    }
+                }
+            }
         }
         return lvals;
     }
-#endif
+
+
+
     // e must be an lval.
     // return taint query for that lval
     std::string ComposeTaintQueryLval (Expr *e) {
@@ -205,12 +181,10 @@ public:
 
     std::string ComposeTaintQueriesExpr(Expr *e) {
         std::vector<Expr *> lvals = CollectLvals(e);
-        //        printf ("%d lvals\n", lvals.size());
         std::stringstream queries;
         for ( auto *lv : lvals ) {
             queries << (ComposeTaintQueryLval(lv));
         }        
-        //        printf ("queries=[%s]\n", queries.str().c_str());
         return queries.str();
     }
 
