@@ -206,6 +206,9 @@ public:
     
     bool VisitCallExpr(CallExpr *e) {
         SourceManager &sm = rewriter.getSourceMgr();
+        FullSourceLoc fullLoc(e->getLocStart(), sm);
+        std::string src_filename = sm.getFilename(fullLoc).str();
+        uint32_t src_linenum = fullLoc.getExpansionLineNumber(); 
         /*
           insert "i'm at an attack point (memcpy)" hypercalls	
           we replace mempcy(...) with
@@ -216,10 +219,9 @@ public:
             std::stringstream query;
             if (f) {
                 if (f->getNameInfo().getName().getAsString() == "memcpy") {
-                    FullSourceLoc fullLoc(e->getLocStart(), sm);
-                    llvm::errs() << "Found memcpy at " << sm.getFilename(fullLoc).str() << ":" << fullLoc.getExpansionLineNumber() << "\n";
+                    llvm::errs() << "Found memcpy at " << src_filename << ":" << src_linenum << "\n";
                     query << "( { vm_lava_attack_point(";
-                    query << "\"" << sm.getFilename(fullLoc).str() << "\", " << fullLoc.getExpansionLineNumber();
+                    query << "\"" << src_filename << "\", " << src_linenum; 
                     query << ");\n";
                     rewriter.InsertText(e->getLocStart(), query.str(), true, true);
                     rewriter.InsertTextAfterToken(e->getLocEnd(), "; } )\n");
@@ -231,7 +233,7 @@ public:
           For example, replace call
           int x = foo(a,b,...);
           with
-          int x = ({ int ret = foo(a,b,...);  vm_lava_query_buffer(&a,...); vm_lava_query(&b,...); ret })
+          int x = ({ int ret = foo(a,b,...);  vm_lava_query_buffer(&a,...); vm_lava_query(&b,...); vm_lava_query(&ret,...);  ret })
         */          
         {
             std::stringstream before_part;
@@ -253,6 +255,9 @@ public:
             std::stringstream after_part;
             after_part << queries.str();
             if ( has_retval ) {
+                // make sure to compose a query for the ret val too
+                after_part << "vm_laval_query_buffer(&(ret), sizeof(ret), ";
+                after_part << "\"" << src_filename << "\", \"ret\", " << src_linenum << ");";
                 // make sure to return retval 
                 after_part << " ret; ";
             }
