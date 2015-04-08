@@ -121,8 +121,7 @@ public:
 
     // give me an expr and i'll return the string repr from original source
     std::string ExprStr(Expr *e) {
-        clang::LangOptions LangOpts;
-        LangOpts.CPlusPlus = true;
+        const clang::LangOptions &LangOpts = rewriter.getLangOpts();
         clang::PrintingPolicy Policy(LangOpts);
         std::string TypeS;
         llvm::raw_string_ostream s(TypeS);
