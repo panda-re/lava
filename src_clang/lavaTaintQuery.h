@@ -132,25 +132,19 @@ public:
                           
     // Collect list of all lvals buried in an expr
     std::vector<Expr *> CollectLvals(Expr *e) {
-        //        printf ("\nparentBegin\n");
-        //        e->dump();
-        //        printf ("\nparentEnd\n");
         std::vector<Expr *> lvals;
         Stmt *s = dyn_cast<Stmt>(e);
         if (s) {
             for ( auto &child : s->children() ) {            
                 Expr *ce = dyn_cast<Expr>(child)->IgnoreCasts();
                 if (ce) {
-                    //                    printf ("\nChildBegin\n");
-                    //                    ce->dump();
                     if (ce->isLValue()) {
-                        //                        printf ("is an lval\n");
-                        lvals.push_back(ce);
+                        StringLiteral *sl = dyn_cast<StringLiteral>(ce);
+                        if (!sl) {
+                            // ok its an lval that isnt a string literl
+                            lvals.push_back(ce);
+                        }
                     }
-                    else {
-                        //                        printf ("is not an lval\n");
-                    }
-                    //                    printf ("\nChildEnd\n");                
                 }
             }
         }
@@ -162,6 +156,8 @@ public:
     std::string ComposeTaintQueryLval (Expr *e) {
         //        printf ("ComposeTaintQueryLval\n");
         assert (e->isLValue());
+        printf ("e=[%s] is an lval\n", ExprStr(e).c_str());
+        e->dump();
         std::stringstream query;
         std::string lv_name = ExprStr(e);
         SourceManager &sm = rewriter.getSourceMgr();
@@ -235,33 +231,46 @@ public:
           int x = ({ int ret = foo(a,b,...);  vm_lava_query_buffer(&a,...); vm_lava_query(&b,...); vm_lava_query(&ret,...);  ret })
         */          
         {
-            std::stringstream before_part;
-            QualType rqt = e->getCallReturnType(); 
-            before_part << "({";
-            bool has_retval = ( rqt.getTypePtrOrNull() != NULL );
-            if ( has_retval ) {
-                // call retval is caught -- handle
-                before_part << (rqt.getAsString()) << " ret = ";
+            FunctionDecl *f = e->getDirectCallee();
+            std::stringstream query;
+            if (f) {
+                if ( !
+                     ((f->getNameInfo().getName().getAsString() == "vm_lava_query_buffer")
+                      || (f->getNameInfo().getName().getAsString() == "vm_lava_attack_point"))) { 
+                    std::stringstream before_part;
+                    QualType rqt = e->getCallReturnType(); 
+                    before_part << "({";
+                    bool has_retval = false;
+                    if (rqt.getTypePtrOrNull() != NULL ) {
+                        if (! rqt.getTypePtr()->isVoidType()) {
+                            has_retval = true;
+                        }
+                    }
+                    if ( has_retval ) {
+                        // call retval is caught -- handle
+                        before_part << (rqt.getAsString()) << " ret = ";
+                    }
+                    rewriter.InsertText(e->getLocStart(), before_part.str(), true, true);            
+                    std::stringstream queries;
+                    queries << "; \n";
+                    for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
+                        // for each expression, compose all taint queries we know how to create
+                        Expr *arg = dyn_cast<Expr>(*it);
+                        queries << (ComposeTaintQueriesExpr(arg));
+                    }            
+                    std::stringstream after_part;
+                    after_part << queries.str();
+                    if ( has_retval ) {
+                        // make sure to compose a query for the ret val too
+                        after_part << "vm_lava_query_buffer(&(ret), sizeof(ret), ";
+                        after_part << "\"" << src_filename << "\", \"ret\", " << src_linenum << ");";
+                        // make sure to return retval 
+                        after_part << " ret; ";
+                    }
+                    after_part << "})";
+                    rewriter.InsertTextAfterToken(e->getLocEnd(), after_part.str());            
+                }
             }
-            rewriter.InsertText(e->getLocStart(), before_part.str(), true, true);            
-            std::stringstream queries;
-            queries << "; \n";
-            for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
-                // for each expression, compose all taint queries we know how to create
-                Expr *arg = dyn_cast<Expr>(*it);
-                queries << (ComposeTaintQueriesExpr(arg));
-            }            
-            std::stringstream after_part;
-            after_part << queries.str();
-            if ( has_retval ) {
-                // make sure to compose a query for the ret val too
-                after_part << "vm_lava_query_buffer(&(ret), sizeof(ret), ";
-                after_part << "\"" << src_filename << "\", \"ret\", " << src_linenum << ");";
-                // make sure to return retval 
-                after_part << " ret; ";
-            }
-            after_part << "})";
-            rewriter.InsertTextAfterToken(e->getLocEnd(), after_part.str());            
         }
         return true;
     }
