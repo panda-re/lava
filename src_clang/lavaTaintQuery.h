@@ -136,8 +136,12 @@ public:
     // XXX: I am a fake for now
     std::vector<Expr *> CollectLvals(Expr *e) {
         std::vector<Expr *> lvals;
-        if (e->isLValue()) {
-            lvals.push_back(e);
+        Expr *e_nc = e->IgnoreCasts();
+        //        e_nc->dump();
+        DeclRefExpr *lv = dyn_cast<DeclRefExpr>(e_nc);
+        //        lv->dump();
+        if (lv && e_nc->isLValue()) {
+            lvals.push_back(lv);
         }
         return lvals;
     }
@@ -160,15 +164,18 @@ public:
             query << "\"" << lv_name << "\"" << ", ";
             query << fullLoc.getExpansionLineNumber() << ");\n";
         }
+        //        printf ("query=[%s]\n", query.str().c_str());
         return query.str();
     } 
 
     std::string ComposeTaintQueriesExpr(Expr *e) {
         std::vector<Expr *> lvals = CollectLvals(e);
+        //        printf ("%d lvals\n", lvals.size());
         std::stringstream queries;
         for ( auto *lv : lvals ) {
             queries << (ComposeTaintQueryLval(lv));
         }
+        //        printf ("queries=[%s]\n", queries.str().c_str());
         return queries.str();
     }
 
@@ -213,18 +220,19 @@ public:
             }
             rewriter.InsertText(e->getLocStart(), before_part.str(), true, true);            
             std::stringstream queries;
+            queries << "; \n";
             for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
                 // for each expression, compose all taint queries we know how to create
                 Expr *arg = dyn_cast<Expr>(*it);
-                queries << (ComposeTaintQueriesExpr(e));
+                queries << (ComposeTaintQueriesExpr(arg));
             }            
             std::stringstream after_part;
-            after_part << queries;
+            after_part << queries.str();
             if ( has_retval ) {
                 // make sure to return retval 
                 after_part << " ret; ";
             }
-            after_part << ")}";
+            after_part << "})";
             rewriter.InsertTextAfterToken(e->getLocEnd(), after_part.str());            
         }
         return true;
