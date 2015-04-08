@@ -119,45 +119,60 @@ public:
         return true;
     }
 
-           
-               
+    // give me an expr and i'll return the string repr from original source
+    std::string ExprStr(Expr *e) {
+        clang::LangOptions LangOpts;
+        LangOpts.CPlusPlus = true;
+        clang::PrintingPolicy Policy(LangOpts);
+        std::string TypeS;
+        llvm::raw_string_ostream s(TypeS);
+        e->printPretty(s, 0, Policy);
+        return s.str();
+    }
+
+                          
     // Collect list of all lvals buried in an expr
     std::vector<Expr *> CollectLvals(Expr *e) {
+        printf ("\nparentBegin\n");
+        e->dump();
+        printf ("\nparentEnd\n");
         std::vector<Expr *> lvals;
         Stmt *s = dyn_cast<Stmt>(e);
         if (s) {
             for ( auto &child : s->children() ) {            
-                Expr *ce = dyn_cast<Expr>(child);
+                Expr *ce = dyn_cast<Expr>(child)->IgnoreCasts();
                 if (ce) {
+                    printf ("\nChildBegin\n");
+                    ce->dump();
                     if (ce->isLValue()) {
+                        printf ("is an lval\n");
                         lvals.push_back(ce);
                     }
+                    else {
+                        printf ("is not an lval\n");
+                    }
+                    printf ("\nChildEnd\n");                
                 }
             }
         }
         return lvals;
     }
 
-
-
     // e must be an lval.
     // return taint query for that lval
     std::string ComposeTaintQueryLval (Expr *e) {
+        printf ("ComposeTaintQueryLval\n");
         assert (e->isLValue());
         std::stringstream query;
-        DeclRefExpr *lv = dyn_cast<DeclRefExpr>(e->IgnoreCasts());
-        if (lv) {
-            // its an lval and we've found the DeclRefExpr
-            std::string lv_name = lv->getNameInfo().getName().getAsString();
-            SourceManager &sm = rewriter.getSourceMgr();
-            FullSourceLoc fullLoc(lv->getLocStart(), sm);
-            query << "vm_lava_query_buffer(";
-            query << "&(" << lv_name << "), ";
-            query << "sizeof(" << lv_name << "), ";
-            query << "\"" << sm.getFilename(fullLoc).str() << "\"" << ", ";
-            query << "\"" << lv_name << "\"" << ", ";
-            query << fullLoc.getExpansionLineNumber() << ");\n";
-        }
+        std::string lv_name = ExprStr(e);
+        SourceManager &sm = rewriter.getSourceMgr();
+        FullSourceLoc fullLoc(e->getLocStart(), sm);
+        query << "vm_lava_query_buffer(";
+        query << "&(" << lv_name << "), ";
+        query << "sizeof(" << lv_name << "), ";
+        query << "\"" << sm.getFilename(fullLoc).str() << "\"" << ", ";
+        query << "\"" << lv_name << "\"" << ", ";
+        query << fullLoc.getExpansionLineNumber() << ");\n";
 #if 0
         // if lval is a struct or a ptr to a struct,
         // we want queries for all slots
