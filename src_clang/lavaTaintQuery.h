@@ -204,11 +204,12 @@ public:
         */          
         {
             std::stringstream before_part;
-            QualType rt = e->getCallReturnType(); 
+            QualType rqt = e->getCallReturnType(); 
             before_part << "({";
-            if (!(rt->isVoidType())) {
+            bool has_retval = ( rqt.getTypePtrOrNull() != NULL );
+            if ( has_retval ) {
                 // call retval is caught -- handle
-                before_part << (rt->getAsString()) << " ret = ";
+                before_part << (rqt.getAsString()) << " ret = ";
             }
             rewriter.InsertText(e->getLocStart(), before_part.str(), true, true);            
             std::stringstream queries;
@@ -219,8 +220,8 @@ public:
             }            
             std::stringstream after_part;
             after_part << queries;
-            if (!(rt->isVoidType())) {
-                // call retval 
+            if ( has_retval ) {
+                // make sure to return retval 
                 after_part << " ret; ";
             }
             after_part << ")}";
