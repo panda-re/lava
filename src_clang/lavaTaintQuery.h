@@ -168,24 +168,46 @@ public:
         query << "\"" << sm.getFilename(fullLoc).str() << "\"" << ", ";
         query << "\"" << lv_name << "\"" << ", ";
         query << fullLoc.getExpansionLineNumber() << ");\n";
-#if 0
+
         // if lval is a struct or a ptr to a struct,
         // we want queries for all slots
-        QualType qt = lv->getDecl()->getType();
-        Type *t = qt->getTypePtr();
+        QualType qt = e->getType();
+        const Type *t = qt.getTypePtr();
         if (t->isPointerType()) {
             if (t->getPointeeType()->isRecordType()) {
                 // we have a ptr to a struct 
-
+                const RecordType *rt = t->getPointeeType()->getAsStructureType();
+                if (rt) {
+                    query << "if (" << lv_name << ") {\n" ;
+                    for (auto field : rt->getDecl()->fields()) {
+                        query << "vm_lava_query_buffer(";
+                        query << "&(" << lv_name << "->" << field->getName().str() << "), " ;
+                        query << "sizeof(" << lv_name << "->" << field->getName().str()<< "), ";
+                        query << "\"" << sm.getFilename(fullLoc).str() << "\"" << ", ";
+                        query << "\"" << lv_name << "->" << field->getName().str() << "\"" << ", ";
+                        query << fullLoc.getExpansionLineNumber() << ");\n";
+                    }
+                    query << "}\n";
+                }
             }
         }
         else {
             if (t->isRecordType()) {
                 // we have a struct
+                const RecordType *rt = t->getAsStructureType();
+                if (rt) {
+                    for (auto field : rt->getDecl()->fields()) {
+                        query << "vm_lava_query_buffer(";
+                        query << "&(" << lv_name << "." << field->getName().str() << "), " ;
+                        query << "sizeof(" << lv_name << "." << field->getName().str()<< "), ";
+                        query << "\"" << sm.getFilename(fullLoc).str() << "\"" << ", ";
+                        query << "\"" << lv_name << "." << field->getName().str() << "\"" << ", ";
+                        query << fullLoc.getExpansionLineNumber() << ");\n";
+                    }
+                }
             }
-#endif           
-                    
-        //        printf ("query=[%s]\n", query.str().c_str());
+        }
+
         return query.str();
     } 
 
@@ -275,43 +297,6 @@ public:
         return true;
     }
 
-
-#if 0
-    virtual bool VisitBinaryOperator(BinaryOperator *bo) {
-        switch (bo->getOpcode()) {
-        case BO_Assign:
-        case BO_MulAssign:
-        case BO_DivAssign:
-        case BO_RemAssign:
-        case BO_AddAssign:
-        case BO_SubAssign:
-        case BO_ShlAssign:
-        case BO_ShrAssign:
-        case BO_AndAssign:
-        case BO_XorAssign:
-        case BO_OrAssign: {
-            llvm::errs() << "At the thing\n";
-            if (DeclRefExpr *lhs = dyn_cast<DeclRefExpr>(bo->getLHS())) {
-                auto lhs_name =  lhs->getDecl()->getName().str() ;
-                llvm::errs() << " bo assignment lhs = " << lhs->getDecl()->getName() << "\n";
-                std::stringstream query;
-                query << "query_taint(&" << lhs_name << ", sizeof(" << lhs_name << ");\n";
-                SourceLocation ST = bo->getLocStart();
-
-                rewriter.InsertText(ST, query.str(), true, true);
-
-                
-                llvm::errs() << query.str() << "\n";
-            }
-            break;
-        }
-        default:
-            break;
-        }
-        return true;
-    }
-#endif
-
 private:
     std::vector< VarDecl* > &globalVars;
     Rewriter &rewriter;
@@ -388,7 +373,7 @@ public:
     }
 
     std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
-                                                     StringRef file) {
+                                                     StringRef file) override {
         rewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
         llvm::errs() << "** Creating AST consumer for: " << file << "\n";
         return llvm::make_unique<LavaTaintQueryASTConsumer>(rewriter);
@@ -397,7 +382,7 @@ public:
     /**************************************************************************/
     // Plugin-specific functions
     bool ParseArgs(const CompilerInstance &CI,
-            const std::vector<std::string>& args) {
+            const std::vector<std::string>& args) override {
         // No args currently
         return true;
     }
