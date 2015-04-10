@@ -146,7 +146,6 @@ public:
                 queries << fullLoc.getExpansionLineNumber() << ");\n";
             }
         }
-        queries << "}\n";
         return queries.str();
     }
 
@@ -177,7 +176,7 @@ public:
     std::string ComposeTaintQueryLval (Expr *e) {
         assert (e->isLValue());
         std::stringstream query;
-        std::string lv_name = ExprStr(e);
+        std::string lv_name = "(" + ExprStr(e) + ")";
         SourceManager &sm = rewriter.getSourceMgr();
         FullSourceLoc fullLoc(e->getLocStart(), sm);
         query << "vm_lava_query_buffer(";
@@ -198,7 +197,8 @@ public:
                 if (rt) {
                     query << "if (" << lv_name << ") {\n" ;
                     query << (ComposeTaintQueriesRecordDecl(lv_name, rt->getDecl(), std::string("->")));
-                }
+                    query << "}\n"; 
+               }
             }
         }
         else {
