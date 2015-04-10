@@ -129,6 +129,27 @@ public:
         return s.str();
     }
 
+    // give me a decl for a struct and I'll compose a string with
+    // all relevant taint queries
+    // XXX: not handling more than 1st level here
+    std::string ComposeTaintQueriesRecordDecl(std::string lv_name, RecordDecl *rd) {
+        std::stringstream queries;
+        SourceManager &sm = rewriter.getSourceMgr();
+        FullSourceLoc fullLoc(rd->getLocStart(), sm);
+        for (auto field : rd->fields()) {
+            if (!field->isBitField()) {
+                queries << "vm_lava_query_buffer(";
+                queries << "&(" << lv_name << "->" << field->getName().str() << "), " ;
+                queries << "sizeof(" << lv_name << "->" << field->getName().str()<< "), ";
+                queries << "\"" << sm.getFilename(fullLoc).str() << "\"" << ", ";
+                queries << "\"" << lv_name << "->" << field->getName().str() << "\"" << ", ";
+                queries << fullLoc.getExpansionLineNumber() << ");\n";
+            }
+        }
+        queries << "}\n";
+        return queries.str();
+    }
+
                           
     // Collect list of all lvals buried in an expr
     std::vector<Expr *> CollectLvals(Expr *e) {
@@ -179,15 +200,7 @@ public:
                 const RecordType *rt = t->getPointeeType()->getAsStructureType();
                 if (rt) {
                     query << "if (" << lv_name << ") {\n" ;
-                    for (auto field : rt->getDecl()->fields()) {
-                        query << "vm_lava_query_buffer(";
-                        query << "&(" << lv_name << "->" << field->getName().str() << "), " ;
-                        query << "sizeof(" << lv_name << "->" << field->getName().str()<< "), ";
-                        query << "\"" << sm.getFilename(fullLoc).str() << "\"" << ", ";
-                        query << "\"" << lv_name << "->" << field->getName().str() << "\"" << ", ";
-                        query << fullLoc.getExpansionLineNumber() << ");\n";
-                    }
-                    query << "}\n";
+                    query << (ComposeTaintQueriesRecordDecl(lv_name, rt->getDecl()));
                 }
             }
         }
@@ -196,14 +209,7 @@ public:
                 // we have a struct
                 const RecordType *rt = t->getAsStructureType();
                 if (rt) {
-                    for (auto field : rt->getDecl()->fields()) {
-                        query << "vm_lava_query_buffer(";
-                        query << "&(" << lv_name << "." << field->getName().str() << "), " ;
-                        query << "sizeof(" << lv_name << "." << field->getName().str()<< "), ";
-                        query << "\"" << sm.getFilename(fullLoc).str() << "\"" << ", ";
-                        query << "\"" << lv_name << "." << field->getName().str() << "\"" << ", ";
-                        query << fullLoc.getExpansionLineNumber() << ");\n";
-                    }
+                    query << (ComposeTaintQueriesRecordDecl(lv_name, rt->getDecl()));
                 }
             }
         }
