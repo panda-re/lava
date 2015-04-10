@@ -205,25 +205,6 @@ public:
         std::string src_filename = sm.getFilename(fullLoc).str();
         uint32_t src_linenum = fullLoc.getExpansionLineNumber(); 
         /*
-          insert "i'm at an attack point (memcpy)" hypercalls	
-          we replace mempcy(...) with
-          ({vm_lava_attack_point(...); memcpy(...);})       
-        */
-        {
-            FunctionDecl *f = e->getDirectCallee();
-            std::stringstream query;
-            if (f) {
-                if (f->getNameInfo().getName().getAsString() == "memcpy") {
-                    llvm::errs() << "Found memcpy at " << src_filename << ":" << src_linenum << "\n";
-                    query << "( { vm_lava_attack_point(";
-                    query << "\"" << src_filename << "\", " << src_linenum; 
-                    query << ");\n";
-                    rewriter.InsertText(e->getLocStart(), query.str(), true, true);
-                    rewriter.InsertTextAfterToken(e->getLocEnd(), "; } )\n");
-                }	    
-            }
-        }
-        /*
           insert taint queries *after* call for every arg to fn        
           For example, replace call
           int x = foo(a,b,...);
@@ -236,7 +217,9 @@ public:
             if (f) {
                 if ( !
                      ((f->getNameInfo().getName().getAsString() == "vm_lava_query_buffer")
-                      || (f->getNameInfo().getName().getAsString() == "vm_lava_attack_point"))) { 
+                      || (f->getNameInfo().getName().getAsString() == "vm_lava_attack_point")
+                      || (f->getNameInfo().getName().getAsString() == "memcpy"))                      
+                    ) { 
                     std::stringstream before_part;
                     QualType rqt = e->getCallReturnType(); 
                     before_part << "({";
@@ -272,7 +255,28 @@ public:
                 }
             }
         }
-        return true;
+ 
+       /*
+          insert "i'm at an attack point (memcpy)" hypercalls	
+          we replace mempcy(...) with
+          ({vm_lava_attack_point(...); memcpy(...);})       
+        */
+        {
+            FunctionDecl *f = e->getDirectCallee();
+            std::stringstream query;
+            if (f) {
+                if (f->getNameInfo().getName().getAsString() == "memcpy") {
+                    llvm::errs() << "Found memcpy at " << src_filename << ":" << src_linenum << "\n";
+                    query << "( { vm_lava_attack_point(";
+                    query << "\"" << src_filename << "\", " << src_linenum; 
+                    query << ");\n";
+                    rewriter.InsertText(e->getLocStart(), query.str(), true, true);
+                    rewriter.InsertTextAfterToken(e->getLocEnd(), "; } )\n");
+                }	    
+            }
+        }
+ 
+       return true;
     }
 
 
