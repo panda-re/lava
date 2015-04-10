@@ -132,17 +132,17 @@ public:
     // give me a decl for a struct and I'll compose a string with
     // all relevant taint queries
     // XXX: not handling more than 1st level here
-    std::string ComposeTaintQueriesRecordDecl(std::string lv_name, RecordDecl *rd) {
+    std::string ComposeTaintQueriesRecordDecl(std::string lv_name, RecordDecl *rd, std::string accessor) {
         std::stringstream queries;
         SourceManager &sm = rewriter.getSourceMgr();
         FullSourceLoc fullLoc(rd->getLocStart(), sm);
         for (auto field : rd->fields()) {
             if (!field->isBitField()) {
                 queries << "vm_lava_query_buffer(";
-                queries << "&(" << lv_name << "->" << field->getName().str() << "), " ;
-                queries << "sizeof(" << lv_name << "->" << field->getName().str()<< "), ";
+                queries << "&(" << lv_name << accessor << field->getName().str() << "), " ;
+                queries << "sizeof(" << lv_name << accessor << field->getName().str()<< "), ";
                 queries << "\"" << sm.getFilename(fullLoc).str() << "\"" << ", ";
-                queries << "\"" << lv_name << "->" << field->getName().str() << "\"" << ", ";
+                queries << "\"" << lv_name << accessor << field->getName().str() << "\"" << ", ";
                 queries << fullLoc.getExpansionLineNumber() << ");\n";
             }
         }
@@ -175,10 +175,7 @@ public:
     // e must be an lval.
     // return taint query for that lval
     std::string ComposeTaintQueryLval (Expr *e) {
-        //        printf ("ComposeTaintQueryLval\n");
         assert (e->isLValue());
-        printf ("e=[%s] is an lval\n", ExprStr(e).c_str());
-        e->dump();
         std::stringstream query;
         std::string lv_name = ExprStr(e);
         SourceManager &sm = rewriter.getSourceMgr();
@@ -200,7 +197,7 @@ public:
                 const RecordType *rt = t->getPointeeType()->getAsStructureType();
                 if (rt) {
                     query << "if (" << lv_name << ") {\n" ;
-                    query << (ComposeTaintQueriesRecordDecl(lv_name, rt->getDecl()));
+                    query << (ComposeTaintQueriesRecordDecl(lv_name, rt->getDecl(), std::string("->")));
                 }
             }
         }
@@ -209,7 +206,7 @@ public:
                 // we have a struct
                 const RecordType *rt = t->getAsStructureType();
                 if (rt) {
-                    query << (ComposeTaintQueriesRecordDecl(lv_name, rt->getDecl()));
+                    query << (ComposeTaintQueriesRecordDecl(lv_name, rt->getDecl(), std::string(".")));
                 }
             }
         }
