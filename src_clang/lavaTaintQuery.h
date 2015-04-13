@@ -35,7 +35,6 @@ public:
 
         SourceManager &sm = rewriter.getSourceMgr();
         if (sm.isInMainFile(d->getLocation()))
-            //        if (!sm.isInSystemHeader(d->getLocation()))
             return RecursiveASTVisitor<LavaTaintQueryASTVisitor>::TraverseDecl(d);
         
         return true;
@@ -150,8 +149,7 @@ public:
 
                           
     // Collect list of all lvals buried in an expr
-    std::vector<Expr *> CollectLvals(Expr *e) {
-        std::vector<Expr *> lvals;
+    void CollectLvals(Expr *e, std::vector<Expr *> &lvals) {
         Stmt *s = dyn_cast<Stmt>(e);
         if (s) {
             for ( auto &child : s->children() ) {            
@@ -164,16 +162,67 @@ public:
                             lvals.push_back(ce);
                         }
                     }
+                    else {
+                        CollectLvals(ce, lvals);
+                    }
                 }
             }
         }
-        return lvals;
+    }
+
+    bool CanGetSizeOf(Expr *e) {
+        assert (e->isLValue());
+        DeclRefExpr *d = dyn_cast<DeclRefExpr>(e);
+        const Type *t = e->getType().getTypePtr();
+        if (d) {
+            VarDecl *vd = dyn_cast<VarDecl>(d->getDecl());
+            if (vd) {
+                if (vd->getStorageClass() == SC_Register ||
+                        (t->isPointerType() && !t->isNullPtrType() && t->getPointeeType()->isIncompleteType())) {
+                    return false;
+                }
+                else {
+                    return true;
+                }
+            }
+            else {
+                return false;
+            }
+        }
+        else {
+            Stmt *s = dyn_cast<Stmt>(e);
+            if (s) {
+                for ( auto &child : s->children() ) {
+                    Expr *ce = dyn_cast<Expr>(child)->IgnoreCasts();
+                    if (ce) {
+                        if (!CanGetSizeOf(ce)) return false;
+                    }
+                }
+                // Made it through all children and they passed
+                return true;
+            }
+            else {
+                // Not a DeclRefExpr and no children. Ignore it.
+                return false;
+            }
+        }
     }
 
     // e must be an lval.
     // return taint query for that lval
     std::string ComposeTaintQueryLval (Expr *e, std::string src_filename, uint32_t src_linenum) {
         assert (e->isLValue());
+        llvm::errs() << "+++ LVAL +++\n";
+        e->dump();
+        DeclRefExpr *d = dyn_cast<DeclRefExpr>(e);
+        if (d) llvm::errs() << "Could successfully cast\n";
+        else llvm::errs() << "Could NOT successfully cast\n";
+        llvm::errs() << "Can we get the size of this? " << (CanGetSizeOf(e) ? "YES" : "NO") << "\n";
+        llvm::errs() << "--- LVAL ---\n";
+
+        // Bail out early if we can't take the size of this thing
+        if (!CanGetSizeOf(e)) return "";
+
         std::stringstream query;
         std::string lv_name = "(" + ExprStr(e) + ")";
         query << "vm_lava_query_buffer(";
@@ -212,7 +261,8 @@ public:
     } 
 
     std::string ComposeTaintQueriesExpr(Expr *e,  std::string src_filename, uint32_t src_linenum) {
-        std::vector<Expr *> lvals = CollectLvals(e);
+        std::vector<Expr *> lvals;
+        CollectLvals(e, lvals);
         std::stringstream queries;
         for ( auto *lv : lvals ) {
             queries << (ComposeTaintQueryLval(lv, src_filename, src_linenum));
