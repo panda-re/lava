@@ -242,7 +242,10 @@ public:
                 if ( !
                      ((f->getNameInfo().getName().getAsString() == "vm_lava_query_buffer")
                       || (f->getNameInfo().getName().getAsString() == "vm_lava_attack_point")
-                      || (f->getNameInfo().getName().getAsString() == "memcpy"))                      
+                      || (f->getNameInfo().getName().getAsString() == "vm_arg_start")
+                      || (!(f->getNameInfo().getName().getAsString().find("vm_arg") == std::string::npos))
+                      || (!(f->getNameInfo().getName().getAsString().find("free") == std::string::npos))
+                      || (!(f->getNameInfo().getName().getAsString().find("memcpy") == std::string::npos)))
                     ) { 
                     std::stringstream before_part;
 
