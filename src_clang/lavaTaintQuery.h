@@ -34,7 +34,8 @@ public:
         if (!d) return true;
 
         SourceManager &sm = rewriter.getSourceMgr();
-        if (!sm.isInSystemHeader(d->getLocation()))
+        if (sm.isInMainFile(d->getLocation()))
+            //        if (!sm.isInSystemHeader(d->getLocation()))
             return RecursiveASTVisitor<LavaTaintQueryASTVisitor>::TraverseDecl(d);
         
         return true;
@@ -223,9 +224,8 @@ public:
     bool VisitCallExpr(CallExpr *e) {
         SourceManager &sm = rewriter.getSourceMgr();
         FullSourceLoc fullLoc(e->getLocStart(), sm);
-        std::string src_filename = sm.getFilename(fullLoc).str();
+        std::string src_filename = sm.getFilename(fullLoc).str();       
         uint32_t src_linenum = fullLoc.getExpansionLineNumber(); 
-
 
         /*
           insert taint queries *after* call for every arg to fn        
