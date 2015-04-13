@@ -132,18 +132,16 @@ public:
     // give me a decl for a struct and I'll compose a string with
     // all relevant taint queries
     // XXX: not handling more than 1st level here
-    std::string ComposeTaintQueriesRecordDecl(std::string lv_name, RecordDecl *rd, std::string accessor) {
+    std::string ComposeTaintQueriesRecordDecl(std::string lv_name, RecordDecl *rd, std::string accessor, std::string src_filename, uint32_t src_linenum) {
         std::stringstream queries;
-        SourceManager &sm = rewriter.getSourceMgr();
-        FullSourceLoc fullLoc(rd->getLocStart(), sm);
         for (auto field : rd->fields()) {
             if (!field->isBitField()) {
                 queries << "vm_lava_query_buffer(";
                 queries << "&(" << lv_name << accessor << field->getName().str() << "), " ;
                 queries << "sizeof(" << lv_name << accessor << field->getName().str()<< "), ";
-                queries << "\"" << sm.getFilename(fullLoc).str() << "\"" << ", ";
+                queries << "\"" << src_filename << "\"" << ", ";
                 queries << "\"" << lv_name << accessor << field->getName().str() << "\"" << ", ";
-                queries << fullLoc.getExpansionLineNumber() << ");\n";
+                queries << src_linenum << ");\n";
             }
         }
         return queries.str();
@@ -173,18 +171,16 @@ public:
 
     // e must be an lval.
     // return taint query for that lval
-    std::string ComposeTaintQueryLval (Expr *e) {
+    std::string ComposeTaintQueryLval (Expr *e, std::string src_filename, uint32_t src_linenum) {
         assert (e->isLValue());
         std::stringstream query;
         std::string lv_name = "(" + ExprStr(e) + ")";
-        SourceManager &sm = rewriter.getSourceMgr();
-        FullSourceLoc fullLoc(e->getLocStart(), sm);
         query << "vm_lava_query_buffer(";
         query << "&(" << lv_name << "), ";
         query << "sizeof(" << lv_name << "), ";
-        query << "\"" << sm.getFilename(fullLoc).str() << "\"" << ", ";
+        query << "\"" << src_filename << "\"" << ", ";
         query << "\"" << lv_name << "\"" << ", ";
-        query << fullLoc.getExpansionLineNumber() << ");\n";
+        query << src_linenum  << ");\n";
 
         // if lval is a struct or a ptr to a struct,
         // we want queries for all slots
@@ -196,7 +192,7 @@ public:
                 const RecordType *rt = t->getPointeeType()->getAsStructureType();
                 if (rt) {
                     query << "if (" << lv_name << ") {\n" ;
-                    query << (ComposeTaintQueriesRecordDecl(lv_name, rt->getDecl(), std::string("->")));
+                    query << (ComposeTaintQueriesRecordDecl(lv_name, rt->getDecl(), std::string("->"), src_filename, src_linenum));
                     query << "}\n"; 
                }
             }
@@ -206,7 +202,7 @@ public:
                 // we have a struct
                 const RecordType *rt = t->getAsStructureType();
                 if (rt) {
-                    query << (ComposeTaintQueriesRecordDecl(lv_name, rt->getDecl(), std::string(".")));
+                    query << (ComposeTaintQueriesRecordDecl(lv_name, rt->getDecl(), std::string("."), src_filename, src_linenum));
                 }
             }
         }
@@ -214,11 +210,11 @@ public:
         return query.str();
     } 
 
-    std::string ComposeTaintQueriesExpr(Expr *e) {
+    std::string ComposeTaintQueriesExpr(Expr *e,  std::string src_filename, uint32_t src_linenum) {
         std::vector<Expr *> lvals = CollectLvals(e);
         std::stringstream queries;
         for ( auto *lv : lvals ) {
-            queries << (ComposeTaintQueryLval(lv));
+            queries << (ComposeTaintQueryLval(lv, src_filename, src_linenum));
         }        
         return queries.str();
     }
@@ -229,6 +225,8 @@ public:
         FullSourceLoc fullLoc(e->getLocStart(), sm);
         std::string src_filename = sm.getFilename(fullLoc).str();
         uint32_t src_linenum = fullLoc.getExpansionLineNumber(); 
+
+
         /*
           insert taint queries *after* call for every arg to fn        
           For example, replace call
@@ -236,6 +234,7 @@ public:
           with
           int x = ({ int ret = foo(a,b,...);  vm_lava_query_buffer(&a,...); vm_lava_query(&b,...); vm_lava_query(&ret,...);  ret })
         */          
+        if (src_filename.size() > 0) 
         {
             FunctionDecl *f = e->getDirectCallee();
             std::stringstream query;
@@ -246,8 +245,14 @@ public:
                       || (f->getNameInfo().getName().getAsString() == "memcpy"))                      
                     ) { 
                     std::stringstream before_part;
+
+                    //                    std::cout << "srcfilename=[" << src_filename << "] srclinenum=" << src_linenum << std::endl;
+
                     QualType rqt = e->getCallReturnType(); 
+                    //                    rqt->dump();
+
                     before_part << "({";
+                    
                     bool has_retval = false;
                     if (rqt.getTypePtrOrNull() != NULL ) {
                         if (! rqt.getTypePtr()->isVoidType()) {
@@ -258,13 +263,26 @@ public:
                         // call retval is caught -- handle
                         before_part << (rqt.getAsString()) << " ret = ";
                     }
+
+                    //                    std::cout <<  "before_part = [" << (before_part.str()) << "]" << std::endl;
+
                     rewriter.InsertText(e->getLocStart(), before_part.str(), true, true);            
+
+#if 0                   
+                    auto loc1 = (e->getLocStart()).getLocWithOffset(-30);
+                    auto loc2 = (e->getLocStart()).getLocWithOffset(+30);
+                    std::string the_code = rewriter.getRewrittenText(SourceRange(loc1, loc2));
+                    
+                    std::cout << "the_code = [" << the_code << "]" << std::endl;
+                    //                    assert ( (rewriter.().find(before_part.str()));
+#endif
+
                     std::stringstream queries;
                     queries << "; \n";
                     for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
                         // for each expression, compose all taint queries we know how to create
                         Expr *arg = dyn_cast<Expr>(*it);
-                        queries << (ComposeTaintQueriesExpr(arg));
+                        queries << (ComposeTaintQueriesExpr(arg, src_filename, src_linenum));
                     }            
                     std::stringstream after_part;
                     after_part << queries.str();
@@ -276,6 +294,7 @@ public:
                         after_part << " ret; ";
                     }
                     after_part << "})";
+                    std::cout <<  "after_part = [" << (after_part.str()) << "]" << std::endl;
                     rewriter.InsertTextAfterToken(e->getLocEnd(), after_part.str());            
                 }
             }
