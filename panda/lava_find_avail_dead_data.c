@@ -11,8 +11,6 @@
 
  ./lfadd /nas/tleek/lava/results/dd-pcap-5000.pandalog  /nas/tleek/lava/results/qu-pcap-5000.pandalog 
 
-
-
 */
 #define __STDC_FORMAT_MACROS
 
@@ -26,8 +24,60 @@
 #include <stdint.h>
 #include "pandalog.h"
 
+#include <iostream>
+#include <fstream>
 #include <map>
 #include <set>
+#include <vector>
+#include <sstream>
+
+// instruction count
+typedef uint64_t Instr;
+// taint label (input byte #)
+typedef uint32_t Label;
+// line number
+typedef uint32_t Line;
+// Taint Compute Number
+typedef uint32_t Tcn;
+// ptr used to ref a label set
+typedef uint64_t Ptr;
+
+
+
+typedef struct dua_struct {
+    std::string filename;
+    Line line;
+    std::string lvalname;
+    std::set < Label > labels;   
+    std::string str() const {
+        std::stringstream crap1;
+        crap1 << filename << "," << line << "," << lvalname << ",[";
+        for ( auto l : labels ) {
+            crap1 << l << ",";
+        }
+        crap1 << "]";
+        return crap1.str();
+    }    
+    bool operator<(const struct dua_struct &other) const {
+        return (str() < other.str());
+    }
+} Dua;
+
+typedef struct attack_point_struct {
+    std::string filename;
+    Line line;
+    std::string type;
+    std::string str() const {
+        std::stringstream crap1;
+        crap1 << filename << "," << line << "," << type;
+        return crap1.str();
+    }
+    bool operator<(const struct attack_point_struct &other) const {
+        return (str() < other.str());
+    }
+} AttackPoint;
+
+
 
 std::map <uint32_t, float> read_dead_data(char *pandalog_filename) {
     pandalog_open(pandalog_filename, "r");
@@ -39,8 +89,7 @@ std::map <uint32_t, float> read_dead_data(char *pandalog_filename) {
         }
         if (ple->n_dead_data > 0) {
             printf ("\n");
-            uint32_t i;
-            for (i=0; i<ple->n_dead_data; i++) {
+            for (Label i=0; i<ple->n_dead_data; i++) {
                 dd[i] = ple->dead_data[i];
             }
         }
@@ -87,6 +136,7 @@ int main (int argc, char **argv) {
     uint8_t *inp_buf = (uint8_t *) malloc(st.st_size);
     int x = fread(inp_buf, 1, st.st_size, fp);    
     printf ("x=%d\n", x);
+    fclose(fp);
 
     float max_liveness = atof(argv[4]);
     printf ("maximum liveness score of %.2f\n", max_liveness);
@@ -101,8 +151,8 @@ int main (int argc, char **argv) {
     uint32_t extent_len_max = atoi(argv[8]);
     printf ("extent len %d..%d\n", extent_len_min, extent_len_max);
 
-    // read in dead data 
-    std::map <uint32_t, float> dd = read_dead_data(ddf);
+    // read in dead data (dd[label_num])
+    std::map <Label, float> dd = read_dead_data(ddf);
     printf ("done reading in dead data\n");
 
     // read taint query results and figure out which 
@@ -110,23 +160,35 @@ int main (int argc, char **argv) {
 
     pandalog_open(tqf, "r");
     Panda__LogEntry *ple;
-    std::map <uint64_t, std::set<uint32_t> > ptr_to_set;
-    std::map <uint32_t, Panda__TaintQuery> avail_data;
+    std::map <Ptr, std::set<Label> > ptr_to_set;
     uint64_t ii=0;
     Panda__SrcInfo current_si;
     Panda__TaintQueryHypercall current_tqh;
     bool in_hc = false;
-    uint64_t hc_instr_count;
+    Instr hc_instr_count;
+    bool in_ap = false;
+    Instr ap_instr_count;
     bool current_ext_ok = false;
+    bool current_si_ok = false; 
     uint32_t num_ext_ok = 0;
-    std::set<uint32_t> labels;
-    uint32_t data[32];
+    std::set<Label> labels;
+    //    uint32_t data[32];
     std::pair<float, float> liveness_range;
-    std::pair<uint32_t, uint32_t> tcn_range, card_range;
+    std::pair<Tcn, Tcn> tcn_range, card_range;
+    bool seen_first_tq = false;
+    std::set < Dua > u_dua;
+    std::set < AttackPoint > u_ap;
+    std::set < std::pair < Dua, AttackPoint > > injectable_bugs;
+    uint32_t last_num_dua = 0;
+    uint32_t last_num_ap = 0;
+    
     while (1) {
         ii ++;
-        if ((ii % 1000000) == 0) {
-            printf ("processed %lu of taint queries log. %d extents ok\n", ii, num_ext_ok);
+        if ((ii % 10000) == 0) {
+            printf ("processed %lu of taint queries log.  %u dua.  %u ap.  %u injectable bugs\n", ii, (uint32_t) u_dua.size(), (uint32_t) u_ap.size(), (uint32_t) injectable_bugs.size());
+        }
+        if (injectable_bugs.size() > 5000) {
+            break;
         }
 
         ple = pandalog_read_entry();
@@ -134,9 +196,12 @@ int main (int argc, char **argv) {
             break;
         }
         if (ple->taint_query_unique_label_set) {
+            // this just maintains mapping from ptr (uint64_t) to actual set of taint labels 
             uint32_t i;
+            Ptr p = ple->taint_query_unique_label_set->ptr;
             for (i=0; i<ple->taint_query_unique_label_set->n_label; i++) {
-                ptr_to_set[ple->taint_query_unique_label_set->ptr].insert(ple->taint_query_unique_label_set->label[i]);
+                Label l = ple->taint_query_unique_label_set->label[i];
+                ptr_to_set[p].insert(l);
             }
         }        
         if (ple->src_info) {
@@ -146,64 +211,40 @@ int main (int argc, char **argv) {
         if (in_hc && ple->instr != hc_instr_count) {
             // done with current hypercall.  
             if (current_ext_ok) {
+                seen_first_tq = true;
                 // great -- extent we just looked at was deemed acceptable
-                printf ("\nFound some dead, uncomplicated data.\n  filename=[%s] astnodename=[%s] linenum=%d len=%d num_tainted=%d -- %u\n",
-                        current_si.filename, 
-                        current_si.astnodename,
-                        current_si.linenum,
-                        current_tqh.len,
-                        current_tqh.num_tainted,
-                        (uint32_t) labels.size());
-                printf ("liveness=[%.2f,%.2f]  tcn=[%u,%u]   card=[%u,%u]\n",
-                        liveness_range.first, liveness_range.second,
-                        tcn_range.first, tcn_range.second,
-                        card_range.first, card_range.second);
-                printf ("labels:\n\t");
-                for ( auto el : labels ) {
-                    printf ("%u ", el);
-                }
-                printf ("\n");
-                printf ("data corresponding to those labels:\n\t");
-                for ( auto el : labels ) {                    
-                    printf ("%02x ", inp_buf[el]);
-                }
-                printf ("\nactual data at query: \n\t");
-                for ( uint32_t i=0; i<current_tqh.n_data; i++) {
-                    printf ("%02x ", current_tqh.data[i]);
-                }
-                printf ("\n");
                 num_ext_ok ++;
+                Dua dua = { current_si.filename, current_si.linenum, current_si.astnodename, labels };
+                // keeping track of dead, uncomplicated data extents we have
+                // encountered so far in the trace
+                u_dua.insert(dua);
             }
             in_hc = false;
         }
-
         if (! in_hc) {
             if (ple->taint_query_hypercall) {
                 // start of a new hypercall -- save buf / len / num tainted 
-                current_tqh = *(ple->taint_query_hypercall);
                 in_hc = true;
+                current_tqh = *(ple->taint_query_hypercall);
                 hc_instr_count = ple->instr;
-                current_ext_ok = false;
                 liveness_range = std::make_pair(0.0,0.0);
                 tcn_range = std::make_pair(0,0);
                 card_range = tcn_range;
+                current_ext_ok = false;
                 if ((current_tqh.len <= extent_len_max) 
                     && (current_tqh.len >= extent_len_min)
                     && (current_tqh.num_tainted == current_tqh.len)) {
                     // length of this range matches our requirements 
                     // AND all of its bytes are tainted
                     current_ext_ok = true;                    
-                    labels.clear();
                 }
+                labels.clear();
             }
-        }
-        
+        }        
         if (ple->taint_query) {
             Panda__TaintQuery *tq = ple->taint_query;
-
             tcn_range = update_range(tq->tcn, tcn_range);
             card_range = update_range(ptr_to_set[tq->ptr].size(), card_range);
-
             /*
               for the current hypercall query for some extent, examine result
               for each query of an addr that saw tainted data.
@@ -212,28 +253,92 @@ int main (int argc, char **argv) {
               2. cardinality is too high (indicating too compilcated fn of input?)
               3. any of the labels associated with a byte has too high a liveness score
               */
-
             if ((tq->tcn > max_tcn) 
                 || (ptr_to_set[tq->ptr].size() > max_card)) {
                 current_ext_ok = false;
                 continue;
             }
- 
-           // check for too-live data
-            for ( auto el : ptr_to_set[ple->taint_query->ptr] ) {
-                liveness_range = update_range(dd[el], liveness_range);
-                // and ignore data bytes that are too live
-                if (dd[el] < max_liveness) {               
-                    labels.insert(el);
+            // check for too-live data
+            Ptr p = ple->taint_query->ptr;
+            for ( Label l : ptr_to_set[p] ) {
+                liveness_range = update_range(dd[l], liveness_range);
+                if (dd[l] <= max_liveness) {               
+                    labels.insert(l);
                 }
                 else {
+                    // stop collecting labels -- this extent is unusable because some of its data is too live
                     current_ext_ok = false;                    
                     break;
                 }
             }
-
         }
-
+        if (in_ap && ple->instr != ap_instr_count) {
+            in_ap = false;
+            if (seen_first_tq) {
+                // done with current attack point
+                AttackPoint ap = { current_si.filename, current_si.linenum, "memcpy" };
+                uint32_t num_bugs = injectable_bugs.size();
+                // new attack point 
+                // OR number of dua has changed since last time we were here
+                // ok, this attack point can pair with *any* of the dead uncomplicated extents seen previously
+                for ( auto dua : u_dua ) {
+                    injectable_bugs.insert(std::make_pair(dua, ap));
+                }
+                u_ap.insert(ap);
+                last_num_dua = u_dua.size();
+                last_num_ap = u_ap.size();                
+                if (num_bugs != injectable_bugs.size()) {
+                    printf ("%d bugs added. |u_ap| = %u.  |u_dua| = %u\n",
+                            (int) injectable_bugs.size() - num_bugs,
+                            (uint32_t) u_ap.size(), (uint32_t) u_dua.size());
+                }
+            }
+        }
+        if (!in_ap && ple->attack_point) {
+            in_ap = true;
+            ap_instr_count = ple->instr;
+        }                    
+        
     }
     pandalog_close();
+
+
+
+    printf ("%u dead-uncomplicated-available-data.  %u attack-points\n",
+            (uint32_t) u_dua.size(), (uint32_t) u_ap.size());
+
+    printf ("%u injectable bugs\n", (uint32_t) injectable_bugs.size());
+    
+    
+    std::map < Dua, uint32_t > dua_ind;
+    uint32_t i = 0;
+    std::ofstream f;
+    f.open("lava.duas", std::ios::out);
+    for ( auto dua : u_dua ) {
+        dua_ind[dua] = i;
+        f << dua.str() << "\n";
+        i ++;
+    }
+    f.close();
+    std::map < AttackPoint, uint32_t > ap_ind;
+    i=0;
+    f.open("lava.aps", std::ios::out);
+    i = 0;
+    for ( auto ap : u_ap ) {
+        ap_ind[ap] = i;
+        f << ap.str() << "\n";
+        i ++;
+    }
+    f.close();
+    f.open("lava.bugs", std::ios::out);
+    for ( auto bug : injectable_bugs ) {
+        Dua dua = bug.first;
+        AttackPoint ap = bug.second;
+        f << dua_ind[dua] << "," << ap_ind[ap] << "\n";
+    }
+    f.close();
+    
+    
+    
+
 }
