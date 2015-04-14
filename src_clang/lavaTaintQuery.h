@@ -119,6 +119,9 @@ public:
         return true;
     }
 
+        
+
+
     // give me an expr and i'll return the string repr from original source
     std::string ExprStr(Expr *e) {
         const clang::LangOptions &LangOpts = rewriter.getLangOpts();
@@ -136,12 +139,17 @@ public:
         std::stringstream queries;
         for (auto field : rd->fields()) {
             if (!field->isBitField()) {
-                queries << "vm_lava_query_buffer(";
-                queries << "&(" << lv_name << accessor << field->getName().str() << "), " ;
-                queries << "sizeof(" << lv_name << accessor << field->getName().str()<< "), ";
-                queries << "\"" << src_filename << "\"" << ", ";
-                queries << "\"" << lv_name << accessor << field->getName().str() << "\"" << ", ";
-                queries << src_linenum << ");\n";
+                // XXX Fixme!  this is crazy
+                if ( (!( field->getName().str() == "__st_ino" ))
+                     && (field->getName().str().size() > 0)
+                    ) {
+                    queries << "vm_lava_query_buffer(";
+                    queries << "&(" << lv_name << accessor << field->getName().str() << "), " ;
+                    queries << "sizeof(" << lv_name << accessor << field->getName().str()<< "), ";
+                    queries << "\"" << src_filename << "\"" << ", ";
+                    queries << "\"" << lv_name << accessor << field->getName().str() << "\"" << ", ";
+                    queries << src_linenum << ");\n";
+                }
             }
         }
         return queries.str();
@@ -152,19 +160,27 @@ public:
     void CollectLvals(Expr *e, std::vector<Expr *> &lvals) {
         Stmt *s = dyn_cast<Stmt>(e);
         if (s) {
-            for ( auto &child : s->children() ) {            
-                Expr *ce = dyn_cast<Expr>(child)->IgnoreCasts();
-                if (ce) {
-                    if (ce->isLValue()) {
-                        StringLiteral *sl = dyn_cast<StringLiteral>(ce);
-                        if (!sl) {
-                            // ok its an lval that isnt a string literl
-                            lvals.push_back(ce);
-                        }
+            if (s->child_begin() == s->child_end()) {
+                // e is a leaf node
+                if (e->isLValue()) {
+                    llvm::errs() <<  ("in CollectLvals\n");
+                    e->dump();
+                    StringLiteral *sl = dyn_cast<StringLiteral>(e);
+                    if (!sl) {
+                        llvm::errs() <<  "i'm not a string literal\n";
+                        // ok its an lval that isnt a string literl
+                        lvals.push_back(e);
                     }
                     else {
-                        CollectLvals(ce, lvals);
+                        llvm::errs() << "i'm a string literal\n";
                     }
+                }
+            }
+            else {
+                // e has children -- recurse
+                for ( auto &child : s->children() ) {             
+                    Expr *ce = dyn_cast<Expr>(child)->IgnoreCasts();
+                    CollectLvals(ce, lvals);
                 }
             }
         }
@@ -177,13 +193,10 @@ public:
         if (d) {
             VarDecl *vd = dyn_cast<VarDecl>(d->getDecl());
             if (vd) {
-                if (vd->getStorageClass() == SC_Register ||
-                        (t->isPointerType() && !t->isNullPtrType() && t->getPointeeType()->isIncompleteType())) {
-                    return false;
-                }
-                else {
-                    return true;
-                }
+                if (vd->getStorageClass() == SC_Register) return false;
+                if (t->isPointerType() && !t->isNullPtrType() && t->getPointeeType()->isIncompleteType()) return false;
+                if (t->isIncompleteType()) return false;
+                return true;
             }
             else {
                 return false;
@@ -262,6 +275,7 @@ public:
 
     std::string ComposeTaintQueriesExpr(Expr *e,  std::string src_filename, uint32_t src_linenum) {
         std::vector<Expr *> lvals;
+        llvm::errs() << "src_filename=[" << src_filename << "] src_linenum=" << src_linenum << "\n";
         CollectLvals(e, lvals);
         std::stringstream queries;
         for ( auto *lv : lvals ) {
@@ -291,9 +305,10 @@ public:
             if (f) {
                 if ( !
                      ((f->getNameInfo().getName().getAsString() == "vm_lava_query_buffer")
-                      || (f->getNameInfo().getName().getAsString() == "vm_lava_attack_point")
-                      || (f->getNameInfo().getName().getAsString() == "vm_arg_start")
-                      || (!(f->getNameInfo().getName().getAsString().find("vm_arg") == std::string::npos))
+                      || (f->getNameInfo().getName().getAsString() == "va_start")
+                      || (f->getNameInfo().getName().getAsString() == "va_arg")
+                      || (f->getNameInfo().getName().getAsString() == "va_end")
+                      || (f->getNameInfo().getName().getAsString() == "va_copy")
                       || (!(f->getNameInfo().getName().getAsString().find("free") == std::string::npos))
                       || (!(f->getNameInfo().getName().getAsString().find("memcpy") == std::string::npos)))
                     ) { 
@@ -312,9 +327,10 @@ public:
                             has_retval = true;
                         }
                     }
+                    std::string retvalname = "kbcieiubweuhc1234";
                     if ( has_retval ) {
                         // call retval is caught -- handle
-                        before_part << (rqt.getAsString()) << " ret = ";
+                        before_part << (rqt.getAsString()) << " " << retvalname << " = ";
                     }
 
                     //                    std::cout <<  "before_part = [" << (before_part.str()) << "]" << std::endl;
@@ -341,10 +357,10 @@ public:
                     after_part << queries.str();
                     if ( has_retval ) {
                         // make sure to compose a query for the ret val too
-                        after_part << "vm_lava_query_buffer(&(ret), sizeof(ret), ";
-                        after_part << "\"" << src_filename << "\", \"ret\", " << src_linenum << ");";
+                        after_part << "vm_lava_query_buffer(&(" << retvalname << "), sizeof(" << retvalname << "), ";
+                        after_part << "\"" << src_filename << "\", \"" << retvalname << "\", " << src_linenum << ");";
                         // make sure to return retval 
-                        after_part << " ret; ";
+                        after_part << " " << retvalname << " ; ";
                     }
                     after_part << "})";
                     std::cout <<  "after_part = [" << (after_part.str()) << "]" << std::endl;
