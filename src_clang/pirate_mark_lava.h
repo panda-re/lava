@@ -7,8 +7,6 @@
  * Keep me in sync between PANDA and LAVA repos
  */
 
-#include "stdio.h"
-
 #include "panda_hypercall_struct.h"
 
 #define TARGET_I386
@@ -143,11 +141,11 @@ void vm_lava_query_buffer(void *buf, unsigned long len,
 			   unsigned long linenum) {
   volatile PandaHypercallStruct phs = {};
   phs.action = LAVA_QUERY_BUFFER;
-  phs.buf = (uint64_t) ((uintptr_t) buf);
-  phs.len = (uint32_t) len;
+  phs.buf = (unsigned long long) buf;
+  phs.len = (unsigned long) len;
   phs.label_num = 0; // unused;
-  phs.src_filename = (uint64_t) ((uintptr_t) src_filename);
-  phs.src_ast_node_name = (uint64_t) ((uintptr_t) src_ast_node_name);
+  phs.src_filename = (unsigned long long) src_filename;
+  phs.src_ast_node_name = (unsigned long long) src_ast_node_name;
   phs.src_linenum = linenum;
   hypercall2(&phs);
 }
@@ -156,14 +154,13 @@ static inline
 void vm_lava_attack_point(char *src_filename, unsigned long linenum) {
   volatile PandaHypercallStruct phs = {};
   phs.action = LAVA_ATTACK_POINT;
-  phs.src_filename = (uint64_t) ((uintptr_t) src_filename);
+  phs.src_filename = (unsigned long long) src_filename;
   phs.src_linenum = linenum;
   hypercall2(&phs);
 }
 
 static inline
 void vm_guest_util_done(){
-    printf("Guest util done\n");
     hypercall(0, 0, 0, 0, 0, GUEST_UTIL_DONE);
 }
 
