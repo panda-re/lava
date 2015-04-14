@@ -1,4 +1,4 @@
-
+#include <unistd.h>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -30,6 +30,21 @@ public:
         std::vector< VarDecl* > &globalVars) :
             rewriter(rewriter), globalVars(globalVars)  {}
 
+    std::string FullPath(FullSourceLoc &loc) {
+        SourceManager &sm = rewriter.getSourceMgr();
+        char curdir[260] = {};
+        getcwd(curdir, 260);
+        std::string name = sm.getFilename(loc).str();
+        if (name != "") {
+            std::stringstream s;
+            s << curdir << "/" << name;
+            return s.str();
+        }
+        else {
+            return "";
+        }
+    }
+
     bool TraverseDecl(Decl *d) {
         if (!d) return true;
 
@@ -56,7 +71,7 @@ public:
                 query << "vm_lava_query_buffer(";
                 query << "&(" << (*it)->getNameAsString() << "), ";
                 query << "sizeof(" << (*it)->getNameAsString() << "), ";
-                query << "\"" << sm.getFilename(fullLoc).str() << "\"" << ", ";
+                query << "\"" << FullPath(fullLoc) << "\"" << ", ";
                 query << "\"" << (*it)->getNameAsString() << "\"" << ", ";
                 query << fullLoc.getExpansionLineNumber() << ");\n";
             
@@ -68,7 +83,7 @@ public:
                     query << (*it)->getNameAsString() << ", ";
                     query << "sizeof(" << QualType::getAsString(
                         t->getPointeeType().split()) << "), ";
-                    query << "\"" << sm.getFilename(fullLoc).str() << "\""
+                    query << "\"" << FullPath(fullLoc) << "\""
                             << ", ";
                     query << "\"" << (*it)->getNameAsString() << "\"" << ", ";
                     query << fullLoc.getExpansionLineNumber() << ");\n";
@@ -288,7 +303,7 @@ public:
     bool VisitCallExpr(CallExpr *e) {
         SourceManager &sm = rewriter.getSourceMgr();
         FullSourceLoc fullLoc(e->getLocStart(), sm);
-        std::string src_filename = sm.getFilename(fullLoc).str();       
+        std::string src_filename = FullPath(fullLoc);
         uint32_t src_linenum = fullLoc.getExpansionLineNumber(); 
 
         /*
