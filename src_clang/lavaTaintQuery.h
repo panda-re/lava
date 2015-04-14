@@ -342,7 +342,10 @@ public:
                             has_retval = true;
                         }
                     }
-                    std::string retvalname = "kbcieiubweuhc1234";
+                    std::stringstream rvs;
+                    rvs << "kbcieiubweuhc";
+                    rvs << rand();
+                    std::string retvalname = rvs.str();
                     if ( has_retval ) {
                         // call retval is caught -- handle
                         before_part << (rqt.getAsString()) << " " << retvalname << " = ";
