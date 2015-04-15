@@ -165,9 +165,9 @@ std::pair<uint32_t, uint32_t> update_range(uint32_t val, std::pair<uint32_t, uin
 
 int main (int argc, char **argv) {
 
-    char *inp = argv[1];
-    char *ddf = argv[2];
-    char *tqf = argv[3];
+    //    char *inp = argv[1];
+    char *ddf = argv[1];
+    char *tqf = argv[2];
 
     struct stat st;
     stat(inp, &st);
@@ -177,17 +177,17 @@ int main (int argc, char **argv) {
     int x = fread(inp_buf, 1, st.st_size, fp);    
     fclose(fp);
 
-    float max_liveness = atof(argv[4]);
+    float max_liveness = atof(argv[3]);
     printf ("maximum liveness score of %.2f\n", max_liveness);
 
-    uint32_t max_card = atoi(argv[5]);
+    uint32_t max_card = atoi(argv[4]);
     printf ("max card of taint set returned by query = %d\n", max_card);
 
-    uint32_t max_tcn = atoi(argv[6]);
+    uint32_t max_tcn = atoi(argv[5]);
     printf ("max tcn for addr = %d\n", max_tcn);
 
-    uint32_t extent_len_min = atoi(argv[7]);
-    uint32_t extent_len_max = atoi(argv[8]);
+    uint32_t extent_len_min = atoi(argv[6]);
+    uint32_t extent_len_max = atoi(argv[7]);
     printf ("extent len %d..%d\n", extent_len_min, extent_len_max);
 
     // read in dead data (dd[label_num])
