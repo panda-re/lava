@@ -165,17 +165,8 @@ std::pair<uint32_t, uint32_t> update_range(uint32_t val, std::pair<uint32_t, uin
 
 int main (int argc, char **argv) {
 
-    //    char *inp = argv[1];
     char *ddf = argv[1];
     char *tqf = argv[2];
-
-    struct stat st;
-    stat(inp, &st);
-
-    FILE *fp = fopen(inp, "r");
-    uint8_t *inp_buf = (uint8_t *) malloc(st.st_size);
-    int x = fread(inp_buf, 1, st.st_size, fp);    
-    fclose(fp);
 
     float max_liveness = atof(argv[3]);
     printf ("maximum liveness score of %.2f\n", max_liveness);
@@ -218,8 +209,8 @@ int main (int argc, char **argv) {
     std::set < Dua > u_dua;
     std::set < AttackPoint > u_ap;
     std::set < std::pair < Dua, AttackPoint > > injectable_bugs;
-    uint32_t last_num_dua = 0;
-    uint32_t last_num_ap = 0;
+    std::map < AttackPoint, uint32_t > last_num_dua;
+
     
     while (1) {
         ii ++;
@@ -318,11 +309,8 @@ int main (int argc, char **argv) {
             if (seen_first_tq) {
                 // done with current attack point
                 AttackPoint ap = { current_si.filename, current_si.linenum, "memcpy" };
-                /*
                 if ((u_ap.count(ap) == 0)
-                    || (last_num_dua != u_dua.size())) {
-                    uint32_t num_bugs = injectable_bugs.size();
-                */
+                    || (last_num_dua[ap] != u_dua.size())) {
                     // new attack point 
                     // OR number of dua has changed since last time we were here
                     // ok, this attack point can pair with *any* of the dead uncomplicated extents seen previously
@@ -331,9 +319,8 @@ int main (int argc, char **argv) {
                         injectable_bugs.insert(bug);
                     }
                     u_ap.insert(ap);
-                    last_num_dua = u_dua.size();
-                    last_num_ap = u_ap.size();                
-                    //                }
+                    last_num_dua[ap] = u_dua.size();
+                }
             }
         }
         if (!in_ap && ple->attack_point) {
