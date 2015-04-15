@@ -118,8 +118,28 @@ typedef struct attack_point_struct {
 typedef std::pair < Dua, AttackPoint > Bug;
 
 
+Instr last_instr_count;
+
+void lava_stats(char *pandalog_filename) {
+    printf ("Computing dua and ap stats\n");
+    pandalog_open(pandalog_filename, "r");
+    while (1) {
+        Panda__LogEntry *ple = pandalog_read_entry();
+        if (ple == NULL) break;
+        if (ple->instr != -1) {
+            last_instr_count = ple->instr;
+        }
+    }
+    printf ("%" PRIu64 "is last instr\n", last_instr_count);
+    pandalog_close();
+}
+    
+
+
+
 
 std::map <uint32_t, float> read_dead_data(char *pandalog_filename) {
+    printf ("Reading Dead data\n");
     pandalog_open(pandalog_filename, "r");
     std::map <uint32_t, float> dd;
     while (1) {
@@ -168,6 +188,8 @@ int main (int argc, char **argv) {
     char *ddf = argv[1];
     char *tqf = argv[2];
 
+    lava_stats(ddf);
+
     float max_liveness = atof(argv[3]);
     printf ("maximum liveness score of %.2f\n", max_liveness);
 
@@ -211,17 +233,14 @@ int main (int argc, char **argv) {
     std::set < std::pair < Dua, AttackPoint > > injectable_bugs;
     std::map < AttackPoint, uint32_t > last_num_dua;
 
+    std::vector <Instr> dua_instr;
+    std::vector <Instr> ap_instr;
     
     while (1) {
         ii ++;
         if ((ii % 100000) == 0) {
             printf ("processed %lu of taint queries log.  %u dua.  %u ap.  %u injectable bugs\n", ii, (uint32_t) u_dua.size(), (uint32_t) u_ap.size(), (uint32_t) injectable_bugs.size());
         }
-        /*
-        if (injectable_bugs.size() > 8000) {
-            break;
-        }
-        */
 
         ple = pandalog_read_entry();
         if (ple == NULL) {
@@ -250,6 +269,7 @@ int main (int argc, char **argv) {
                 // keeping track of dead, uncomplicated data extents we have
                 // encountered so far in the trace
                 u_dua.insert(dua);
+                dua_instr.push_back(hc_instr_count);
             }
             in_hc = false;
         }
@@ -321,6 +341,7 @@ int main (int argc, char **argv) {
                     u_ap.insert(ap);
                     last_num_dua[ap] = u_dua.size();
                 }
+                ap_instr.push_back(ap_instr_count);
             }
         }
         if (!in_ap && ple->attack_point) {
@@ -368,6 +389,21 @@ int main (int argc, char **argv) {
     f.close();
     
     
+
+
+    f.open("lavastats.duas", std::ios::out);
+    for ( auto i : dua_instr ) {
+        float fr = ((float) i) / last_instr_count;
+        f << fr << "\n";
+    }
+    f.close();
+    f.open("lavastats.aps", std::ios::out);
+    for ( auto i : ap_instr ) {
+        float fr = ((float) i) / last_instr_count;
+        f << fr << "\n";
+    }
+    f.close();
+
     
 
 }
