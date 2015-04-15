@@ -90,6 +90,10 @@ $(BUILDDIR)/lavaTaintQueryTool: lavaTaintQueryTool.cpp lavaTaintQuery.h
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^ \
 		$(CLANG_LIBS) $(LLVM_LDFLAGS) -o $@
 
+$(BUILDDIR)/lavaInsertBugTool: lavaInsertBugTool.cpp
+	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^ \
+		$(CLANG_LIBS) $(LLVM_LDFLAGS) -o $@
+
 #$(BUILDDIR)/lavaTaintQueryPlugin.so: lavaTaintQueryPlugin.cpp lavaTaintQuery.h
 #	$(CXX) $(PLUGIN_CXXFLAGS) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) \
 #		$^ $(PLUGIN_LDFLAGS) $(LLVM_LDFLAGS_NOLIBS) -o $@
