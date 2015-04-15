@@ -145,9 +145,12 @@ def extractSourceFile(command, include_path):
             (command.line, absoluteInputFile))
         return None
 
+    cmd = json.dumps(joinCommandLine(command.argv) + " -I" + include_path)
+    cmd = cmd.replace('\\"', '\\\\\\"')
+
     output =  '{\n'
     output += '  "directory" : %s,\n' % json.dumps(command.cwd)
-    output += '  "command" : %s,\n' % json.dumps(joinCommandLine(command.argv) + " -I" + include_path)
+    output += '  "command" : %s,\n' % cmd
     output += '  "file" : %s\n' % json.dumps(inputFile)
     output += '}'
 
