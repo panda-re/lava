@@ -71,7 +71,8 @@ BUILDDIR := build
 all: make_builddir \
 	emit_build_config \
 	$(BUILDDIR)/example \
-	$(BUILDDIR)/lavaTaintQueryTool #\
+	$(BUILDDIR)/lavaTaintQueryTool \
+	$(BUILDDIR)/lavaInsertBugTool #\
 #	$(BUILDDIR)/lavaTaintQueryPlugin.so
 
 .PHONY: emit_build_config
