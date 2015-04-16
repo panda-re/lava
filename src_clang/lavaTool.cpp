@@ -1,3 +1,8 @@
+
+/*
+ * Usage: build/taintQueryTool <C file> --
+ */
+
 #include <unistd.h>
 #include <iostream>
 #include <sstream>
@@ -18,6 +23,7 @@
 using namespace clang;
 using namespace clang::driver;
 using namespace clang::tooling;
+
 
 static llvm::cl::OptionCategory
     TransformationCategory("Lava Taint Query Transformation");
@@ -507,4 +513,13 @@ public:
 private:
     Rewriter rewriter;
 };
+
+int main(int argc, const char **argv) {
+    CommonOptionsParser op(argc, argv, TransformationCategory);
+  
+    ClangTool Tool(op.getCompilations(), op.getSourcePathList());
+    
+    return Tool.run(
+        newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
+}
 
