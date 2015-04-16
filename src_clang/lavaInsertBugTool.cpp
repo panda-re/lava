@@ -30,7 +30,7 @@ typedef uint32_t Tcn;
 // ptr used to ref a label set
 typedef uint64_t Ptr;
 
-typedef struct dua_struct {
+class Dua {
     std::string filename;
     Line line;
     std::string lvalname;
@@ -45,7 +45,9 @@ typedef struct dua_struct {
         return crap1.str();
     }    
 
-    attack_point_struct(const istream& is) {
+public:
+
+    Dua(std::istream& is) {
         std::string temp;
         std::getline(is, filename, ',');
         std::getline(is, temp, ',');
@@ -59,13 +61,13 @@ typedef struct dua_struct {
         std::getline(is, temp);
     }
 
-    bool operator<(const struct dua_struct &other) const {
+    bool operator<(Dua &other) const {
         return (str() < other.str());
     }
-} Dua;
+};
 std::vector<Dua> duas;
 
-typedef struct attack_point_struct {
+class AttackPoint {
     std::string filename;
     Line line;
     std::string type;
@@ -75,7 +77,9 @@ typedef struct attack_point_struct {
         return crap1.str();
     }
 
-    attack_point_struct(const istream& is) {
+public:
+
+    AttackPoint(std::istream& is) {
         std::string temp;
         std::getline(is, filename, ',');
         std::getline(is, temp, ',');
@@ -83,18 +87,18 @@ typedef struct attack_point_struct {
         std::getline(is, type);
     }
 
-    bool operator<(const struct attack_point_struct &other) const {
+    bool operator<(AttackPoint &other) const {
         return (str() < other.str());
     }
-} AttackPoint;
+};
 std::vector<AttackPoint> aps;
 
 static llvm::cl::OptionCategory
     TransformationCategory("Lava Insert Bug Transformation");
 
-static Matcher<CallExpr> memcpyMatcher = callExpr(hasName("memcpy")).bind("id");
+//static Matcher<CallExpr> memcpyMatcher = callExpr(hasName("memcpy")).bind("id");
 
-static ifstream dd_ifstream, ap_ifstream, bug_ifstream;
+static std::ifstream dd_ifstream, ap_ifstream, bug_ifstream;
 
 class LavaInsertBugASTVisitor :
     public RecursiveASTVisitor<LavaInsertBugASTVisitor> {
@@ -225,7 +229,7 @@ int main(int argc, const char **argv) {
     argc -= 1;
 
     while (!dd_ifstream.eof()) {
-        dds.emplace_back(dd_ifstream);
+        duas.emplace_back(dd_ifstream);
     }
     while (!ap_ifstream.eof()) {
         aps.emplace_back(ap_ifstream);
