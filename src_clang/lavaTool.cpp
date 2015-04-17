@@ -37,7 +37,8 @@ static cl::extrahelp MoreHelp(
 static cl::opt<std::string>
     LavaDB("lava-db",
     cl::desc("Path to LAVA database"),
-    cl::cat(LavaCategory));
+    cl::cat(LavaCategory),
+    cl::Required);
 
 class LavaTaintQueryASTVisitor :
     public RecursiveASTVisitor<LavaTaintQueryASTVisitor> {
