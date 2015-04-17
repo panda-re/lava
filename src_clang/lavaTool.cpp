@@ -1,8 +1,3 @@
-
-/*
- * Usage: build/taintQueryTool <C file> --
- */
-
 #include <stdlib.h> 
 #include <unistd.h>
 #include <iostream>
@@ -15,24 +10,35 @@
 #include "clang/AST/AST.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/Driver/Options.h"
 #include "clang/Frontend/ASTConsumers.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/Tooling.h"
 #include "clang/Rewrite/Core/Rewriter.h"
+#include "llvm/Option/OptTable.h"
 #include "llvm/Support/raw_ostream.h"
+
 #include "lavaDB.h"
 
 using namespace clang;
 using namespace clang::driver;
 using namespace clang::tooling;
+using namespace llvm;
 
-static llvm::cl::OptionCategory
-    TransformationCategory("Lava Taint Query Transformation");
+static cl::OptionCategory
+    LavaCategory("LAVA Taint Query and Attack Point Tool Options");
+static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
+static cl::extrahelp MoreHelp(
+    "\nTODO: Add descriptive help message.  "
+    "Automatic clang stuff is ok for now.\n\n");
 
-static llvm::cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
-static llvm::cl::extrahelp MoreHelp("\n./lavaTool -db <db> -p <src_dir> /path/to/sourcefile\n");
+static std::unique_ptr<opt::OptTable> Options(createDriverOptTable());
+static cl::opt<std::string>
+    LavaDB("lava-db",
+    cl::desc("Path to LAVA database"),
+    cl::cat(LavaCategory));
 
 class LavaTaintQueryASTVisitor :
     public RecursiveASTVisitor<LavaTaintQueryASTVisitor> {
@@ -51,7 +57,7 @@ public:
     std::string FullPath(FullSourceLoc &loc) {
         SourceManager &sm = rewriter.getSourceMgr();
         char curdir[260] = {};
-        getcwd(curdir, 260);
+        char *ret = getcwd(curdir, 260);
         std::string name = sm.getFilename(loc).str();
         if (name != "") {
             std::stringstream s;
@@ -159,7 +165,7 @@ public:
         const clang::LangOptions &LangOpts = rewriter.getLangOpts();
         clang::PrintingPolicy Policy(LangOpts);
         std::string TypeS;
-        llvm::raw_string_ostream s(TypeS);
+        raw_string_ostream s(TypeS);
         e->printPretty(s, 0, Policy);
         return s.str();
     }
@@ -197,16 +203,16 @@ public:
             if (s->child_begin() == s->child_end()) {
                 // e is a leaf node
                 if (e->isLValue()) {
-                    llvm::errs() <<  ("in CollectLvals\n");
+                    errs() <<  ("in CollectLvals\n");
                     e->dump();
                     StringLiteral *sl = dyn_cast<StringLiteral>(e);
                     if (!sl) {
-                        llvm::errs() <<  "i'm not a string literal\n";
+                        errs() <<  "i'm not a string literal\n";
                         // ok its an lval that isnt a string literl
                         lvals.push_back(e);
                     }
                     else {
-                        llvm::errs() << "i'm a string literal\n";
+                        errs() << "i'm a string literal\n";
                     }
                 }
             }
@@ -259,13 +265,13 @@ public:
     // return taint query for that lval
     std::string ComposeTaintQueryLval (Expr *e, uint32_t src_filename, uint32_t src_linenum) {
         assert (e->isLValue());
-        llvm::errs() << "+++ LVAL +++\n";
+        errs() << "+++ LVAL +++\n";
         e->dump();
         DeclRefExpr *d = dyn_cast<DeclRefExpr>(e);
-        if (d) llvm::errs() << "Could successfully cast\n";
-        else llvm::errs() << "Could NOT successfully cast\n";
-        llvm::errs() << "Can we get the size of this? " << (CanGetSizeOf(e) ? "YES" : "NO") << "\n";
-        llvm::errs() << "--- LVAL ---\n";
+        if (d) errs() << "Could successfully cast\n";
+        else errs() << "Could NOT successfully cast\n";
+        errs() << "Can we get the size of this? " << (CanGetSizeOf(e) ? "YES" : "NO") << "\n";
+        errs() << "--- LVAL ---\n";
 
         // Bail out early if we can't take the size of this thing
         if (!CanGetSizeOf(e)) return "";
@@ -309,7 +315,7 @@ public:
 
     std::string ComposeTaintQueriesExpr(Expr *e,  uint32_t src_filename, uint32_t src_linenum) {
         std::vector<Expr *> lvals;
-        llvm::errs() << "src_filename=[" << src_filename << "] src_linenum=" << src_linenum << "\n";
+        errs() << "src_filename=[" << src_filename << "] src_linenum=" << src_linenum << "\n";
         CollectLvals(e, lvals);
         std::stringstream queries;
         for ( auto *lv : lvals ) {
@@ -370,7 +376,7 @@ public:
                     || (fn_name.find("popen") != std::string::npos))
                 {
                     any_insertion = true;
-                    llvm::errs() << "Found memcpy at " << src_filename << ":" << src_linenum << "\n";
+                    errs() << "Found memcpy at " << src_filename << ":" << src_linenum << "\n";
                     before_part1 << "({";
                     QualType rqt = e->getCallReturnType();
                     bool has_retval = CallExprHasRetVal(rqt);
@@ -499,7 +505,7 @@ public:
   
     void EndSourceFileAction() override {
         SourceManager &sm = rewriter.getSourceMgr();
-        llvm::errs() << "** EndSourceFileAction for: "
+        errs() << "** EndSourceFileAction for: "
                      << sm.getFileEntryForID(sm.getMainFileID())->getName()
                      << "\n";
 
@@ -508,54 +514,36 @@ public:
         rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
             "#include \"pirate_mark_lava.h\"\n", true, true);
         rewriter.overwriteChangedFiles();
-        SaveDB(StringIDs, dbfile);
+        SaveDB(StringIDs, LavaDB);
     }
 
     std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
                                                      StringRef file) override {
         rewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
-        llvm::errs() << "** Creating AST consumer for: " << file << "\n";
+        errs() << "** Creating AST consumer for: " << file << "\n";
 
-        // XXX: replace this when we figure out how to parse cmd line args
-        dbfile = "/tmp/lava_db-" + (std::string (getenv("USER"))) + ".db";
-        StringIDs = LoadDB(dbfile);
+        StringIDs = LoadDB(LavaDB);
 
-        return llvm::make_unique<LavaTaintQueryASTConsumer>(rewriter,StringIDs);
+        return make_unique<LavaTaintQueryASTConsumer>(rewriter,StringIDs);
     }
 
     /**************************************************************************/
     // Plugin-specific functions
     bool ParseArgs(const CompilerInstance &CI,
-            const std::vector<std::string>& args) override {
-        for (unsigned i = 0, e = args.size(); i != e; ++i) {
-            if (args[i] == "-db") {
-                if (i+1 >= e) {
-                    return false;
-                }
-                dbfile = args[i+1];
-            }
-        }
-        if (dbfile.size() == 0) {
-            return false;
-        }
-        return true;
-    }
+            const std::vector<std::string>& args) override {}
     
-    void PrintHelp(llvm::raw_ostream& ros) {
-        ros << "usage: ./lavaTool -db <db> -p <src_dir> /path/to/sourcefile\n";
-    }
+    void PrintHelp(llvm::raw_ostream& ros) {}
 
 private:
     std::map<std::string,uint32_t> StringIDs;
-    std::string dbfile;
     Rewriter rewriter;
 };
 
 int main(int argc, const char **argv) {
-    CommonOptionsParser op(argc, argv, TransformationCategory);
+    CommonOptionsParser op(argc, argv, LavaCategory);
   
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
-    
+
     return Tool.run(
         newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
 }
