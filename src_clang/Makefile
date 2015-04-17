@@ -70,8 +70,7 @@ BUILDDIR := build
 .PHONY: all
 all: make_builddir \
 	emit_build_config \
-	$(BUILDDIR)/lavaTool \
-        $(BUILDDIR)/lavaInsertBugTool
+	$(BUILDDIR)/lavaTool
 
 .PHONY: emit_build_config
 emit_build_config: make_builddir
@@ -86,10 +85,6 @@ includes.h.gch: includes.h
 
 $(BUILDDIR)/lavaTool: lavaTool.cpp lavaDB.cpp includes.h.gch
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) lavaTool.cpp lavaDB.cpp \
-		$(CLANG_LIBS) $(LLVM_LDFLAGS) -o $@
-
-$(BUILDDIR)/lavaInsertBugTool: lavaInsertBugTool.cpp
-	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^ \
 		$(CLANG_LIBS) $(LLVM_LDFLAGS) -o $@
 
 .PHONY: clean
