@@ -3,12 +3,13 @@
   
   g++ -g -o fbi   find_bug_inj.cpp ../src_clang/lavaDB.cpp ../../panda/qemu/panda/pandalog.c  ../../panda/qemu/panda/pandalog.pb-c.c  -L/usr/local/lib -lprotobuf-c  -I ../../panda/qemu -I ../../panda/qemu/panda  -lz -D PANDALOG_READER  -std=c++11  -O2
   
-  0.5 means max liveness of any byte on extent is 0.5
-  10 means max taint compute number of any byte on extent is 10
-  4 means max card of a taint labelset on any byte on extent is 4
-  1 1000 means extents must be between 1 and 1000 bytes long
+
+  ml = 0.5 means max liveness of any byte on extent is 0.5
+  mtcn = 10 means max taint compute number of any byte on extent is 10
+  mc =4 means max card of a taint labelset on any byte on extent is 4
+  min maxl  = 1 1000 means extents must be between 1 and 1000 bytes long
   
-  ./fbi /nas/tleek/lava/results/dd-pcap-5000.pandalog ufilenames ulvals uattackpoints 0.5 10 4 1 1000 
+  ./fbi pandalog lavadb ml mtcn mc minl maxl
 
 */
 
