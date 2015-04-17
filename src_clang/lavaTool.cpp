@@ -21,6 +21,7 @@
 #include "clang/Tooling/Tooling.h"
 #include "clang/Rewrite/Core/Rewriter.h"
 #include "llvm/Support/raw_ostream.h"
+#include "lavaDB.h"
 
 using namespace clang;
 using namespace clang::driver;
@@ -29,13 +30,22 @@ using namespace clang::tooling;
 static llvm::cl::OptionCategory
     TransformationCategory("Lava Taint Query Transformation");
 
+static llvm::cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
+static llvm::cl::extrahelp MoreHelp("\n./lavaTool -db <db> -p <src_dir> /path/to/sourcefile\n");
 
 class LavaTaintQueryASTVisitor :
     public RecursiveASTVisitor<LavaTaintQueryASTVisitor> {
 public:
     LavaTaintQueryASTVisitor(Rewriter &rewriter,
-        std::vector< VarDecl* > &globalVars) :
-            rewriter(rewriter), globalVars(globalVars)  {}
+        std::vector< VarDecl* > &globalVars, std::map<std::string,uint32_t> &StringIDs) :
+            rewriter(rewriter), globalVars(globalVars), StringIDs(StringIDs)  {}
+
+    uint32_t GetStringID(std::string s) {
+        if (StringIDs.find(s) == StringIDs.end()) {
+            StringIDs[s] = StringIDs.size();
+        }
+        return StringIDs[s];
+    }
 
     std::string FullPath(FullSourceLoc &loc) {
         SourceManager &sm = rewriter.getSourceMgr();
@@ -78,8 +88,8 @@ public:
                 query << "vm_lava_query_buffer(";
                 query << "&(" << (*it)->getNameAsString() << "), ";
                 query << "sizeof(" << (*it)->getNameAsString() << "), ";
-                query << "\"" << FullPath(fullLoc) << "\"" << ", ";
-                query << "\"" << (*it)->getNameAsString() << "\"" << ", ";
+                query << GetStringID(FullPath(fullLoc)) << ", ";
+                query << GetStringID((*it)->getNameAsString()) << ", ";
                 query << fullLoc.getExpansionLineNumber() << ");\n";
             
                 const Type *t = (*it)->getType().getTypePtr();
@@ -90,9 +100,8 @@ public:
                     query << (*it)->getNameAsString() << ", ";
                     query << "sizeof(" << QualType::getAsString(
                         t->getPointeeType().split()) << "), ";
-                    query << "\"" << FullPath(fullLoc) << "\""
-                            << ", ";
-                    query << "\"" << (*it)->getNameAsString() << "\"" << ", ";
+                    query << GetStringID(FullPath(fullLoc)) << ", ";
+                    query << GetStringID((*it)->getNameAsString()) << ", ";
                     query << fullLoc.getExpansionLineNumber() << ");\n";
                     query << "}\n";
                 }
@@ -157,7 +166,7 @@ public:
     // give me a decl for a struct and I'll compose a string with
     // all relevant taint queries
     // XXX: not handling more than 1st level here
-    std::string ComposeTaintQueriesRecordDecl(std::string lv_name, RecordDecl *rd, std::string accessor, std::string src_filename, uint32_t src_linenum) {
+    std::string ComposeTaintQueriesRecordDecl(std::string lv_name, RecordDecl *rd, std::string accessor, uint32_t src_filename, uint32_t src_linenum) {
         std::stringstream queries;
         for (auto field : rd->fields()) {
             if (!field->isBitField()) {
@@ -165,11 +174,13 @@ public:
                 if ( (!( field->getName().str() == "__st_ino" ))
                      && (field->getName().str().size() > 0)
                     ) {
+                    std::string ast_node_name = lv_name + accessor + field->getName().str();
+                    uint32_t ast_node_id = GetStringID(ast_node_name);
                     queries << "vm_lava_query_buffer(";
-                    queries << "&(" << lv_name << accessor << field->getName().str() << "), " ;
-                    queries << "sizeof(" << lv_name << accessor << field->getName().str()<< "), ";
-                    queries << "\"" << src_filename << "\"" << ", ";
-                    queries << "\"" << lv_name << accessor << field->getName().str() << "\"" << ", ";
+                    queries << "&(" << ast_node_name << "), " ;
+                    queries << "sizeof(" << ast_node_name << "), ";
+                    queries << src_filename << ", ";
+                    queries << ast_node_id << ", ";
                     queries << src_linenum << ");\n";
                 }
             }
@@ -245,7 +256,7 @@ public:
 
     // e must be an lval.
     // return taint query for that lval
-    std::string ComposeTaintQueryLval (Expr *e, std::string src_filename, uint32_t src_linenum) {
+    std::string ComposeTaintQueryLval (Expr *e, uint32_t src_filename, uint32_t src_linenum) {
         assert (e->isLValue());
         llvm::errs() << "+++ LVAL +++\n";
         e->dump();
@@ -263,8 +274,8 @@ public:
         query << "vm_lava_query_buffer(";
         query << "&(" << lv_name << "), ";
         query << "sizeof(" << lv_name << "), ";
-        query << "\"" << src_filename << "\"" << ", ";
-        query << "\"" << lv_name << "\"" << ", ";
+        query << src_filename << ", ";
+        query << GetStringID(lv_name) << ", ";
         query << src_linenum  << ");\n";
 
         // if lval is a struct or a ptr to a struct,
@@ -295,7 +306,7 @@ public:
         return query.str();
     } 
 
-    std::string ComposeTaintQueriesExpr(Expr *e,  std::string src_filename, uint32_t src_linenum) {
+    std::string ComposeTaintQueriesExpr(Expr *e,  uint32_t src_filename, uint32_t src_linenum) {
         std::vector<Expr *> lvals;
         llvm::errs() << "src_filename=[" << src_filename << "] src_linenum=" << src_linenum << "\n";
         CollectLvals(e, lvals);
@@ -322,6 +333,7 @@ public:
         */          
         if (src_filename.size() > 0) 
         {
+            uint32_t src_filename_id = GetStringID(src_filename);
             FunctionDecl *f = e->getDirectCallee();
             std::stringstream query;
             if (f) {
@@ -376,14 +388,14 @@ public:
                     for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
                         // for each expression, compose all taint queries we know how to create
                         Expr *arg = dyn_cast<Expr>(*it);
-                        queries << (ComposeTaintQueriesExpr(arg, src_filename, src_linenum));
+                        queries << (ComposeTaintQueriesExpr(arg, src_filename_id, src_linenum));
                     }            
                     std::stringstream after_part;
                     after_part << queries.str();
                     if ( has_retval ) {
                         // make sure to compose a query for the ret val too
                         after_part << "vm_lava_query_buffer(&(" << retvalname << "), sizeof(" << retvalname << "), ";
-                        after_part << "\"" << src_filename << "\", \"" << retvalname << "\", " << src_linenum << ");";
+                        after_part << src_filename_id << ", " << GetStringID(retvalname) << ", " << src_linenum << ");";
                         // make sure to return retval 
                         after_part << " " << retvalname << " ; ";
                     }
@@ -406,7 +418,7 @@ public:
                 if (f->getNameInfo().getName().getAsString() == "memcpy") {
                     llvm::errs() << "Found memcpy at " << src_filename << ":" << src_linenum << "\n";
                     query << "( { vm_lava_attack_point(";
-                    query << "\"" << src_filename << "\", " << src_linenum; 
+                    query << GetStringID(src_filename) << ", " << src_linenum << ", " << GetStringID("memcpy"); 
                     query << ");\n";
                     rewriter.InsertText(e->getLocStart(), query.str(), true, true);
                     rewriter.InsertTextAfterToken(e->getLocEnd(), "; } )\n");
@@ -418,27 +430,16 @@ public:
     }
 
 private:
+    std::map<std::string,uint32_t> &StringIDs;
     std::vector< VarDecl* > &globalVars;
     Rewriter &rewriter;
-
-    void populateLavaInfo(std::stringstream &ss, FullSourceLoc loc,
-            StringRef nodeStr, bool indent){
-        SourceManager &sm = rewriter.getSourceMgr();
-        if (indent) ss << "    ";
-        ss << "pmli.filenamePtr = \"" << sm.getFilename(loc).str() << "\";\n";
-        if (indent) ss << "    ";
-        ss << "pmli.lineNum = " << loc.getExpansionLineNumber() << ";\n";
-        if (indent) ss << "    ";
-        ss << "pmli.astNodePtr = \"" << nodeStr.str() << "\";\n";
-    }
-
 };
 
 
 class LavaTaintQueryASTConsumer : public ASTConsumer {
 public:
-    LavaTaintQueryASTConsumer(Rewriter &rewriter) :
-        visitor(rewriter, globalVars) {}
+    LavaTaintQueryASTConsumer(Rewriter &rewriter, std::map<std::string,uint32_t> &StringIDs) :
+        visitor(rewriter, globalVars, StringIDs) {}
 
     bool HandleTopLevelDecl(DeclGroupRef DR) override {
     // iterates through decls
@@ -490,13 +491,19 @@ public:
         rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
             "#include \"pirate_mark_lava.h\"\n", true, true);
         rewriter.overwriteChangedFiles();
+        SaveDB(StringIDs, dbfile);
     }
 
     std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
                                                      StringRef file) override {
         rewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
         llvm::errs() << "** Creating AST consumer for: " << file << "\n";
-        return llvm::make_unique<LavaTaintQueryASTConsumer>(rewriter);
+
+        // XXX: replace this when we figure out how to parse cmd line args
+        dbfile = "/tmp/lava_db.db";
+        StringIDs = LoadDB(dbfile);
+
+        return llvm::make_unique<LavaTaintQueryASTConsumer>(rewriter,StringIDs);
     }
 
     /**************************************************************************/
@@ -514,7 +521,6 @@ public:
         if (dbfile.size() == 0) {
             return false;
         }
-
         return true;
     }
     
@@ -523,6 +529,7 @@ public:
     }
 
 private:
+    std::map<std::string,uint32_t> StringIDs;
     std::string dbfile;
     Rewriter rewriter;
 };
