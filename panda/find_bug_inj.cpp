@@ -28,6 +28,8 @@
 #include <vector>
 #include <sstream>
 
+#include <assert.h>
+
 #include "pandalog.h"
 #include "../src_clang/lavaDB.h"
 
@@ -43,9 +45,7 @@ typedef uint32_t Tcn;
 typedef uint64_t Ptr;
 
 
-std::map<uint32_t,std::string> ind2fn;
-std::map<uint32_t,std::string> ind2lvaln;
-std::map<uint32_t,std::string> ind2apn;
+std::map<uint32_t,std::string> ind2str;
 
 
 typedef struct dua_struct {
@@ -55,7 +55,7 @@ typedef struct dua_struct {
     std::set < Label > labels;   
     std::string str() const {
         std::stringstream crap1;
-        crap1 << ind2fn[filename] << "," << line << "," << ind2lvaln[lvalname] << ",[";
+        crap1 << ind2str[filename] << "," << line << "," << ind2str[lvalname] << ",[";
         for ( auto l : labels ) {
             crap1 << l << ",";
         }
@@ -95,7 +95,7 @@ typedef struct attack_point_struct {
     uint32_t info;
     std::string str() const {
         std::stringstream crap1;
-        crap1 << ind2fn[filename] << "," << line << "," << ind2apn[info];
+        crap1 << ind2str[filename] << "," << line << "," << ind2str[info];
         return crap1.str();
     }
     bool operator<(const struct attack_point_struct &other) const {
@@ -190,6 +190,7 @@ std::pair<uint32_t, uint32_t> update_range(uint32_t val, std::pair<uint32_t, uin
 std::map<uint32_t,std::string> InvertDB(std::map<std::string,uint32_t> &n2ind) {
     std::map<uint32_t,std::string> ind2n;
     for ( auto kvp : n2ind ) {
+        assert (kvp.first != "");
         ind2n[kvp.second] = kvp.first;
     }
     return ind2n;
@@ -209,23 +210,21 @@ int main (int argc, char **argv) {
     char *plf = argv[1];
 
     // maps from ind -> (filename, lvalname, attackpointname)
-    ind2fn = LoadIDB(argv[2]);
-    ind2lvaln = LoadIDB(argv[3]);
-    ind2apn = LoadIDB(argv[4]);
+    ind2str = LoadIDB(argv[2]);
     
     get_last_instr(plf);
 
-    float max_liveness = atof(argv[5]);
+    float max_liveness = atof(argv[3]);
     printf ("maximum liveness score of %.2f\n", max_liveness);
 
-    uint32_t max_card = atoi(argv[6]);
+    uint32_t max_card = atoi(argv[4]);
     printf ("max card of taint set returned by query = %d\n", max_card);
 
-    uint32_t max_tcn = atoi(argv[7]);
+    uint32_t max_tcn = atoi(argv[5]);
     printf ("max tcn for addr = %d\n", max_tcn);
 
-    uint32_t extent_len_min = atoi(argv[8]);
-    uint32_t extent_len_max = atoi(argv[9]);
+    uint32_t extent_len_min = atoi(argv[6]);
+    uint32_t extent_len_max = atoi(argv[7]);
     printf ("extent len %d..%d\n", extent_len_min, extent_len_max);
 
     // read in dead data (dd[label_num])
