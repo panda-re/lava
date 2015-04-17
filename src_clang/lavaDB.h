@@ -1,6 +1,10 @@
 #ifndef __LAVA_DB_H_
 #define __LAVA_DB_H_
 
+#include<map>
+#include<string>
+#include<stdint.h>
+
 // save a string -> index db to file
 void SaveDB(std::map<std::string,uint32_t> StringIDs, std::string dbfile);
 

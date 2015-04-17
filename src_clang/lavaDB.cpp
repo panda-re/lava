@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 
-std::map<uint32_t,std::string> InvertDB(std::map<std::string,uint32_t> n2ind) {
+std::map<uint32_t,std::string> InvertDB(std::map<std::string,uint32_t> &n2ind) {
     std::map<uint32_t,std::string> ind2n;
     for ( auto kvp : n2ind ) {
         ind2n[kvp.second] = kvp.first;

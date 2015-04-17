@@ -187,16 +187,6 @@ std::pair<uint32_t, uint32_t> update_range(uint32_t val, std::pair<uint32_t, uin
 }
 
 
-
-std::map<uint32_t,std::string> InvertDB(std::map<std::string,uint32_t> &n2ind) {
-    std::map<uint32_t,std::string> ind2n;
-    for ( auto kvp : n2ind ) {
-        assert (kvp.first != "");
-        ind2n[kvp.second] = kvp.first;
-    }
-    return ind2n;
-}
-
 std::map<uint32_t,std::string> LoadIDB(std::string fn) {
     std::string sfn = std::string(fn);
     std::map<std::string,uint32_t> x = LoadDB(sfn);
@@ -212,6 +202,7 @@ int main (int argc, char **argv) {
 
     // maps from ind -> (filename, lvalname, attackpointname)
     ind2str = LoadIDB(argv[2]);
+    printf ("%d strings in lavadb\n", (int) ind2str.size());
     
     get_last_instr(plf);
 
