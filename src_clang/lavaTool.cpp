@@ -37,7 +37,8 @@ static cl::extrahelp MoreHelp(
 static cl::opt<std::string>
     LavaDB("lava-db",
     cl::desc("Path to LAVA database"),
-    cl::cat(LavaCategory));
+    cl::cat(LavaCategory),
+    cl::Required);
 
 class LavaTaintQueryASTVisitor :
     public RecursiveASTVisitor<LavaTaintQueryASTVisitor> {
@@ -405,21 +406,26 @@ public:
             std::stringstream query;
             if (f) {
                 std::string fn_name = f->getNameInfo().getName().getAsString();
+                llvm::errs() << "query ins: fn_name is [" << fn_name << "]\n";
+                const char *fnn = fn_name.c_str();
                 if ( !
-                     (fn_name == "vm_lava_query_buffer")
-                     || (fn_name == "va_start")
-                     || (fn_name == "va_arg")
-                     || (fn_name == "va_end")
-                     || (fn_name == "va_copy")
-                     || (fn_name.find("free") != std::string::npos)
+                     ((fn_name == "vm_lava_query_buffer")
+                      || (fn_name.find("va_start") != std::string::npos)
+                      || (fn_name == "va_arg")
+                      || (fn_name == "va_end")
+                      || (fn_name == "va_copy")
+                      || (fn_name.find("free") != std::string::npos))
                     ) { 
+                    llvm::errs() << "ok to ins \n";
                     any_insertion = true;
                     before_part2 << "({";
                     QualType rqt = e->getCallReturnType(); 
                     bool has_retval = CallExprHasRetVal(rqt);
                     std::string retvalname = RandVarName();
-                    if (has_retval)
+                    if (has_retval) {
+                        llvm::errs() << "has return val" << "\n";
                         before_part2 << (rqt.getAsString()) << " " << retvalname << " = ";
+                    }
                     std::stringstream queries;
                     queries << "; \n";
                     for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
@@ -436,6 +442,9 @@ public:
                         after_part2 << " " << retvalname << " ; ";
                     }
                     after_part2 << "})";                    
+                }
+                else {
+                    llvm::errs() << "not ok to ins\n";
                 }
             }
         }
