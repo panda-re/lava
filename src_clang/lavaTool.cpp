@@ -8,6 +8,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <map>
+#include <stdint.h>
 
 #include "clang/AST/AST.h"
 #include "clang/AST/ASTConsumer.h"
@@ -23,7 +25,6 @@
 using namespace clang;
 using namespace clang::driver;
 using namespace clang::tooling;
-
 
 static llvm::cl::OptionCategory
     TransformationCategory("Lava Taint Query Transformation");
@@ -502,15 +503,27 @@ public:
     // Plugin-specific functions
     bool ParseArgs(const CompilerInstance &CI,
             const std::vector<std::string>& args) override {
-        // No args currently
+        for (unsigned i = 0, e = args.size(); i != e; ++i) {
+            if (args[i] == "-db") {
+                if (i+1 >= e) {
+                    return false;
+                }
+                dbfile = args[i+1];
+            }
+        }
+        if (dbfile.size() == 0) {
+            return false;
+        }
+
         return true;
     }
     
     void PrintHelp(llvm::raw_ostream& ros) {
-        ros << "Help for taint-query plugin goes here\n";
+        ros << "usage: ./lavaTool -db <db> -p <src_dir> /path/to/sourcefile\n";
     }
 
 private:
+    std::string dbfile;
     Rewriter rewriter;
 };
 
