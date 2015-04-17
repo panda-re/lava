@@ -34,7 +34,6 @@ static cl::extrahelp MoreHelp(
     "\nTODO: Add descriptive help message.  "
     "Automatic clang stuff is ok for now.\n\n");
 
-static std::unique_ptr<opt::OptTable> Options(createDriverOptTable());
 static cl::opt<std::string>
     LavaDB("lava-db",
     cl::desc("Path to LAVA database"),
@@ -541,7 +540,6 @@ private:
 
 int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
-  
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
 
     return Tool.run(
