@@ -317,12 +317,73 @@ public:
         return queries.str();
     }
 
+
+    std::string RandVarName() {
+        std::stringstream rvs;
+        rvs << "kbcieiubweuhc";
+        rvs << rand();
+        return rvs.str();
+    }
+
+    // returns true if this call expr has a retval we need to catch
+    bool CallExprHasRetVal(QualType &rqt) {
+        if (rqt.getTypePtrOrNull() != NULL ) {
+            if (! rqt.getTypePtr()->isVoidType()) {
+                // this call has a return value (which may be being ignored
+                return true;
+            }
+        }
+        return false;
+    }
     
+
     bool VisitCallExpr(CallExpr *e) {
         SourceManager &sm = rewriter.getSourceMgr();
         FullSourceLoc fullLoc(e->getLocStart(), sm);
         std::string src_filename = FullPath(fullLoc);
+        // if we dont know the filename, that indicates unhappy situation.  bail.
+        if (src_filename == "") 
+            return true;
         uint32_t src_linenum = fullLoc.getExpansionLineNumber(); 
+        std::stringstream before_part1, before_part2, after_part1, after_part2;
+        bool any_insertion = false;
+        /*
+          insert "i'm at an attack point (memcpy)" hypercalls	
+          we replace mempcy(...) with
+          ({vm_lava_attack_point(...); memcpy(...);})       
+        */
+        {
+            FunctionDecl *f = e->getDirectCallee();
+            if (f) {
+                std::string fn_name = f->getNameInfo().getName().getAsString();
+                if (
+                    (fn_name.find("memcpy") != std::string::npos) 
+                    || (fn_name.find("malloc") != std::string::npos)
+                    || (fn_name.find("memmove") != std::string::npos)
+                    || (fn_name.find("bcopy") != std::string::npos)
+                    || (fn_name.find("strcpy") != std::string::npos)
+                    || (fn_name.find("strncpy") != std::string::npos)
+                    || (fn_name.find("strcat") != std::string::npos)
+                    || (fn_name.find("strncat") != std::string::npos)
+                    || (fn_name.find("exec") != std::string::npos)
+                    || (fn_name.find("popen") != std::string::npos))
+                {
+                    any_insertion = true;
+                    llvm::errs() << "Found memcpy at " << src_filename << ":" << src_linenum << "\n";
+                    before_part1 << "({";
+                    QualType rqt = e->getCallReturnType();
+                    bool has_retval = CallExprHasRetVal(rqt);
+                    std::string retvalname = RandVarName();
+                    before_part1 << "vm_lava_attack_point(" << GetStringID(src_filename) << ", ";
+                    before_part1 << src_linenum << ", " << GetStringID(fn_name) << ");\n";
+                    if (has_retval) {
+                        before_part1 << (rqt.getAsString()) << " " << retvalname << " = ";
+                        after_part1 << "; " << retvalname;
+                    }
+                    after_part1 << ";})";
+                }	    
+            }
+        }
 
         /*
           insert taint queries *after* call for every arg to fn        
@@ -337,93 +398,48 @@ public:
             FunctionDecl *f = e->getDirectCallee();
             std::stringstream query;
             if (f) {
+                std::string fn_name = f->getNameInfo().getName().getAsString();
                 if ( !
-                     ((f->getNameInfo().getName().getAsString() == "vm_lava_query_buffer")
-                      || (f->getNameInfo().getName().getAsString() == "va_start")
-                      || (f->getNameInfo().getName().getAsString() == "va_arg")
-                      || (f->getNameInfo().getName().getAsString() == "va_end")
-                      || (f->getNameInfo().getName().getAsString() == "va_copy")
-                      || (!(f->getNameInfo().getName().getAsString().find("free") == std::string::npos))
-                      || (!(f->getNameInfo().getName().getAsString().find("memcpy") == std::string::npos)))
+                     (fn_name == "vm_lava_query_buffer")
+                     || (fn_name == "va_start")
+                     || (fn_name == "va_arg")
+                     || (fn_name == "va_end")
+                     || (fn_name == "va_copy")
+                     || (fn_name.find("free") != std::string::npos)
                     ) { 
-                    std::stringstream before_part;
-
-                    //                    std::cout << "srcfilename=[" << src_filename << "] srclinenum=" << src_linenum << std::endl;
-
+                    any_insertion = true;
+                    before_part2 << "({";
                     QualType rqt = e->getCallReturnType(); 
-                    //                    rqt->dump();
-
-                    before_part << "({";
-                    
-                    bool has_retval = false;
-                    if (rqt.getTypePtrOrNull() != NULL ) {
-                        if (! rqt.getTypePtr()->isVoidType()) {
-                            has_retval = true;
-                        }
-                    }
-                    std::stringstream rvs;
-                    rvs << "kbcieiubweuhc";
-                    rvs << rand();
-                    std::string retvalname = rvs.str();
-                    if ( has_retval ) {
-                        // call retval is caught -- handle
-                        before_part << (rqt.getAsString()) << " " << retvalname << " = ";
-                    }
-
-                    //                    std::cout <<  "before_part = [" << (before_part.str()) << "]" << std::endl;
-
-                    rewriter.InsertText(e->getLocStart(), before_part.str(), true, true);            
-
-#if 0                   
-                    auto loc1 = (e->getLocStart()).getLocWithOffset(-30);
-                    auto loc2 = (e->getLocStart()).getLocWithOffset(+30);
-                    std::string the_code = rewriter.getRewrittenText(SourceRange(loc1, loc2));
-                    
-                    std::cout << "the_code = [" << the_code << "]" << std::endl;
-                    //                    assert ( (rewriter.().find(before_part.str()));
-#endif
-
+                    bool has_retval = CallExprHasRetVal(rqt);
+                    std::string retvalname = RandVarName();
+                    if (has_retval)
+                        before_part2 << (rqt.getAsString()) << " " << retvalname << " = ";
                     std::stringstream queries;
                     queries << "; \n";
                     for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
                         // for each expression, compose all taint queries we know how to create
                         Expr *arg = dyn_cast<Expr>(*it);
-                        queries << (ComposeTaintQueriesExpr(arg, src_filename_id, src_linenum));
+                        queries << (ComposeTaintQueriesExpr(arg, GetStringID(src_filename), src_linenum));
                     }            
-                    std::stringstream after_part;
-                    after_part << queries.str();
+                    after_part2 << queries.str();
                     if ( has_retval ) {
                         // make sure to compose a query for the ret val too
-                        after_part << "vm_lava_query_buffer(&(" << retvalname << "), sizeof(" << retvalname << "), ";
-                        after_part << src_filename_id << ", " << GetStringID(retvalname) << ", " << src_linenum << ");";
+                        after_part2 << "vm_lava_query_buffer(&(" << retvalname << "), sizeof(" << retvalname << "), ";
+                        after_part2 << GetStringID(src_filename) << "," << GetStringID(retvalname) << ", " << src_linenum << ");";
                         // make sure to return retval 
-                        after_part << " " << retvalname << " ; ";
+                        after_part2 << " " << retvalname << " ; ";
                     }
-                    after_part << "})";
-                    std::cout <<  "after_part = [" << (after_part.str()) << "]" << std::endl;
-                    rewriter.InsertTextAfterToken(e->getLocEnd(), after_part.str());            
+                    after_part2 << "})";                    
                 }
             }
         }
- 
-       /*
-          insert "i'm at an attack point (memcpy)" hypercalls	
-          we replace mempcy(...) with
-          ({vm_lava_attack_point(...); memcpy(...);})       
-        */
-        {
-            FunctionDecl *f = e->getDirectCallee();
-            std::stringstream query;
-            if (f) {
-                if (f->getNameInfo().getName().getAsString() == "memcpy") {
-                    llvm::errs() << "Found memcpy at " << src_filename << ":" << src_linenum << "\n";
-                    query << "( { vm_lava_attack_point(";
-                    query << GetStringID(src_filename) << ", " << src_linenum << ", " << GetStringID("memcpy"); 
-                    query << ");\n";
-                    rewriter.InsertText(e->getLocStart(), query.str(), true, true);
-                    rewriter.InsertTextAfterToken(e->getLocEnd(), "; } )\n");
-                }	    
-            }
+
+        if (any_insertion) {
+            std::stringstream before_part, after_part;
+            before_part << before_part2.str() << before_part1.str();
+            after_part << after_part1.str() << after_part2.str();
+            rewriter.InsertText(e->getLocStart(), before_part.str(), true, true);        
+            rewriter.InsertTextAfterToken(e->getLocEnd(), after_part.str());
         }
  
        return true;
