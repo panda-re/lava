@@ -80,8 +80,11 @@ emit_build_config: make_builddir
 make_builddir:
 	@test -d $(BUILDDIR) || mkdir $(BUILDDIR)
 
-$(BUILDDIR)/lavaTool: lavaTool.cpp lavaDB.cpp
-	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^ \
+includes.h.gch: includes.h
+	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^
+
+$(BUILDDIR)/lavaTool: lavaTool.cpp lavaDB.cpp includes.h.gch
+	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) lavaTool.cpp lavaDB.cpp \
 		$(CLANG_LIBS) $(LLVM_LDFLAGS) -o $@
 
 .PHONY: clean
