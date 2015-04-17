@@ -130,27 +130,28 @@ void vm_query_buffer(void *buf, unsigned long len, int offset,
 
 static inline
 void vm_lava_query_buffer(const void *buf, unsigned long len, 
-			   char *src_filename, char *src_ast_node_name,
-			   unsigned long linenum) {
+                          lavaint src_filename, lavaint src_ast_node_name,
+                          unsigned long linenum) {
   volatile PandaHypercallStruct phs = {0};
   phs.magic = 0xabcd;
   phs.action = LAVA_QUERY_BUFFER;
-  phs.buf = (unsigned long int) buf;
-  phs.len = (unsigned long) len;
+  phs.buf = (lavaint) buf;
+  phs.len = len;
   phs.label_num = 0; // unused;
-  phs.src_filename = (unsigned long int) src_filename;
-  phs.src_ast_node_name = (unsigned long int) src_ast_node_name;
+  phs.src_filename = src_filename;
+  phs.src_ast_node_name = src_ast_node_name;
   phs.src_linenum = linenum;
   hypercall2(&phs);
 }
 
 static inline
-void vm_lava_attack_point(char *src_filename, unsigned long linenum) {
+void vm_lava_attack_point(lavaint src_filename, unsigned long linenum, lavaint info) {
   volatile PandaHypercallStruct phs = {0};
   phs.magic = 0xabcd;
   phs.action = LAVA_ATTACK_POINT;
-  phs.src_filename = (unsigned long int) src_filename;
+  phs.src_filename = src_filename;
   phs.src_linenum = linenum;
+  phs.info = info;
   hypercall2(&phs);
 }
 
