@@ -2,4 +2,5 @@
 *.swp
 build/
 config.mak
+*.gch
 
