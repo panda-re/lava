@@ -3,6 +3,7 @@
  * Usage: build/taintQueryTool <C file> --
  */
 
+#include <stdlib.h> 
 #include <unistd.h>
 #include <iostream>
 #include <sstream>
@@ -516,7 +517,7 @@ public:
         llvm::errs() << "** Creating AST consumer for: " << file << "\n";
 
         // XXX: replace this when we figure out how to parse cmd line args
-        dbfile = "/tmp/lava_db.db";
+        dbfile = "/tmp/lava_db-" + (std::string (getenv("USER"))) + ".db";
         StringIDs = LoadDB(dbfile);
 
         return llvm::make_unique<LavaTaintQueryASTConsumer>(rewriter,StringIDs);
