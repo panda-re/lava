@@ -1,13 +1,7 @@
 /*
   NB: env variable PANDA points to git/panda
   
-  g++ -g -o fbi          \
-  lava_find_bug_inj.cpp                   \
-  ../../panda/qemu/panda/pandalog.c       \
-  ../../panda/qemu/panda/pandalog.pb-c.c  \
-  -L/usr/local/lib -lprotobuf-c                  \
-  -I ../../panda/qemu -I ../../panda/qemu/panda  \
-  -lz -D PANDALOG_READER  -std=c++11  -O2
+  g++ -g -o fbi   find_bug_inj.cpp ../src_clang/lavaDB.cpp ../../panda/qemu/panda/pandalog.c  ../../panda/qemu/panda/pandalog.pb-c.c  -L/usr/local/lib -lprotobuf-c  -I ../../panda/qemu -I ../../panda/qemu/panda  -lz -D PANDALOG_READER  -std=c++11  -O2
   
   0.5 means max liveness of any byte on extent is 0.5
   10 means max taint compute number of any byte on extent is 10
@@ -35,6 +29,7 @@
 #include <sstream>
 
 #include "pandalog.h"
+#include "../src_clang/lavaDB.h"
 
 // instruction count
 typedef uint64_t Instr;
@@ -192,7 +187,7 @@ std::pair<uint32_t, uint32_t> update_range(uint32_t val, std::pair<uint32_t, uin
 
 
 
-std::map<uint32_t,std::string> InvertDB(std::map<std::string,uint32_t> n2ind) {
+std::map<uint32_t,std::string> InvertDB(std::map<std::string,uint32_t> &n2ind) {
     std::map<uint32_t,std::string> ind2n;
     for ( auto kvp : n2ind ) {
         ind2n[kvp.second] = kvp.first;
@@ -200,6 +195,11 @@ std::map<uint32_t,std::string> InvertDB(std::map<std::string,uint32_t> n2ind) {
     return ind2n;
 }
 
+std::map<uint32_t,std::string> LoadIDB(std::string fn) {
+    std::string sfn = std::string(fn);
+    std::map<std::string,uint32_t> x = LoadDB(sfn);
+    return InvertDB(x);
+}
 
 
 
@@ -209,10 +209,10 @@ int main (int argc, char **argv) {
     char *plf = argv[1];
 
     // maps from ind -> (filename, lvalname, attackpointname)
-    fn2ind = InvertDB(LoadDB(argv[2]));
-    lvaln2ind = InvertDB(LoadDB(argv[3]));
-    apn2ind = InvertDB(LoadDB(argv[4]));
-
+    ind2fn = LoadIDB(argv[2]);
+    ind2lvaln = LoadIDB(argv[3]);
+    ind2apn = LoadIDB(argv[4]);
+    
     get_last_instr(plf);
 
     float max_liveness = atof(argv[5]);
@@ -260,7 +260,8 @@ int main (int argc, char **argv) {
 
     std::vector <Instr> dua_instr;
     std::vector <Instr> ap_instr;
-    
+    uint32_t ap_info;
+
     while (1) {
         ii ++;
         if ((ii % 100000) == 0) {
