@@ -49,31 +49,24 @@ void hypercall(void *buf, unsigned long len, long label, unsigned long off,
   return;
 }
 
-static inline
+static 
 void hypercall2(volatile PandaHypercallStruct *phs) {
-  // a magic value (0xabcd) can be checked in panda @ cpuid 
-  // to be certain this really is a hypercall
-  // inside the panda hypercall code, ecx should point
-  // to a PandaHypercallStruct with any data we might need.
-  //
-  // EBX PIC register can't be clobbered, we have to save/restore
-  // Also need to pretend we didn't mess with the stack
-  asm __volatile__
-      ("push %%ebx \t\n\
-        add $4, %%esp \t\n\
-        mov  $0xabcd, %%eax \t\n\
-        mov  %0, %%ecx \t\n\
-        cpuid \t\n\
-        sub $4, %%esp \t\n\
-        pop %%ebx \t\n\
-       "
-       :                     /* no output registers */
-       : "g" (phs)           /* input operands */
-       : "eax", "ecx", "edx" /* clobbered registers */
-      );
-  return;
+#if defined(__PIC__)
+    volatile int save = 0;
+    __asm__ volatile ("xchgl %%ebx, %1\n\t"      \
+                      "cpuid\n\t"                \
+                      "xchgl %%ebx, %1"          \
+        : "=a" (phs), "=r" (save)                \
+        : "0" (phs), "1" (save)                  \
+        : "ecx", "edx", "memory");
+#else
+    __asm__ volatile ("cpuid"                    \
+        : "=a" (phs)                             \
+        : "0" (phs)                              \
+        : "ebx", "ecx", "edx", "memory");
+#endif
+    return;
 }
-
 #endif // TARGET_I386
 
 #if 0
@@ -136,31 +129,34 @@ void vm_query_buffer(void *buf, unsigned long len, int offset,
 }
 
 static inline
-void vm_lava_query_buffer(void *buf, unsigned long len, 
-			   char *src_filename, char *src_ast_node_name,
-			   unsigned long linenum) {
-  volatile PandaHypercallStruct phs = {};
+void vm_lava_query_buffer(const void *buf, unsigned long len, 
+                          lavaint src_filename, lavaint src_ast_node_name,
+                          unsigned long linenum) {
+  volatile PandaHypercallStruct phs = {0};
+  phs.magic = 0xabcd;
   phs.action = LAVA_QUERY_BUFFER;
-  phs.buf = (unsigned long long) buf;
-  phs.len = (unsigned long) len;
+  phs.buf = (lavaint) buf;
+  phs.len = len;
   phs.label_num = 0; // unused;
-  phs.src_filename = (unsigned long long) src_filename;
-  phs.src_ast_node_name = (unsigned long long) src_ast_node_name;
+  phs.src_filename = src_filename;
+  phs.src_ast_node_name = src_ast_node_name;
   phs.src_linenum = linenum;
   hypercall2(&phs);
 }
 
 static inline
-void vm_lava_attack_point(char *src_filename, unsigned long linenum) {
-  volatile PandaHypercallStruct phs = {};
+void vm_lava_attack_point(lavaint src_filename, unsigned long linenum, lavaint info) {
+  volatile PandaHypercallStruct phs = {0};
+  phs.magic = 0xabcd;
   phs.action = LAVA_ATTACK_POINT;
-  phs.src_filename = (unsigned long long) src_filename;
+  phs.src_filename = src_filename;
   phs.src_linenum = linenum;
+  phs.info = info;
   hypercall2(&phs);
 }
 
 static inline
-void vm_guest_util_done(){
+void vm_guest_util_done(void){
     hypercall(0, 0, 0, 0, 0, GUEST_UTIL_DONE);
 }
 

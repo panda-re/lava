@@ -70,10 +70,8 @@ BUILDDIR := build
 .PHONY: all
 all: make_builddir \
 	emit_build_config \
-	$(BUILDDIR)/example \
-	$(BUILDDIR)/lavaTaintQueryTool \
-	$(BUILDDIR)/lavaInsertBugTool #\
-#	$(BUILDDIR)/lavaTaintQueryPlugin.so
+	$(BUILDDIR)/lavaTool \
+        $(BUILDDIR)/lavaInsertBugTool
 
 .PHONY: emit_build_config
 emit_build_config: make_builddir
@@ -83,21 +81,16 @@ emit_build_config: make_builddir
 make_builddir:
 	@test -d $(BUILDDIR) || mkdir $(BUILDDIR)
 
-$(BUILDDIR)/example: example.cpp
-	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^ \
-		$(CLANG_LIBS) $(LLVM_LDFLAGS) -o $@
+includes.h.gch: includes.h
+	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^
 
-$(BUILDDIR)/lavaTaintQueryTool: lavaTaintQueryTool.cpp lavaTaintQuery.h
-	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^ \
+$(BUILDDIR)/lavaTool: lavaTool.cpp lavaDB.cpp includes.h.gch
+	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) lavaTool.cpp lavaDB.cpp \
 		$(CLANG_LIBS) $(LLVM_LDFLAGS) -o $@
 
 $(BUILDDIR)/lavaInsertBugTool: lavaInsertBugTool.cpp
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^ \
 		$(CLANG_LIBS) $(LLVM_LDFLAGS) -o $@
-
-#$(BUILDDIR)/lavaTaintQueryPlugin.so: lavaTaintQueryPlugin.cpp lavaTaintQuery.h
-#	$(CXX) $(PLUGIN_CXXFLAGS) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) \
-#		$^ $(PLUGIN_LDFLAGS) $(LLVM_LDFLAGS_NOLIBS) -o $@
 
 .PHONY: clean
 clean:

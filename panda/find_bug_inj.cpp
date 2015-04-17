@@ -1,28 +1,26 @@
 /*
- NB: env variable PANDA points to git/panda
- 
- g++ -g -o lfadd \
-   lava_find_avail_dead_data.c \
-   $PANDA/qemu/panda/pandalog.c \
-   $PANDA/qemu/panda/pandalog.pb-c.c \
-   -L/usr/local/lib -lprotobuf-c \
-   -I $PANDA/qemu -I $PANDA/qemu/panda \
-   -lz -D PANDALOG_READER  -std=c++11  -O2
+  NB: env variable PANDA points to git/panda
+  
+  g++ -g -o fbi   find_bug_inj.cpp ../src_clang/lavaDB.cpp ../../panda/qemu/panda/pandalog.c  ../../panda/qemu/panda/pandalog.pb-c.c  -L/usr/local/lib -lprotobuf-c  -I ../../panda/qemu -I ../../panda/qemu/panda  -lz -D PANDALOG_READER  -std=c++11  -O2
+  
 
- ./lfadd /nas/tleek/lava/results/dd-pcap-5000.pandalog  /nas/tleek/lava/results/qu-pcap-5000.pandalog 
+  ml = 0.5 means max liveness of any byte on extent is 0.5
+  mtcn = 10 means max taint compute number of any byte on extent is 10
+  mc =4 means max card of a taint labelset on any byte on extent is 4
+  min maxl  = 1 1000 means extents must be between 1 and 1000 bytes long
+  
+  ./fbi pandalog lavadb ml mtcn mc minl maxl
 
 */
+
 #define __STDC_FORMAT_MACROS
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include "pandalog.h"
 
 #include <iostream>
 #include <fstream>
@@ -30,6 +28,11 @@
 #include <set>
 #include <vector>
 #include <sstream>
+
+#include <assert.h>
+
+#include "pandalog.h"
+#include "../src_clang/lavaDB.h"
 
 // instruction count
 typedef uint64_t Instr;
@@ -43,15 +46,17 @@ typedef uint32_t Tcn;
 typedef uint64_t Ptr;
 
 
+std::map<uint32_t,std::string> ind2str;
+
 
 typedef struct dua_struct {
-    std::string filename;
+    uint32_t filename;
     Line line;
-    std::string lvalname;
+    uint32_t lvalname;
     std::set < Label > labels;   
     std::string str() const {
         std::stringstream crap1;
-        crap1 << filename << "," << line << "," << lvalname << ",[";
+        crap1 << ind2str[filename] << "," << line << "," << ind2str[lvalname] << ",[";
         for ( auto l : labels ) {
             crap1 << l << ",";
         }
@@ -59,27 +64,87 @@ typedef struct dua_struct {
         return crap1.str();
     }    
     bool operator<(const struct dua_struct &other) const {
-        return (str() < other.str());
+        if (filename < other.filename) return true;
+        else {
+            if (filename > other.filename) return false;
+            else {
+                // filenames equal
+                if (line < other.line) return true;
+                else {
+                    if (line > other.line) return false;
+                    else {
+                        // filename & line equal
+                        if (lvalname < other.lvalname) return true;
+                        else {
+                            if (lvalname > other.lvalname) return false;
+                            else {
+                                // filename, line, and lvalname equal
+                                return (labels < other.labels);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return true;
     }
 } Dua;
 
 typedef struct attack_point_struct {
-    std::string filename;
+    uint32_t filename;
     Line line;
-    std::string type;
+    uint32_t info;
     std::string str() const {
         std::stringstream crap1;
-        crap1 << filename << "," << line << "," << type;
+        crap1 << ind2str[filename] << "," << line << "," << ind2str[info];
         return crap1.str();
     }
     bool operator<(const struct attack_point_struct &other) const {
-        return (str() < other.str());
+        if (filename < other.filename) return true;
+        else {
+            if (filename > other.filename) return false;
+            else {
+                // filenames equal
+                if (line < other.line) return true;
+                else {
+                    if (line > other.line) return false;
+                    else {
+                        // filename & line equal
+                        return (info < other.info);
+                    }
+                }
+            }
+        }
+        return true;
     }
 } AttackPoint;
 
 
+typedef std::pair < Dua, AttackPoint > Bug;
+
+
+Instr last_instr_count;
+
+void get_last_instr(char *pandalog_filename) {
+    printf ("Computing dua and ap stats\n");
+    pandalog_open(pandalog_filename, "r");
+    while (1) {
+        Panda__LogEntry *ple = pandalog_read_entry();
+        if (ple == NULL) break;
+        if (ple->instr != -1) {
+            last_instr_count = ple->instr;
+        }
+    }
+    printf ("%" PRIu64 "is last instr\n", last_instr_count);
+    pandalog_close();
+}
+    
+
+
+
 
 std::map <uint32_t, float> read_dead_data(char *pandalog_filename) {
+    printf ("Reading Dead data\n");
     pandalog_open(pandalog_filename, "r");
     std::map <uint32_t, float> dd;
     while (1) {
@@ -122,43 +187,46 @@ std::pair<uint32_t, uint32_t> update_range(uint32_t val, std::pair<uint32_t, uin
 }
 
 
+std::map<uint32_t,std::string> LoadIDB(std::string fn) {
+    std::string sfn = std::string(fn);
+    std::map<std::string,uint32_t> x = LoadDB(sfn);
+    return InvertDB(x);
+}
+
+
 
 int main (int argc, char **argv) {
 
-    char *inp = argv[1];
-    char *ddf = argv[2];
-    char *tqf = argv[3];
+    // panda log file
+    char *plf = argv[1];
 
-    struct stat st;
-    stat(inp, &st);
+    // maps from ind -> (filename, lvalname, attackpointname)
+    ind2str = LoadIDB(argv[2]);
+    printf ("%d strings in lavadb\n", (int) ind2str.size());
+    
+    get_last_instr(plf);
 
-    FILE *fp = fopen(inp, "r");
-    uint8_t *inp_buf = (uint8_t *) malloc(st.st_size);
-    int x = fread(inp_buf, 1, st.st_size, fp);    
-    printf ("x=%d\n", x);
-    fclose(fp);
-
-    float max_liveness = atof(argv[4]);
+    float max_liveness = atof(argv[3]);
     printf ("maximum liveness score of %.2f\n", max_liveness);
 
-    uint32_t max_card = atoi(argv[5]);
+    uint32_t max_card = atoi(argv[4]);
     printf ("max card of taint set returned by query = %d\n", max_card);
 
-    uint32_t max_tcn = atoi(argv[6]);
+    uint32_t max_tcn = atoi(argv[5]);
     printf ("max tcn for addr = %d\n", max_tcn);
 
-    uint32_t extent_len_min = atoi(argv[7]);
-    uint32_t extent_len_max = atoi(argv[8]);
+    uint32_t extent_len_min = atoi(argv[6]);
+    uint32_t extent_len_max = atoi(argv[7]);
     printf ("extent len %d..%d\n", extent_len_min, extent_len_max);
 
     // read in dead data (dd[label_num])
-    std::map <Label, float> dd = read_dead_data(ddf);
+    std::map <Label, float> dd = read_dead_data(plf);
     printf ("done reading in dead data\n");
 
     // read taint query results and figure out which 
     // label is both available and least dead
 
-    pandalog_open(tqf, "r");
+    pandalog_open(plf, "r");
     Panda__LogEntry *ple;
     std::map <Ptr, std::set<Label> > ptr_to_set;
     uint64_t ii=0;
@@ -179,16 +247,17 @@ int main (int argc, char **argv) {
     std::set < Dua > u_dua;
     std::set < AttackPoint > u_ap;
     std::set < std::pair < Dua, AttackPoint > > injectable_bugs;
-    uint32_t last_num_dua = 0;
-    uint32_t last_num_ap = 0;
-    
+    std::map < AttackPoint, uint32_t > last_num_dua;
+
+    std::vector <Instr> dua_instr;
+    std::vector <Instr> ap_instr;
+    uint32_t ap_info;
+
     while (1) {
         ii ++;
-        if ((ii % 10000) == 0) {
-            printf ("processed %lu of taint queries log.  %u dua.  %u ap.  %u injectable bugs\n", ii, (uint32_t) u_dua.size(), (uint32_t) u_ap.size(), (uint32_t) injectable_bugs.size());
-        }
-        if (injectable_bugs.size() > 5000) {
-            break;
+        if ((ii % 100000) == 0) {
+            printf ("processed %lu of taint queries log.  %u dua.  %u ap.  %u injectable bugs\n", 
+                    ii, (uint32_t) u_dua.size(), (uint32_t) u_ap.size(), (uint32_t) injectable_bugs.size());
         }
 
         ple = pandalog_read_entry();
@@ -218,6 +287,7 @@ int main (int argc, char **argv) {
                 // keeping track of dead, uncomplicated data extents we have
                 // encountered so far in the trace
                 u_dua.insert(dua);
+                dua_instr.push_back(hc_instr_count);
             }
             in_hc = false;
         }
@@ -252,7 +322,7 @@ int main (int argc, char **argv) {
               1. tcn is too high (indicating this extent is too computationally distant from input)
               2. cardinality is too high (indicating too compilcated fn of input?)
               3. any of the labels associated with a byte has too high a liveness score
-              */
+            */
             if ((tq->tcn > max_tcn) 
                 || (ptr_to_set[tq->ptr].size() > max_card)) {
                 current_ext_ok = false;
@@ -276,27 +346,26 @@ int main (int argc, char **argv) {
             in_ap = false;
             if (seen_first_tq) {
                 // done with current attack point
-                AttackPoint ap = { current_si.filename, current_si.linenum, "memcpy" };
-                uint32_t num_bugs = injectable_bugs.size();
-                // new attack point 
-                // OR number of dua has changed since last time we were here
-                // ok, this attack point can pair with *any* of the dead uncomplicated extents seen previously
-                for ( auto dua : u_dua ) {
-                    injectable_bugs.insert(std::make_pair(dua, ap));
+                AttackPoint ap = { current_si.filename, current_si.linenum, ap_info };
+                if ((u_ap.count(ap) == 0)
+                    || (last_num_dua[ap] != u_dua.size())) {
+                    // new attack point 
+                    // OR number of dua has changed since last time we were here
+                    // ok, this attack point can pair with *any* of the dead uncomplicated extents seen previously
+                    for ( auto dua : u_dua ) {
+                        Bug bug = std::make_pair(dua, ap);
+                        injectable_bugs.insert(bug);
+                    }
+                    u_ap.insert(ap);
+                    last_num_dua[ap] = u_dua.size();
                 }
-                u_ap.insert(ap);
-                last_num_dua = u_dua.size();
-                last_num_ap = u_ap.size();                
-                if (num_bugs != injectable_bugs.size()) {
-                    printf ("%d bugs added. |u_ap| = %u.  |u_dua| = %u\n",
-                            (int) injectable_bugs.size() - num_bugs,
-                            (uint32_t) u_ap.size(), (uint32_t) u_dua.size());
-                }
+                ap_instr.push_back(ap_instr_count);
             }
         }
         if (!in_ap && ple->attack_point) {
             in_ap = true;
             ap_instr_count = ple->instr;
+            ap_info = ple->attack_point->info;
         }                    
         
     }
@@ -339,6 +408,20 @@ int main (int argc, char **argv) {
     f.close();
     
     
+
+
+    f.open("lavastats.duas", std::ios::out);
+    for ( auto i : dua_instr ) {
+        float fr = ((float) i) / last_instr_count;
+        f << fr << "\n";
+    }
+    f.close();
+    f.open("lavastats.aps", std::ios::out);
+    for ( auto i : ap_instr ) {
+        float fr = ((float) i) / last_instr_count;
+        f << fr << "\n";
+    }
+    f.close();
     
 
 }
