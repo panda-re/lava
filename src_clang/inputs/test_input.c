@@ -12,8 +12,13 @@ int test(int, int);
 
 static int f5;
 
-void test1(char *buf)
+void test1(char *buf, int size)
 {
+    char temp = malloc(size);
+    if (!temp)
+        return;
+    void *loc = memcpy(temp, buf, size);
+
     printf("You entered: %s\n", buf);
     return;
 }
@@ -35,7 +40,7 @@ int main(int argc, char **argv) {
     
     memcpy(buf, argv[1], strlen(argv[1]));
     
-    test1(buf);
+    test1(buf, 16);
 
     test2(3, 5);
 
