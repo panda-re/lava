@@ -1,5 +1,4 @@
 #include "includes.h"
-
 #include "lavaDB.h"
 
 using namespace clang;
@@ -25,11 +24,16 @@ static cl::opt<std::string>
     "\"insert\" for bug insertion after dynamic data has been gathered."),
     cl::cat(LavaCategory),
     cl::Required);
-static cl::opt<std::string>
+/*  static cl::opt<std::string>
     LavaDynData("lava-dyn-data",
     cl::desc("Path to LAVA dynamic data (.duas, .bugs, .aps)"),
-    cl::cat(LavaCategory));
+    cl::cat(LavaCategory)); */
 
+static std::string globalName;
+static std::string varName;
+static std::stringstream declInsert; 
+static std::stringstream insert;
+static unsigned lineNumber;
 /*******************************************************************************
  * LavaTaintQuery
  ******************************************************************************/
@@ -86,6 +90,12 @@ public:
                 if ((*it)->getStorageClass() == SC_Register) continue;
 
                 fullLoc = (*it)->getASTContext().getFullLoc((*it)->getLocStart());
+                if (LavaAction == "insert") {
+                    if (fullLoc.getExpansionLineNumber() == lineNumber && (*it)->getNameAsString() == varName) {
+                        insert << globalName << " = " << varName << ";\n";
+                        declInsert << QualType::getAsString((*it)->getType().split()) << " " << globalName << ";\n";
+                    }
+                } 
                 query << "vm_lava_query_buffer(";
                 query << "&(" << (*it)->getNameAsString() << "), ";
                 query << "sizeof(" << (*it)->getNameAsString() << "), ";
@@ -145,7 +155,15 @@ public:
             Stmt **s = funcBody->body_begin();
             if (s) {
                 SourceLocation loc = (*s)->getLocStart();
-                rewriter.InsertText(loc, query.str(), true, true);
+                if (LavaAction == "query")
+                    rewriter.InsertText(loc, query.str(), true, true);
+                else if (LavaAction == "insert" && !insert.str().empty()) {
+                    rewriter.InsertText(loc, insert.str(), true, true); 
+                    if (!insert.str().empty()) {
+                        insert.str( std::string());
+                        insert.clear();
+                    }
+                } 
             }
         }
         return true;
@@ -183,6 +201,13 @@ public:
                     queries << src_filename << ", ";
                     queries << ast_node_id << ", ";
                     queries << src_linenum << ");\n";
+                    
+                    if (LavaAction == "insert") {
+                        if (src_linenum == lineNumber && ast_node_name == varName) {
+                            insert << globalName << " = " << varName << ";\n";
+                            declInsert << QualType::getAsString(field->getType().split()) << " " << varName << ";\n";
+                        }
+                    } 
                 }
             }
         }
@@ -279,6 +304,12 @@ public:
         query << GetStringID(lv_name) << ", ";
         query << src_linenum  << ");\n";
 
+        if (LavaAction == "insert") {
+            if (src_linenum == lineNumber && lv_name== varName) {
+                insert << globalName << " = " << varName << ";\n";
+                declInsert << QualType::getAsString(e->getType().split()) << " " << varName << ";\n";
+            }
+        } 
         // if lval is a struct or a ptr to a struct,
         // we want queries for all slots
         QualType qt = e->getType();
@@ -369,6 +400,7 @@ public:
                     || (fn_name.find("exec") != std::string::npos)
                     || (fn_name.find("popen") != std::string::npos))
                 {
+                    // If change memcpy
                     any_insertion = true;
                     errs() << "Found memcpy at " << src_filename << ":" << src_linenum << "\n";
                     before_part1 << "({";
@@ -434,6 +466,12 @@ public:
                         after_part2 << GetStringID(src_filename) << "," << GetStringID(retvalname) << ", " << src_linenum << ");";
                         // make sure to return retval 
                         after_part2 << " " << retvalname << " ; ";
+                        if (LavaAction == "insert") {
+                            if (src_linenum == lineNumber && retvalname == varName) {
+                                insert << globalName << " = " << varName << ";\n";
+                                declInsert << QualType::getAsString(rqt.split()) << " " << varName << ";\n";
+                            }
+                        }
                     }
                     after_part2 << "})";                    
                 }
@@ -443,15 +481,30 @@ public:
             }
         }
 
-        if (any_insertion) {
+        if (LavaAction == "query" && any_insertion) {
             std::stringstream before_part, after_part;
             before_part << before_part2.str() << before_part1.str();
             after_part << after_part1.str() << after_part2.str();
             rewriter.InsertText(e->getLocStart(), before_part.str(), true, true);        
             rewriter.InsertTextAfterToken(e->getLocEnd(), after_part.str());
         }
- 
-       return true;
+        if (LavaAction == "insert" && !insert.str().empty()) {
+            std::stringstream before_part, after_part;
+            before_part << before_part2.str() << "; \n";
+            after_part << insert.str();   
+            QualType rqt = e->getCallReturnType();
+            bool has_retval = CallExprHasRetVal(rqt);
+            std::string retvalname = RandVarName();
+            if ( has_retval ) {
+                after_part2 << " " << retvalname << " ; ";
+            }
+            after_part << "})";                    
+            rewriter.InsertText(e->getLocStart(), before_part.str(), true, true);        
+            rewriter.InsertTextAfterToken(e->getLocEnd(), after_part.str());
+            insert.str( std::string());
+            insert.clear();
+        }
+        return true;
     }
 
 private:
@@ -513,8 +566,12 @@ public:
 
         // Last thing: include the right file
         // Now using our separate LAVA version
-        rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
+        if (LavaAction == "query")
+            rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
             "#include \"pirate_mark_lava.h\"\n", true, true);
+        else if (LavaAction == "insert")
+            rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
+            declInsert.str());
         rewriter.overwriteChangedFiles();
         SaveDB(StringIDs, LavaDB);
     }
@@ -760,6 +817,19 @@ int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
 
+    if (LavaAction == "insert") {
+        std::cin >> globalName;
+        std::cin >> lineNumber; 
+        std::cin >> varName;
+    } else if (LavaAction != "query") {
+        errs() << "Invalid LAVA action specified. ";
+        errs() << "Must be 'query' or 'insert'\n";
+        exit(1);
+    }
+
+    return Tool.run(newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
+
+    /*
     if (LavaAction == "query"){
         return Tool.run(
             newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
@@ -772,6 +842,7 @@ int main(int argc, const char **argv) {
         errs() << "Invalid LAVA action specified.  ";
         errs() << "Must be 'query' or 'insert'\n";
         exit(1);
-    }
+    }*/
+
 }
 
