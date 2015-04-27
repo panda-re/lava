@@ -82,9 +82,6 @@ public:
         std::getline(is, temp, ',');
         std::getline(is, globalname);
         size = duabytes.size();
-    
-        std::cout << getDecl() << "\n";
-        std::cout << getMemcpy() << "\n";
     }
 
     std::string getDecl() const {
@@ -95,14 +92,14 @@ public:
 
     std::string getMemcpy() const {
         std::stringstream temp;
-        int offset = -1;
+        int offset = 0;
         int length = 0;
         int pos = 0;
         std::string targetptr = "&" + lvalname;
         for (auto l : duabytes) {
             if ((length + offset) < l) {
-                if (length) {
-                    temp << "memcpy(" << globalname << "+" << pos << ", ";
+                if (length > 0) {
+                    temp << "memcpy(" << globalname << "+" << pos << " , ";
                     temp << targetptr << "+" << offset << " , " << length;
                     temp << "); ";
                 }
@@ -223,7 +220,6 @@ public:
                 fullLoc = (*it)->getASTContext().getFullLoc((*it)->getLocStart());
                 if (LavaAction == InsertAction && LavaInsertMode == DuaMode) {
                     if (fullLoc.getExpansionLineNumber() == dua.line && (*it)->getNameAsString() == dua.lvalname) {
-                        std::cout << "HERE\n";
                         InsertLocFound = true;
                     }
                 } 
@@ -289,7 +285,6 @@ public:
                 if (LavaAction == QueryAction)
                     rewriter.InsertText(loc, query.str(), true, true);
                 else if (LavaAction == InsertAction && InsertLocFound) {
-                    std::cout << "HELLO: " << dua.getMemcpy() << "\n";
                     rewriter.InsertText(loc, dua.getMemcpy() + "\n", true, true); 
                     InsertLocFound = false;
                 } 
@@ -716,7 +711,6 @@ public:
             else
                 temp = atp.getDecl();
             rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()), temp + "\n");
-            std::cout << temp;
         }
         rewriter.overwriteChangedFiles();
         SaveDB(StringIDs, LavaDB);
@@ -748,7 +742,6 @@ private:
 int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
-    std::cout << InsertInfo << "\n";
     if (LavaAction == InsertAction) {
         if (InsertInfo == "") {
             errs() << "Injection info is needed.\n";
