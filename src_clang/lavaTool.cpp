@@ -1,8 +1,6 @@
 #include "includes.h"
 #include "lavaDB.h"
 
-#define LAVA_DUA 0
-#define LAVA_ATP 1
 using namespace clang;
 using namespace clang::driver;
 using namespace clang::tooling;
@@ -14,25 +12,29 @@ static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp(
     "\nTODO: Add descriptive help message.  "
     "Automatic clang stuff is ok for now.\n\n");
-
-static cl::opt<std::string>
-    LavaDB("lava-db",
-    cl::desc("Path to LAVA file/AST/line database"),
+enum action { QueryAction, InsertAction };
+static cl::opt<action> LavaAction("action", cl::desc("LAVA Action"),
+    cl::values(
+        clEnumValN(QueryAction, "query", "add taint query"),
+        clEnumValN(InsertAction, "inject", "inject bug"),
+        clEnumValEnd),
     cl::cat(LavaCategory),
     cl::Required);
-static cl::opt<std::string>
-    LavaAction("action",
-    cl::desc("LAVA action. \"query\" for taint query instrumentation, "
-    "\"insert\" for bug insertion after dynamic data has been gathered."),
+static cl::opt<std::string> LavaDB("lava-db",
+    cl::desc("Path to LAVA database"),
     cl::cat(LavaCategory),
-    cl::Required);
-/*  static cl::opt<std::string>
-    LavaDynData("lava-dyn-data",
-    cl::desc("Path to LAVA dynamic data (.duas, .bugs, .aps)"),
-    cl::cat(LavaCategory)); */
+    cl::init("."));
 
-static std::stringstream declInsert; 
-static std::stringstream insert;
+enum mode { DuaMode, AtpMode };
+static cl::opt<mode> LavaInsertMode("mode", cl::desc("Lava Bug Injection Mode"),
+    cl::values(
+        clEnumValN(DuaMode, "dua", "copy dead-uncomplicated-available data"),
+        clEnumValN(AtpMode, "atp", "transforms attack point"),
+        clEnumValEnd),
+    cl::cat(LavaCategory));
+static cl::opt<std::string> InsertInfo("info", cl::desc("Lava Injection Info (needed for Lava Injection Action)"), 
+    cl::cat(LavaCategory),
+    cl::init(""));
 
 // instruction count
 typedef uint64_t Instr;
@@ -45,7 +47,6 @@ typedef uint32_t Tcn;
 // ptr used to ref a label set
 typedef uint64_t Ptr;
 
-static int LavaInsertFlag;
 static bool InsertLocFound = false;
 
 class Dua {
@@ -144,7 +145,7 @@ public:
         std::getline(is, type, ',');
         std::getline(is, globalname, ',');
         std::getline(is, temp, ',');
-        size=std::stoi(temp);
+        size = std::stoi(temp);
         std::getline(is, temp);
     }
 
@@ -220,7 +221,7 @@ public:
                 if ((*it)->getStorageClass() == SC_Register) continue;
 
                 fullLoc = (*it)->getASTContext().getFullLoc((*it)->getLocStart());
-                if (LavaAction == "insert" && LavaInsertFlag == LAVA_DUA) {
+                if (LavaAction == InsertAction && LavaInsertMode == DuaMode) {
                     if (fullLoc.getExpansionLineNumber() == dua.line && (*it)->getNameAsString() == dua.lvalname) {
                         std::cout << "HERE\n";
                         InsertLocFound = true;
@@ -285,9 +286,9 @@ public:
             Stmt **s = funcBody->body_begin();
             if (s) {
                 SourceLocation loc = (*s)->getLocStart();
-                if (LavaAction == "query")
+                if (LavaAction == QueryAction)
                     rewriter.InsertText(loc, query.str(), true, true);
-                else if (LavaAction == "insert" && InsertLocFound) {
+                else if (LavaAction == InsertAction && InsertLocFound) {
                     std::cout << "HELLO: " << dua.getMemcpy() << "\n";
                     rewriter.InsertText(loc, dua.getMemcpy() + "\n", true, true); 
                     InsertLocFound = false;
@@ -330,7 +331,7 @@ public:
                     queries << ast_node_id << ", ";
                     queries << src_linenum << ");\n";
                     
-                    if (LavaAction == "insert" && LavaInsertFlag == LAVA_DUA) {
+                    if (LavaAction == InsertAction && LavaInsertMode == DuaMode) {
                         if (src_linenum == dua.line && ast_node_name == dua.lvalname) {
                             InsertLocFound = true;     
                         }
@@ -431,7 +432,7 @@ public:
         query << GetStringID(lv_name) << ", ";
         query << src_linenum  << ");\n";
 
-        if (LavaAction == "insert") {
+        if (LavaAction == InsertAction) {
             if (src_linenum == dua.line && lv_name == dua.lvalname) {
                 InsertLocFound = true;
             }
@@ -545,7 +546,7 @@ public:
                         after_part1 << "; " << retvalname;
                     }
                     after_part1 << ";})";
-                    if (LavaAction == "insert" && LavaInsertFlag == LAVA_ATP) {
+                    if (LavaAction == InsertAction && LavaInsertMode == AtpMode) {
                         if (src_linenum == atp.line && fn_name.find(atp.type) != std::string::npos) {
                             const Expr *first_arg = dyn_cast<Expr>(*(e->arg_begin()));
                             SourceLocation insertLoc = first_arg->getLocEnd();
@@ -607,7 +608,7 @@ public:
                         after_part2 << GetStringID(src_filename) << "," << GetStringID(retvalname) << ", " << src_linenum << ");";
                         // make sure to return retval 
                         after_part2 << " " << retvalname << " ; ";
-                        if (LavaAction == "insert" && LavaInsertFlag == LAVA_DUA) {
+                        if (LavaAction == InsertAction && LavaInsertMode == DuaMode) {
                             if (src_linenum == dua.line && retvalname == dua.lvalname) {
                                 InsertLocFound = true;
                             }
@@ -621,14 +622,14 @@ public:
             }
         }
 
-        if (LavaAction == "query" && any_insertion) {
+        if (LavaAction == QueryAction && any_insertion) {
             std::stringstream before_part, after_part;
             before_part << before_part2.str() << before_part1.str();
             after_part << after_part1.str() << after_part2.str();
             rewriter.InsertText(e->getLocStart(), before_part.str(), true, true);        
             rewriter.InsertTextAfterToken(e->getLocEnd(), after_part.str());
         }
-        if (LavaAction == "insert" && InsertLocFound) {
+        if (LavaAction == InsertAction && InsertLocFound) {
             std::stringstream before_part, after_part;
             before_part << before_part2.str() << "; \n";
             after_part << dua.getMemcpy(); 
@@ -705,12 +706,12 @@ public:
 
         // Last thing: include the right file
         // Now using our separate LAVA version
-        if (LavaAction == "query")
+        if (LavaAction == QueryAction)
             rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
             "#include \"pirate_mark_lava.h\"\n", true, true);
-        else if (LavaAction == "insert") {
+        else if (LavaAction == InsertAction) {
             std::string temp;
-            if (LavaInsertFlag == LAVA_DUA)
+            if (LavaInsertMode == DuaMode)
                 temp = dua.getDecl();
             else
                 temp = atp.getDecl();
@@ -747,23 +748,17 @@ private:
 int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
-
-    std::string input;
-    if (LavaAction == "insert") {
-        std::cin >> LavaInsertFlag;
-        if (LavaInsertFlag == LAVA_DUA) {
-            std::cin >> input;
-            dua = Dua(input);             
+    std::cout << InsertInfo << "\n";
+    if (LavaAction == InsertAction) {
+        if (InsertInfo == "") {
+            errs() << "Injection info is needed.\n";
+            exit(1);
         }
-        else if (LavaInsertFlag == LAVA_ATP) {
-            std::cin >> input;
-            atp = AttackPoint(input);
-        }
-    } else if (LavaAction != "query") {
-        errs() << "Invalid LAVA action specified. ";
-        errs() << "Must be 'query' or 'insert'\n";
-        exit(1);
-    }
+        if (LavaInsertMode == DuaMode) 
+            dua = Dua(InsertInfo);             
+        else if (LavaInsertMode == AtpMode) 
+            atp = AttackPoint(InsertInfo);
+    } 
 
     return Tool.run(newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
 }
