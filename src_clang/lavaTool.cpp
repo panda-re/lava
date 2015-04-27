@@ -715,7 +715,8 @@ public:
             rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()), temp + "\n");
         }
         rewriter.overwriteChangedFiles();
-        SaveDB(StringIDs, LavaDB);
+        if (LavaAction == QueryAction)
+            SaveDB(StringIDs, LavaDB);
     }
 
     std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
