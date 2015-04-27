@@ -546,7 +546,9 @@ public:
                             const Expr *first_arg = dyn_cast<Expr>(*(e->arg_begin()));
                             SourceLocation insertLoc = first_arg->getLocEnd();
                             std::stringstream temp;
-                            temp << "(" << atp.globalname << "==" << RandTargetValue() << ")*";
+                            //*((unsigned int *)dead_data1) == RandValue
+                            temp << "(" << "*((unsigned int*)" << atp.globalname << ")";
+                            temp << "==" << RandTargetValue() << ")*";
                             temp << atp.globalname << " + ";
                             rewriter.InsertText(insertLoc, temp.str(), true, true);
                         }
