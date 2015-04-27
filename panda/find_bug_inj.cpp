@@ -185,6 +185,11 @@ std::map<uint32_t,std::string> LoadIDB(std::string fn) {
 
 int main (int argc, char **argv) {
 
+    if (argc != 6) {
+        printf ("usage: fbi plog lavadb max_liveness max_card max_tcn\n");
+        exit (1);
+    }
+
     // panda log file
     char *plf = argv[1];
 
@@ -276,7 +281,7 @@ int main (int argc, char **argv) {
                 labels.clear();
                 c_max_liveness = 0.0;
                 c_max_tcn = c_max_card = 0;
-                printf ("query %d bytes -- ", current_tqh.len);
+                printf ("query %d bytes -- \n", current_tqh.len);
             }
         }
         if (ple->taint_query) {
@@ -290,24 +295,35 @@ int main (int argc, char **argv) {
               2. cardinality is low enough (indicating this byte not too compilcated a fn of inpu?)
               3. none of the labels in this byte's taint label set has a liveness score that is too high
             */            
-            bool current_byte_ok = true;
-            if ((tq->tcn <= max_tcn) 
-                &&  (ptr_to_set[tq->ptr].size() <= max_card)) {
-                if (tq->tcn > c_max_tcn) c_max_tcn = tq->tcn;
-                if (ptr_to_set[tq->ptr].size() > c_max_card) c_max_card = ptr_to_set[tq->ptr].size();
-                // check for too-live data on any label this byte derives form
+            // flag to track *why* we discarded a byte
+            uint32_t current_byte_not_ok = 0;
+            current_byte_not_ok |= 
+                ((tq->tcn > max_tcn) 
+                 | ((ptr_to_set[tq->ptr].size() > max_card) << 1));
+            if (current_byte_not_ok == 0) {
+                // potentially, this byte is ok
                 Ptr p = ple->taint_query->ptr;
+                assert (ptr_to_set.count(p) != 0);
+                assert (ptr_to_set[p].size() != 0);
+                // check for too-live data on any label this byte derives form
                 for ( Label l : ptr_to_set[p] ) {
-                    if (dd[l] > max_liveness) {
-                        current_byte_ok = false;
-                        break;
-                    }
-                    // collect set of labels for the entire extent
+                    // if liveness too high, discard this byte
+                    current_byte_not_ok |= ((dd[l] > max_liveness) << 2);
+                    if (current_byte_not_ok != 0) break;
+                    // collect set of labels on ok bytes for the entire extent
                     if (dd[l] > c_max_liveness) c_max_liveness = dd[l];
                     labels.insert(l);       
                 }
-            }            
-            if (current_byte_ok) {
+            }
+            if (current_byte_not_ok) {
+                // we are discarding this byte
+                printf ("discarding byte -- flag=0x%x\n", current_byte_not_ok);
+            }
+            else {
+                // byte is ok to retain.
+                // keep track of highest tcn and card for ok bytes
+                if (tq->tcn > c_max_tcn) c_max_tcn = tq->tcn;
+                if (ptr_to_set[tq->ptr].size() > c_max_card) c_max_card = ptr_to_set[tq->ptr].size();
                 // add this byte to the list of ok bytes
                 ok_bytes.insert(offset);
             }
@@ -315,7 +331,7 @@ int main (int argc, char **argv) {
         if (in_hc && ple->instr != hc_instr_count) {
             // done with current hypercall.  
             if ((ok_bytes.size() >= 1) && (labels.size() >= 1)) {
-                printf ("%d ok\n", ok_bytes.size());
+                printf ("%d ok\n", (int) ok_bytes.size());
                 // at least one byte on this extent is ok
                 seen_first_tq = true;
                 // great -- extent we just looked at was deemed acceptable
@@ -327,7 +343,7 @@ int main (int argc, char **argv) {
                 dua_instr.push_back(hc_instr_count);
             }
             else {
-                printf ("discarded\n");
+                printf ("discarded %d ok bytes  %d labels\n", (int) ok_bytes.size(), (int) labels.size());
             }
             in_hc = false;
         }
