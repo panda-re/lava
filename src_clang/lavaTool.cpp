@@ -81,11 +81,15 @@ public:
         std::getline(is, temp, ',');
         std::getline(is, globalname);
         size = duabytes.size();
+    
+        std::cout << getDecl() << "\n";
+        std::cout << getMemcpy() << "\n";
     }
 
     std::string getDecl() const {
         std::stringstream temp;
-        temp << "char " << globalname << " [" << size << "];"; 
+        temp << "char " << globalname << "[" << size << "];"; 
+        return temp.str();
     }
 
     std::string getMemcpy() const {
@@ -95,15 +99,21 @@ public:
         int pos = 0;
         std::string targetptr = "&" + lvalname;
         for (auto l : duabytes) {
-            if (length + offset < l) {
-                if (length > 0) {
+            if ((length + offset) < l) {
+                if (length) {
                     temp << "memcpy(" << globalname << "+" << pos << ", ";
                     temp << targetptr << "+" << offset << " , " << length;
                     temp << "); ";
                 }
                 offset = l; pos += length; length = 1;
+            } else {
+                ++length;
             }
         }
+        temp << "memcpy(" << globalname << "+" << pos << ", ";
+        temp << targetptr << "+" << offset << " , " << length;
+        temp << "); ";
+        return temp.str();
     }
 
     bool operator<(Dua &other) const {
@@ -212,6 +222,7 @@ public:
                 fullLoc = (*it)->getASTContext().getFullLoc((*it)->getLocStart());
                 if (LavaAction == "insert" && LavaInsertFlag == LAVA_DUA) {
                     if (fullLoc.getExpansionLineNumber() == dua.line && (*it)->getNameAsString() == dua.lvalname) {
+                        std::cout << "HERE\n";
                         InsertLocFound = true;
                     }
                 } 
@@ -277,6 +288,7 @@ public:
                 if (LavaAction == "query")
                     rewriter.InsertText(loc, query.str(), true, true);
                 else if (LavaAction == "insert" && InsertLocFound) {
+                    std::cout << "HELLO: " << dua.getMemcpy() << "\n";
                     rewriter.InsertText(loc, dua.getMemcpy() + "\n", true, true); 
                     InsertLocFound = false;
                 } 
@@ -702,7 +714,7 @@ public:
                 temp = dua.getDecl();
             else
                 temp = atp.getDecl();
-            rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()), temp);
+            rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()), temp + "\n");
             std::cout << temp;
         }
         rewriter.overwriteChangedFiles();
