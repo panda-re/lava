@@ -1,5 +1,4 @@
 #include "includes.h"
-
 #include "lavaDB.h"
 
 using namespace clang;
@@ -13,12 +12,157 @@ static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp(
     "\nTODO: Add descriptive help message.  "
     "Automatic clang stuff is ok for now.\n\n");
-
-static cl::opt<std::string>
-    LavaDB("lava-db",
-    cl::desc("Path to LAVA database"),
+enum action { QueryAction, InsertAction };
+static cl::opt<action> LavaAction("action", cl::desc("LAVA Action"),
+    cl::values(
+        clEnumValN(QueryAction, "query", "add taint query"),
+        clEnumValN(InsertAction, "inject", "inject bug"),
+        clEnumValEnd),
     cl::cat(LavaCategory),
     cl::Required);
+static cl::opt<std::string> LavaDB("lava-db",
+    cl::desc("Path to LAVA database"),
+    cl::cat(LavaCategory),
+    cl::init("."));
+
+enum mode { DuaMode, AtpMode };
+static cl::opt<mode> LavaInsertMode("mode", cl::desc("Lava Bug Injection Mode"),
+    cl::values(
+        clEnumValN(DuaMode, "dua", "copy dead-uncomplicated-available data"),
+        clEnumValN(AtpMode, "atp", "transforms attack point"),
+        clEnumValEnd),
+    cl::cat(LavaCategory));
+static cl::opt<std::string> InsertInfo("info", cl::desc("Lava Injection Info (needed for Lava Injection Action)"), 
+    cl::cat(LavaCategory),
+    cl::init(""));
+
+// instruction count
+typedef uint64_t Instr;
+// taint label (input byte #)
+typedef uint32_t Label;
+// line number
+typedef uint32_t Line;
+// Taint Compute Number
+typedef uint32_t Tcn;
+// ptr used to ref a label set
+typedef uint64_t Ptr;
+
+static bool InsertLocFound = false;
+
+class Dua {
+std::string str() const {
+    std::stringstream temp;
+    temp << line << "," << lvalname << ",[";
+    for ( auto l : duabytes) {
+        temp << l << ",";
+    }
+    temp << "]";
+    return temp.str();
+}
+
+public:
+    Line line;
+    std::string lvalname;
+    std::set < Label > duabytes;
+    int size;
+    std::string globalname;
+    
+    Dua() {}
+    Dua(std::string &input) {
+        std::stringstream is(input);
+        std::string temp;
+        std::getline(is, temp, ',');
+        line = std::stoul(temp);
+        std::getline(is, lvalname, ',');
+        assert(is.get() == '[');
+        while (is.peek() != ']') {
+            std::getline(is, temp, ',');
+            duabytes.insert(std::stoul(temp));
+        }
+        std::getline(is, temp, ',');
+        std::getline(is, globalname);
+        size = duabytes.size();
+    }
+
+    std::string getDecl() const {
+        std::stringstream temp;
+        temp << "char " << globalname << "[" << size << "];"; 
+        return temp.str();
+    }
+
+    std::string getMemcpy() const {
+        std::stringstream temp;
+        int offset = 0;
+        int length = 0;
+        int pos = 0;
+        std::string targetptr = "&" + lvalname;
+        for (auto l : duabytes) {
+            if ((length + offset) < l) {
+                if (length > 0) {
+                    temp << "memcpy(" << globalname << "+" << pos << " , ";
+                    temp << targetptr << "+" << offset << " , " << length;
+                    temp << "); ";
+                }
+                offset = l; pos += length; length = 1;
+            } else {
+                ++length;
+            }
+        }
+        temp << "memcpy(" << globalname << "+" << pos << ", ";
+        temp << targetptr << "+" << offset << " , " << length;
+        temp << "); ";
+        return temp.str();
+    }
+
+    bool operator<(Dua &other) const {
+        return (str() < other.str());
+    }
+};
+
+class AttackPoint {
+    std::string str() const {
+        std::stringstream temp;
+        temp << type << "," << globalname << "," << type << "," << size; 
+        return temp.str();
+    }
+
+public:
+    Line line;
+    std::string type;
+    std::string globalname;;
+    unsigned size;
+
+    AttackPoint() {}
+
+    AttackPoint(std::string &input) {
+        std::stringstream is(input);
+        std::string temp;
+        std::getline(is, temp, ',');
+        line = std::stoul(temp);
+        std::getline(is, type, ',');
+        std::getline(is, globalname, ',');
+        std::getline(is, temp, ',');
+        size = std::stoi(temp);
+        std::getline(is, temp);
+    }
+
+    bool operator<(AttackPoint &other) const {
+        return (str() < other.str());
+    }
+
+    std::string getDecl() const {
+        std::stringstream temp;
+        temp << "extern " << "char " << globalname << "[" << size << "];\n";
+        return temp.str();
+    }
+};
+
+static Dua dua;
+static AttackPoint atp;
+
+/*******************************************************************************
+ * LavaTaintQuery
+ ******************************************************************************/
 
 class LavaTaintQueryASTVisitor :
     public RecursiveASTVisitor<LavaTaintQueryASTVisitor> {
@@ -64,7 +208,9 @@ public:
             SourceManager &sm = rewriter.getSourceMgr();
             DeclarationName n = f->getNameInfo().getName();
             std::stringstream query;
+            std::stringstream insert;
             FullSourceLoc fullLoc;
+            
             query << "// Check if arguments of "
                 << n.getAsString() << " are tainted\n";
             for (auto it = f->param_begin(); it != f->param_end(); ++it) {
@@ -72,6 +218,11 @@ public:
                 if ((*it)->getStorageClass() == SC_Register) continue;
 
                 fullLoc = (*it)->getASTContext().getFullLoc((*it)->getLocStart());
+                if (LavaAction == InsertAction && LavaInsertMode == DuaMode) {
+                    if (fullLoc.getExpansionLineNumber() == dua.line && (*it)->getNameAsString() == dua.lvalname) {
+                        InsertLocFound = true;
+                    }
+                } 
                 query << "vm_lava_query_buffer(";
                 query << "&(" << (*it)->getNameAsString() << "), ";
                 query << "sizeof(" << (*it)->getNameAsString() << "), ";
@@ -131,7 +282,12 @@ public:
             Stmt **s = funcBody->body_begin();
             if (s) {
                 SourceLocation loc = (*s)->getLocStart();
-                rewriter.InsertText(loc, query.str(), true, true);
+                if (LavaAction == QueryAction)
+                    rewriter.InsertText(loc, query.str(), true, true);
+                else if (LavaAction == InsertAction && InsertLocFound) {
+                    rewriter.InsertText(loc, dua.getMemcpy() + "\n", true, true); 
+                    InsertLocFound = false;
+                } 
             }
         }
         return true;
@@ -169,6 +325,12 @@ public:
                     queries << src_filename << ", ";
                     queries << ast_node_id << ", ";
                     queries << src_linenum << ");\n";
+                    
+                    if (LavaAction == InsertAction && LavaInsertMode == DuaMode) {
+                        if (src_linenum == dua.line && ast_node_name == dua.lvalname) {
+                            InsertLocFound = true;     
+                        }
+                    } 
                 }
             }
         }
@@ -265,6 +427,11 @@ public:
         query << GetStringID(lv_name) << ", ";
         query << src_linenum  << ");\n";
 
+        if (LavaAction == InsertAction) {
+            if (src_linenum == dua.line && lv_name == dua.lvalname) {
+                InsertLocFound = true;
+            }
+        } 
         // if lval is a struct or a ptr to a struct,
         // we want queries for all slots
         QualType qt = e->getType();
@@ -311,6 +478,11 @@ public:
         rvs << rand();
         return rvs.str();
     }
+    std::string RandTargetValue() {
+        std::stringstream tv;
+        tv << "0x12345678";
+        return tv.str();
+    }
 
     // returns true if this call expr has a retval we need to catch
     bool CallExprHasRetVal(QualType &rqt) {
@@ -355,6 +527,7 @@ public:
                     || (fn_name.find("exec") != std::string::npos)
                     || (fn_name.find("popen") != std::string::npos))
                 {
+                    // If change memcpy
                     any_insertion = true;
                     errs() << "Found memcpy at " << src_filename << ":" << src_linenum << "\n";
                     before_part1 << "({";
@@ -368,6 +541,18 @@ public:
                         after_part1 << "; " << retvalname;
                     }
                     after_part1 << ";})";
+                    if (LavaAction == InsertAction && LavaInsertMode == AtpMode) {
+                        if (src_linenum == atp.line && fn_name.find(atp.type) != std::string::npos) {
+                            const Expr *first_arg = dyn_cast<Expr>(*(e->arg_begin()));
+                            SourceLocation insertLoc = first_arg->getLocEnd();
+                            std::stringstream temp;
+                            //*((unsigned int *)dead_data1) == RandValue
+                            temp << "(" << "*((unsigned int*)" << atp.globalname << ")";
+                            temp << "==" << RandTargetValue() << ")*";
+                            temp << atp.globalname << " + ";
+                            rewriter.InsertText(insertLoc, temp.str(), true, true);
+                        }
+                    }
                 }	    
             }
         }
@@ -420,6 +605,11 @@ public:
                         after_part2 << GetStringID(src_filename) << "," << GetStringID(retvalname) << ", " << src_linenum << ");";
                         // make sure to return retval 
                         after_part2 << " " << retvalname << " ; ";
+                        if (LavaAction == InsertAction && LavaInsertMode == DuaMode) {
+                            if (src_linenum == dua.line && retvalname == dua.lvalname) {
+                                InsertLocFound = true;
+                            }
+                        }
                     }
                     after_part2 << "})";                    
                 }
@@ -429,15 +619,29 @@ public:
             }
         }
 
-        if (any_insertion) {
+        if (LavaAction == QueryAction && any_insertion) {
             std::stringstream before_part, after_part;
             before_part << before_part2.str() << before_part1.str();
             after_part << after_part1.str() << after_part2.str();
             rewriter.InsertText(e->getLocStart(), before_part.str(), true, true);        
             rewriter.InsertTextAfterToken(e->getLocEnd(), after_part.str());
         }
- 
-       return true;
+        if (LavaAction == InsertAction && InsertLocFound) {
+            std::stringstream before_part, after_part;
+            before_part << before_part2.str() << "; \n";
+            after_part << dua.getMemcpy(); 
+            QualType rqt = e->getCallReturnType();
+            bool has_retval = CallExprHasRetVal(rqt);
+            std::string retvalname = RandVarName(); 
+            if ( has_retval ) {
+                after_part2 << " " << retvalname << " ; ";
+            }
+            after_part << "})";                    
+            rewriter.InsertText(e->getLocStart(), before_part.str(), true, true);        
+            rewriter.InsertTextAfterToken(e->getLocEnd(), after_part.str());
+            InsertLocFound = false;
+        }
+        return true;
     }
 
 private:
@@ -499,10 +703,20 @@ public:
 
         // Last thing: include the right file
         // Now using our separate LAVA version
-        rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
+        if (LavaAction == QueryAction)
+            rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
             "#include \"pirate_mark_lava.h\"\n", true, true);
+        else if (LavaAction == InsertAction) {
+            std::string temp;
+            if (LavaInsertMode == DuaMode)
+                temp = dua.getDecl();
+            else
+                temp = atp.getDecl();
+            rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()), temp + "\n");
+        }
         rewriter.overwriteChangedFiles();
-        SaveDB(StringIDs, LavaDB);
+        if (LavaAction == QueryAction)
+            SaveDB(StringIDs, LavaDB);
     }
 
     std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
@@ -527,11 +741,21 @@ private:
     Rewriter rewriter;
 };
 
+
 int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
+    if (LavaAction == InsertAction) {
+        if (InsertInfo == "") {
+            errs() << "Injection info is needed.\n";
+            exit(1);
+        }
+        if (LavaInsertMode == DuaMode) 
+            dua = Dua(InsertInfo);             
+        else if (LavaInsertMode == AtpMode) 
+            atp = AttackPoint(InsertInfo);
+    } 
 
-    return Tool.run(
-        newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
+    return Tool.run(newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
 }
 
