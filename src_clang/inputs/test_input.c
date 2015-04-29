@@ -12,7 +12,7 @@ int test(int, int);
 
 static int f5;
 
-void test1(char *buf, int size)
+void test1(char *buf, int size) // let's pretend size is a dua
 {
     char temp = malloc(size);
     if (!temp)
