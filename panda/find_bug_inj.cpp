@@ -15,12 +15,19 @@
 
 #define __STDC_FORMAT_MACROS
 
+
+extern "C" {
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <assert.h>
+
+#include "/usr/include/postgresql/libpq-fe.h"
+
+}
 
 #include <iostream>
 #include <fstream>
@@ -28,8 +35,6 @@
 #include <set>
 #include <vector>
 #include <sstream>
-
-#include <assert.h>
 
 #include "pandalog.h"
 #include "../src_clang/lavaDB.h"
@@ -48,6 +53,8 @@ typedef uint32_t Tcn;
 typedef uint64_t Ptr;
 
 
+std::string input_file;
+int input_file_id;
 std::map<uint32_t,std::string> ind2str;
 
 
@@ -62,11 +69,17 @@ typedef struct dua_struct {
     uint32_t max_card;
     std::string str() const {
         std::stringstream crap1;
-        crap1 << ind2str[filename] << "," << line << "," << ind2str[lvalname] << ",[";
+        crap1 << "'" << ind2str[filename] << "'" << ","
+              << line << ","  
+              << "'" << ind2str[lvalname] << "'" << ",";
+        // offsets within the input file that taint dua
+        crap1 << "'{";
         for ( auto l : labels ) crap1 << l << ",";
-        crap1 << "][";
+        crap1 << "'}" << ",";
+        // offsets within the lval that are duas
+        crap1 << "'{";
         for ( auto b : bytes ) crap1 << b << ",";
-        crap1 << "]";
+        crap1 << "'}" << ",";
         crap1 << "," << max_liveness << "," << max_tcn << "," << max_card ;
         return crap1.str();
     }    
@@ -182,11 +195,187 @@ std::map<uint32_t,std::string> LoadIDB(std::string fn) {
 }
 
 
+static void
+exit_nicely(PGconn *conn)
+{
+    PQfinish(conn);
+    exit(1);
+}
+
+
+
+
+PGresult *pq_exec(PGconn *conn, std::string comm) {
+    const char * cmd = (const char *) comm.c_str();
+    //    printf ("sql comm=[%s]\n", cmd);
+    PGresult *res = PQexec(conn, cmd);
+    //    printf ("res = %d\n", PQresultStatus(res));
+    return res;
+}
+
+PGresult *pq_exec_ss(PGconn *conn, std::stringstream &comm) {
+    std::string comms = comm.str();
+    return pq_exec(conn, comms);
+}
+
+
+void spit_res(PGresult *res) {
+    int i,j;   
+    /* first, print out the attribute names */
+    int nFields = PQnfields(res);
+    for (i = 0; i < nFields; i++)
+        printf("%-15s", PQfname(res, i));
+    printf("\n\n");    
+    /* next, print out the rows */
+    for (i = 0; i < PQntuples(res); i++)
+    {
+        for (j = 0; j < nFields; j++)
+            printf("%-15s", PQgetvalue(res, i, j));
+        printf("\n");
+    }
+}
+
+
+int get_num_rows(PGconn *conn, std::string table) {
+    std::string sql = "select count(*) from " + table + ";";
+    PGresult *res = pq_exec(conn, (const char *) sql.c_str());
+    assert (PQresultStatus(res) == PGRES_TUPLES_OK);
+    uint32_t n = atoi(PQgetvalue(res, 0, 0));
+    PQclear(res);
+    return n;
+}
+
+
+
+// add this string to this table and retrieve 
+// the id it got (serial row #)
+// column name is "nm"
+int addstr(PGconn *conn, std::string table, std::string str) {
+    std::stringstream sql;
+    // is str already there?
+    sql << "SELECT * FROM " << table << " where nm='" << str << "';";
+    PGresult *res = pq_exec_ss(conn, sql);
+    if (PQntuples(res) > 0 ) {
+        PQclear(res);
+        //        printf ("its already there\n");
+    }
+    else {
+        PQclear(res);
+        // it isnt here.  first get number of rows in that table. that's the id
+        int num_rows = get_num_rows(conn, table);
+        //        printf ("num_rows = %d\n", num_rows);
+        // now add id,str
+        std::stringstream sql;
+        sql << "INSERT INTO " << table << " (id,nm) VALUES (" << num_rows << ",'" << str << "');";                                                        
+        //        printf ("sql = [%s]\n", (char *) sql.str().c_str());        
+        res = pq_exec_ss(conn, sql);
+        //        printf ("status = %d\n", PQresultStatus(res));
+    }
+    // return id assigned to str
+    sql.str("");
+    sql << "SELECT * FROM " << table << " where nm='" << str << "';";
+    //    printf ("sql = [%s]\n", (char *) sql.str().c_str());
+    res = pq_exec_ss(conn, sql);
+    //    printf ("status = %d\n", PQresultStatus(res));
+    uint32_t n = atoi(PQgetvalue(res, 0, 0));        
+    PQclear(res);
+    return n;
+}
+
+
+
+std::string iset_str(std::set<uint32_t> &iset) {
+    std::stringstream ss;
+    uint32_t n = iset.size();
+    uint32_t i=0;
+    for (auto el : iset) {
+        i++;
+        ss << el;
+        if (i != n) ss << ",";
+    }
+    return ss.str();
+}
+
+
+std::map<Dua,int> dua_id;
+std::map<AttackPoint,int> ap_id;
+
+void postgresql_dump_duas(PGconn *conn, std::set<Dua> &duas) {
+    printf ("dumping duas to postgres\n");
+    for ( auto dua : duas ) {
+        PGresult *res;
+        // add source filename to sourcefile table
+        std::string filename = ind2str[dua.filename];
+        int filename_id = addstr(conn, "sourcefile", filename);
+        std::string lvalname = ind2str[dua.lvalname];
+        int lval_id = addstr(conn, "lval", lvalname);
+        int num_rows = get_num_rows(conn, "dua");
+        std::stringstream sql;
+        sql << "INSERT INTO dua (id,filename,line,lval,bytes,offsets,input_file,max_liveness,max_tcn,max_card,icount,scount) VALUES ("
+            << num_rows << "," 
+            << filename_id << ","
+            << dua.line << ","  
+            << lval_id << ","
+            // offsets within the input file that taint dua
+             << "'{" << iset_str(dua.labels) << "}'" << ","
+            // offsets within the lval that are duas
+            << "'{"  << iset_str(dua.bytes) << "}'" << ","
+            << input_file_id << ","
+            << dua.max_liveness << "," << dua.max_tcn << "," << dua.max_card 
+            << ",0,0);";
+        res = pq_exec_ss(conn,sql);
+        dua_id[dua] = num_rows;
+        assert (PQresultStatus(res) == PGRES_COMMAND_OK);
+        PQclear(res);
+    }
+}
+   
+
+void postgresql_dump_aps(PGconn *conn, std::set<AttackPoint> &aps) {
+    printf ("dumping aps to postgres\n");
+    for ( auto ap : aps ) {
+        PGresult *res;
+        // add source filename to sourcefile table
+        std::string filename = ind2str[ap.filename];
+        int filename_id = addstr(conn, "sourcefile", filename);
+        std::string info = ind2str[ap.info];
+        int typ_id = addstr(conn, "atptype", info);
+        int num_rows = get_num_rows(conn, "atp");
+        std::stringstream sql;
+        sql << "INSERT INTO atp (id,filename,line,typ,input_file,icount,scount) VALUES ("
+            << num_rows << ","
+            << filename_id << ","
+            << ap.line << ","
+            << typ_id << ","
+            << input_file_id << ","
+            << "0,0);";
+        res = pq_exec_ss(conn,sql);
+        ap_id[ap] = num_rows;
+        assert (PQresultStatus(res) == PGRES_COMMAND_OK);
+        PQclear(res);
+    }
+    
+}
+
+void postgresql_dump_bugs(PGconn *conn, std::set<std::pair<Dua,AttackPoint>> &injectable_bugs) {
+    printf ("dumping bugs to postgres\n");
+    for ( auto bug : injectable_bugs ) {
+        Dua dua = bug.first;
+        AttackPoint ap = bug.second;
+        std::stringstream sql;
+        int num_rows = get_num_rows(conn, "bug");
+        sql << "INSERT INTO bug (id,dua,ap) VALUES (" << num_rows << "," << dua_id[dua] << "," << ap_id[ap] << ");";
+        PGresult *res = pq_exec_ss(conn,sql);
+        assert (PQresultStatus(res) == PGRES_COMMAND_OK);
+        PQclear(res);
+    }
+}
+
 
 int main (int argc, char **argv) {
 
-    if (argc != 6) {
-        printf ("usage: fbi plog lavadb max_liveness max_card max_tcn\n");
+    if (argc != 7) {
+        printf ("usage: fbi plog lavadb max_liveness max_card max_tcn input_file\n");
         exit (1);
     }
 
@@ -207,6 +396,8 @@ int main (int argc, char **argv) {
 
     uint32_t max_tcn = atoi(argv[5]);
     printf ("max tcn for addr = %d\n", max_tcn);
+
+    input_file = std::string(argv[6]);
 
     // read in dead data (dd[label_num])
     std::map <Label, float> dd = read_dead_data(plf);
@@ -281,7 +472,7 @@ int main (int argc, char **argv) {
                 labels.clear();
                 c_max_liveness = 0.0;
                 c_max_tcn = c_max_card = 0;
-                printf ("query %d bytes -- \n", current_tqh.len);
+                //                printf ("query %d bytes -- \n", current_tqh.len);
             }
         }
         if (ple->taint_query) {
@@ -317,7 +508,7 @@ int main (int argc, char **argv) {
             }
             if (current_byte_not_ok) {
                 // we are discarding this byte
-                printf ("discarding byte -- flag=0x%x\n", current_byte_not_ok);
+                //                printf ("discarding byte -- flag=0x%x\n", current_byte_not_ok);
             }
             else {
                 // byte is ok to retain.
@@ -331,7 +522,7 @@ int main (int argc, char **argv) {
         if (in_hc && ple->instr != hc_instr_count) {
             // done with current hypercall.  
             if ((ok_bytes.size() >= 1) && (labels.size() >= 1)) {
-                printf ("%d ok\n", (int) ok_bytes.size());
+                //                printf ("%d ok\n", (int) ok_bytes.size());
                 // at least one byte on this extent is ok
                 seen_first_tq = true;
                 // great -- extent we just looked at was deemed acceptable
@@ -343,7 +534,7 @@ int main (int argc, char **argv) {
                 dua_instr.push_back(hc_instr_count);
             }
             else {
-                printf ("discarded %d ok bytes  %d labels\n", (int) ok_bytes.size(), (int) labels.size());
+                //                printf ("discarded %d ok bytes  %d labels\n", (int) ok_bytes.size(), (int) labels.size());
             }
             in_hc = false;
         }
@@ -376,57 +567,36 @@ int main (int argc, char **argv) {
     }
     pandalog_close();
 
+
     printf ("%u queried extents\n", num_queried_extents);
 
     printf ("%u dead-uncomplicated-available-data.  %u attack-points\n",
             (uint32_t) u_dua.size(), (uint32_t) u_ap.size());
 
     printf ("%u injectable bugs\n", (uint32_t) injectable_bugs.size());
-    
-    
-    std::map < Dua, uint32_t > dua_ind;
-    uint32_t i = 0;
-    std::ofstream f;
-    f.open("lava.duas", std::ios::out);
-    for ( auto dua : u_dua ) {
-        dua_ind[dua] = i;
-        f << dua.str() << "\n";
-        i ++;
+
+    std::string dbhostaddr = "18.126.0.46";
+    std::string dbname = "tshark";
+
+    // write duas to postgres
+    std::string conninfo = "hostaddr=" + dbhostaddr + " dbname=" + dbname + " user=lava password=lava";
+    PGresult   *res;
+
+    PGconn *conn = PQconnectdb ((const char *) conninfo.c_str());
+    if (PQstatus(conn) != CONNECTION_OK) {
+        fprintf(stderr, "Connection to database failed: %s",
+                PQerrorMessage(conn));
+        exit_nicely(conn);
     }
-    f.close();
-    std::map < AttackPoint, uint32_t > ap_ind;
-    i=0;
-    f.open("lava.aps", std::ios::out);
-    i = 0;
-    for ( auto ap : u_ap ) {
-        ap_ind[ap] = i;
-        f << ap.str() << "\n";
-        i ++;
-    }
-    f.close();
-    f.open("lava.bugs", std::ios::out);
-    for ( auto bug : injectable_bugs ) {
-        Dua dua = bug.first;
-        AttackPoint ap = bug.second;
-        f << dua_ind[dua] << "," << ap_ind[ap] << "\n";
-    }
-    f.close();
-    
-    
+    input_file_id = addstr(conn, "inputfile", input_file);
 
 
-    f.open("lavastats.duas", std::ios::out);
-    for ( auto i : dua_instr ) {
-        float fr = ((float) i) / last_instr_count;
-        f << fr << "\n";
-    }
-    f.close();
-    f.open("lavastats.aps", std::ios::out);
-    for ( auto i : ap_instr ) {
-        float fr = ((float) i) / last_instr_count;
-        f << fr << "\n";
-    }
-    f.close();
-    
-
+    postgresql_dump_duas(conn,u_dua);
+    postgresql_dump_aps(conn,u_ap);
+    postgresql_dump_bugs(conn,injectable_bugs);
+    PQfinish(conn);
 }
+
+
+
+
