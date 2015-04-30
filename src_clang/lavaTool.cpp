@@ -691,7 +691,7 @@ private:
  * as both a libTooling tool, and a Clang plugin.  In the libTooling case, the
  * plugin-specific methods just aren't utilized.
  */
-class LavaTaintQueryFrontendAction : public PluginASTAction {
+class LavaTaintQueryFrontendAction : public ASTFrontendAction {
 public:
     LavaTaintQueryFrontendAction() {}
   
@@ -728,13 +728,6 @@ public:
 
         return make_unique<LavaTaintQueryASTConsumer>(rewriter,StringIDs);
     }
-
-    /**************************************************************************/
-    // Plugin-specific functions
-    bool ParseArgs(const CompilerInstance &CI,
-            const std::vector<std::string>& args) override {}
-    
-    void PrintHelp(llvm::raw_ostream& ros) {}
 
 private:
     std::map<std::string,uint32_t> StringIDs;
