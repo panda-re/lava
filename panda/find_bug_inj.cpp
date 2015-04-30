@@ -39,86 +39,9 @@ extern "C" {
 #include "pandalog.h"
 #include "../src_clang/lavaDB.h"
 
-// byte offset within extent queried for taint
-typedef uint32_t Offset;
-// instruction count
-typedef uint64_t Instr;
-// taint label (input byte #)
-typedef uint32_t Label;
-// line number
-typedef uint32_t Line;
-// Taint Compute Number
-typedef uint32_t Tcn;
-// ptr used to ref a label set
-typedef uint64_t Ptr;
-
-
 std::string input_file;
 int input_file_id;
 std::map<uint32_t,std::string> ind2str;
-
-
-typedef struct dua_struct {
-    uint32_t filename;
-    Line line;
-    uint32_t lvalname;
-    std::set < Label > labels;   
-    std::set < Offset > bytes;
-    float max_liveness;
-    uint32_t max_tcn;
-    uint32_t max_card;
-    std::string str() const {
-        std::stringstream crap1;
-        crap1 << "'" << ind2str[filename] << "'" << ","
-              << line << ","  
-              << "'" << ind2str[lvalname] << "'" << ",";
-        // offsets within the input file that taint dua
-        crap1 << "'{";
-        for ( auto l : labels ) crap1 << l << ",";
-        crap1 << "'}" << ",";
-        // offsets within the lval that are duas
-        crap1 << "'{";
-        for ( auto b : bytes ) crap1 << b << ",";
-        crap1 << "'}" << ",";
-        crap1 << "," << max_liveness << "," << max_tcn << "," << max_card ;
-        return crap1.str();
-    }    
-    bool operator<(const struct dua_struct &other) const {
-        if (filename < other.filename) return true;
-        if (filename > other.filename) return false;
-        if (line < other.line) return true;
-        if (line > other.line) return false;
-        if (lvalname < other.lvalname) return true;
-        if (lvalname > other.lvalname) return false;
-        if (max_liveness < other.max_liveness) return true;
-        if (max_liveness > other.max_liveness) return false;
-        if (max_tcn < other.max_tcn) return true;
-        if (max_tcn > other.max_tcn) return false;
-        if (max_card < other.max_card) return true;
-        if (max_card > other.max_card) return false;
-        if (labels < other.labels) return true;
-        if (labels > other.labels) return false;
-        return bytes < other.bytes;
-    }
-} Dua;
-
-typedef struct attack_point_struct {
-    uint32_t filename;
-    Line line;
-    uint32_t info;
-    std::string str() const {
-        std::stringstream crap1;
-        crap1 << ind2str[filename] << "," << line << "," << ind2str[info];
-        return crap1.str();
-    }
-    bool operator<(const struct attack_point_struct &other) const {
-        if (filename < other.filename) return true;
-        if (filename > other.filename) return false;
-        if (line < other.line) return true;
-        if (line > other.line) return false;
-        return (info < other.info);
-    }
-} AttackPoint;
 
 
 typedef std::pair < Dua, AttackPoint > Bug;
@@ -284,19 +207,6 @@ int addstr(PGconn *conn, std::string table, std::string str) {
 
 
 
-std::string iset_str(std::set<uint32_t> &iset) {
-    std::stringstream ss;
-    uint32_t n = iset.size();
-    uint32_t i=0;
-    for (auto el : iset) {
-        i++;
-        ss << el;
-        if (i != n) ss << ",";
-    }
-    return ss.str();
-}
-
-
 std::map<Dua,int> dua_id;
 std::map<AttackPoint,int> ap_id;
 
@@ -403,8 +313,10 @@ int main (int argc, char **argv) {
     std::map <Label, float> dd = read_dead_data(plf);
     printf ("done reading in dead data\n");
 
-    // read taint query results and figure out which 
-    // label is both available and least dead
+    /*
+     re-read pandalog, this time focusing on taint queries.  Look for
+     dead available data, attack points, and thus bug injection oppotunities
+    */
 
     pandalog_open(plf, "r");
     Panda__LogEntry *ple;
@@ -420,16 +332,13 @@ int main (int argc, char **argv) {
     bool current_si_ok = false; 
     uint32_t num_ext_ok = 0;
     std::set<Label> labels;
+    std::set <Offset> ok_bytes;
     bool seen_first_tq = false;
     std::set < Dua > u_dua;
     std::set < AttackPoint > u_ap;
     std::set < std::pair < Dua, AttackPoint > > injectable_bugs;
     std::map < AttackPoint, uint32_t > last_num_dua;
-
-    std::vector <Instr> dua_instr;
-    std::vector <Instr> ap_instr;
     uint32_t ap_info;
-    std::set <Offset> ok_bytes;
     float c_max_liveness;
     uint32_t c_max_tcn, c_max_card;
 
@@ -445,7 +354,7 @@ int main (int argc, char **argv) {
             printf ("processed %lu of taint queries log.  %u dua.  %u ap.  %u injectable bugs\n", 
                     ii, (uint32_t) u_dua.size(), (uint32_t) u_ap.size(), (uint32_t) injectable_bugs.size());
         }
-       if (ple->taint_query_unique_label_set) {
+        if (ple->taint_query_unique_label_set) {
             // this just maintains mapping from ptr (uint64_t) to actual set of taint labels 
             uint32_t i;
             Ptr p = ple->taint_query_unique_label_set->ptr;
@@ -527,11 +436,19 @@ int main (int argc, char **argv) {
                 seen_first_tq = true;
                 // great -- extent we just looked at was deemed acceptable
                 num_ext_ok ++;
-                Dua dua = { current_si.filename, current_si.linenum, current_si.astnodename, labels, ok_bytes, c_max_liveness, c_max_tcn, c_max_card };
+                Dua dua = { 
+                    ind2str[current_si.filename], 
+                    current_si.linenum, 
+                    ind2str[current_si.astnodename], // lval name
+                    labels,        // that is, byte offsets within input file that taint the dua parts of this lval
+                    ok_bytes,      // that is, offsets within this lval that are dua
+                    input_file,    // file name that was the input
+                    c_max_liveness, c_max_tcn, c_max_card, 
+                    0, 0           // counts (used later by LAVA
+                };
                 // keeping track of dead, uncomplicated data extents we have
                 // encountered so far in the trace
                 u_dua.insert(dua);
-                dua_instr.push_back(hc_instr_count);
             }
             else {
                 //                printf ("discarded %d ok bytes  %d labels\n", (int) ok_bytes.size(), (int) labels.size());
@@ -555,7 +472,6 @@ int main (int argc, char **argv) {
                     u_ap.insert(ap);
                     last_num_dua[ap] = u_dua.size();
                 }
-                ap_instr.push_back(ap_instr_count);
             }
         }
         if (!in_ap && ple->attack_point) {
