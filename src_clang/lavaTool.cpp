@@ -15,26 +15,21 @@ static cl::extrahelp MoreHelp(
 enum action { QueryAction, InsertAction };
 static cl::opt<action> LavaAction("action", cl::desc("LAVA Action"),
     cl::values(
-        clEnumValN(QueryAction, "query", "add taint query"),
-        clEnumValN(InsertAction, "inject", "inject bug"),
+        clEnumValN(QueryAction, "query", "Add taint queries"),
+        clEnumValN(InsertAction, "inject", "Inject bugs"),
         clEnumValEnd),
     cl::cat(LavaCategory),
     cl::Required);
+static cl::opt<std::string> LavaBugInfo("lava-bug-info",
+    cl::desc("Path to directory containing bug info (.aps, .duas, .bugs)"),
+    cl::cat(LavaCategory),
+    cl::init("."));
 static cl::opt<std::string> LavaDB("lava-db",
-    cl::desc("Path to LAVA database"),
+    cl::desc("Path to LAVA database (custom binary file for source info).  "
+        "Created in query mode."),
     cl::cat(LavaCategory),
     cl::init("."));
 
-enum mode { DuaMode, AtpMode };
-static cl::opt<mode> LavaInsertMode("mode", cl::desc("Lava Bug Injection Mode"),
-    cl::values(
-        clEnumValN(DuaMode, "dua", "copy dead-uncomplicated-available data"),
-        clEnumValN(AtpMode, "atp", "transforms attack point"),
-        clEnumValEnd),
-    cl::cat(LavaCategory));
-static cl::opt<std::string> InsertInfo("info", cl::desc("Lava Injection Info (needed for Lava Injection Action)"), 
-    cl::cat(LavaCategory),
-    cl::init(""));
 
 // instruction count
 typedef uint64_t Instr;
@@ -44,12 +39,16 @@ typedef uint32_t Label;
 typedef uint32_t Line;
 // Taint Compute Number
 typedef uint32_t Tcn;
+// Taint Cardinality
+typedef uint32_t Cardinality;
 // ptr used to ref a label set
 typedef uint64_t Ptr;
 
+// XXX put me in a class
 static bool InsertLocFound = false;
 
 class Dua {
+/*
 std::string str() const {
     std::stringstream temp;
     temp << line << "," << lvalname << ",[";
@@ -59,34 +58,59 @@ std::string str() const {
     temp << "]";
     return temp.str();
 }
+*/
 
 public:
+    std::string filename;
     Line line;
     std::string lvalname;
-    std::set < Label > duabytes;
-    int size;
-    std::string globalname;
+    std::set < Label > inputBytes; // offsets within input
+    std::set < Label > lvalBytes; // offsets within lval
+    double maxLiveness;
+    Tcn maxTcn;
+    Cardinality maxCardinality;
+
+    // For now, this is lvalBytes.size().  We're going to assume that we can do
+    // some bit twiddling for an lval to pull out the DUA bytes and then copy
+    // them up to the global
+    //int size;
+
+    //std::string globalname; // XXX needs to be coordinated between DUA+ATP
     
     Dua() {}
     Dua(std::string &input) {
         std::stringstream is(input);
         std::string temp;
+        std::getline(is, filename, ',');
         std::getline(is, temp, ',');
         line = std::stoul(temp);
         std::getline(is, lvalname, ',');
         assert(is.get() == '[');
         while (is.peek() != ']') {
             std::getline(is, temp, ',');
-            duabytes.insert(std::stoul(temp));
+            inputBytes.insert(std::stoul(temp));
+        }
+        assert(is.get() == ']');
+        assert(is.get() == '[');
+        while (is.peek() != ']') {
+            std::getline(is, temp, ',');
+            lvalBytes.insert(std::stoul(temp));
         }
         std::getline(is, temp, ',');
-        std::getline(is, globalname);
-        size = duabytes.size();
+        std::getline(is, temp, ',');
+        maxLiveness = stod(temp);
+        std::getline(is, temp, ',');
+        maxTcn = std::stoul(temp);
+        std::getline(is, temp, ',');
+        maxCardinality = std::stoul(temp);
+        std::getline(is, temp);
     }
 
     std::string getDecl() const {
         std::stringstream temp;
-        temp << "char " << globalname << "[" << size << "];"; 
+        // XXX
+        //temp << "char " << globalname << "[" << size << "];"; 
+        temp << "char " << "someGlobal" << "[" << lvalBytes.size() << "];\n"; 
         return temp.str();
     }
 
@@ -95,12 +119,14 @@ public:
         int offset = 0;
         int length = 0;
         int pos = 0;
-        std::string targetptr = "&" + lvalname;
-        for (auto l : duabytes) {
+        std::string targetptr = "&(" + lvalname;
+        for (auto l : lvalBytes) {
             if ((length + offset) < l) {
                 if (length > 0) {
-                    temp << "memcpy(" << globalname << "+" << pos << " , ";
-                    temp << targetptr << "+" << offset << " , " << length;
+                    // XXX
+                    //temp << "memcpy(" << globalname << "+" << pos << " , ";
+                    temp << "memcpy(" << "someGlobal" << "+" << pos << " , ";
+                    temp << targetptr << "+" << offset << ")" << " , " << length;
                     temp << "); ";
                 }
                 offset = l; pos += length; length = 1;
@@ -108,57 +134,64 @@ public:
                 ++length;
             }
         }
-        temp << "memcpy(" << globalname << "+" << pos << ", ";
-        temp << targetptr << "+" << offset << " , " << length;
+        // XXX
+        //temp << "memcpy(" << globalname << "+" << pos << ", ";
+        temp << "memcpy(" << "someGlobal" << "+" << pos << ", ";
+        temp << targetptr << "+" << offset << ")" << " , " << length;
         temp << "); ";
         return temp.str();
     }
 
-    bool operator<(Dua &other) const {
+    /*bool operator<(Dua &other) const {
         return (str() < other.str());
-    }
+    }*/
 };
 
 class AttackPoint {
     std::string str() const {
         std::stringstream temp;
-        temp << type << "," << globalname << "," << type << "," << size; 
+        //XXX
+        //temp << type << "," << globalname << "," << type << "," << size; 
+        temp << type << "," << "someGlobal" << "," << type << "," << 4; 
         return temp.str();
     }
 
 public:
+    std::string filename;
     Line line;
     std::string type;
-    std::string globalname;;
-    unsigned size;
 
     AttackPoint() {}
 
     AttackPoint(std::string &input) {
         std::stringstream is(input);
         std::string temp;
+        std::getline(is, filename, ',');
         std::getline(is, temp, ',');
         line = std::stoul(temp);
-        std::getline(is, type, ',');
-        std::getline(is, globalname, ',');
-        std::getline(is, temp, ',');
-        size = std::stoi(temp);
-        std::getline(is, temp);
+        std::getline(is, type);
     }
 
-    bool operator<(AttackPoint &other) const {
+    /*bool operator<(AttackPoint &other) const {
         return (str() < other.str());
-    }
+    }*/
 
     std::string getDecl() const {
         std::stringstream temp;
-        temp << "extern " << "char " << globalname << "[" << size << "];\n";
+        //temp << "extern " << "char " << globalname << "[" << size << "];\n";
+        //temp << "extern " << "char " << "someGlobal" << "[" << size << "];\n";
         return temp.str();
     }
 };
 
+// XXX put these in one of the classes
 static Dua dua;
 static AttackPoint atp;
+typedef struct {
+    Dua dua;
+    AttackPoint attackPoint;
+} Bug;
+static std::vector<Bug> bugs;
 
 /*******************************************************************************
  * LavaTaintQuery
@@ -218,11 +251,25 @@ public:
                 if ((*it)->getStorageClass() == SC_Register) continue;
 
                 fullLoc = (*it)->getASTContext().getFullLoc((*it)->getLocStart());
+                /* Old code
                 if (LavaAction == InsertAction && LavaInsertMode == DuaMode) {
                     if (fullLoc.getExpansionLineNumber() == dua.line && (*it)->getNameAsString() == dua.lvalname) {
                         InsertLocFound = true;
                     }
-                } 
+                }
+                */
+                if (LavaAction == InsertAction){
+                    // Are we at a DUA transform site?
+                    std::cout << "Checking for DUAs!!\n";
+                    for (auto bugIt = bugs.begin(); bugIt != bugs.end(); bugIt++){
+                        if (fullLoc.getExpansionLineNumber() == (*bugIt).dua.line
+                                && (*it)->getNameAsString() == (*bugIt).dua.lvalname) {
+                            InsertLocFound = true;
+                            dua = (*bugIt).dua; // XXX STOP USING GLOBALS!!
+                            std::cout << "Found a DUA!!\n";
+                        }
+                    }
+                }
                 query << "vm_lava_query_buffer(";
                 query << "&(" << (*it)->getNameAsString() << "), ";
                 query << "sizeof(" << (*it)->getNameAsString() << "), ";
@@ -285,6 +332,7 @@ public:
                 if (LavaAction == QueryAction)
                     rewriter.InsertText(loc, query.str(), true, true);
                 else if (LavaAction == InsertAction && InsertLocFound) {
+                    std::cout << "Transforming a DUA!!\n";
                     rewriter.InsertText(loc, dua.getMemcpy() + "\n", true, true); 
                     InsertLocFound = false;
                 } 
@@ -326,9 +374,21 @@ public:
                     queries << ast_node_id << ", ";
                     queries << src_linenum << ");\n";
                     
+                    /* Old code
                     if (LavaAction == InsertAction && LavaInsertMode == DuaMode) {
                         if (src_linenum == dua.line && ast_node_name == dua.lvalname) {
                             InsertLocFound = true;     
+                        }
+                    }*/
+                    if (LavaAction == InsertAction) {
+                        std::cout << "Checking for DUAs2!!\n";
+                        for (auto bugIt = bugs.begin(); bugIt != bugs.end(); bugIt++){
+                            if (src_linenum == (*bugIt).dua.line
+                                    && ast_node_name == (*bugIt).dua.lvalname) {
+                                InsertLocFound = true;
+                                dua = (*bugIt).dua; // XXX STOP USING GLOBALS!
+                                std::cout << "Found a DUA2!!\n";
+                            }
                         }
                     } 
                 }
@@ -427,11 +487,24 @@ public:
         query << GetStringID(lv_name) << ", ";
         query << src_linenum  << ");\n";
 
+        /* Old code
         if (LavaAction == InsertAction) {
             if (src_linenum == dua.line && lv_name == dua.lvalname) {
                 InsertLocFound = true;
             }
+        }*/
+        if (LavaAction == InsertAction) {
+            std::cout << "Checking for DUAs3!!\n";
+            for (auto bugIt = bugs.begin(); bugIt != bugs.end(); bugIt++){
+                if (src_linenum == (*bugIt).dua.line
+                        && lv_name == (*bugIt).dua.lvalname) {
+                    InsertLocFound = true;
+                    dua = (*bugIt).dua; // XXX STOP USING GLOBALS!
+                    std::cout << "Found a DUA3!!\n";
+                }
+            }
         } 
+            
         // if lval is a struct or a ptr to a struct,
         // we want queries for all slots
         QualType qt = e->getType();
@@ -541,16 +614,25 @@ public:
                         after_part1 << "; " << retvalname;
                     }
                     after_part1 << ";})";
-                    if (LavaAction == InsertAction && LavaInsertMode == AtpMode) {
-                        if (src_linenum == atp.line && fn_name.find(atp.type) != std::string::npos) {
-                            const Expr *first_arg = dyn_cast<Expr>(*(e->arg_begin()));
-                            SourceLocation insertLoc = first_arg->getLocEnd();
-                            std::stringstream temp;
-                            //*((unsigned int *)dead_data1) == RandValue
-                            temp << "(" << "*((unsigned int*)" << atp.globalname << ")";
-                            temp << "==" << RandTargetValue() << ")*";
-                            temp << atp.globalname << " + ";
-                            rewriter.InsertText(insertLoc, temp.str(), true, true);
+                    //if (LavaAction == InsertAction && LavaInsertMode == AtpMode) {
+                    if (LavaAction == InsertAction) {
+                        std::cout << "Inserting attack!!\n";
+                        for (auto bugIt = bugs.begin(); bugIt != bugs.end(); bugIt++){
+                            if (src_linenum == (*bugIt).attackPoint.line
+                                    && fn_name.find((*bugIt).attackPoint.type) != std::string::npos) {
+                            //if (src_linenum == atp.line && fn_name.find(atp.type) != std::string::npos) {
+                                const Expr *first_arg = dyn_cast<Expr>(*(e->arg_begin()));
+                                SourceLocation insertLoc = first_arg->getLocEnd();
+                                std::stringstream temp;
+                                //*((unsigned int *)dead_data1) == RandValue
+                                // XXX
+                                //temp << "(" << "*((unsigned int*)" << (*bugIt).attackPoint.globalname << ")";
+                                temp << "(" << "*((unsigned int*)" << "someGlobal" << ")";
+                                temp << "==" << RandTargetValue() << ")*";
+                                // XXX
+                                temp << "someGlobal" << " + ";
+                                rewriter.InsertText(insertLoc, temp.str(), true, true);
+                            }
                         }
                     }
                 }	    
@@ -605,11 +687,24 @@ public:
                         after_part2 << GetStringID(src_filename) << "," << GetStringID(retvalname) << ", " << src_linenum << ");";
                         // make sure to return retval 
                         after_part2 << " " << retvalname << " ; ";
+                        /* Old code
                         if (LavaAction == InsertAction && LavaInsertMode == DuaMode) {
                             if (src_linenum == dua.line && retvalname == dua.lvalname) {
                                 InsertLocFound = true;
                             }
-                        }
+                        }*/
+                        if (LavaAction == InsertAction) {
+                            std::cout << "Checking for DUAs4!!\n";
+                            for (auto bugIt = bugs.begin(); bugIt != bugs.end(); bugIt++){
+                                if (src_linenum == (*bugIt).dua.line
+                                        && retvalname == (*bugIt).dua.lvalname) {
+                                    InsertLocFound = true;
+                                    dua = (*bugIt).dua; // XXX STOP USING GLOBALS!
+                                    std::cout << "Found a DUA4!!\n";
+                                }
+                            }
+                        } 
+
                     }
                     after_part2 << "})";                    
                 }
@@ -627,8 +722,11 @@ public:
             rewriter.InsertTextAfterToken(e->getLocEnd(), after_part.str());
         }
         if (LavaAction == InsertAction && InsertLocFound) {
+            std::cout << "Transforming a DUA (other transform site)!!\n";
             std::stringstream before_part, after_part;
             before_part << before_part2.str() << "; \n";
+            // XXX this dua should have been set previously
+            // but STOP USING GLOBALS!!
             after_part << dua.getMemcpy(); 
             QualType rqt = e->getCallReturnType();
             bool has_retval = CallExprHasRetVal(rqt);
@@ -708,10 +806,13 @@ public:
             "#include \"pirate_mark_lava.h\"\n", true, true);
         else if (LavaAction == InsertAction) {
             std::string temp;
-            if (LavaInsertMode == DuaMode)
+            /*if (LavaInsertMode == DuaMode)
                 temp = dua.getDecl();
             else
                 temp = atp.getDecl();
+            */
+            // XXX need to determine if declarations need to be externed or not
+            temp = dua.getDecl();
             rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()), temp + "\n");
         }
         rewriter.overwriteChangedFiles();
@@ -735,10 +836,52 @@ private:
 };
 
 
+// XXX put me in a class
+std::vector<Bug> loadBugs(std::string lavaBugInfoPath){
+    std::vector<Dua> duas = std::vector<Dua>();
+    std::vector<AttackPoint> atps = std::vector<AttackPoint>();
+    std::vector<Bug> inputBugs = std::vector<Bug>();
+    std::ifstream duaFile(lavaBugInfoPath + "/lava.duas");
+    std::ifstream atpFile(lavaBugInfoPath + "/lava.aps");
+    std::ifstream bugsFile(lavaBugInfoPath + "/lava.bugs");
+    std::string line;
+    while (std::getline(duaFile, line)){
+        duas.push_back(Dua(line));
+    }
+    while (std::getline(atpFile, line)){
+        atps.push_back(AttackPoint(line));
+    }
+    while (std::getline(bugsFile, line)){
+        // .bugs file is formatted with a pair of numbers where the first
+        // corresponds to the line number in the .duas file, and the second
+        // corresponds to the line number in the .aps file
+        std::stringstream bugData(line);
+        //Dua dua;
+        //AttackPoint ap;
+        std::string temp;
+        int duaIndex;
+        int atpIndex;
+        Bug bug;
+        std::getline(bugData, temp, ',');
+        duaIndex = std::stol(temp);
+        std::getline(bugData, temp, ',');
+        atpIndex = std::stol(temp);
+        bug.dua = duas[duaIndex];
+        bug.attackPoint = atps[atpIndex];
+        inputBugs.push_back(bug);
+    }
+    duaFile.close();
+    atpFile.close();
+    bugsFile.close();
+    std::cout << "Done parsing atps and duas\n";
+    return inputBugs;
+}
+
 int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
     if (LavaAction == InsertAction) {
+        /*
         if (InsertInfo == "") {
             errs() << "Injection info is needed.\n";
             exit(1);
@@ -747,7 +890,25 @@ int main(int argc, const char **argv) {
             dua = Dua(InsertInfo);             
         else if (LavaInsertMode == AtpMode) 
             atp = AttackPoint(InsertInfo);
+        */
+        
+        // XXX new notional API
+        // srcFileName is a cmd line arg I hope
+        // bugSubset is a list of db Bug ids on the cmd line too
+
+        // all the bugs in the db that are in the subset
+        //bugs = loadBugs(bugSubset);
+        // duas that apply to src file being transformed
+        // and to a bug in the bug_subset
+        //duas = loadDuas(srcFilename, bugs);
+        // ditto aps
+        //aps = loadAps(srcFilename, bugs);
+        
+        // eventually will be all the bugs in the db that are in the subset
+        bugs = loadBugs(LavaBugInfo);
     } 
+
+    //return 0;
 
     return Tool.run(newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
 }
