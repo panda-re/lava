@@ -1,7 +1,7 @@
 /*
   NB: env variable PANDA points to git/panda
   
-  g++ -g -o fbi   find_bug_inj.cpp ../src_clang/lavaDB.cpp ../../panda/qemu/panda/pandalog.c  ../../panda/qemu/panda/pandalog.pb-c.c  -L/usr/local/lib -lprotobuf-c  -I ../../panda/qemu -I ../../panda/qemu/panda  -lz -D PANDALOG_READER  -std=c++11  -O2
+  g++ -g -o fbi   find_bug_inj.cpp ../src_clang/lavaDB.cpp ../../panda/qemu/panda/pandalog.c  ../../panda/qemu/panda/pandalog.pb-c.c  -L/usr/local/lib -lprotobuf-c  -I ../../panda/qemu -I ../../panda/qemu/panda  -lz -D PANDALOG_READER  -std=c++11  -O2 -lpq
   
 
   ml = 0.5 means max liveness of any byte on extent is 0.5
@@ -39,12 +39,28 @@ extern "C" {
 #include "pandalog.h"
 #include "../src_clang/lavaDB.h"
 
-std::string input_file;
-int input_file_id;
+std::string inputfile;
+int inputfile_id;
 std::map<uint32_t,std::string> ind2str;
 
 
-typedef std::pair < Dua, AttackPoint > Bug;
+#include "../include/lava_bugs.h"
+
+
+
+std::string iset_str(std::set<uint32_t> &iset) {
+    std::stringstream ss;
+    uint32_t n = iset.size();
+    uint32_t i=0;
+    for (auto el : iset) {
+        i++;
+        ss << el;
+        if (i != n) ss << ",";
+    }
+    return ss.str();
+}
+
+
 
 
 Instr last_instr_count;
@@ -208,20 +224,20 @@ int addstr(PGconn *conn, std::string table, std::string str) {
 
 
 std::map<Dua,int> dua_id;
-std::map<AttackPoint,int> ap_id;
+std::map<AttackPoint,int> atp_id;
 
 void postgresql_dump_duas(PGconn *conn, std::set<Dua> &duas) {
     printf ("dumping duas to postgres\n");
     for ( auto dua : duas ) {
         PGresult *res;
         // add source filename to sourcefile table
-        std::string filename = ind2str[dua.filename];
+        std::string filename = dua.filename;
         int filename_id = addstr(conn, "sourcefile", filename);
-        std::string lvalname = ind2str[dua.lvalname];
+        std::string lvalname = dua.lvalname;
         int lval_id = addstr(conn, "lval", lvalname);
         int num_rows = get_num_rows(conn, "dua");
         std::stringstream sql;
-        sql << "INSERT INTO dua (id,filename,line,lval,bytes,offsets,input_file,max_liveness,max_tcn,max_card,icount,scount) VALUES ("
+        sql << "INSERT INTO dua (id,filename,line,lval,bytes,offsets,inputfile,max_liveness,max_tcn,max_card,icount,scount) VALUES ("
             << num_rows << "," 
             << filename_id << ","
             << dua.line << ","  
@@ -230,7 +246,7 @@ void postgresql_dump_duas(PGconn *conn, std::set<Dua> &duas) {
              << "'{" << iset_str(dua.labels) << "}'" << ","
             // offsets within the lval that are duas
             << "'{"  << iset_str(dua.bytes) << "}'" << ","
-            << input_file_id << ","
+            << inputfile_id << ","
             << dua.max_liveness << "," << dua.max_tcn << "," << dua.max_card 
             << ",0,0);";
         res = pq_exec_ss(conn,sql);
@@ -241,40 +257,41 @@ void postgresql_dump_duas(PGconn *conn, std::set<Dua> &duas) {
 }
    
 
-void postgresql_dump_aps(PGconn *conn, std::set<AttackPoint> &aps) {
-    printf ("dumping aps to postgres\n");
-    for ( auto ap : aps ) {
+void postgresql_dump_atps(PGconn *conn, std::set<AttackPoint> &atps) {
+    printf ("dumping atps to postgres\n");
+    for ( auto atp : atps ) {
         PGresult *res;
         // add source filename to sourcefile table
-        std::string filename = ind2str[ap.filename];
+        std::string filename = atp.filename;
         int filename_id = addstr(conn, "sourcefile", filename);
-        std::string info = ind2str[ap.info];
+        std::string info = atp.typ;
         int typ_id = addstr(conn, "atptype", info);
         int num_rows = get_num_rows(conn, "atp");
         std::stringstream sql;
-        sql << "INSERT INTO atp (id,filename,line,typ,input_file,icount,scount) VALUES ("
+        sql << "INSERT INTO atp (id,filename,line,typ,inputfile,icount,scount) VALUES ("
             << num_rows << ","
             << filename_id << ","
-            << ap.line << ","
+            << atp.linenum << ","
             << typ_id << ","
-            << input_file_id << ","
+            << inputfile_id << ","
             << "0,0);";
         res = pq_exec_ss(conn,sql);
-        ap_id[ap] = num_rows;
+        atp_id[atp] = num_rows;
         assert (PQresultStatus(res) == PGRES_COMMAND_OK);
         PQclear(res);
     }
     
 }
 
-void postgresql_dump_bugs(PGconn *conn, std::set<std::pair<Dua,AttackPoint>> &injectable_bugs) {
+void postgresql_dump_bugs(PGconn *conn, std::set<Bug> &injectable_bugs) {
     printf ("dumping bugs to postgres\n");
     for ( auto bug : injectable_bugs ) {
-        Dua dua = bug.first;
-        AttackPoint ap = bug.second;
+        Dua dua = bug.dua;
+        AttackPoint atp = bug.atp;
         std::stringstream sql;
         int num_rows = get_num_rows(conn, "bug");
-        sql << "INSERT INTO bug (id,dua,ap) VALUES (" << num_rows << "," << dua_id[dua] << "," << ap_id[ap] << ");";
+        sql << "INSERT INTO bug (id,dua,atp) VALUES (" << num_rows << "," << dua_id[dua] << "," << atp_id[atp] << ");";
+        printf("sql = [%s]\n", (const char *) sql.str().c_str());
         PGresult *res = pq_exec_ss(conn,sql);
         assert (PQresultStatus(res) == PGRES_COMMAND_OK);
         PQclear(res);
@@ -285,7 +302,7 @@ void postgresql_dump_bugs(PGconn *conn, std::set<std::pair<Dua,AttackPoint>> &in
 int main (int argc, char **argv) {
 
     if (argc != 7) {
-        printf ("usage: fbi plog lavadb max_liveness max_card max_tcn input_file\n");
+        printf ("usage: fbi plog lavadb max_liveness max_card max_tcn inputfile\n");
         exit (1);
     }
 
@@ -307,7 +324,7 @@ int main (int argc, char **argv) {
     uint32_t max_tcn = atoi(argv[5]);
     printf ("max tcn for addr = %d\n", max_tcn);
 
-    input_file = std::string(argv[6]);
+    inputfile = std::string(argv[6]);
 
     // read in dead data (dd[label_num])
     std::map <Label, float> dd = read_dead_data(plf);
@@ -326,19 +343,19 @@ int main (int argc, char **argv) {
     Panda__TaintQueryHypercall current_tqh;
     bool in_hc = false;
     Instr hc_instr_count;
-    bool in_ap = false;
-    Instr ap_instr_count;
+    bool in_atp = false;
+    Instr atp_instr_count;
     bool current_ext_ok = false;
     bool current_si_ok = false; 
     uint32_t num_ext_ok = 0;
     std::set<Label> labels;
     std::set <Offset> ok_bytes;
     bool seen_first_tq = false;
-    std::set < Dua > u_dua;
-    std::set < AttackPoint > u_ap;
-    std::set < std::pair < Dua, AttackPoint > > injectable_bugs;
-    std::map < AttackPoint, uint32_t > last_num_dua;
-    uint32_t ap_info;
+    std::set <Dua> u_dua;
+    std::set <AttackPoint> u_atp;
+    std::set <Bug> injectable_bugs;
+    std::map <AttackPoint,uint32_t> last_num_dua;
+    uint32_t atp_info;
     float c_max_liveness;
     uint32_t c_max_tcn, c_max_card;
 
@@ -351,8 +368,8 @@ int main (int argc, char **argv) {
         }
         ii ++;
         if ((ii % 10000) == 0) {
-            printf ("processed %lu of taint queries log.  %u dua.  %u ap.  %u injectable bugs\n", 
-                    ii, (uint32_t) u_dua.size(), (uint32_t) u_ap.size(), (uint32_t) injectable_bugs.size());
+            printf ("processed %lu of taint queries log.  %u dua.  %u atp.  %u injectable bugs\n", 
+                    ii, (uint32_t) u_dua.size(), (uint32_t) u_atp.size(), (uint32_t) injectable_bugs.size());
         }
         if (ple->taint_query_unique_label_set) {
             // this just maintains mapping from ptr (uint64_t) to actual set of taint labels 
@@ -436,16 +453,15 @@ int main (int argc, char **argv) {
                 seen_first_tq = true;
                 // great -- extent we just looked at was deemed acceptable
                 num_ext_ok ++;
-                Dua dua = { 
+                Dua dua = Dua(
                     ind2str[current_si.filename], 
                     current_si.linenum, 
-                    ind2str[current_si.astnodename], // lval name
-                    labels,        // that is, byte offsets within input file that taint the dua parts of this lval
-                    ok_bytes,      // that is, offsets within this lval that are dua
-                    input_file,    // file name that was the input
-                    c_max_liveness, c_max_tcn, c_max_card, 
-                    0, 0           // counts (used later by LAVA
-                };
+                    ind2str[current_si.astnodename],
+                    labels,       
+                    ok_bytes,     
+                    inputfile,   
+                    c_max_liveness, c_max_tcn, c_max_card
+                    );
                 // keeping track of dead, uncomplicated data extents we have
                 // encountered so far in the trace
                 u_dua.insert(dua);
@@ -455,29 +471,29 @@ int main (int argc, char **argv) {
             }
             in_hc = false;
         }
-        if (in_ap && ple->instr != ap_instr_count) {
-            in_ap = false;
+        if (in_atp && ple->instr != atp_instr_count) {
+            in_atp = false;
             if (seen_first_tq) {
                 // done with current attack point
-                AttackPoint ap = { current_si.filename, current_si.linenum, ap_info };
-                if ((u_ap.count(ap) == 0)
-                    || (last_num_dua[ap] != u_dua.size())) {
+                AttackPoint atp = AttackPoint(ind2str[current_si.filename], current_si.linenum, ind2str[atp_info]);
+                if ((u_atp.count(atp) == 0)
+                    || (last_num_dua[atp] != u_dua.size())) {
                     // new attack point 
                     // OR number of dua has changed since last time we were here
                     // ok, this attack point can pair with *any* of the dead uncomplicated extents seen previously
                     for ( auto dua : u_dua ) {
-                        Bug bug = std::make_pair(dua, ap);
+                        Bug bug = Bug(dua, atp, "", 4);
                         injectable_bugs.insert(bug);
                     }
-                    u_ap.insert(ap);
-                    last_num_dua[ap] = u_dua.size();
+                    u_atp.insert(atp);
+                    last_num_dua[atp] = u_dua.size();
                 }
             }
         }
-        if (!in_ap && ple->attack_point) {
-            in_ap = true;
-            ap_instr_count = ple->instr;
-            ap_info = ple->attack_point->info;
+        if (!in_atp && ple->attack_point) {
+            in_atp = true;
+            atp_instr_count = ple->instr;
+            atp_info = ple->attack_point->info;
         }                    
         
     }
@@ -487,7 +503,7 @@ int main (int argc, char **argv) {
     printf ("%u queried extents\n", num_queried_extents);
 
     printf ("%u dead-uncomplicated-available-data.  %u attack-points\n",
-            (uint32_t) u_dua.size(), (uint32_t) u_ap.size());
+            (uint32_t) u_dua.size(), (uint32_t) u_atp.size());
 
     printf ("%u injectable bugs\n", (uint32_t) injectable_bugs.size());
 
@@ -504,11 +520,11 @@ int main (int argc, char **argv) {
                 PQerrorMessage(conn));
         exit_nicely(conn);
     }
-    input_file_id = addstr(conn, "inputfile", input_file);
+    inputfile_id = addstr(conn, "inputfile", inputfile);
 
 
     postgresql_dump_duas(conn,u_dua);
-    postgresql_dump_aps(conn,u_ap);
+    postgresql_dump_atps(conn,u_atp);
     postgresql_dump_bugs(conn,injectable_bugs);
     PQfinish(conn);
 }
