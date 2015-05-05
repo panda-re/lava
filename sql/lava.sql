@@ -301,29 +301,44 @@ create type bug_info as (
 */
 create or replace function next_bug() returns bug_info
 as $$
+  # otherwise two injector processes might try to inject same bug
+  plpy.execute("lock table bug;")
+  plpy.execute("lock table dua;")
+  plpy.execute("lock table atp;")
   reses = plpy.execute("select * from bug,dua,atp where bug.inj=false and dua.dua_id=bug.dua and atp.atp_id=bug.atp;")
-  # find bug for which count
-  b_min = 10000000
+  # consider each bug that hasnt yet been injected
+  # keep track of bug that has lowest icount for *either* its dua or ap
+  # that is the one we will inject
+  min_score = 1000000
   b_argmin = ""
   d_argmin = ""
   a_argmin = ""
   for res in reses:
-    n = res["dua_icount"] + res["atp_icount"]
-    if (n < b_min):
-      b_min = n
+    inj = False
+    if res["dua_icount"] < min_score:
+      inj = True
+      min_score = res["dua_icount"]
+    if res["atp_icount"] < min_score:
+      inj = True
+      min_score = res["atp_icount"]
+    if inj:
       b_argmin = res["bug_id"]
       d_argmin = res["dua_id"]
       a_argmin = res["atp_id"]
-  #  best_bug_id = b_argmin["bug_id"]
   # grab it by setting the inj field
   res = plpy.execute("update bug set inj=true where bug_id=%d" % b_argmin)
-  # update counts for dua and atp
+  # update icounts for dua and atp
   res = plpy.execute("update dua set dua_icount=dua_icount+1 where dua_id=%d;" % d_argmin)
   res = plpy.execute("update atp set atp_icount=atp_icount+1 where atp_id=%d;" % a_argmin)
-  #  return best_bug_id
-  #  res = plpy.execute("select * from bug,dua,atp where dua_id=%d and atp_id=%d and bug_id=%d;" % (d_argmin, a_argmin, b_argmin))
-  return { "score": b_min, "bug": b_argmin, "dua" : d_argmin, "atp": a_argmin }
+  #  return bug + score
+  return { "score": min_score, "bug": b_argmin, "dua" : d_argmin, "atp": a_argmin }
 $$ LANGUAGE plpythonu;
 
 
+
+create or replace function remaining_uninjected_bugs() returns int
+as $$
+    reses = plpy.execute("select * from bug where bug.inj=false")
+    return len(reses)
+$$ LANGUAGE plpythonu;
 
