@@ -165,7 +165,7 @@ int get_num_rows(PGconn *conn, std::string table) {
 int addstr(PGconn *conn, std::string table, std::string str) {
     std::stringstream sql;
     // is str already there?
-    sql << "SELECT * FROM " << table << " where nm='" << str << "';";
+    sql << "SELECT * FROM " << table << " where " << table << "_nm='" << str << "';";
     PGresult *res = pg_exec_ss(conn, sql);
     if (PQntuples(res) > 0 ) {
         PQclear(res);
@@ -178,14 +178,14 @@ int addstr(PGconn *conn, std::string table, std::string str) {
         //        printf ("num_rows = %d\n", num_rows);
         // now add id,str
         std::stringstream sql;
-        sql << "INSERT INTO " << table << " (id,nm) VALUES (" << num_rows << ",'" << str << "');";                                                        
+        sql << "INSERT INTO " << table << " (" << table << "_id," << table << "_nm) VALUES (" << num_rows << ",'" << str << "');";                                                        
         //        printf ("sql = [%s]\n", (char *) sql.str().c_str());        
         res = pg_exec_ss(conn, sql);
         //        printf ("status = %d\n", PQresultStatus(res));
     }
     // return id assigned to str
     sql.str("");
-    sql << "SELECT * FROM " << table << " where nm='" << str << "';";
+    sql << "SELECT * FROM " << table << " where " << table << "_nm='" << str << "';";
     //    printf ("sql = [%s]\n", (char *) sql.str().c_str());
     res = pg_exec_ss(conn, sql);
     //    printf ("status = %d\n", PQresultStatus(res));
@@ -210,7 +210,7 @@ void postgresql_dump_duas(PGconn *conn, std::set<Dua> &duas) {
         int lval_id = addstr(conn, "lval", lvalname);
         int num_rows = get_num_rows(conn, "dua");
         std::stringstream sql;
-        sql << "INSERT INTO dua (id,filename,line,lval,file_offsets,lval_offsets,inputfile,max_liveness,max_tcn,max_card,icount,scount) VALUES ("
+        sql << "INSERT INTO dua (dua_id,filename,line,lval,file_offsets,lval_offsets,inputfile,max_liveness,max_tcn,max_card,dua_icount,dua_scount) VALUES ("
             << num_rows << "," 
             << filename_id << ","
             << dua.line << ","  
@@ -241,7 +241,7 @@ void postgresql_dump_atps(PGconn *conn, std::set<AttackPoint> &atps) {
         int typ_id = addstr(conn, "atptype", info);
         int num_rows = get_num_rows(conn, "atp");
         std::stringstream sql;
-        sql << "INSERT INTO atp (id,filename,line,typ,inputfile,icount,scount) VALUES ("
+        sql << "INSERT INTO atp (atp_id,filename,line,typ,inputfile,atp_icount,atp_scount) VALUES ("
             << num_rows << ","
             << filename_id << ","
             << atp.linenum << ","
@@ -249,6 +249,7 @@ void postgresql_dump_atps(PGconn *conn, std::set<AttackPoint> &atps) {
             << inputfile_id << ","
             << "0,0);";
         res = pg_exec_ss(conn,sql);
+        //        printf ("PQresultStatus(res) = %d\n", PQresultStatus(res));
         atp_id[atp] = num_rows;
         assert (PQresultStatus(res) == PGRES_COMMAND_OK);
         PQclear(res);
@@ -263,8 +264,8 @@ void postgresql_dump_bugs(PGconn *conn, std::set<Bug> &injectable_bugs) {
         AttackPoint atp = bug.atp;
         std::stringstream sql;
         int num_rows = get_num_rows(conn, "bug");
-        sql << "INSERT INTO bug (id,dua,atp) VALUES (" << num_rows << "," << dua_id[dua] << "," << atp_id[atp] << ");";
-        printf("sql = [%s]\n", (const char *) sql.str().c_str());
+        sql << "INSERT INTO bug (bug_id,dua,atp,inj) VALUES (" << num_rows << "," << dua_id[dua] << "," << atp_id[atp] << ",false);";
+        //        printf("sql = [%s]\n", (const char *) sql.str().c_str());
         PGresult *res = pg_exec_ss(conn,sql);
         assert (PQresultStatus(res) == PGRES_COMMAND_OK);
         PQclear(res);
@@ -480,11 +481,6 @@ int main (int argc, char **argv) {
 
     printf ("%u injectable bugs\n", (uint32_t) injectable_bugs.size());
 
-    std::string dbhostaddr = "18.126.0.46";
-    std::string dbname = "tshark";
-
-    // write duas to postgres
-    std::string conninfo = "hostaddr=" + dbhostaddr + " dbname=" + dbname + " user=lava password=lava";
     PGresult   *res;
     PGconn *conn = pg_connect();    
 

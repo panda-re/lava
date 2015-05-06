@@ -36,9 +36,10 @@ void pg_exit_nicely(PGconn *conn) {
 PGconn *pg_connect(void) {
     std::string dbhostaddr = "18.126.0.46";
     std::string dbname = "tshark";    
-    std::string conninfo = "hostaddr=" + dbhostaddr + " dbname=" + dbname + " user=lava password=lava";
+    std::string conninfo = "hostaddr=" + dbhostaddr + " dbname=" + dbname + " user=postgres password=postgrespostgres";  // lava password=llaavvaa";
     PGresult   *res;
-    PGconn *conn = PQconnectdb ((const char *) conninfo.c_str());
+    //    PGconn *conn = PQconnectdb ((const char *) conninfo.c_str());
+    PGconn *conn = PQconnectdb ("hostaddr=18.126.0.46 dbname=tshark user=postgres password=postgrespostgres");
     if (PQstatus(conn) != CONNECTION_OK) {
         fprintf(stderr, "Connection to database failed: %s",
                 PQerrorMessage(conn));
