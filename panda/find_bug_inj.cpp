@@ -1,15 +1,19 @@
 /*
   NB: env variable PANDA points to git/panda
   
-  g++ -g -o fbi   find_bug_inj.cpp ../src_clang/lavaDB.cpp ../../panda/qemu/panda/pandalog.c  ../../panda/qemu/panda/pandalog.pb-c.c  -L/usr/local/lib -lprotobuf-c  -I ../../panda/qemu -I ../../panda/qemu/panda  -lz -D PANDALOG_READER  -std=c++11  -O2 -lpq
-  
+  g++ -g -o fbi   find_bug_inj.cpp  \
+    ../sql/lava_sql.cpp \
+    ../src_clang/lavaDB.cpp \
+    ../../panda/qemu/panda/pandalog.c \
+    ../../panda/qemu/panda/pandalog.pb-c.c \
+    -L/usr/local/lib -lprotobuf-c  -I ../../panda/qemu -I ../../panda/qemu/panda  -lz -D PANDALOG_READER  -std=c++11  -O2 -lpq
+    
+  ./fbi pandalog lavadb ml mtcn mc minl maxl inputfilename
 
   ml = 0.5 means max liveness of any byte on extent is 0.5
   mtcn = 10 means max taint compute number of any byte on extent is 10
   mc =4 means max card of a taint labelset on any byte on extent is 4
   min maxl  = 1 1000 means extents must be between 1 and 1000 bytes long
-  
-  ./fbi pandalog lavadb ml mtcn mc minl maxl
 
 */
 
@@ -25,8 +29,6 @@ extern "C" {
 #include <stdint.h>
 #include <assert.h>
 
-#include "/usr/include/postgresql/libpq-fe.h"
-
 }
 
 #include <iostream>
@@ -38,14 +40,11 @@ extern "C" {
 
 #include "pandalog.h"
 #include "../src_clang/lavaDB.h"
+#include "../include/lava_bugs.h"
 
 std::string inputfile;
 int inputfile_id;
 std::map<uint32_t,std::string> ind2str;
-
-
-#include "../include/lava_bugs.h"
-
 
 
 std::string iset_str(std::set<uint32_t> &iset) {
@@ -94,7 +93,7 @@ std::map <uint32_t, float> read_dead_data(char *pandalog_filename) {
         }
         if (ple->n_dead_data > 0) {
             printf ("\n");
-            for (Label i=0; i<ple->n_dead_data; i++) {
+            for (FileOffset i=0; i<ple->n_dead_data; i++) {
                 dd[i] = ple->dead_data[i];
             }
         }
@@ -134,29 +133,6 @@ std::map<uint32_t,std::string> LoadIDB(std::string fn) {
 }
 
 
-static void
-exit_nicely(PGconn *conn)
-{
-    PQfinish(conn);
-    exit(1);
-}
-
-
-
-
-PGresult *pq_exec(PGconn *conn, std::string comm) {
-    const char * cmd = (const char *) comm.c_str();
-    //    printf ("sql comm=[%s]\n", cmd);
-    PGresult *res = PQexec(conn, cmd);
-    //    printf ("res = %d\n", PQresultStatus(res));
-    return res;
-}
-
-PGresult *pq_exec_ss(PGconn *conn, std::stringstream &comm) {
-    std::string comms = comm.str();
-    return pq_exec(conn, comms);
-}
-
 
 void spit_res(PGresult *res) {
     int i,j;   
@@ -175,11 +151,18 @@ void spit_res(PGresult *res) {
 }
 
 
+uint32_t stou (std::string s) {
+    const char * cs = (const char *) s.c_str();
+    return (uint32_t) atoi(cs);
+}
+
+
+
 int get_num_rows(PGconn *conn, std::string table) {
     std::string sql = "select count(*) from " + table + ";";
-    PGresult *res = pq_exec(conn, (const char *) sql.c_str());
+    PGresult *res = pg_exec(conn, (const char *) sql.c_str());
     assert (PQresultStatus(res) == PGRES_TUPLES_OK);
-    uint32_t n = atoi(PQgetvalue(res, 0, 0));
+    uint32_t n = stou(PQgetvalue(res, 0, 0));
     PQclear(res);
     return n;
 }
@@ -193,7 +176,7 @@ int addstr(PGconn *conn, std::string table, std::string str) {
     std::stringstream sql;
     // is str already there?
     sql << "SELECT * FROM " << table << " where nm='" << str << "';";
-    PGresult *res = pq_exec_ss(conn, sql);
+    PGresult *res = pg_exec_ss(conn, sql);
     if (PQntuples(res) > 0 ) {
         PQclear(res);
         //        printf ("its already there\n");
@@ -207,16 +190,16 @@ int addstr(PGconn *conn, std::string table, std::string str) {
         std::stringstream sql;
         sql << "INSERT INTO " << table << " (id,nm) VALUES (" << num_rows << ",'" << str << "');";                                                        
         //        printf ("sql = [%s]\n", (char *) sql.str().c_str());        
-        res = pq_exec_ss(conn, sql);
+        res = pg_exec_ss(conn, sql);
         //        printf ("status = %d\n", PQresultStatus(res));
     }
     // return id assigned to str
     sql.str("");
     sql << "SELECT * FROM " << table << " where nm='" << str << "';";
     //    printf ("sql = [%s]\n", (char *) sql.str().c_str());
-    res = pq_exec_ss(conn, sql);
+    res = pg_exec_ss(conn, sql);
     //    printf ("status = %d\n", PQresultStatus(res));
-    uint32_t n = atoi(PQgetvalue(res, 0, 0));        
+    uint32_t n = stou(PQgetvalue(res, 0, 0));        
     PQclear(res);
     return n;
 }
@@ -237,19 +220,19 @@ void postgresql_dump_duas(PGconn *conn, std::set<Dua> &duas) {
         int lval_id = addstr(conn, "lval", lvalname);
         int num_rows = get_num_rows(conn, "dua");
         std::stringstream sql;
-        sql << "INSERT INTO dua (id,filename,line,lval,bytes,offsets,inputfile,max_liveness,max_tcn,max_card,icount,scount) VALUES ("
+        sql << "INSERT INTO dua (id,filename,line,lval,file_offsets,lval_offsets,inputfile,max_liveness,max_tcn,max_card,icount,scount) VALUES ("
             << num_rows << "," 
             << filename_id << ","
             << dua.line << ","  
             << lval_id << ","
             // offsets within the input file that taint dua
-             << "'{" << iset_str(dua.labels) << "}'" << ","
+             << "'{" << iset_str(dua.file_offsets) << "}'" << ","
             // offsets within the lval that are duas
-            << "'{"  << iset_str(dua.bytes) << "}'" << ","
+            << "'{"  << iset_str(dua.lval_offsets) << "}'" << ","
             << inputfile_id << ","
             << dua.max_liveness << "," << dua.max_tcn << "," << dua.max_card 
             << ",0,0);";
-        res = pq_exec_ss(conn,sql);
+        res = pg_exec_ss(conn,sql);
         dua_id[dua] = num_rows;
         assert (PQresultStatus(res) == PGRES_COMMAND_OK);
         PQclear(res);
@@ -275,7 +258,7 @@ void postgresql_dump_atps(PGconn *conn, std::set<AttackPoint> &atps) {
             << typ_id << ","
             << inputfile_id << ","
             << "0,0);";
-        res = pq_exec_ss(conn,sql);
+        res = pg_exec_ss(conn,sql);
         atp_id[atp] = num_rows;
         assert (PQresultStatus(res) == PGRES_COMMAND_OK);
         PQclear(res);
@@ -292,7 +275,7 @@ void postgresql_dump_bugs(PGconn *conn, std::set<Bug> &injectable_bugs) {
         int num_rows = get_num_rows(conn, "bug");
         sql << "INSERT INTO bug (id,dua,atp) VALUES (" << num_rows << "," << dua_id[dua] << "," << atp_id[atp] << ");";
         printf("sql = [%s]\n", (const char *) sql.str().c_str());
-        PGresult *res = pq_exec_ss(conn,sql);
+        PGresult *res = pg_exec_ss(conn,sql);
         assert (PQresultStatus(res) == PGRES_COMMAND_OK);
         PQclear(res);
     }
@@ -318,16 +301,16 @@ int main (int argc, char **argv) {
     float max_liveness = atof(argv[3]);
     printf ("maximum liveness score of %.2f\n", max_liveness);
 
-    uint32_t max_card = atoi(argv[4]);
+    uint32_t max_card = stou(argv[4]);
     printf ("max card of taint set returned by query = %d\n", max_card);
 
-    uint32_t max_tcn = atoi(argv[5]);
+    uint32_t max_tcn = stou(argv[5]);
     printf ("max tcn for addr = %d\n", max_tcn);
 
     inputfile = std::string(argv[6]);
 
     // read in dead data (dd[label_num])
-    std::map <Label, float> dd = read_dead_data(plf);
+    std::map <FileOffset, float> dd = read_dead_data(plf);
     printf ("done reading in dead data\n");
 
     /*
@@ -337,7 +320,7 @@ int main (int argc, char **argv) {
 
     pandalog_open(plf, "r");
     Panda__LogEntry *ple;
-    std::map <Ptr, std::set<Label> > ptr_to_set;
+    std::map <Ptr, std::set<FileOffset> > ptr_to_set;
     uint64_t ii=0;
     Panda__SrcInfo current_si;
     Panda__TaintQueryHypercall current_tqh;
@@ -348,8 +331,8 @@ int main (int argc, char **argv) {
     bool current_ext_ok = false;
     bool current_si_ok = false; 
     uint32_t num_ext_ok = 0;
-    std::set<Label> labels;
-    std::set <Offset> ok_bytes;
+    std::set<FileOffset> labels;
+    std::set <LvalOffset> ok_bytes;
     bool seen_first_tq = false;
     std::set <Dua> u_dua;
     std::set <AttackPoint> u_atp;
@@ -376,7 +359,7 @@ int main (int argc, char **argv) {
             uint32_t i;
             Ptr p = ple->taint_query_unique_label_set->ptr;
             for (i=0; i<ple->taint_query_unique_label_set->n_label; i++) {
-                Label l = ple->taint_query_unique_label_set->label[i];
+                FileOffset l = ple->taint_query_unique_label_set->label[i];
                 ptr_to_set[p].insert(l);
             }
         }        
@@ -423,7 +406,7 @@ int main (int argc, char **argv) {
                 assert (ptr_to_set.count(p) != 0);
                 assert (ptr_to_set[p].size() != 0);
                 // check for too-live data on any label this byte derives form
-                for ( Label l : ptr_to_set[p] ) {
+                for ( FileOffset l : ptr_to_set[p] ) {
                     // if liveness too high, discard this byte
                     current_byte_not_ok |= ((dd[l] > max_liveness) << 2);
                     if (current_byte_not_ok != 0) break;
@@ -457,8 +440,8 @@ int main (int argc, char **argv) {
                     ind2str[current_si.filename], 
                     current_si.linenum, 
                     ind2str[current_si.astnodename],
-                    labels,       
-                    ok_bytes,     
+                    labels,       // file offsets
+                    ok_bytes,     // lval offsets
                     inputfile,   
                     c_max_liveness, c_max_tcn, c_max_card
                     );
