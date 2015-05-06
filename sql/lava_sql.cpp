@@ -65,11 +65,6 @@ PGresult *pg_exec_ss(PGconn *conn, std::stringstream &comm) {
 }
 
 
-uint32_t stou(std::string s) {
-    const char * cs = s.c_str();
-    return (uint32_t) atoi(cs);
-}
-
 typedef std::map<uint32_t,std::string> Ism;
 
 

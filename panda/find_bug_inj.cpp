@@ -47,22 +47,11 @@ int inputfile_id;
 std::map<uint32_t,std::string> ind2str;
 
 
-std::string iset_str(std::set<uint32_t> &iset) {
-    std::stringstream ss;
-    uint32_t n = iset.size();
-    uint32_t i=0;
-    for (auto el : iset) {
-        i++;
-        ss << el;
-        if (i != n) ss << ",";
-    }
-    return ss.str();
-}
-
-
-
-
 Instr last_instr_count;
+
+
+
+
 
 void get_last_instr(char *pandalog_filename) {
     printf ("Computing dua and ap stats\n");
@@ -74,7 +63,7 @@ void get_last_instr(char *pandalog_filename) {
             last_instr_count = ple->instr;
         }
     }
-    printf ("%" PRIu64 "is last instr\n", last_instr_count);
+    //    printf ("%" PRIu64 "is last instr\n", last_instr_count);
     pandalog_close();
 }
     
@@ -93,7 +82,7 @@ std::map <uint32_t, float> read_dead_data(char *pandalog_filename) {
         }
         if (ple->n_dead_data > 0) {
             printf ("\n");
-            for (FileOffset i=0; i<ple->n_dead_data; i++) {
+            for (uint32_t i=0; i<ple->n_dead_data; i++) {
                 dd[i] = ple->dead_data[i];
             }
         }
@@ -151,11 +140,12 @@ void spit_res(PGresult *res) {
 }
 
 
-uint32_t stou (std::string s) {
-    const char * cs = (const char *) s.c_str();
+
+
+uint32_t stou(std::string s) {
+    const char * cs = s.c_str();
     return (uint32_t) atoi(cs);
 }
-
 
 
 int get_num_rows(PGconn *conn, std::string table) {
@@ -310,7 +300,7 @@ int main (int argc, char **argv) {
     inputfile = std::string(argv[6]);
 
     // read in dead data (dd[label_num])
-    std::map <FileOffset, float> dd = read_dead_data(plf);
+    std::map <uint32_t, float> dd = read_dead_data(plf);
     printf ("done reading in dead data\n");
 
     /*
@@ -320,7 +310,7 @@ int main (int argc, char **argv) {
 
     pandalog_open(plf, "r");
     Panda__LogEntry *ple;
-    std::map <Ptr, std::set<FileOffset> > ptr_to_set;
+    std::map <Ptr, std::set<uint32_t> > ptr_to_set;
     uint64_t ii=0;
     Panda__SrcInfo current_si;
     Panda__TaintQueryHypercall current_tqh;
@@ -331,8 +321,8 @@ int main (int argc, char **argv) {
     bool current_ext_ok = false;
     bool current_si_ok = false; 
     uint32_t num_ext_ok = 0;
-    std::set<FileOffset> labels;
-    std::set <LvalOffset> ok_bytes;
+    std::set<uint32_t> labels;
+    std::set <uint32_t> ok_bytes;
     bool seen_first_tq = false;
     std::set <Dua> u_dua;
     std::set <AttackPoint> u_atp;
@@ -359,7 +349,7 @@ int main (int argc, char **argv) {
             uint32_t i;
             Ptr p = ple->taint_query_unique_label_set->ptr;
             for (i=0; i<ple->taint_query_unique_label_set->n_label; i++) {
-                FileOffset l = ple->taint_query_unique_label_set->label[i];
+                uint32_t l = ple->taint_query_unique_label_set->label[i];
                 ptr_to_set[p].insert(l);
             }
         }        
@@ -406,7 +396,7 @@ int main (int argc, char **argv) {
                 assert (ptr_to_set.count(p) != 0);
                 assert (ptr_to_set[p].size() != 0);
                 // check for too-live data on any label this byte derives form
-                for ( FileOffset l : ptr_to_set[p] ) {
+                for ( uint32_t l : ptr_to_set[p] ) {
                     // if liveness too high, discard this byte
                     current_byte_not_ok |= ((dd[l] > max_liveness) << 2);
                     if (current_byte_not_ok != 0) break;
@@ -436,7 +426,7 @@ int main (int argc, char **argv) {
                 seen_first_tq = true;
                 // great -- extent we just looked at was deemed acceptable
                 num_ext_ok ++;
-                Dua dua = Dua(
+                Dua dua = {
                     ind2str[current_si.filename], 
                     current_si.linenum, 
                     ind2str[current_si.astnodename],
@@ -444,7 +434,7 @@ int main (int argc, char **argv) {
                     ok_bytes,     // lval offsets
                     inputfile,   
                     c_max_liveness, c_max_tcn, c_max_card
-                    );
+                };
                 // keeping track of dead, uncomplicated data extents we have
                 // encountered so far in the trace
                 u_dua.insert(dua);
@@ -458,14 +448,14 @@ int main (int argc, char **argv) {
             in_atp = false;
             if (seen_first_tq) {
                 // done with current attack point
-                AttackPoint atp = AttackPoint(ind2str[current_si.filename], current_si.linenum, ind2str[atp_info]);
+                AttackPoint atp = {ind2str[current_si.filename], current_si.linenum, ind2str[atp_info]};
                 if ((u_atp.count(atp) == 0)
                     || (last_num_dua[atp] != u_dua.size())) {
                     // new attack point 
                     // OR number of dua has changed since last time we were here
                     // ok, this attack point can pair with *any* of the dead uncomplicated extents seen previously
                     for ( auto dua : u_dua ) {
-                        Bug bug = Bug(dua, atp, "", 4);
+                        Bug bug = { dua, atp, "", 4 };
                         injectable_bugs.insert(bug);
                     }
                     u_atp.insert(atp);
@@ -496,15 +486,9 @@ int main (int argc, char **argv) {
     // write duas to postgres
     std::string conninfo = "hostaddr=" + dbhostaddr + " dbname=" + dbname + " user=lava password=lava";
     PGresult   *res;
+    PGconn *conn = pg_connect();    
 
-    PGconn *conn = PQconnectdb ((const char *) conninfo.c_str());
-    if (PQstatus(conn) != CONNECTION_OK) {
-        fprintf(stderr, "Connection to database failed: %s",
-                PQerrorMessage(conn));
-        exit_nicely(conn);
-    }
     inputfile_id = addstr(conn, "inputfile", inputfile);
-
 
     postgresql_dump_duas(conn,u_dua);
     postgresql_dump_atps(conn,u_atp);
