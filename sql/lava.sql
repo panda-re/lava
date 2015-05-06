@@ -137,18 +137,18 @@ $$ LANGUAGE SQL;
 -- function of those bytes, but is also dead in the sense that it does not
 -- taint many branches
 CREATE TABLE dua (
-       dua_id    	    int, 
-       filename	    int,   -- source file containing this dua (see SourceFile table)
-       line	        int,   -- line in source file
-       lval	        int,   -- name of the lval, at least some bytes of which are dua 
-       bytes  	    int[], -- bytes in the input file that taint this dua
-       offsets	    int[], -- offsets within the lval that are the dua
-       inputfile    int,   -- input file that gave us this dua
-       max_tcn      real,      -- max taint compute number across bytes in this dua
-       max_card	    int,   -- max cardinality of a taint label set for any byte in the dua
-       max_liveness float,   -- max liveness of any label in any taint label set for any byte in the dua       
-       dua_icount       int,   -- number of times used to inject a bug
-       dua_scount       int    -- number of times used to inject a bug that was successful
+       dua_id        int, 
+       filename	     int,   -- source file containing this dua (see SourceFile table)
+       line	         int,   -- line in source file
+       lval	         int,   -- name of the lval, at least some bytes of which are dua 
+       file_offsets  int[], -- bytes in the input file that taint this dua
+       lval_offsets	 int[], -- offsets within the lval that are the dua
+       inputfile     int,   -- input file that gave us this dua
+       max_tcn       real,      -- max taint compute number across bytes in this dua
+       max_card	     int,   -- max cardinality of a taint label set for any byte in the dua
+       max_liveness  float,   -- max liveness of any label in any taint label set for any byte in the dua       
+       dua_icount    int,   -- number of times used to inject a bug
+       dua_scount    int    -- number of times used to inject a bug that was successful
 );
 
 
