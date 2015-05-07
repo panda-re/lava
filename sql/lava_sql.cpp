@@ -114,20 +114,25 @@ std::map<uint32_t,AttackPoint> pg_get_attack_points(PGconn *conn, Ism &sourcefil
 }
 
 
-
-// parse {44,55} into a set of uint32
-std::set<uint32_t> parse_offsets(std::string offs_str) {
-    uint32_t l = offs_str.size();
-    // discard { } 
-    std::string offs_str1 = offs_str.substr(1, l-2);
+// parse "45,55" into set of uint32
+std::set<uint32_t parse_ints(std::string offs_str) {
     // split on ,    
-    std::stringstream offs_str1_ss(offs_str1);
+    std::stringstream offs_str_ss(offs_str);
     std::set<uint32_t> offs;
     std::string token;
     while (std::getline(offs_str1_ss, token, ',')) {
         offs.insert(atoi(token.c_str()));
     }
     return offs;
+}
+
+
+// parse {44,55} into a set of uint32
+std::set<uint32_t> parse_offsets(std::string offs_str) {
+    uint32_t l = offs_str.size();
+    // discard { } 
+    std::string offs_str1 = offs_str.substr(1, l-2);
+    return parse_ints(offs_str1);
 }
     
     

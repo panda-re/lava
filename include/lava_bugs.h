@@ -222,4 +222,6 @@ std::map<uint32_t,std::string> pq_get_string_map(PGconn *conn, std::string table
 
 
 
+std::set<uint32_t parse_ints(std::string offs_str);
+
 #endif
