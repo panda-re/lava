@@ -64,16 +64,13 @@ def parseDUAFile(config):
 
 def insertAttackPointTransforms(config, attackPoints):
     ''' Call lavaTool with data read from a .aps file '''
+    ''' XXX needs some work after changes in tool '''
     for i, ap in enumerate(attackPoints):
         spArgs = [
             config['toolPath'] + '/lavaTool',
             '-p=' + config['sourcePath'],
             '-action=inject',
-            '-mode=atp',
-            ('-info=' + ap['lineNumber'] + ',' +
-                ap['astNode'] + ',' +
-                'dead_data1,4' # placeholder global and size
-            ),
+            '-lava-bug-info=' + config['lavaDataPath'],
             ap['fileName']
         ]
         print 'spArgs: ' + str(spArgs)
