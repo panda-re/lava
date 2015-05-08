@@ -42,21 +42,6 @@ struct Dua {
     uint32_t icount;                    // num times this dua has been used to inject a bug
     uint32_t scount;                    // num times this dua has been used to inject a bug that turned out to realy be a bug
 
-    /*
-    Dua (std::string filename,        
-         uint32_t line,                   
-         std::string lvalname,        
-         std::set<uint32_t> file_offsets,       
-         std::set<uint32_t> lval_offsets,       
-         std::string input_file,      
-         float max_liveness,          
-         uint32_t max_tcn,            
-         uint32_t max_card,
-         uint32_t icount,
-         uint32_t scount)
-        : filename(filename), line(line), lvalname(lvalname), file_offsets(file_offsets), lval_offsets(lval_offsets), input_file(input_file), max_liveness(max_liveness),  max_tcn(max_tcn), max_card(max_card), icount(icount), scount(scount) {}    
-    */
-
     std::string str() {
         std::stringstream ss;
         ss << filename << ","
@@ -121,16 +106,6 @@ struct AttackPoint {
     uint32_t icount;
     uint32_t scount;
 
-    /*    
-    AttackPoint (std::string filename,
-                 uint32_t linenum,
-                 std::string typ, 
-                 std::string input_file,
-                 uint32_t icount,
-                 uint32_t scount)
-        : filename(filename), linenum(linenum), typ(typ), input_file(input_file), icount(icount), scount(scount) {}
-    */
-
     std::string str() {
         std::stringstream ss;
         ss << filename << "," << linenum << "," << typ << "," << input_file << "," << icount << "," << scount;
@@ -164,16 +139,11 @@ struct AttackPoint {
 
 
 struct Bug {
-
+    uint32_t id;
     Dua dua;                 // specifies where the dead data is in the program src
     AttackPoint atp;         // specifes where that dead data might be used to create a bug
     std::string global_name;  // name of global that will provide data flow between dua and atp.
     uint32_t size;            // size of global in bytes
-
-    /*    
-    Bug (Dua dua, AttackPoint atp, std::string global_name, uint32_t size) 
-        : dua(dua), atp(atp), global_name(global_name), size(size) {}
-    */
 
     std::string str() {
         std::stringstream ss;
@@ -218,10 +188,15 @@ PGresult *pg_exec_ss(PGconn *conn, std::stringstream &query);
  second is strings corresponding to thos ids.  
  this fn reads that info into a int->string map and returns it
 */
-std::map<uint32_t,std::string> pq_get_string_map(PGconn *conn, std::string tablename);
+std::map < uint32_t, std::string > pq_get_string_map(PGconn *conn, std::string tablename);
 
 
 
-std::set<uint32_t parse_ints(std::string offs_str);
+std::set<uint32_t> parse_ints(std::string offs_str);
+
+
+// load this set of bugs out of the db given their ids
+std::set<Bug> loadBugs(std::set<uint32_t> bug_ids);
+
 
 #endif
