@@ -111,12 +111,12 @@ std::map<uint32_t,AttackPoint> pg_get_attack_points(PGconn *conn, Ism &sourcefil
 
 
 // parse "45,55" into set of uint32
-std::set<uint32_t parse_ints(std::string offs_str) {
+std::set<uint32_t> parse_ints(std::string offs_str) {
     // split on ,    
     std::stringstream offs_str_ss(offs_str);
     std::set<uint32_t> offs;
     std::string token;
-    while (std::getline(offs_str1_ss, token, ',')) {
+    while (std::getline(offs_str_ss, token, ',')) {
         offs.insert(atoi(token.c_str()));
     }
     return offs;
@@ -176,17 +176,49 @@ std::map<uint32_t,Bug> pg_get_bugs(PGconn *conn, std::map<uint32_t,Dua> &duas, s
     std::cout << "Reading Bugs from postgres\n";
     PGresult *res = pg_exec(conn, "SELECT * FROM bug;");
     assert (PQresultStatus(res) == PGRES_TUPLES_OK);
-    std::map<uint32_t,Bug> bugs;
+    std::map<uint32_t, Bug> bugs;
     // iterate over rows in the table                                                                                                                                                                                                 
     for (int row=0; row<PQntuples(res); row++) {        
         uint32_t id = atoi(PQgetvalue(res, row, 0));
         uint32_t dua_id = atoi(PQgetvalue(res, row, 1));
         uint32_t atp_id = atoi(PQgetvalue(res, row, 2));
-        bugs[id] = {duas[dua_id],atps[atp_id]};
+        bugs[id] = {id, duas[dua_id], atps[atp_id], "", 4};
     }   
     return bugs;
 }       
     
+
+
+// load this set of bugs from db
+// a bug is a dua/atp pair, effectively
+std::set<Bug> loadBugs(std::set<uint32_t> &bug_ids) {
+
+    // XXX: pg_connect fn contains hard-coded server addr, usernames, and passwords
+    // really these should be cmdline params that are args to pg_connect.
+    PGconn *conn = pg_connect();
+        
+    Ism sourcefile = pg_get_string_map(conn, "sourcefile");
+    Ism atptype = pg_get_string_map(conn, "atptype");
+    Ism inputfile = pg_get_string_map(conn, "inputfile");    
+    Ism lval = pg_get_string_map(conn, "lval");
+
+    std::map<uint32_t,Dua> duas = pg_get_duas(conn, sourcefile, lval, inputfile);
+    std::map<uint32_t,AttackPoint> atps = pg_get_attack_points(conn, sourcefile, atptype, inputfile);
+    std::map<uint32_t,Bug> all_bugs = pg_get_bugs(conn, duas, atps);
+    
+    // ids of bugs to inject
+    //    std::set<uint32_t> bug_ids = parse_ints(LavaBugList);
+
+    // collect subset of bugs to be injected
+    std::set<Bug> bugs;
+    for ( auto &p : all_bugs ) {
+        uint32_t id = p.first;
+        if (bug_ids.count(id) != 0) {
+            bugs.insert(p.second);
+        }
+    }
+    return bugs;
+}
 
 
 
