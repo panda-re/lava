@@ -65,12 +65,19 @@ int main(int argc, char **argv) {
 
     test2(a, b);
 
+    Foo *g = (Foo *) malloc(sizeof(Foo));
+    g.x = 3;
+    g.y[0] = 'd';
+    test3(g);
+
     Foo f;
     f.x = 33;
     f.y[0] = 'l';
     f.y[1] = 'a';
     f.y[2] = 0;
-    test3(&f);
+    test4(f);
+
+
     test4(f);
         
 
