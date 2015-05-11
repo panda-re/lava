@@ -78,7 +78,6 @@ int main(int argc, char **argv) {
     test4(f);
 
 
-    test4(f);
         
 
     return 0;
