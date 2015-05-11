@@ -14,11 +14,11 @@ static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp(
     "\nTODO: Add descriptive help message.  "
     "Automatic clang stuff is ok for now.\n\n");
-enum action { QueryAction, InsertAction };
+enum action { LavaQueries, LavaInjectBugs };
 static cl::opt<action> LavaAction("action", cl::desc("LAVA Action"),
     cl::values(
-        clEnumValN(Queries, "query", "Add taint queries"),
-        clEnumValN(InjectBugs, "inject", "Inject bugs"),
+        clEnumValN(LavaQueries, "query", "Add taint queries"),
+        clEnumValN(LavaInjectBugs, "inject", "Inject bugs"),
         clEnumValEnd),
     cl::cat(LavaCategory),
     cl::Required);
@@ -33,19 +33,25 @@ static cl::opt<std::string> LavaDB("lava-db",
     cl::init("."));
 
 
+struct Llval {
+    std::string name;        // name of constructed lval
+    std::string pointer_tst;  // name of base ptr for null test
+    
+    bool operator<(const Llval &other) const {
+        if (name < other.name) return true;
+        if (name > other.name) return false;
+        return (pointer_tst < other.pointer_tst);
+    }      
+};
+
+
+
 struct Insertions {
     std::string top_of_file;  // stuff to insert at top of file
     std::string before_part;  // stuff to insert right before thing under inspection
     std::string after_part;   // stuff to insert right after the thing under inspection
 };
-   
 
-std::set<std::string> blacklikstFnNames ;
-blacklistFnNames.insert ("vm_lava");
-blacklistFnNames.insert ("va_start");
-blacklistFnNames.insert ("va_end");
-blacklistFnNames.insert ("va_copy");
-blacklistFnNames.insert ("va_free");
 
 
 static std::set<Bug> bugs;
@@ -106,43 +112,62 @@ public:
         return s.str();
     }
 
-    // give me a decl for a struct and I'll compose a string with
-    // all relevant taint queries
-    // XXX: not handling more than 1st level here
-    std::string ComposeTaintQueriesRecordDecl(std::string lv_name, RecordDecl *rd, std::string accessor, uint32_t src_filename, uint32_t src_linenum) {
-        std::stringstream queries;
+
+    // struct fields known to cause trouble
+    bool InFieldBlackList(std::string field_name) {
+        return
+            ((field_name == "__st_ino" )
+             || (field_name.size() > 0));
+    }
+
+
+    /*
+      lv_name is base for a struct.  Might be a pointer.
+      Use rd to iterate over slots in that struct and collect llvals.  
+      pointer indicates if lv_name is a pointer (and thus needs a null test)
+    */
+    void CollectLlvalsStruct1stLevel(std::string lv_name, RecordDecl *rd, bool pointer, std::set<Llval> llvals) {
         for (auto field : rd->fields()) {
             if (!field->isBitField()) {
-                // XXX Fixme!  this is crazy
-                if ( (!( field->getName().str() == "__st_ino" ))
-                     && (field->getName().str().size() > 0)
-                    ) {
-                    std::string ast_node_name = lv_name + accessor + field->getName().str();
-                    uint32_t ast_node_id = GetStringID(ast_node_name);
-                    queries << "vm_lava_query_buffer(";
-                    queries << "&(" << ast_node_name << "), " ;
-                    queries << "sizeof(" << ast_node_name << "), ";
-                    queries << src_filename << ", ";
-                    queries << ast_node_id << ", ";
-                    queries << src_linenum << ");\n";
-                    if (LavaAction == InsertAction) {
-                        std::cout << "Checking for DUAs2!!\n";
-                        for (auto bugIt = bugs.begin(); bugIt != bugs.end(); bugIt++){
-                            if (src_linenum == (*bugIt).dua.line
-                                    && ast_node_name == (*bugIt).dua.lvalname) {
-                                InsertLocFound = true;
-                                dua = (*bugIt).dua; // XXX STOP USING GLOBALS!
-                                std::cout << "Found a DUA2!!\n";
-                            }
-                        }
-                    } 
+                if (! InFieldBlackList(field->getName().str())) {
+                    std::string accessor =
+                        (pointer ? (std::string("->")) : (std::string(".")));                    
+                    std::string lval_ss = 
+                        lv_name + accessor + field->getName().str();
+                    std::string pointer_tst = (pointer ? lv_name : "");
+                    llvals.insert( { lval_ss, pointer_tst } ); 
                 }
             }
         }
-        return queries.str();
     }
-                          
-    // Collect list of all lvals buried in an expr
+    
+    
+    /*
+      llval is lval we want to query for taint.
+      note that we insert extra code if lval needs guarding b/c it might 
+      otherwise try to deref a null pointer.
+     */
+    Insertions ComposeDuaTaintQuery(Llval &llval, uint32_t filename_id, uint32_t linenum) {
+        Insertions inss;
+        std::stringstream query;
+        if (!(llval.pointer_tst == "")) {
+            query << "if (" << llval.pointer_tst << ")  {";
+        }
+        query << "vm_lava_query_buffer("
+              << "&(" << llval.name << "), " 
+              << "sizeof(" << llval.name << "), "
+              << filename_id << ", "
+              << GetStringID(llval.name) << ", "
+              << linenum << ");\n";
+        if (!(llval.pointer_tst == "")) {
+            query << "}";
+        }
+        inss.after_part = query.str();
+        return inss;
+    }
+        
+
+    // Find lvals buried in e. new lvals get added to lvals set
     void CollectLvals(Expr *e, std::set<Expr *> &lvals) {
         Stmt *s = dyn_cast<Stmt>(e);
         if (s) {
@@ -167,6 +192,36 @@ public:
                 for ( auto &child : s->children() ) {             
                     Expr *ce = dyn_cast<Expr>(child)->IgnoreCasts();
                     CollectLvals(ce, lvals);
+                }
+            }
+        }
+    }
+
+
+
+    // check if lval is a struct or a ptr-to-a-struct,
+    // if so, then collect lvals (as strings) that are 1st level struct slots
+    void CollectLlvalsStruct(Expr *lval, std::set<Llval> llvals) {
+        if (!CanGetSizeOf(lval)) 
+            return;
+        QualType qt = lval->getType();
+        const Type *t = qt.getTypePtr();
+        std::string lv_name = "(" + ExprStr(lval) + ")";
+        if (t->isPointerType()) {
+            if (t->getPointeeType()->isRecordType()) {
+                // we have a ptr to a struct 
+                const RecordType *rt = t->getPointeeType()->getAsStructureType();
+                if (rt) {
+                    CollectLlvalsStruct1stLevel(lv_name, rt->getDecl(), /* pointer = */ true, llvals);
+                }
+            }
+        }
+        else {
+            if (t->isRecordType()) {
+                // we have a struct
+                const RecordType *rt = t->getAsStructureType();
+                if (rt) {
+                    CollectLlvalsStruct1stLevel(lv_name, rt->getDecl(), /* pointer = */ false, llvals);
                 }
             }
         }
@@ -207,65 +262,6 @@ public:
         }
     }
 
-    // e must be an lval.
-    // return taint query for that lval
-    std::string ComposeTaintQueryLval (Expr *e, uint32_t src_filename, uint32_t src_linenum) {
-        assert (e->isLValue());
-        errs() << "+++ LVAL +++\n";
-        e->dump();
-        DeclRefExpr *d = dyn_cast<DeclRefExpr>(e);
-        if (d) errs() << "Could successfully cast\n";
-        else errs() << "Could NOT successfully cast\n";
-        errs() << "Can we get the size of this? " << (CanGetSizeOf(e) ? "YES" : "NO") << "\n";
-        errs() << "--- LVAL ---\n";
-        // Bail out early if we can't take the size of this thing
-        if (!CanGetSizeOf(e)) return "";
-        std::stringstream query;
-        std::string lv_name = "(" + ExprStr(e) + ")";
-        query << "vm_lava_query_buffer(";
-        query << "&(" << lv_name << "), ";
-        query << "sizeof(" << lv_name << "), ";
-        query << src_filename << ", ";
-        query << GetStringID(lv_name) << ", ";
-        query << src_linenum  << ");\n";
-        if (LavaAction == InsertAction) {
-            std::cout << "Checking for DUAs3!!\n";
-            for (auto bugIt = bugs.begin(); bugIt != bugs.end(); bugIt++){
-                if (src_linenum == (*bugIt).dua.line
-                        && lv_name == (*bugIt).dua.lvalname) {
-                    InsertLocFound = true;
-                    dua = (*bugIt).dua; // XXX STOP USING GLOBALS!
-                    std::cout << "Found a DUA3!!\n";
-                }
-            }
-        }
-        // if lval is a struct or a ptr to a struct,
-        // we want queries for all slots
-        QualType qt = e->getType();
-        const Type *t = qt.getTypePtr();
-        if (t->isPointerType()) {
-            if (t->getPointeeType()->isRecordType()) {
-                // we have a ptr to a struct 
-                const RecordType *rt = t->getPointeeType()->getAsStructureType();
-                if (rt) {
-                    query << "if (" << lv_name << ") {\n" ;
-                    query << (ComposeTaintQueriesRecordDecl(lv_name, rt->getDecl(), std::string("->"), src_filename, src_linenum));
-                    query << "}\n"; 
-               }
-            }
-        }
-        else {
-            if (t->isRecordType()) {
-                // we have a struct
-                const RecordType *rt = t->getAsStructureType();
-                if (rt) {
-                    query << (ComposeTaintQueriesRecordDecl(lv_name, rt->getDecl(), std::string("."), src_filename, src_linenum));
-                }
-            }
-        }
-        return query.str();
-    } 
-
     std::string RandVarName() {
         std::stringstream rvs;
         rvs << "kbcieiubweuhc";
@@ -290,12 +286,8 @@ public:
         return false;
     }
 
-    boolean IsAttackPoint(Expr &e) {
-        CallExpr &ce;
-        if (!(ce = dyn_cast<CallExpr>(e))) {
-            return false;
-        }
-        std::string fn_name =  ce.getDirectCallee()->getNameInfo().getName().getAsString();
+    bool IsAttackPoint(FunctionDecl *fd) {
+        std::string fn_name = fd->getNameInfo().getName().getAsString();
         return 
             ((fn_name.find("memcpy") != std::string::npos) 
              || (fn_name.find("malloc") != std::string::npos)
@@ -314,14 +306,14 @@ public:
     // before_outer before_inner thing after_inner after_outer
     Insertions ComposeInsertions(Insertions &inss_outer, Insertions &inss_inner) { 
         Insertions inss;
-        inss.top_of_file = inss_outer.top_of_file + inss._inner.top_of_file;
+        inss.top_of_file = inss_outer.top_of_file + inss_inner.top_of_file;
         inss.before_part = inss_outer.before_part + inss_inner.before_part;
         inss.after_part = inss_inner.after_part + inss_outer.after_part;
         return inss;
     }
     
-    Insertions ComposeAtpQuery(CallExpr e, std::string filename, uint32_t linenum) {
-        std::string fn_name =  e->getDirectCallee()->getNameInfo().getName().getAsString();
+    Insertions ComposeAtpQuery(CallExpr *ce, std::string filename, uint32_t linenum) {
+        std::string fn_name =  ce->getDirectCallee()->getNameInfo().getName().getAsString();
         Insertions inss;
         if ((fn_name.find("memcpy") != std::string::npos) 
             || (fn_name.find("malloc") != std::string::npos)
@@ -334,11 +326,11 @@ public:
             || (fn_name.find("exec") != std::string::npos)
             || (fn_name.find("popen") != std::string::npos)) {
             // this is an attack point              
-            std::stringstring before;
-            std::stringstring after;
+            std::stringstream before;
+            std::stringstream after;
             errs() << "Found attack point at " << filename << ":" << linenum << "\n";
             before << "({";
-            QualType rqt = e->getCallReturnType();
+            QualType rqt = ce->getCallReturnType();
             bool has_retval = CallExprHasRetVal(rqt);
             std::string retvalname = RandVarName();
             before << "vm_lava_attack_point(" << GetStringID(filename) << ", ";
@@ -348,8 +340,8 @@ public:
                 after << "; " << retvalname;
             }
             after << ";})";
-            inss.before_part = before;
-            inss.after_part = after;
+            inss.before_part = before.str();
+            inss.after_part = after.str();
         }
         return inss;
     }
@@ -362,13 +354,12 @@ public:
     }
 
     /* create code that siphons dua bytes into a global
-
        this is how, given a byte in a dua we'll grab it and insert into a global
        o = 3; // byte # in dua (0 is lsb)
        i = 0; // byte # in global
        lava_1 |=  (((unsigned char *) &dua))[o] << (i*8) ;
     */
-    Insertion ComposeDuaSiphoning(Bug &bug) {
+    Insertions ComposeDuaSiphoning(Bug &bug) {
         std::stringstream ss;
         uint32_t i = 0;
         std::string gn = LavaGlobal(bug.id);
@@ -380,17 +371,19 @@ public:
             // only need 4 bytes
             if (i == 4) break;
         }
-        Insertion inss;
+        Insertions inss;
         inss.after_part = ss.str();
         return inss;
     }
 
-    // Add code to call expr to use the global.
-    // NB: we dont actually know how to *change* code.
-    // so we instead just add another copy of the call with one
-    // of the arg perturbed by global.  :)
-    Insertion ComposeAtpGlobalUse(CallExpr *call_expr, Bug &bug) {
-        Insertion inss;
+    /*
+      Add code to call expr to use the global.
+      NB: we dont actually know how to *change* code.
+      so we instead just add another copy of the call with one
+      of the arg perturbed by global.  :)
+    */
+    Insertions ComposeAtpGlobalUse(CallExpr *call_expr, Bug &bug) {
+        Insertions inss;
         std::string fn_name = call_expr->getDirectCallee()->getNameInfo().getName().getAsString();
         inss.after_part = fn_name = "(";
         uint32_t n = call_expr->getNumArgs();
@@ -411,18 +404,20 @@ public:
       by different parts of the input
       returns Bug 
     */
-    Bug *AtBug(std::string lvalname, std::string filename, uint32_t linenum, boolean atAttackPoint ) {
+    bool AtBug(std::string lvalname, std::string filename, uint32_t linenum, bool atAttackPoint, Bug *the_bug ) {
         for ( auto bug : bugs ) {
             if (filename == bug.dua.filename
                 && linenum == bug.dua.line) {
+                // ignore lval if we are checking attack point match
                 if (atAttackPoint || 
                     (lvalname == bug.dua.lvalname)) {
                     // XXX just returning first!  What if there's multiple?
-                    return &bug;
+                    *the_bug = bug;
+                    return true;
                 }
             }
         }
-        return NULL;
+        return false;
     }
         
     /*
@@ -430,14 +425,14 @@ public:
       lval taint queries OR siphoning lval off into bug global
       this is called once for every lval found @ source location
      */
-    Insertions ComposeDuaNewSrc( std::string lval_name, Expr *lval_expr, std::string filename, uint32_t linenum ) {
-        Insertsions inss;
-        if (LavaAction == Queries) {
-            inss = ComposeDuaQuery(lval_name, lval_expr, filename, linenum);
+    Insertions ComposeDuaNewSrc( Llval &llval, std::string filename, uint32_t linenum ) {
+        Insertions inss;
+        if (LavaAction == LavaQueries) {
+            inss = ComposeDuaTaintQuery(llval, GetStringID(filename), linenum);
         }
-        else if (LavaAction == InjectBugs) {
-            Bug *bug = AtBug(lval_name, filename, linenum, /* atAttackPoint = */ false);
-            if (bug) {
+        else if (LavaAction == LavaInjectBugs) {
+            Bug *bug;
+            if (AtBug(llval.name, filename, linenum, /*atAttackPoint=*/false, bug)) {
                 inss = ComposeDuaSiphoning(*bug);
             }
         }
@@ -452,14 +447,14 @@ public:
       attack query OR bug global use
       this is called once for the call expr that is @ the source location
     */
-    Insertions ComposeAtpNewSrc( Expr *call_expr, std::string filename, uint32_t linenum) {
+    Insertions ComposeAtpNewSrc( CallExpr *call_expr, std::string filename, uint32_t linenum) {
         Insertions inss;
-        if (LavaAction == Queries) {            
+        if (LavaAction == LavaQueries) {            
             inss = ComposeAtpQuery(call_expr, filename, linenum);
         }
-        else if (LavaAction == InjectBugs) {
-            Bug *bug = AtBug(lval_name, filename, linenum, /* atAttackPoint = */ false);
-            if (bug) {
+        else if (LavaAction == LavaInjectBugs) {
+            Bug *bug;
+            if (AtBug("", filename, linenum, /*atAttackPoint=*/false, bug)) {
                 inss = ComposeAtpGlobalUse(call_expr, *bug);
             }
         }
@@ -469,7 +464,7 @@ public:
         return inss;
     }
 
-    boolean InBlackListFns(std::string fn_name) {
+    bool InFnBlackList(std::string fn_name) {
         return
             ((fn_name == "vm_lava_query_buffer")
              || (fn_name.find("va_start") != std::string::npos)
@@ -497,7 +492,7 @@ public:
           if its an attackpoint, figure out what code to insert
         */
         Insertions inssAtp;        
-        if (IsAttackPoint(*e)) {
+        if (IsAttackPoint(e->getDirectCallee())) {
             inssAtp = ComposeAtpNewSrc(e, src_filename, src_linenum);
         }
         /*
@@ -508,39 +503,48 @@ public:
         */
         Insertions inssDua;                
         // NB: there are some fns for which we will skip this step. 
-        if (!(inBlacklistFnNames(fn_name))) {
-            // collect set of lvals in args plus retval
-            std::set<std::pair<std::string, Expr *>> lvals;
+        if (!(InFnBlackList(fn_name))) {            
+            // collect lval names for this fn.
+            // one for the retval (if there is one).
+            // plus potentially many for each arg.
+            // if arg is an expression than that could contain many lvals
+            // further, if arg is a pointer to a struct we collect slot lvals 
+            std::set<Llval> llvals;
             QualType rqt = e->getCallReturnType(); 
             bool has_retval = CallExprHasRetVal(rqt);
             std::string retvalname = RandVarName();            
             if (has_retval) {
-                lvals.insert(std::make_pair(retvalname, NULL));
+                std::string pointer_tst = (rqt.getTypePtr()->isPointerType() ? retvalname : "");                
+                llvals.insert({retvalname, pointer_tst});
                 inssDua.before_part = " ( { " + (rqt.getAsString()) + " " + retvalname + " = ";
             }
             for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
                 Expr *arg = dyn_cast<Expr>(*it);
-                std::set<Expr *> lval_exprs;
-                CollectLvals(arg, lvals_exprs);            
-                for ( auto lval : lvals_exprs ) {                    
-                    lvals.insert(std::make_pair(ExprStr(lval), lval));
+                // collect all lvals explicit in expr (so, 'a' and 'b' for 'a+b')
+                std::set<Expr *> lvals;
+                CollectLvals(arg, lvals);
+                // now collect lvals as llvals
+                // for lvals that are structs, for all 1st-level fields.  
+                for ( auto lval : lvals ) {
+                    std::string lv_name = "(" + ExprStr(lval) + ")";
+                    std::string pointer_tst = (lval->getType().getTypePtr()->isPointerType() ? lv_name : "");
+                    llvals.insert( {lv_name, pointer_tst} );
+                    CollectLlvalsStruct(lval, llvals);
                 }
             }
             // compose and collect dua code: either taint queries or dua siphoning
-            for ( auto p : lvals ) {
-                std::string lval_name = p.first;
-                Expr *lval_expr = p.second;
-                Insertions inss = ComposeDuaNewSrc(lval_name, lval_expr, src_filename, src_linenum);
+            for ( auto llval : llvals ) {
+                Insertions inss = ComposeDuaNewSrc(llval, src_filename, src_linenum);
                 inssDua = ComposeInsertions(inssDua, inss);
             }
             if (has_retval) {
                 inssDua.after_part += " " + retvalname + " ; } )";
             }
         }
-        Insertions inss = ComposeInsertions(inssDua, inssAtp)
+        Insertions inss = ComposeInsertions(inssDua, inssAtp);
         rewriter.InsertText(e->getLocStart(), inss.before_part, true, true);        
         rewriter.InsertTextAfterToken(e->getLocEnd(), inss.after_part);
-        top_of_file += inss.top_of_file;    
+        new_start_of_file_src << inss.top_of_file;    
         return true;
     }
 
@@ -596,9 +600,9 @@ private:
 class LavaTaintQueryFrontendAction : public ASTFrontendAction {
 public:
     std::string startoffile_ins;
-
+    
     LavaTaintQueryFrontendAction() {}
-  
+    
     void EndSourceFileAction() override {
         SourceManager &sm = rewriter.getSourceMgr();
         errs() << "** EndSourceFileAction for: "
@@ -607,31 +611,17 @@ public:
 
         // Last thing: include the right file
         // Now using our separate LAVA version
-        if (LavaAction == QueryAction) {
+        if (LavaAction == LavaQueries) {
             new_start_of_file_src << "#include \"pirate_mark_lava.h\"\n";
         }
 
         rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
                             new_start_of_file_src.str(),
                             true, true);
-        }
-        /*
-        else if (LavaAction == InsertAction) {
-            std::string temp;
-            /*if (LavaInsertMode == DuaMode)
-                temp = dua.getDecl();
-            else
-                temp = atp.getDecl();
-            */
-            // XXX need to determine if declarations need to be externed or not
-            temp = dua.getDecl();
-            rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()), temp + "\n");
-        }
-        */
+            
         rewriter.overwriteChangedFiles();
-
         // save the strings db 
-        if (LavaAction == QueryAction)
+        if (LavaAction == LavaQueries)
             SaveDB(StringIDs, LavaDB);
     }
 
@@ -651,53 +641,13 @@ private:
 };
 
 
-// XXX put me in a class
-std::vector<Bug> loadBugs(std::string lavaBugInfoPath){
-    std::vector<Dua> duas = std::vector<Dua>();
-    std::vector<AttackPoint> atps = std::vector<AttackPoint>();
-    std::vector<Bug> inputBugs = std::vector<Bug>();
-    std::ifstream duaFile(lavaBugInfoPath + "/lava.duas");
-    std::ifstream atpFile(lavaBugInfoPath + "/lava.aps");
-    std::ifstream bugsFile(lavaBugInfoPath + "/lava.bugs");
-    std::string line;
-    while (std::getline(duaFile, line)){
-        duas.push_back(Dua(line));
-    }
-    while (std::getline(atpFile, line)){
-        atps.push_back(AttackPoint(line));
-    }
-    while (std::getline(bugsFile, line)){
-        // .bugs file is formatted with a pair of numbers where the first
-        // corresponds to the line number in the .duas file, and the second
-        // corresponds to the line number in the .aps file
-        std::stringstream bugData(line);
-        //Dua dua;
-        //AttackPoint ap;
-        std::string temp;
-        int duaIndex;
-        int atpIndex;
-        Bug bug;
-        std::getline(bugData, temp, ',');
-        duaIndex = std::stol(temp);
-        std::getline(bugData, temp, ',');
-        atpIndex = std::stol(temp);
-        bug.dua = duas[duaIndex];
-        bug.attackPoint = atps[atpIndex];
-        inputBugs.push_back(bug);
-    }
-    duaFile.close();
-    atpFile.close();
-    bugsFile.close();
-    std::cout << "Done parsing atps and duas\n";
-    return inputBugs;
-}
-
 int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
-    if (LavaAction == InsertAction) {
+    if (LavaAction == LavaInjectBugs) {
         // get bug info for the injections we are supposed to be doing.
-        bugs = loadBugs(LavaBugList);        
+        std::set<uint32_t> bug_ids = parse_ints(LavaBugList);
+        bugs = loadBugs(bug_ids);        
     } 
     return Tool.run(newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
 }

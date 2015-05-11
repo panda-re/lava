@@ -12,6 +12,12 @@ int test(int, int);
 
 static int f5;
 
+
+typedef struct foo {
+    int x;
+    char y[10];
+} Foo;
+
 void test1(char *buf, int size) // let's pretend size is a dua
 {
     char temp = malloc(size);
@@ -29,6 +35,16 @@ int test2(int a, int b) {
     return (a+b);
 }
 
+
+
+int test3(Foo *f) {
+    return printf ("%d %s\n", f->x, f->y) ;
+}
+
+
+int test4(Foo f) {
+    return printf ("%d %s\n", f.x, f.y);
+}
 
 int main(int argc, char **argv) {
     char buf[16] = {};

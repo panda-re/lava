@@ -196,7 +196,7 @@ std::set<uint32_t> parse_ints(std::string offs_str);
 
 
 // load this set of bugs out of the db given their ids
-std::set<Bug> loadBugs(std::set<uint32_t> bug_ids);
+std::set<Bug> loadBugs(std::set<uint32_t> &bug_ids);
 
 
 #endif

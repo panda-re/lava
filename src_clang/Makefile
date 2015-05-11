@@ -29,7 +29,7 @@ $(info Using LLVM_BIN_PATH = $(LLVM_BIN_PATH))
 $(info -----------------------------------------------)
 
 CXX := g++
-CXXFLAGS := -fno-rtti -O0 -g
+CXXFLAGS := -fno-rtti -O0 -g -std=c++11 -lpq
 PLUGIN_CXXFLAGS := -fpic
 
 LLVM_CXXFLAGS := `$(LLVM_BIN_PATH)/llvm-config --cxxflags`
@@ -83,8 +83,8 @@ make_builddir:
 includes.h.gch: includes.h
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^
 
-$(BUILDDIR)/lavaTool: lavaTool.cpp lavaDB.cpp includes.h.gch
-	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) lavaTool.cpp lavaDB.cpp \
+$(BUILDDIR)/lavaTool: lavaTool.cpp lavaDB.cpp includes.h.gch ../sql/lava_sql.cpp 
+	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) lavaTool.cpp lavaDB.cpp ../sql/lava_sql.cpp \
 		$(CLANG_LIBS) $(LLVM_LDFLAGS) -o $@
 
 
