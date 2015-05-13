@@ -44,14 +44,16 @@ struct Dua {
 
     std::string str() {
         std::stringstream ss;
-        ss << filename << ","
-              << line << ","  
-              << lvalname << ",";
+        ss << "DUA [" 
+           << filename << ","
+           << line << ","  
+           << lvalname << ",";
         // offsets within the input file that taint dua
         ss << "{" << iset_str(file_offsets) << "},"; 
         // offsets within the lval that are duas
         ss << "{" << iset_str(lval_offsets) << "}";
         ss << "," << max_liveness << "," << max_tcn << "," << max_card ;
+        ss << "]";
         return ss.str();
     }    
 
@@ -108,7 +110,9 @@ struct AttackPoint {
 
     std::string str() {
         std::stringstream ss;
+        ss << "ATP [";
         ss << filename << "," << linenum << "," << typ << "," << input_file << "," << icount << "," << scount;
+        ss << "]";
         return ss.str();
     }
 
@@ -147,7 +151,9 @@ struct Bug {
 
     std::string str() {
         std::stringstream ss;
-        ss << "Dua{" << dua.str() << "}-Atp{" << atp.str() << "}," << global_name << "," << size;
+        ss << "BUG [";
+        ss << dua.str() << atp.str() << "," << global_name << "," << size;
+        ss << "]";
         return ss.str();
     }
     
