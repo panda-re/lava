@@ -6,6 +6,7 @@ extern "C" {
     #include <stdlib.h>
     #include <stdint.h>
     #include "/usr/include/postgresql/libpq-fe.h"
+    #include "panda_hypercall_struct.h"
 }
 
 

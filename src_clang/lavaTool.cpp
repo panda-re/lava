@@ -125,7 +125,7 @@ public:
       note that we insert extra code if lval needs guarding b/c it might 
       otherwise try to deref a null pointer.
      */
-    std::string ComposeDuaTaintQuery(Llval &llval, uint32_t filename_id, uint32_t linenum) {
+    std::string ComposeDuaTaintQuery(Llval &llval, uint32_t filename_id, uint32_t linenum, uint32_t insertion_point) {
         Insertions inss;
         std::stringstream query;
         if (!(llval.pointer_tst == "")) {
@@ -136,7 +136,8 @@ public:
               << "sizeof(" << llval.name << "), "
               << filename_id << ", "
               << GetStringID(llval.name) << ", "
-              << linenum << ");\n";
+              << linenum << ", "
+              << insertion_point << ");\n";
         if (!(llval.pointer_tst == "")) {
             query << "}";
         }
@@ -304,7 +305,17 @@ public:
         inss.after_part = inss_inner.after_part + inss_outer.after_part;
         return inss;
     }
-    
+
+    bool EmptyInsertions(Insertions &inss) {
+        return  (inss.top_of_file == "" && inss.before_part == "" && inss.after_part == "");
+    }
+
+    void SpitInsertions(Insertions &inss) {
+        errs() << "top_of_file=[" << inss.top_of_file << "]\n";
+        errs() << "before_part=[" << inss.before_part << "]\n";
+        errs() << "after_part=[" << inss.after_part << "]\n";
+    }
+
     Insertions ComposeAtpQuery(CallExpr *ce, std::string filename, uint32_t linenum) {
         std::string fn_name =  ce->getDirectCallee()->getNameInfo().getName().getAsString();
         Insertions inss;
@@ -343,7 +354,7 @@ public:
     std::string LavaGlobal(uint32_t id) {
         std::stringstream ss;
         ss << "lava_" << id;
-        ss.str();
+        return ss.str();
     }
 
     /* create code that siphons dua bytes into a global
@@ -353,6 +364,7 @@ public:
        lava_1 |=  (((unsigned char *) &dua))[o] << (i*8) ;
     */
     Insertions ComposeDuaSiphoning(Bug &bug) {
+        errs() << "ComposeDuaSiphoning\n";
         Insertions inss;
         std::stringstream ss;
         uint32_t i = 0;
@@ -401,7 +413,6 @@ public:
       returns Bug 
     */
     bool AtBug(std::string lvalname, std::string filename, uint32_t linenum, bool atAttackPoint, Bug *the_bug ) {
-        errs() << "At bug " << filename << " :: " << linenum << "\n";
         for ( auto bug : bugs ) {
             if (filename == bug.dua.filename
                 && linenum == bug.dua.line) {
@@ -423,16 +434,25 @@ public:
       lval taint queries OR siphoning lval off into bug global
       this is called once for every lval found @ source location.
       how to insert this string into source is determined by the caller.
+      what is insertion_point?  
+      If we are composing taint queries then they can go before or after
+      a call site.  We need the taint query to differentiate and transmit that
+      info up to hypervisor.  This is needed because bug insertion, later, 
+      will need it.  
+      insertion_point is just a number that (currently) can be 
+      1 = query was before call
+      2 = query was after call
     */
-    Insertions ComposeDuaNewSrc(Llval &llval, std::string filename, uint32_t linenum) {
+    Insertions ComposeDuaNewSrc(Llval &llval, std::string filename, uint32_t linenum, uint32_t insertion_point) {
         Insertions inss;
         if (LavaAction == LavaQueries) {
-            inss.after_part = ComposeDuaTaintQuery(llval, GetStringID(filename), linenum);
+            inss.after_part = ComposeDuaTaintQuery(llval, GetStringID(filename), linenum, insertion_point);
         }
         else if (LavaAction == LavaInjectBugs) {
-            Bug *bug;
-            if (AtBug(llval.name, filename, linenum, /*atAttackPoint=*/false, bug)) {
-                inss = ComposeDuaSiphoning(*bug);
+            Bug bug;
+            if (AtBug(llval.name, filename, linenum, /*atAttackPoint=*/false, &bug)) {
+                errs() << "at bug in ComposeDuaNewSrc\n";
+                inss = ComposeDuaSiphoning(bug);
             }
         }
         else {
@@ -452,9 +472,10 @@ public:
             inss = ComposeAtpQuery(call_expr, filename, linenum);
         }
         else if (LavaAction == LavaInjectBugs) {
-            Bug *bug;
-            if (AtBug("", filename, linenum, /*atAttackPoint=*/false, bug)) {
-                inss = ComposeAtpGlobalUse(call_expr, *bug);
+            Bug bug;
+            if (AtBug("", filename, linenum, /*atAttackPoint=*/false, &bug)) {
+                errs() << "at bug in ComposeAtpNewSrc\n";
+                inss = ComposeAtpGlobalUse(call_expr, bug);
             }
         }
         else {
@@ -502,7 +523,8 @@ public:
         */
         Insertions inssDua;                
         // NB: there are some fns for which we will skip this step. 
-        if (!(InFnBlackList(fn_name))) {            
+        bool any_dua_insertions = false;
+        if (!(InFnBlackList(fn_name))) {
             // collect lval names for this fn.
             // one for the retval (if there is one).
             // plus potentially many for each arg.
@@ -537,25 +559,50 @@ public:
                 }
             }
             // compose and collect dua code: either taint queries or dua siphoning
-            std::stringstream dua_src;
+            std::stringstream dua_src_before;
+            std::stringstream dua_src_after;            
             for ( auto llval : llvals ) {
-                Insertions inss = ComposeDuaNewSrc(llval, src_filename, src_linenum);
-                inssDua.top_of_file += inss.top_of_file;
-                dua_src << inss.after_part;
+                Insertions inss_before;
+                Insertions inss_after; 
+                if (LavaAction == LavaQueries) {
+                    inss_before = ComposeDuaNewSrc(
+                        llval, src_filename, src_linenum,
+                        INSERTION_POINT_BEFORE_CALL);
+                }
+                inss_after = ComposeDuaNewSrc(
+                    llval, src_filename, src_linenum,
+                    INSERTION_POINT_AFTER_CALL);
+                inssDua.top_of_file += inss_before.top_of_file;
+                inssDua.top_of_file += inss_after.top_of_file;
+                // NB: yes, this is correct
+                dua_src_before << inss_before.after_part;
+                dua_src_after << inss_after.after_part;
             }
-            inssDua.before_part = "({" + dua_src.str() + rv_before;
-            inssDua.after_part = ";" + dua_src.str();
-            if (has_retval) {
-                Insertions inss = ComposeDuaNewSrc(rv_llval, src_filename, src_linenum);
-                inssDua.top_of_file += inss.top_of_file ;
-                inssDua.after_part +=  inss.after_part ;
+            any_dua_insertions = !((dua_src_before.str() == "") && (dua_src_after.str() == ""));
+            if (any_dua_insertions) {
+                inssDua.before_part = "({" + dua_src_before.str() + rv_before;
+                inssDua.after_part = ";" + dua_src_after.str();
+                if (has_retval) {
+                    Insertions inss = ComposeDuaNewSrc(rv_llval, src_filename, src_linenum, 
+                        INSERTION_POINT_AFTER_CALL);
+                    inssDua.top_of_file += inss.top_of_file ;
+                    inssDua.after_part +=  inss.after_part ;
+                }
+                inssDua.after_part +=  rv_after + "})";
             }
-            inssDua.after_part +=  rv_after + "})";
         }
+        //        errs() << "inssDua\n";
+        //        SpitInsertions (inssDua);
+        //        errs() << "inssAtp\n";
+        //        SpitInsertions (inssAtp);
         Insertions inss = ComposeInsertions(inssDua, inssAtp);
-        rewriter.InsertText(e->getLocStart(), inss.before_part, true, true);        
-        rewriter.InsertTextAfterToken(e->getLocEnd(), inss.after_part);
-        new_start_of_file_src << inss.top_of_file;    
+        if (!EmptyInsertions(inss)) {
+            //            printf ("non-empty insertions\n");
+            //            SpitInsertions(inss);
+            rewriter.InsertText(e->getLocStart(), inss.before_part, true, true);        
+            rewriter.InsertTextAfterToken(e->getLocEnd(), inss.after_part);
+            new_start_of_file_src << inss.top_of_file;    
+        }
         return true;
     }
 
