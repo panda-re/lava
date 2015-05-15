@@ -22,6 +22,7 @@ static const int GUEST_UTIL_DONE = 10;
 static const int LAVA_QUERY_BUFFER = 11;
 static const int LAVA_ATTACK_POINT = 12;
 
+
 #ifdef TARGET_I386
 static inline
 void hypercall(void *buf, unsigned long len, long label, unsigned long off,
@@ -131,7 +132,7 @@ void vm_query_buffer(void *buf, unsigned long len, int offset,
 static inline
 void vm_lava_query_buffer(const void *buf, unsigned long len, 
                           lavaint src_filename, lavaint src_ast_node_name,
-                          unsigned long linenum) {
+                          unsigned long linenum, uint32_t ins) {
   volatile PandaHypercallStruct phs = {0};
   phs.magic = 0xabcd;
   phs.action = LAVA_QUERY_BUFFER;
@@ -141,6 +142,7 @@ void vm_lava_query_buffer(const void *buf, unsigned long len,
   phs.src_filename = src_filename;
   phs.src_ast_node_name = src_ast_node_name;
   phs.src_linenum = linenum;
+  phs.insertion_point = ins;
   hypercall2(&phs);
 }
 
