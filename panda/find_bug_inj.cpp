@@ -456,7 +456,8 @@ int main (int argc, char **argv) {
                     // OR number of dua has changed since last time we were here
                     // ok, this attack point can pair with *any* of the dead uncomplicated extents seen previously
                     for ( auto dua : u_dua ) {
-                        Bug bug = { dua, atp, "", 4 };
+                        uint32_t bug_id = injectable_bugs.size();
+                        Bug bug = { bug_id, dua, atp, "", 4 };
                         injectable_bugs.insert(bug);
                     }
                     u_atp.insert(atp);
