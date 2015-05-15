@@ -132,7 +132,7 @@ void vm_query_buffer(void *buf, unsigned long len, int offset,
 static inline
 void vm_lava_query_buffer(const void *buf, unsigned long len, 
                           lavaint src_filename, lavaint src_ast_node_name,
-                          unsigned long linenum, uint32_t ins) {
+                          unsigned long linenum, lavaint ins) {
   volatile PandaHypercallStruct phs = {0};
   phs.magic = 0xabcd;
   phs.action = LAVA_QUERY_BUFFER;
