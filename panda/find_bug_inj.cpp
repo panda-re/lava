@@ -210,11 +210,12 @@ void postgresql_dump_duas(PGconn *conn, std::set<Dua> &duas) {
         int lval_id = addstr(conn, "lval", lvalname);
         int num_rows = get_num_rows(conn, "dua");
         std::stringstream sql;
-        sql << "INSERT INTO dua (dua_id,filename,line,lval,file_offsets,lval_offsets,inputfile,max_liveness,max_tcn,max_card,dua_icount,dua_scount) VALUES ("
+        sql << "INSERT INTO dua (dua_id,filename,line,lval,insertionpoint,file_offsets,lval_offsets,inputfile,max_liveness,max_tcn,max_card,dua_icount,dua_scount) VALUES ("
             << num_rows << "," 
             << filename_id << ","
             << dua.line << ","  
             << lval_id << ","
+            << dua.insertionpoint << ","
             // offsets within the input file that taint dua
              << "'{" << iset_str(dua.file_offsets) << "}'" << ","
             // offsets within the lval that are duas
@@ -431,6 +432,7 @@ int main (int argc, char **argv) {
                     ind2str[current_si.filename], 
                     current_si.linenum, 
                     ind2str[current_si.astnodename],
+                    current_si.insertionpoint,
                     labels,       // file offsets
                     ok_bytes,     // lval offsets
                     inputfile,   

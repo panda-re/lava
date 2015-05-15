@@ -154,6 +154,7 @@ void vm_lava_attack_point(lavaint src_filename, unsigned long linenum, lavaint i
   phs.src_filename = src_filename;
   phs.src_linenum = linenum;
   phs.info = info;
+  phs.insertion_point = 0;  // this signals that there isnt an insertion point
   hypercall2(&phs);
 }
 

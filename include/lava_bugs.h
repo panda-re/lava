@@ -32,10 +32,11 @@ std::string iset_str(std::set<uint32_t> &iset);
 struct Dua {    
 
     std::string filename;               // name of src file this dua is in
-    uint32_t line;                          // line in that src file
+    uint32_t line;                      // line in that src file
     std::string lvalname;               // name of the lval, i.e. x or y->f or x[i].m or ...
-    std::set<uint32_t> file_offsets;  // byte offsets within input file that taint the dua parts of this lval
-    std::set<uint32_t> lval_offsets;  // offsets within this lval that are dua
+    uint32_t insertionpoint;            // was query before or after call?
+    std::set<uint32_t> file_offsets;    // byte offsets within input file that taint the dua parts of this lval
+    std::set<uint32_t> lval_offsets;    // offsets within this lval that are dua
     std::string input_file;             // name of input file used to discover this dua
     float max_liveness;                 // max liveness of any label in any taint set for dua
     uint32_t max_tcn;                   // max tcn of any byte of this lval
@@ -48,6 +49,7 @@ struct Dua {
         ss << "DUA [" 
            << filename << ","
            << line << ","  
+           << insertionpoint << ","
            << lvalname << ",";
         // offsets within the input file that taint dua
         ss << "{" << iset_str(file_offsets) << "},"; 
@@ -65,6 +67,8 @@ struct Dua {
         if (line > other.line) return false;
         if (lvalname < other.lvalname) return true;
         if (lvalname > other.lvalname) return false;
+        if (insertionpoint < other.insertionpoint) return true;
+        if (insertionpoint > other.insertionpoint) return false;
         if (input_file < other.input_file) return true;
         if (input_file > other.input_file) return false;        
         if (max_liveness < other.max_liveness) return true;
@@ -86,6 +90,7 @@ struct Dua {
         return ((filename == other.filename) 
                 && (line == other.line) 
                 && (lvalname == other.lvalname) 
+                && (insertionpoint == other.insertionpoint)
                 && (input_file == other.input_file) 
                 && (max_liveness == other.max_liveness) 
                 && (max_tcn == other.max_tcn) 

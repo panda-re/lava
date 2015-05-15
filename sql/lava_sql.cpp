@@ -53,9 +53,9 @@ PGconn *pg_connect(void) {
 
 PGresult *pg_exec(PGconn *conn, std::string comm) {
     const char * cmd = (const char *) comm.c_str();
-    //    printf ("sql comm=[%s]\n", cmd);
+       printf ("sql comm=[%s]\n", cmd);
     PGresult *res = PQexec(conn, cmd);
-    //    printf ("res = %d\n", PQresultStatus(res));
+       printf ("res = %d\n", PQresultStatus(res));
     return res;
 }
 
@@ -156,15 +156,16 @@ std::map<uint32_t,Dua> pg_get_duas(PGconn *conn, Ism &sourcefile, Ism &lval, Ism
         std::string src_filename = sourcefile[atoi(PQgetvalue(res, row, 1))];
         uint32_t src_line = atoi(PQgetvalue(res, row, 2));
         std::string lvalname = lval[atoi(PQgetvalue(res, row, 3))];
-        std::set<uint32_t> file_offsets = parse_offsets(PQgetvalue(res, row, 4));      
-        std::set<uint32_t> lval_offsets = parse_offsets(PQgetvalue(res, row, 5));      
-        std::string input_file = inputfile[atoi(PQgetvalue(res, row, 6))];
-        float max_liveness = atof(PQgetvalue(res, row, 7));
-        uint32_t max_tcn = atoi(PQgetvalue(res, row, 8));
-        uint32_t max_card = atoi(PQgetvalue(res, row, 9));
-        uint32_t icount = atoi(PQgetvalue(res, row, 10));
-        uint32_t scount = atoi(PQgetvalue(res, row, 11));        
-        duas[id] = {src_filename,src_line,lvalname,file_offsets,lval_offsets,input_file,max_liveness,max_tcn,max_card,icount,scount};
+        uint32_t insertion_point = atoi(PQgetvalue(res, row, 4));        
+        std::set<uint32_t> file_offsets = parse_offsets(PQgetvalue(res, row, 5));      
+        std::set<uint32_t> lval_offsets = parse_offsets(PQgetvalue(res, row, 6));      
+        std::string input_file = inputfile[atoi(PQgetvalue(res, row, 7))];
+        float max_liveness = atof(PQgetvalue(res, row, 8));
+        uint32_t max_tcn = atoi(PQgetvalue(res, row, 9));
+        uint32_t max_card = atoi(PQgetvalue(res, row, 10));
+        uint32_t icount = atoi(PQgetvalue(res, row, 11));
+        uint32_t scount = atoi(PQgetvalue(res, row, 12));        
+        duas[id] = {src_filename,src_line,lvalname,insertion_point,file_offsets,lval_offsets,input_file,max_liveness,max_tcn,max_card,icount,scount};
     }
     return duas;
 }

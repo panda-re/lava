@@ -141,6 +141,7 @@ CREATE TABLE dua (
        filename	     int,   -- source file containing this dua (see SourceFile table)
        line	         int,   -- line in source file
        lval	         int,   -- name of the lval, at least some bytes of which are dua 
+       insertionpoint int,  -- tells us if dua came from a taint query before (1) or after (2) the fn call
        file_offsets  int[], -- bytes in the input file that taint this dua
        lval_offsets	 int[], -- offsets within the lval that are the dua
        inputfile     int,   -- input file that gave us this dua
