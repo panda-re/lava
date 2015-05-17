@@ -108,7 +108,7 @@ struct Dua {
 struct AttackPoint {
 
     std::string filename;   // src filename this attack point is in
-    uint32_t linenum;              // line number in that file
+    uint32_t line;          // line number in that file
     std::string typ;        // name of type of attack point, i.e. "memcpy", or "malloc"
     std::string input_file; 
     uint32_t icount;
@@ -117,14 +117,14 @@ struct AttackPoint {
     std::string str() {
         std::stringstream ss;
         ss << "ATP [";
-        ss << filename << "," << linenum << "," << typ << "," << input_file << "," << icount << "," << scount;
+        ss << filename << "," << line << "," << typ << "," << input_file << "," << icount << "," << scount;
         ss << "]";
         return ss.str();
     }
 
     bool operator<(const AttackPoint &other) const {
-        if (linenum < other.linenum) return true;
-        if (linenum > other.linenum) return false;
+        if (line < other.line) return true;
+        if (line > other.line) return false;
         if (filename < other.filename) return true;
         if (filename > other.filename) return false;
         if (typ < other.typ) return true;
@@ -137,7 +137,7 @@ struct AttackPoint {
     }
 
     bool operator==(const AttackPoint &other) const {
-        return ((linenum == other.linenum) 
+        return ((line == other.line) 
                 && (filename == other.filename) 
                 && (typ == other.typ)
                 && (input_file == other.input_file)

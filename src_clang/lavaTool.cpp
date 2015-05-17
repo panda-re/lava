@@ -1,7 +1,15 @@
+
+extern "C" {
+#include <stdlib.h>
+}
+
 #include "includes.h"
 #include "lavaDB.h"
 
 #include "../include/lava_bugs.h"
+
+
+char resolved_path[512];
 
 using namespace clang;
 using namespace clang::driver;
@@ -125,7 +133,7 @@ public:
       note that we insert extra code if lval needs guarding b/c it might 
       otherwise try to deref a null pointer.
      */
-    std::string ComposeDuaTaintQuery(Llval &llval, uint32_t filename_id, uint32_t linenum, uint32_t insertion_point) {
+    std::string ComposeDuaTaintQuery(Llval &llval, uint32_t filename_id, uint32_t line, uint32_t insertion_point) {
         Insertions inss;
         std::stringstream query;
         if (!(llval.pointer_tst == "")) {
@@ -136,7 +144,7 @@ public:
               << "sizeof(" << llval.name << "), "
               << filename_id << ", "
               << GetStringID(llval.name) << ", "
-              << linenum << ", "
+              << line << ", "
               << insertion_point << ");\n";
         if (!(llval.pointer_tst == "")) {
             query << "}";
@@ -316,7 +324,7 @@ public:
         errs() << "after_part=[" << inss.after_part << "]\n";
     }
 
-    Insertions ComposeAtpQuery(CallExpr *ce, std::string filename, uint32_t linenum) {
+    Insertions ComposeAtpQuery(CallExpr *ce, std::string filename, uint32_t line) {
         std::string fn_name =  ce->getDirectCallee()->getNameInfo().getName().getAsString();
         Insertions inss;
         if ((fn_name.find("memcpy") != std::string::npos) 
@@ -332,13 +340,13 @@ public:
             // this is an attack point              
             std::stringstream before;
             std::stringstream after;
-            errs() << "Found attack point at " << filename << ":" << linenum << "\n";
+            errs() << "Found attack point at " << filename << ":" << line << "\n";
             before << "({";
             QualType rqt = ce->getCallReturnType();
             bool has_retval = CallExprHasRetVal(rqt);
             std::string retvalname = RandVarName();
             before << "vm_lava_attack_point(" << GetStringID(filename) << ", ";
-            before << linenum << ", " << GetStringID(fn_name) << ");\n";
+            before << line << ", " << GetStringID(fn_name) << ");\n";
             if (has_retval) {
                 before << (rqt.getAsString()) << " " << retvalname << " = ";
                 after << "; " << retvalname << ";";
@@ -391,38 +399,67 @@ public:
       of the arg perturbed by global.  :)
     */
     Insertions ComposeAtpGlobalUse(CallExpr *call_expr, Bug &bug) {
-        Insertions inss;
-        std::string fn_name = call_expr->getDirectCallee()->getNameInfo().getName().getAsString();
-        inss.after_part = fn_name = "(";
-        uint32_t n = call_expr->getNumArgs();
-        uint32_t i = 0;
-        for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {
-            i++;
-            Expr *arg = dyn_cast<Expr>(*it);
-            inss.after_part += ExprStr(arg) + " + " + LavaGlobal(bug.id);
-            if (i < n) inss.after_part += ",";
+        Insertions inss;        
+        if (bug.atp.filename != bug.dua.filename) {
+            inss.top_of_file = "extern int " + LavaGlobal(bug.id) + ";\n";
         }
+        std::string fn_name = call_expr->getDirectCallee()->getNameInfo().getName().getAsString();
+        uint32_t n = call_expr->getNumArgs();
+        //        errs() << "n=" << n << "\n";
+        // choose an arg at random to add global to.          
+        std::default_random_engine generator;
+        std::uniform_int_distribution<int> distribution(0,n-1);
+        int arg_num = distribution(generator);  // generates number in the range 1..6 
+        //        errs() <<  "adding global to arg " << arg_num << "\n";
+        uint32_t i = 0;
+        std::stringstream new_call;
+        new_call << fn_name << "(";
+        for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {
+            //            errs() << "i=" << i << "\n";
+            Expr *arg = dyn_cast<Expr>(*it);
+            if (i == arg_num) {
+                new_call << (ExprStr(arg)) + "+" +  LavaGlobal(bug.id);           
+                if (i < n-1) {
+                    new_call << ",";
+                }
+            }
+            i++;
+        }
+        new_call << ")";
+        SourceRange sr = SourceRange(call_expr->getLocStart(),call_expr->getLocEnd());
+        rewriter.ReplaceText(sr, new_call.str());
         return inss;
     }        
 
     /*
       NOTE: this is a little borked.
-      actually, there can be more than one Bug for a lvalname/filename/linenum.
+      actually, there can be more than one Bug for a lvalname/filename/line.
       only in the dua when it is in a loop.  lval will be same but it will be tainted
       by different parts of the input
       returns Bug 
     */
-    bool AtBug(std::string lvalname, std::string filename, uint32_t linenum, bool atAttackPoint, Bug *the_bug ) {
+    bool AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint, Bug *the_bug ) {
+        errs() << "AtBug? lval=" << lvalname << " line=" << line << " atattackpoint=" << atAttackPoint << "\n";
         for ( auto bug : bugs ) {
-            if (filename == bug.dua.filename
-                && linenum == bug.dua.line) {
-                // ignore lval if we are checking attack point match
-                if (atAttackPoint || 
-                    (lvalname == bug.dua.lvalname)) {
-                    errs() << "WE ARE THERE\n";
-                    // XXX just returning first!  What if there's multiple?
-                    *the_bug = bug;
-                    return true;
+            errs() << filename << "\n";
+            errs() << bug.atp.filename << "\n";
+
+            if (((atAttackPoint && filename == bug.atp.filename) 
+                 || (!atAttackPoint && filename == bug.dua.filename))) {
+                errs() << "filename match\n";
+
+                if ((atAttackPoint && line == bug.atp.line)
+                    || (!atAttackPoint && line == bug.dua.line)) {
+                    errs() << "line num match\n";
+
+                    // ignore lval if we are checking attack point match
+                    if (atAttackPoint || 
+                        (lvalname == bug.dua.lvalname)) {
+                        errs() << "WE ARE THERE\n";
+                        // XXX just returning first!  What if there's multiple?
+                        *the_bug = bug;
+                        return true;
+                    }
                 }
             }
         }
@@ -443,14 +480,14 @@ public:
       1 = query was before call
       2 = query was after call
     */
-    Insertions ComposeDuaNewSrc(Llval &llval, std::string filename, uint32_t linenum, uint32_t insertion_point) {
+    Insertions ComposeDuaNewSrc(Llval &llval, std::string filename, uint32_t line, uint32_t insertion_point) {
         Insertions inss;
         if (LavaAction == LavaQueries) {
-            inss.after_part = ComposeDuaTaintQuery(llval, GetStringID(filename), linenum, insertion_point);
+            inss.after_part = ComposeDuaTaintQuery(llval, GetStringID(filename), line, insertion_point);
         }
         else if (LavaAction == LavaInjectBugs) {
             Bug bug;
-            if (AtBug(llval.name, filename, linenum, /*atAttackPoint=*/false, &bug)) {
+            if (AtBug(llval.name, filename, line, /*atAttackPoint=*/false, &bug)) {
                 errs() << "at bug in ComposeDuaNewSrc\n";
                 inss = ComposeDuaSiphoning(bug);
             }
@@ -466,15 +503,16 @@ public:
       attack query OR bug global use
       this is called once for the call expr that is @ the source location
     */
-    Insertions ComposeAtpNewSrc( CallExpr *call_expr, std::string filename, uint32_t linenum) {
+    Insertions ComposeAtpNewSrc( CallExpr *call_expr, std::string filename, uint32_t line) {
         Insertions inss;
         if (LavaAction == LavaQueries) {            
-            inss = ComposeAtpQuery(call_expr, filename, linenum);
+            inss = ComposeAtpQuery(call_expr, filename, line);
         }
         else if (LavaAction == LavaInjectBugs) {
             Bug bug;
-            if (AtBug("", filename, linenum, /*atAttackPoint=*/false, &bug)) {
+            if (AtBug("", filename, line, /*atAttackPoint=*/true, &bug)) {
                 errs() << "at bug in ComposeAtpNewSrc\n";
+                // NB: No insertion -- we insert things into the call 
                 inss = ComposeAtpGlobalUse(call_expr, bug);
             }
         }
@@ -495,16 +533,26 @@ public:
     }
 
     bool VisitCallExpr(CallExpr *e) {
+        errs() << "VisitCallExpr\n";
+        //        try {
+
         SourceManager &sm = rewriter.getSourceMgr();
         FullSourceLoc fullLoc(e->getLocStart(), sm);
         std::string src_filename = FullPath(fullLoc);
-        uint32_t src_linenum = fullLoc.getExpansionLineNumber(); 
+        uint32_t src_line = fullLoc.getExpansionLineNumber(); 
+
+        errs() << "VisitCallExpr\n";
+        errs() << src_line << " \n";
+
         // if we dont know the filename, that indicates unhappy situation.  bail.
         if (src_filename == "") return true;
         FunctionDecl *f = e->getDirectCallee();
         // this is also bad -- bail
         if (!f) return true;
         std::string fn_name = f->getNameInfo().getName().getAsString();
+
+        errs() << fn_name << "\n";
+
         /*
           if this is an attack point, we may want to insert code modulo bugs list.
           insert a query "im at an attack point" or add code to use
@@ -513,7 +561,7 @@ public:
         */
         Insertions inssAtp;        
         if (IsAttackPoint(e->getDirectCallee())) {
-            inssAtp = ComposeAtpNewSrc(e, src_filename, src_linenum);
+            inssAtp = ComposeAtpNewSrc(e, src_filename, src_line);
         }
         /*
           Regardless of whether or not this is an attack point there may be 
@@ -566,11 +614,11 @@ public:
                 Insertions inss_after; 
                 if (LavaAction == LavaQueries) {
                     inss_before = ComposeDuaNewSrc(
-                        llval, src_filename, src_linenum,
+                        llval, src_filename, src_line,
                         INSERTION_POINT_BEFORE_CALL);
                 }
                 inss_after = ComposeDuaNewSrc(
-                    llval, src_filename, src_linenum,
+                    llval, src_filename, src_line,
                     INSERTION_POINT_AFTER_CALL);
                 inssDua.top_of_file += inss_before.top_of_file;
                 inssDua.top_of_file += inss_after.top_of_file;
@@ -583,7 +631,7 @@ public:
                 inssDua.before_part = "({" + dua_src_before.str() + rv_before;
                 inssDua.after_part = ";" + dua_src_after.str();
                 if (has_retval) {
-                    Insertions inss = ComposeDuaNewSrc(rv_llval, src_filename, src_linenum, 
+                    Insertions inss = ComposeDuaNewSrc(rv_llval, src_filename, src_line, 
                         INSERTION_POINT_AFTER_CALL);
                     inssDua.top_of_file += inss.top_of_file ;
                     inssDua.after_part +=  inss.after_part ;
@@ -604,6 +652,14 @@ public:
             new_start_of_file_src << inss.top_of_file;    
         }
         return true;
+        /*
+        }
+    
+        catch (...) {
+            errs() << "exception?\n";
+        }
+
+    */
     }
 
 private:
@@ -674,7 +730,8 @@ public:
         rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
                             new_start_of_file_src.str(),
                             true, true);
-        rewriter.overwriteChangedFiles();
+        errs() << "i am here\n";
+        bool ret = rewriter.overwriteChangedFiles();
         // save the strings db 
         if (LavaAction == LavaQueries)
             SaveDB(StringIDs, LavaDB);
