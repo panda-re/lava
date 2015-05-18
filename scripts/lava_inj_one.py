@@ -54,26 +54,27 @@ def get_dua(dua_id):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("select * from dua where dua_id=%d" % dua_id)
-    (dua_id,sourcefile_id,line,lval_id,bytess,offsets,inputfile_id,max_tcn,max_card,max_liveness,dua_icount,dua_scount) = cur.fetchone()
-    return (sourcefile[sourcefile_id],
+    (dua_id, filename_id, line, lval_id, insertionpoint, file_offsets, lval_offsets, inputfile_id, max_tcn, max_card, max_liveness, dua_icount, dua_scount) = cur.fetchone()
+    return (sourcefile[filename_id],
             line,
             lval[lval_id],
-            bytess,
-            offsets,
-            inputfile[inputfile_id],
+            insertionpoint,
+            file_offsets, 
+            lval_offsets, 
+            inputfile[inputfile_id], 
             max_tcn,
             max_card,
-            max_liveness,
-            dua_icount,
-            dua_scount)
+            max_liveness, 
+            dua_icount, 
+            dua_scount) 
 
 
 def get_atp(atp_id):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("select * from atp where atp_id=%d" % atp_id)
-    (atp_id,sourcefile_id,line,typ_id,inputfile_id,atp_icount,atp_scount) = cur.fetchone()
-    return (sourcefile[sourcefile_id],
+    (atp_id,filename_id,line,typ_id,inputfile_id,atp_icount,atp_scount) = cur.fetchone()
+    return (sourcefile[filename_id],
             line,
             atptype[typ_id],
             inputfile[inputfile_id],
@@ -81,9 +82,6 @@ def get_atp(atp_id):
             atp_scount)
 
     
-
-
-
 
 sourcefile = read_i2s("sourcefile")
 inputfile = read_i2s("inputfile")
