@@ -43,6 +43,7 @@ extern "C" {
 #include "../include/lava_bugs.h"
 
 std::string inputfile;
+std::string src_pfx;
 int inputfile_id;
 std::map<uint32_t,std::string> ind2str;
 
@@ -199,13 +200,30 @@ int addstr(PGconn *conn, std::string table, std::string str) {
 std::map<Dua,int> dua_id;
 std::map<AttackPoint,int> atp_id;
 
+
+// if pfx is a prefix of filename, then return the remainder of filename after
+// the prefix (exluding leading '/' chars).  If it is not a pfx, return 
+// the empty string
+std::string strip_pfx(std::string filename, std::string pfx) {
+    size_t pos = filename.find(src_pfx, 0);
+    if (pos == std::string::npos 
+        || pos != 0) {
+        // its not a prefix
+        return std::string("");
+    }
+    size_t filename_len = filename.len();
+    size_t pfx_len = pfx.len();
+    return filename.substr(pfx_len, filename_len - pfx_len);
+}
+    
+
 void postgresql_dump_duas(PGconn *conn, std::set<Dua> &duas) {
     printf ("dumping duas to postgres\n");
     for ( auto dua : duas ) {
         PGresult *res;
         // add source filename to sourcefile table
         std::string filename = dua.filename;
-        int filename_id = addstr(conn, "sourcefile", filename);
+        int filename_id = addstr(conn, "sourcefile", strip_pfx(filename, src_pfx));
         std::string lvalname = dua.lvalname;
         int lval_id = addstr(conn, "lval", lvalname);
         int num_rows = get_num_rows(conn, "dua");
@@ -237,7 +255,7 @@ void postgresql_dump_atps(PGconn *conn, std::set<AttackPoint> &atps) {
         PGresult *res;
         // add source filename to sourcefile table
         std::string filename = atp.filename;
-        int filename_id = addstr(conn, "sourcefile", filename);
+        int filename_id = addstr(conn, "sourcefile", strip_pfx(filename, src_pfx));
         std::string info = atp.typ;
         int typ_id = addstr(conn, "atptype", info);
         int num_rows = get_num_rows(conn, "atp");
@@ -274,10 +292,12 @@ void postgresql_dump_bugs(PGconn *conn, std::set<Bug> &injectable_bugs) {
 }
 
 
+
+
 int main (int argc, char **argv) {
 
-    if (argc != 7) {
-        printf ("usage: fbi plog lavadb max_liveness max_card max_tcn inputfile\n");
+    if (argc != 8) {
+        printf ("usage: fbi plog lavadb max_liveness max_card max_tcn inputfile src_pfx\n");
         exit (1);
     }
 
@@ -300,6 +320,8 @@ int main (int argc, char **argv) {
     printf ("max tcn for addr = %d\n", max_tcn);
 
     inputfile = std::string(argv[6]);
+
+    src_pfx = std::string(argv[7]);
 
     // read in dead data (dd[label_num])
     std::map <uint32_t, float> dd = read_dead_data(plf);
