@@ -33,12 +33,17 @@ static cl::opt<action> LavaAction("action", cl::desc("LAVA Action"),
 static cl::opt<std::string> LavaBugList("bug-list",
     cl::desc("Comma-separated list of bug ids (from the postgres db) to inject into this file"),
     cl::cat(LavaCategory),
-    cl::init(""));
+    cl::init("XXX"));
 static cl::opt<std::string> LavaDB("lava-db",
     cl::desc("Path to LAVA database (custom binary file for source info).  "
         "Created in query mode."),
     cl::cat(LavaCategory),
-    cl::init("lavadb"));
+    cl::init("XXX"));
+static cl::opt<std::string> LavaBugBuildDir("bug-build-dir",
+    cl::desc("Path to build dir for bug-inj src" 
+        "Used only in inject mode."),
+    cl::cat(LavaCategory),
+    cl::init("XXX"));
 
 
 struct Llval {
@@ -277,6 +282,23 @@ public:
         return tv.str();
     }
 
+
+    std::string StripPfx(std::string filename, std::string pfx) {
+        size_t pos = filename.find(pfx, 0);
+        if (pos == std::string::npos
+            || pos != 0) {
+            // its not a prefix
+            return std::string("");
+        }
+        size_t filename_len = filename.length();
+        size_t pfx_len = pfx.length();
+        if (filename[pfx_len] == '/') {
+            pfx_len++;
+        }
+        std::string suff = filename.substr(pfx_len, filename_len - pfx_len);
+        return suff;
+    }
+
     // returns true if this call expr has a retval we need to catch
     bool CallExprHasRetVal(QualType &rqt) {
         if (rqt.getTypePtrOrNull() != NULL ) {
@@ -401,6 +423,7 @@ public:
     Insertions ComposeAtpGlobalUse(CallExpr *call_expr, Bug &bug) {
         Insertions inss;        
         if (bug.atp.filename != bug.dua.filename) {
+            // only needed if dua is in different file from attack point
             inss.top_of_file = "extern int " + LavaGlobal(bug.id) + ";\n";
         }
         std::string fn_name = call_expr->getDirectCallee()->getNameInfo().getName().getAsString();
@@ -430,6 +453,7 @@ public:
         rewriter.ReplaceText(sr, new_call.str());
         return inss;
     }        
+
 
     /*
       NOTE: this is a little borked.
@@ -542,7 +566,7 @@ public:
 
         SourceManager &sm = rewriter.getSourceMgr();
         FullSourceLoc fullLoc(e->getLocStart(), sm);
-        std::string src_filename = FullPath(fullLoc);
+        std::string src_filename = StripPfx(FullPath(fullLoc), LavaBugBuildDir);
         uint32_t src_line = fullLoc.getExpansionLineNumber(); 
 
         errs() << "VisitCallExpr\n";
