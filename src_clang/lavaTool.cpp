@@ -157,32 +157,35 @@ public:
         return query.str();
     }
         
-
-    // Find lvals buried in e. new lvals get added to lvals set
-    void CollectLvals(Expr *e, std::set<Expr *> &lvals) {
-        Stmt *s = dyn_cast<Stmt>(e);
+    void CollectLvalsStmt(Stmt *s, std::set<Expr *> &lvals) {
         if (s) {
             if (s->child_begin() == s->child_end()) {
-                // e is a leaf node
+                // s is a leaf node -- it must be an expression?
+                Expr *e = dyn_cast<Expr>(s)->IgnoreCasts(); 
                 if (e->isLValue()) {
                     StringLiteral *sl = dyn_cast<StringLiteral>(e);
                     if (!sl) {
-                        // ok its an lval that isnt a string literl
+                        // e is an lval and NOT a string literl
                         if (CanGetSizeOf(e)) {
                             // make sure its not a register
-                            lvals.insert(e);
+                            lvals.insert(e->IgnoreCasts());
                         }
                     }
                 }
             }
             else {
-                // e has children -- recurse
+                // s has children -- recurse
                 for ( auto &child : s->children() ) {             
-                    Expr *ce = dyn_cast<Expr>(child)->IgnoreCasts();
-                    CollectLvals(ce, lvals);
+                    CollectLvalsStmt(child, lvals);
                 }
             }
         }
+    }        
+
+    // Find lvals buried in e. new lvals get added to lvals set
+    void CollectLvals(Expr *e, std::set<Expr *> &lvals) {
+        Stmt *s = dyn_cast<Stmt>(e);
+        CollectLvalsStmt(s, lvals);
     }
 
     /*
@@ -204,7 +207,6 @@ public:
             }
         }
     }
-
 
     // check if lval is a struct or a ptr-to-a-struct,
     // if so, then collect lvals (as strings) that are 1st level struct slots
@@ -442,9 +444,12 @@ public:
             Expr *arg = dyn_cast<Expr>(*it);
             if (i == arg_num) {
                 new_call << (ExprStr(arg)) + "+" +  LavaGlobal(bug.id);           
-                if (i < n-1) {
-                    new_call << ",";
-                }
+            }
+            else {
+                new_call << (ExprStr(arg));
+            }
+            if (i < n-1) {
+                new_call << ",";
             }
             i++;
         }
@@ -463,30 +468,18 @@ public:
       returns Bug 
     */
     bool AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint, Bug *the_bug ) {
-        errs() << "\nAtBug? filename=" << filename << " lval=" << lvalname 
-               << " line=" << line << " atattackpoint=" << atAttackPoint << "\n";
         for ( auto bug : bugs ) {
             bool atbug = false;
             if (atAttackPoint) {
-                errs() << bug.atp.filename << " " << bug.atp.line << "\n";
-                if (filename == bug.atp.filename 
-                    && line == bug.atp.line) {
-                    errs() << "atAttackpoint -- filename and line match -- WE ARE THERE\n";
-                    atbug = true;
-                }
+                atbug = (filename == bug.atp.filename && line == bug.atp.line);
             }
             else {
-                errs() << "M" << bug.dua.filename << " " << bug.dua.line << "\n";
-                if (filename == bug.dua.filename
-                    && line == bug.dua.line) {
-                    errs() << "!atAttackpoint -- filename and line match\n";
-                    if (lvalname == bug.dua.lvalname) {
-                        errs() << "  lvals match too -- WE ARE THERE\n";
-                        atbug = true;
-                    }
+                if (filename == bug.dua.filename && line == bug.dua.line) {
+                    atbug = (lvalname == bug.dua.lvalname);
                 }
             }
             if (atbug) {
+                errs() << "Injecting bug @ line " << line << "\n";
                 *the_bug = bug;
                 return true;
             }
@@ -561,27 +554,16 @@ public:
     }
 
     bool VisitCallExpr(CallExpr *e) {
-        errs() << "VisitCallExpr\n";
-        //        try {
-
         SourceManager &sm = rewriter.getSourceMgr();
         FullSourceLoc fullLoc(e->getLocStart(), sm);
         std::string src_filename = StripPfx(FullPath(fullLoc), LavaBugBuildDir);
         uint32_t src_line = fullLoc.getExpansionLineNumber(); 
-
-        errs() << "VisitCallExpr\n";
-        errs() << src_line << " \n";
-
         // if we dont know the filename, that indicates unhappy situation.  bail.
         if (src_filename == "") return true;
         FunctionDecl *f = e->getDirectCallee();
         // this is also bad -- bail
         if (!f) return true;
-        std::string fn_name = f->getNameInfo().getName().getAsString();
-
-        errs() << fn_name << "\n";
-
-        /*
+        std::string fn_name = f->getNameInfo().getName().getAsString();        /*
           if this is an attack point, we may want to insert code modulo bugs list.
           insert a query "im at an attack point" or add code to use
           lava global to manifest a bug here. 
