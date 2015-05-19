@@ -205,15 +205,19 @@ std::map<AttackPoint,int> atp_id;
 // the prefix (exluding leading '/' chars).  If it is not a pfx, return 
 // the empty string
 std::string strip_pfx(std::string filename, std::string pfx) {
-    size_t pos = filename.find(src_pfx, 0);
+    size_t pos = filename.find(pfx, 0);
     if (pos == std::string::npos 
         || pos != 0) {
         // its not a prefix
         return std::string("");
     }
-    size_t filename_len = filename.len();
-    size_t pfx_len = pfx.len();
-    return filename.substr(pfx_len, filename_len - pfx_len);
+    size_t filename_len = filename.length();
+    size_t pfx_len = pfx.length();
+    if (filename[pfx_len] == '/') {
+        pfx_len++;
+    }
+    std::string suff = filename.substr(pfx_len, filename_len - pfx_len);
+    return suff;
 }
     
 
@@ -263,7 +267,7 @@ void postgresql_dump_atps(PGconn *conn, std::set<AttackPoint> &atps) {
         sql << "INSERT INTO atp (atp_id,filename,line,typ,inputfile,atp_icount,atp_scount) VALUES ("
             << num_rows << ","
             << filename_id << ","
-            << atp.linenum << ","
+            << atp.line << ","
             << typ_id << ","
             << inputfile_id << ","
             << "0,0);";
