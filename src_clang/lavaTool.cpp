@@ -439,28 +439,32 @@ public:
       returns Bug 
     */
     bool AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint, Bug *the_bug ) {
-        errs() << "AtBug? lval=" << lvalname << " line=" << line << " atattackpoint=" << atAttackPoint << "\n";
+        errs() << "\nAtBug? filename=" << filename << " lval=" << lvalname 
+               << " line=" << line << " atattackpoint=" << atAttackPoint << "\n";
         for ( auto bug : bugs ) {
-            errs() << filename << "\n";
-            errs() << bug.atp.filename << "\n";
-
-            if (((atAttackPoint && filename == bug.atp.filename) 
-                 || (!atAttackPoint && filename == bug.dua.filename))) {
-                errs() << "filename match\n";
-
-                if ((atAttackPoint && line == bug.atp.line)
-                    || (!atAttackPoint && line == bug.dua.line)) {
-                    errs() << "line num match\n";
-
-                    // ignore lval if we are checking attack point match
-                    if (atAttackPoint || 
-                        (lvalname == bug.dua.lvalname)) {
-                        errs() << "WE ARE THERE\n";
-                        // XXX just returning first!  What if there's multiple?
-                        *the_bug = bug;
-                        return true;
+            bool atbug = false;
+            if (atAttackPoint) {
+                errs() << bug.atp.filename << " " << bug.atp.line << "\n";
+                if (filename == bug.atp.filename 
+                    && line == bug.atp.line) {
+                    errs() << "atAttackpoint -- filename and line match -- WE ARE THERE\n";
+                    atbug = true;
+                }
+            }
+            else {
+                errs() << "M" << bug.dua.filename << " " << bug.dua.line << "\n";
+                if (filename == bug.dua.filename
+                    && line == bug.dua.line) {
+                    errs() << "!atAttackpoint -- filename and line match\n";
+                    if (lvalname == bug.dua.lvalname) {
+                        errs() << "  lvals match too -- WE ARE THERE\n";
+                        atbug = true;
                     }
                 }
+            }
+            if (atbug) {
+                *the_bug = bug;
+                return true;
             }
         }
         return false;
