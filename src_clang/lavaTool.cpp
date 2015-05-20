@@ -740,7 +740,6 @@ public:
         rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
                             new_start_of_file_src.str(),
                             true, true);
-        errs() << "i am here\n";
         bool ret = rewriter.overwriteChangedFiles();
         // save the strings db 
         if (LavaAction == LavaQueries)
