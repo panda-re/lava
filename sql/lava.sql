@@ -74,16 +74,17 @@ CREATE TABLE dua (
        dua_id          serial primary key, 
        filename_id	   integer references sourcefile,   -- source file containing this dua (see SourceFile table)
        line	           integer,                        -- line in source file
-       lval_id	       integer references lval,   -- name of the lval, at least some bytes of which are dua 
-       insertionpoint  integer,                   -- tells us if dua came from a taint query before (1) or after (2) the fn call   
-       file_offsets    integer[],                  -- bytes in the input file that taint this dua                                   
-       lval_offsets	   integer[],                  -- offsets within the lval that are the dua                                      
-       inputfile       integer,                    -- input file that gave us this dua                                              
-       max_tcn         real,                       -- max taint compute number across bytes in this dua                             
-       max_card	       integer,                    -- max cardinality of a taint label set for any byte in the dua                  
-       max_liveness    float,                      -- max liveness of any label in any taint label set for any byte in the dua      
-       dua_icount      integer,                    -- number of times used to inject a bug                                          
-       dua_scount      integer                     -- number of times used to inject a bug that was successful                      
+       lval_id	       integer references lval,      -- name of the lval, at least some bytes of which are dua 
+       insertionpoint  integer,                      -- tells us if dua came from a taint query before (1) or after (2) the fn call   
+       file_offsets    integer[],                    -- bytes in the input file that taint this dua                                   
+       lval_offsets	   integer[],                    -- offsets within the lval that are the dua                                      
+       inputfile_id     integer references inputfile,  -- input file that gave us this dua                                              
+       max_tcn         real,                         -- max taint compute number across bytes in this dua                             
+       max_card	       integer,                      -- max cardinality of a taint label set for any byte in the dua                  
+       max_liveness    float,                        -- max liveness of any label in any taint label set for any byte in the dua      
+       dua_icount      integer,                      -- number of times used to inject a bug                                          
+       dua_scount      integer,                      -- number of times used to inject a bug that was successful                      
+       UNIQUE(filename_id,line,lval_id,insertionpoint,file_offsets,lval_offsets,inputfile_id)
 );
 
 
@@ -99,7 +100,8 @@ CREATE TABLE atp (
        typ_id	      integer references atptype,      -- type of attack point (see AttackPoint table)
        inputfile_id   integer references inputfile,    -- input file that gave us this dua
        atp_icount     integer,                         -- number of times used to inject a bug                    
-       atp_scount     integer                          -- number of times used to inject a bug that was successful
+       atp_scount     integer,                         -- number of times used to inject a bug that was successful
+       UNIQUE(filename_id,line,typ_id,inputfile_id)
 );
 
 
@@ -109,7 +111,8 @@ CREATE TABLE bug (
        bug_id      serial primary key,
        dua_id	   integer references dua,     -- id of dua
        atp_id      integer references atp,     -- id of attack point
-       inj         boolean                     -- true iff we have attempted to inj & build at least once
+       inj         boolean,                    -- true iff we have attempted to inj & build at least once
+       UNIQUE(dua_id,atp_id)
 );
 
 
@@ -117,17 +120,19 @@ CREATE TABLE bug (
 CREATE TABLE build (
        build_id     serial primary key,   -- this can be used to refer to a git branch or a patchfile name
        bugs         integer[],            -- list of bug ids that were injected into the source  (should an array of foreign keys but that's not possible?)
+       binpath      text,                 -- path to executable built
        compile      boolean,              -- true if the build compiled
-       binpath      text                  -- path to executable built
+       UNIQUE(bugs,binpath)
 );
 
 
 -- Table of runs. 
 CREATE TABLE run (
-       run_id       serial primary key,
-       build_id     integer references build,   -- the build used to generate this exe
-       inputfile    text,                      -- filename of input with dua fuzzed
-       success      boolean                    -- true iff this input and this build crashed
+       run_id             serial primary key,
+       build_id           integer references build,   -- the build used to generate this exe
+       fuzzed_inputfile   text,                       -- filename of input with dua fuzzed
+       success            boolean,                    -- true iff this input and this build crashed
+       UNIQUE(build_id,fuzzed_inputfile)
 );
 
 
@@ -231,6 +236,7 @@ create type bug_info as (
 
 /*
  tshark=# select * from next_bug();
+
   bug  | dua | atp 
 -------+-----+-----
  13838 | 478 |  30
@@ -241,7 +247,7 @@ as $$
   plpy.execute("lock table bug;")
   plpy.execute("lock table dua;")
   plpy.execute("lock table atp;")
-  reses = plpy.execute("select * from bug,dua,atp where bug.inj=false and dua.dua_id=bug.dua and atp.atp_id=bug.atp;")
+  reses = plpy.execute("select * from bug,dua,atp where bug.inj=false and dua.dua_id=bug.dua_id and atp.atp_id=bug.atp_id;")
   # consider each bug that hasnt yet been injected
   # keep track of bug that has lowest icount for *either* its dua or ap
   # that is the one we will inject
