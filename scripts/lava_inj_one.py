@@ -2,6 +2,7 @@ import psycopg2
 import shutil
 import subprocess
 
+debugging = False
 db_host = "18.126.0.46"
 db = "tshark"
 db_user = "lava"
@@ -134,15 +135,16 @@ def filename_suff(p, fn):
 
 def run_cmd(cmd, cw_dir):
     if cw_dir:
-        p = subprocess.Popen(cmd, cwd=cw_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(cmd.split(), cwd=cw_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     else:
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = p.communicate()
     exitcode = p.returncode
     if debugging:
         print "run_cmd(" + cmd + ")"
         print "exitcode = " + str(exitcode)
-        print "output = " + str(output)
+        for line in output:
+            print "output = [" + line + "]"
     return (exitcode, output)
 
 def make_safe_copy(fn):
@@ -152,16 +154,16 @@ def revert_to_safe_copy(fn):
     shutil.copyfile(fn + ".sav", fn)
 
 
-def inject_bug_part_into_src(bug_id, filename):
+def inject_bug_part_into_src(bug_id, suff):
     global query_build
     global bugs_build
     global lavatoll
     global lavadb
-    suff = filename_suff(query_build, filename)
     filename_bug_part = bugs_build + "/" + suff
     make_safe_copy(filename_bug_part)
     cmd = lava_tool + ' -action=inject -bug-list=\"' + str(bug_id) \
         + '\" -lava-db=' + lavadb + ' -p ' + bugs_build \
+        + " -bug-build-dir=" + bugs_build \
         + ' ' + filename_bug_part 
     run_cmd(cmd, None)
 
@@ -189,6 +191,8 @@ print "   " + str(dua)
 print "ATP:"
 print "   " + str(atp)
 
+print "------------\n"
+print "INJECTING BUGS INTO SOURCE"
 # modify src @ the dua to siphon off tainted bytes into global
 inject_bug_part_into_src(bug_id, dua.filename)
 
@@ -197,23 +201,32 @@ inject_bug_part_into_src(bug_id, atp.filename)
 
 
 # compile
+print "------------\n"
+print "ATTEMPTING BUILD OF INJECTED BUG"
 (rv, outp) = run_cmd("make", bugs_build)
 if rv==0:
     # success
+    print "build succeeded"
     (rv, outp) = run_cmd("make install", bugs_build)
     # really how can this fail if build succeeds?
     assert (rv == 0)
+    print "make install succeeded"
 else:
     # build failed
     print "build failed"
     # log that to db
 
+revert_to_safe_copy(bugs_build + "/" + dua.filename)
+revert_to_safe_copy(bugs_build + "/" + atp.filename)
+
+
+
 # add a row to the build table in the db
-add_build_row([bug_id], success, binpath)
+#add_build_row([bug_id], success, binpath)
  
 
-if success:
+#if success:
     # build succeeded -- try to run in
     # first, create a modified input
 #    for 
-    pass
+#    pass

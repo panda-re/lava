@@ -30,102 +30,33 @@ CREATE USER lava WITH PASSWORD 'llaavvaa';
 	
 -- Table of source file names
 CREATE TABLE sourcefile (
-       sourcefile_id  int,
-       sourcefile_nm  text  -- file name, full path
+       sourcefile_id  serial primary key,
+       sourcefile_nm  text unique not null  -- file name, full path
 );
 -- ALTER TABLE sourcefile ADD UNIQUE (nm);
 
 
 -- Table of input file names
 CREATE TABLE inputfile (
-       inputfile_id  int,
-       inputfile_nm  text  -- file name, full path
+       inputfile_id  serial primary key,
+       inputfile_nm  text unique not null -- file name, full path
 );
 -- ALTER TABLE inputfile ADD UNIQUE (nm);
 
 
 -- Table of lvals
 CREATE TABLE lval (
-       lval_id  int,
-       lval_nm  text  -- how the lval appears in src, e.g., foo->bar or meh[i].fez
+       lval_id  serial primary key,
+       lval_nm  text unique not null -- how the lval appears in src, e.g., foo->bar or meh[i].fez
 );
--- ALTER TABLE lval ADD UNIQUE (nm);
 
 
 -- Table of AttackPoint types
 CREATE TABLE atptype (    
-       atptype_id  int,
-       atptype_nm  text  -- memcpy, malloc, etc
+       atptype_id  serial primary key,
+       atptype_nm  text unique not null -- memcpy, malloc, etc
 );
--- ALTER TABLE atptype ADD UNIQUE (nm);
 
-
-/*
--- Table to allow lava to lock the db
--- if there are zero rows, then 
-CREATE TABLE lava_lock (
-       curru name,         -- current_user in postgres
-       suser name,         -- session_user in postgres
-       ip inet,            -- ip addr of inet_client_addr()
-       reason text,         -- reason for taking the lock
-       whentaken timestamp   -- when this locak was taken 
-);
-*/
-
-/*
-
--- find a bug that we haven't tried to inject / build
-create or replace function next_bug() returns void as $$
-BEGIN
-    -- choose rows from bug whos id is not in the the bugs field
-    -- of any row in build
-    select * from bug
-END;
-$$ LANGUAGE plpgsql;                                                                                        
-*/
-
-
-
-/*
-
-
-drop function if exists num_rows(name);
-
-CREATE OR REPLACE FUNCTION num_rows(name) RETURNS integer AS $$
-BEGIN
-    return (COUNT (*) FROM $1);
-END;
-$$ LANGUAGE plpgsql;
-
-
-
--- returns true if lock is taken 
-CREATE OR REPLACE FUNCTION check_lava_lock(table_name text) return boolean AS $$
-   LOCK TABLE lava_lock;
-   SELECT CASE
-     WHEN (SELECT COUNT(*)) return true;
-     ELSE return false
-     END;
-$$ LANGUAGE SQL;
-
-
-
--- returns true if we were able to take lock
-CREATE OR REPLACE FUNCTION take_lava_lock(reason text) RETURNS boolean AS $$
-    LOCK TABLE lava_lock;      
-    if (num_rows("lava_lock") == 0):
-      
-
-    SELECT COUNT(*) 
-    CASE when 
-    FROM lava_lock
-
-
-    DELETE FROM lava_lock; -- remove all rows
-    -- create a single row describing this lock taking
-    INSERT INTO lava_lock (curru,suser,ip,reason,whentaken) VALUES (current_user, session_user, inet_client_addr(), $1, now());
-$$ LANGUAGE SQL;
-*/
 
  
 -- CREATE OR REPLACE FUNCTION take_lock ( h text, r text, w datetime ) 
@@ -137,19 +68,19 @@ $$ LANGUAGE SQL;
 -- function of those bytes, but is also dead in the sense that it does not
 -- taint many branches
 CREATE TABLE dua (
-       dua_id        int, 
-       filename	     int,   -- source file containing this dua (see SourceFile table)
-       line	         int,   -- line in source file
-       lval	         int,   -- name of the lval, at least some bytes of which are dua 
-       insertionpoint int,  -- tells us if dua came from a taint query before (1) or after (2) the fn call
-       file_offsets  int[], -- bytes in the input file that taint this dua
-       lval_offsets	 int[], -- offsets within the lval that are the dua
-       inputfile     int,   -- input file that gave us this dua
-       max_tcn       real,      -- max taint compute number across bytes in this dua
-       max_card	     int,   -- max cardinality of a taint label set for any byte in the dua
-       max_liveness  float,   -- max liveness of any label in any taint label set for any byte in the dua       
-       dua_icount    int,   -- number of times used to inject a bug
-       dua_scount    int    -- number of times used to inject a bug that was successful
+       dua_id        serial primary key, 
+       filename	     integer references sourcefile,   -- source file containing this dua (see SourceFile table)
+       line	         integer,                        -- line in source file
+       lval	         integer references lval,   -- name of the lval, at least some bytes of which are dua 
+       insertionpoint integer,                   -- tells us if dua came from a taint query before (1) or after (2) the fn call   
+       file_offsets  integer[],                  -- bytes in the input file that taint this dua                                   
+       lval_offsets	 integer[],                  -- offsets within the lval that are the dua                                      
+       inputfile     integer,                    -- input file that gave us this dua                                              
+       max_tcn       real,                       -- max taint compute number across bytes in this dua                             
+       max_card	     integer,                    -- max cardinality of a taint label set for any byte in the dua                  
+       max_liveness  float,                      -- max liveness of any label in any taint label set for any byte in the dua      
+       dua_icount    integer,                    -- number of times used to inject a bug                                          
+       dua_scount    integer                     -- number of times used to inject a bug that was successful                      
 );
 
 
@@ -159,41 +90,41 @@ CREATE TABLE dua (
 -- Table of attack points
 -- An attack point is a 
 CREATE TABLE atp (
-       atp_id    	  int, 
-       filename	  int,   -- source file containing this ap (see SourceFile table)
-       line	      int,   -- line in source file
-       typ	      int,   -- type of attack point (see AttackPoint table)
-       inputfile int,   -- input file that gave us this dua
-       atp_icount     int,   -- number of times used to inject a bug
-       atp_scount     int    -- number of times used to inject a bug that was successful
+       atp_id    	serial primary key, 
+       filename	    integer references sourcefile,   -- source file containing this ap (see SourceFile table)
+       line	        integer,                         -- line in source file
+       typ	        integer references atptype,      -- type of attack point (see AttackPoint table)
+       inputfile    integer references inputfile,    -- input file that gave us this dua
+       atp_icount   integer,                         -- number of times used to inject a bug                    
+       atp_scount   integer                          -- number of times used to inject a bug that was successful
 );
 
 
 -- Table of bug possible injections
 -- A bug consists of a dua and an attack point
 CREATE TABLE bug (
-       bug_id        int,
-       dua	     int,     -- id of dua
-       atp       int,     -- id of attack point
-       inj       boolean  -- true iff we have attempted to inj & build at least once
+       bug_id      serial primary key,
+       dua	       integer references dua,     -- id of dua
+       atp         integer references atp,     -- id of attack point
+       inj         boolean                     -- true iff we have attempted to inj & build at least once
 );
 
 
 -- Table of inject / build attempts
 CREATE TABLE build (
-       build_id        int,        -- this can be used to refer to a git branch or a patchfile name
-       bugs      int[],      -- list of bug ids that were injected into the source
-       compile   boolean,    -- true if the build compiled
-       binpath   text        -- path to executable built
+       build_id     serial primary key,   -- this can be used to refer to a git branch or a patchfile name
+       bugs         integer[],            -- list of bug ids that were injected into the source  (should an array of foreign keys but that's not possible?)
+       compile      boolean,              -- true if the build compiled
+       binpath      text                  -- path to executable built
 );
 
 
 -- Table of runs. 
 CREATE TABLE run (
-       run_id          int,
-       build       int,   -- the build used to generate this exe
-       inputfile   text,      -- filename of input with dua fuzzed
-       success     boolean    -- true iff this input and this build crashed
+       run_id      serial primary key,
+       build       integer references build,   -- the build used to generate this exe
+       inputfile   text,                      -- filename of input with dua fuzzed
+       success     boolean                    -- true iff this input and this build crashed
 );
 
 
@@ -241,7 +172,7 @@ $$ LANGUAGE plpythonu;
 
 -- update a random set of rows in bug table to be injected
 -- NB: This is for testing purposes
-create or replace function set_to_inj(prob real) returns integer
+create or replace function rand_set_to_inj(prob real) returns integer
 as $$
   res = plpy.execute("select num_rows('bug')")
   n = res[0]['num_rows']
@@ -256,8 +187,9 @@ as $$
 $$ LANGUAGE plpythonu;
 
 
--- sets count for table
-create or replace function set_count(tablename text) returns void
+-- sets count for table to random num
+-- NB: This is for testing purposes
+create or replace function rand_set_count(tablename text) returns void
 as $$
   res = plpy.execute("select num_rows('%s')" % tablename)
   n = res[0]['num_rows']
