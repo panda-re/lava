@@ -175,11 +175,11 @@ int addstr(PGconn *conn, std::string table, std::string str) {
     else {
         PQclear(res);
         // it isnt here.  first get number of rows in that table. that's the id
-        int num_rows = get_num_rows(conn, table);
+        //        int num_rows = get_num_rows(conn, table);
         //        printf ("num_rows = %d\n", num_rows);
         // now add id,str
         std::stringstream sql;
-        sql << "INSERT INTO " << table << " (" << table << "_id," << table << "_nm) VALUES (" << num_rows << ",'" << str << "');";                                                        
+        sql << "INSERT INTO " << table << " (" << table << "_nm) VALUES ('" << str << "');";                                                        
         //        printf ("sql = [%s]\n", (char *) sql.str().c_str());        
         res = pg_exec_ss(conn, sql);
         //        printf ("status = %d\n", PQresultStatus(res));
@@ -230,10 +230,8 @@ void postgresql_dump_duas(PGconn *conn, std::set<Dua> &duas) {
         int filename_id = addstr(conn, "sourcefile", strip_pfx(filename, src_pfx));
         std::string lvalname = dua.lvalname;
         int lval_id = addstr(conn, "lval", lvalname);
-        int num_rows = get_num_rows(conn, "dua");
         std::stringstream sql;
-        sql << "INSERT INTO dua (dua_id,filename,line,lval,insertionpoint,file_offsets,lval_offsets,inputfile,max_liveness,max_tcn,max_card,dua_icount,dua_scount) VALUES ("
-            << num_rows << "," 
+        sql << "INSERT INTO dua (filename,line,lval,insertionpoint,file_offsets,lval_offsets,inputfile,max_liveness,max_tcn,max_card,dua_icount,dua_scount) VALUES ("
             << filename_id << ","
             << dua.line << ","  
             << lval_id << ","
@@ -246,6 +244,12 @@ void postgresql_dump_duas(PGconn *conn, std::set<Dua> &duas) {
             << dua.max_liveness << "," << dua.max_tcn << "," << dua.max_card 
             << ",0,0);";
         res = pg_exec_ss(conn,sql);
+        //figure out id assigned to this dua
+        // return id assigned to str
+        sql.str("");
+        sql << "SELECT * FROM dua where " << table << "_nm='" << str << "';";
+        
+
         dua_id[dua] = num_rows;
         assert (PQresultStatus(res) == PGRES_COMMAND_OK);
         PQclear(res);
@@ -262,10 +266,8 @@ void postgresql_dump_atps(PGconn *conn, std::set<AttackPoint> &atps) {
         int filename_id = addstr(conn, "sourcefile", strip_pfx(filename, src_pfx));
         std::string info = atp.typ;
         int typ_id = addstr(conn, "atptype", info);
-        int num_rows = get_num_rows(conn, "atp");
         std::stringstream sql;
-        sql << "INSERT INTO atp (atp_id,filename,line,typ,inputfile,atp_icount,atp_scount) VALUES ("
-            << num_rows << ","
+        sql << "INSERT INTO atp (filename,line,typ,inputfile,atp_icount,atp_scount) VALUES ("
             << filename_id << ","
             << atp.line << ","
             << typ_id << ","
