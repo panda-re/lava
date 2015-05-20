@@ -9,16 +9,19 @@ something else will update the scount field when a real bug gets found
 
 */
 
+DROP TABLE IF EXISTS run;
+DROP TABLE IF EXISTS build;
+DROP TABLE IF EXISTS bug;
+
+DROP TABLE IF EXISTS dua;
+DROP TABLE IF EXISTS atp;
+
 
 DROP TABLE IF EXISTS sourcefile;
 DROP TABLE IF EXISTS inputfile;
 DROP TABLE IF EXISTS lval;
 DROP TABLE IF EXISTS atptype;
-DROP TABLE IF EXISTS dua;
-DROP TABLE IF EXISTS atp;
-DROP TABLE IF EXISTS bug;
-DROP TABLE IF EXISTS build;
-DROP TABLE IF EXISTS run;
+
 -- DROP TABLE IF EXISTS lava_lock;
 
 -- drop database if exists tshark;
@@ -68,19 +71,19 @@ CREATE TABLE atptype (
 -- function of those bytes, but is also dead in the sense that it does not
 -- taint many branches
 CREATE TABLE dua (
-       dua_id        serial primary key, 
-       filename	     integer references sourcefile,   -- source file containing this dua (see SourceFile table)
-       line	         integer,                        -- line in source file
-       lval	         integer references lval,   -- name of the lval, at least some bytes of which are dua 
-       insertionpoint integer,                   -- tells us if dua came from a taint query before (1) or after (2) the fn call   
-       file_offsets  integer[],                  -- bytes in the input file that taint this dua                                   
-       lval_offsets	 integer[],                  -- offsets within the lval that are the dua                                      
-       inputfile     integer,                    -- input file that gave us this dua                                              
-       max_tcn       real,                       -- max taint compute number across bytes in this dua                             
-       max_card	     integer,                    -- max cardinality of a taint label set for any byte in the dua                  
-       max_liveness  float,                      -- max liveness of any label in any taint label set for any byte in the dua      
-       dua_icount    integer,                    -- number of times used to inject a bug                                          
-       dua_scount    integer                     -- number of times used to inject a bug that was successful                      
+       dua_id          serial primary key, 
+       filename_id	   integer references sourcefile,   -- source file containing this dua (see SourceFile table)
+       line	           integer,                        -- line in source file
+       lval_id	       integer references lval,   -- name of the lval, at least some bytes of which are dua 
+       insertionpoint  integer,                   -- tells us if dua came from a taint query before (1) or after (2) the fn call   
+       file_offsets    integer[],                  -- bytes in the input file that taint this dua                                   
+       lval_offsets	   integer[],                  -- offsets within the lval that are the dua                                      
+       inputfile       integer,                    -- input file that gave us this dua                                              
+       max_tcn         real,                       -- max taint compute number across bytes in this dua                             
+       max_card	       integer,                    -- max cardinality of a taint label set for any byte in the dua                  
+       max_liveness    float,                      -- max liveness of any label in any taint label set for any byte in the dua      
+       dua_icount      integer,                    -- number of times used to inject a bug                                          
+       dua_scount      integer                     -- number of times used to inject a bug that was successful                      
 );
 
 
@@ -90,13 +93,13 @@ CREATE TABLE dua (
 -- Table of attack points
 -- An attack point is a 
 CREATE TABLE atp (
-       atp_id    	serial primary key, 
-       filename	    integer references sourcefile,   -- source file containing this ap (see SourceFile table)
-       line	        integer,                         -- line in source file
-       typ	        integer references atptype,      -- type of attack point (see AttackPoint table)
-       inputfile    integer references inputfile,    -- input file that gave us this dua
-       atp_icount   integer,                         -- number of times used to inject a bug                    
-       atp_scount   integer                          -- number of times used to inject a bug that was successful
+       atp_id      	  serial primary key, 
+       filename_id	  integer references sourcefile,   -- source file containing this ap (see SourceFile table)
+       line	          integer,                         -- line in source file
+       typ_id	      integer references atptype,      -- type of attack point (see AttackPoint table)
+       inputfile_id   integer references inputfile,    -- input file that gave us this dua
+       atp_icount     integer,                         -- number of times used to inject a bug                    
+       atp_scount     integer                          -- number of times used to inject a bug that was successful
 );
 
 
@@ -104,8 +107,8 @@ CREATE TABLE atp (
 -- A bug consists of a dua and an attack point
 CREATE TABLE bug (
        bug_id      serial primary key,
-       dua	       integer references dua,     -- id of dua
-       atp         integer references atp,     -- id of attack point
+       dua_id	   integer references dua,     -- id of dua
+       atp_id      integer references atp,     -- id of attack point
        inj         boolean                     -- true iff we have attempted to inj & build at least once
 );
 
@@ -121,10 +124,10 @@ CREATE TABLE build (
 
 -- Table of runs. 
 CREATE TABLE run (
-       run_id      serial primary key,
-       build       integer references build,   -- the build used to generate this exe
-       inputfile   text,                      -- filename of input with dua fuzzed
-       success     boolean                    -- true iff this input and this build crashed
+       run_id       serial primary key,
+       build_id     integer references build,   -- the build used to generate this exe
+       inputfile    text,                      -- filename of input with dua fuzzed
+       success      boolean                    -- true iff this input and this build crashed
 );
 
 
