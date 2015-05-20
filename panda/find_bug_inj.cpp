@@ -170,16 +170,14 @@ int addstr(PGconn *conn, std::string table, std::string str) {
     PGresult *res = pg_exec_ss(conn, sql);
     if (PQntuples(res) > 0 ) {
         PQclear(res);
+
         //        printf ("its already there\n");
     }
     else {
         PQclear(res);
-        // it isnt here.  first get number of rows in that table. that's the id
-        //        int num_rows = get_num_rows(conn, table);
-        //        printf ("num_rows = %d\n", num_rows);
-        // now add id,str
+        // it isnt here -- add it
         std::stringstream sql;
-        sql << "INSERT INTO " << table << " (" << table << "_nm) VALUES ('" << str << "');";                                                        
+        sql << "INSERT INTO " << table << " (" << table << "_nm) VALUES ('" << str << "');";
         //        printf ("sql = [%s]\n", (char *) sql.str().c_str());        
         res = pg_exec_ss(conn, sql);
         //        printf ("status = %d\n", PQresultStatus(res));
@@ -231,7 +229,7 @@ void postgresql_dump_duas(PGconn *conn, std::set<Dua> &duas) {
         std::string lvalname = dua.lvalname;
         int lval_id = addstr(conn, "lval", lvalname);
         std::stringstream sql;
-        sql << "INSERT INTO dua (filename,line,lval,insertionpoint,file_offsets,lval_offsets,inputfile,max_liveness,max_tcn,max_card,dua_icount,dua_scount) VALUES ("
+        sql << "INSERT INTO dua (filename_id,line,lval_id,insertionpoint,file_offsets,lval_offsets,inputfile_id,max_liveness,max_tcn,max_card,dua_icount,dua_scount) VALUES ("
             << filename_id << ","
             << dua.line << ","  
             << lval_id << ","
@@ -242,16 +240,11 @@ void postgresql_dump_duas(PGconn *conn, std::set<Dua> &duas) {
             << "'{"  << iset_str(dua.lval_offsets) << "}'" << ","
             << inputfile_id << ","
             << dua.max_liveness << "," << dua.max_tcn << "," << dua.max_card 
-            << ",0,0);";
+            << ",0,0) RETURNING dua_id;";
         res = pg_exec_ss(conn,sql);
-        //figure out id assigned to this dua
-        // return id assigned to str
-        sql.str("");
-        sql << "SELECT * FROM dua where " << table << "_nm='" << str << "';";
-        
-
-        dua_id[dua] = num_rows;
-        assert (PQresultStatus(res) == PGRES_COMMAND_OK);
+        assert (PQresultStatus(res) == PGRES_TUPLES_OK);
+        uint32_t n = stou(PQgetvalue(res, 0, 0));
+        dua_id[dua] = n;
         PQclear(res);
     }
 }
@@ -267,16 +260,16 @@ void postgresql_dump_atps(PGconn *conn, std::set<AttackPoint> &atps) {
         std::string info = atp.typ;
         int typ_id = addstr(conn, "atptype", info);
         std::stringstream sql;
-        sql << "INSERT INTO atp (filename,line,typ,inputfile,atp_icount,atp_scount) VALUES ("
+        sql << "INSERT INTO atp (filename_id,line,typ_id,inputfile_id,atp_icount,atp_scount) VALUES ("
             << filename_id << ","
             << atp.line << ","
             << typ_id << ","
             << inputfile_id << ","
-            << "0,0);";
+            << "0,0) RETURNING atp_id;";
         res = pg_exec_ss(conn,sql);
-        //        printf ("PQresultStatus(res) = %d\n", PQresultStatus(res));
-        atp_id[atp] = num_rows;
-        assert (PQresultStatus(res) == PGRES_COMMAND_OK);
+        assert (PQresultStatus(res) == PGRES_TUPLES_OK);
+        uint32_t n = stou(PQgetvalue(res, 0, 0));
+        atp_id[atp] = n;
         PQclear(res);
     }
     
@@ -288,8 +281,11 @@ void postgresql_dump_bugs(PGconn *conn, std::set<Bug> &injectable_bugs) {
         Dua dua = bug.dua;
         AttackPoint atp = bug.atp;
         std::stringstream sql;
-        int num_rows = get_num_rows(conn, "bug");
-        sql << "INSERT INTO bug (bug_id,dua,atp,inj) VALUES (" << num_rows << "," << dua_id[dua] << "," << atp_id[atp] << ",false);";
+        // we don't need to get bug_id back
+        sql << "INSERT INTO bug (dua_id,atp_id,inj) VALUES ("
+            << dua_id[dua] << ","
+            << atp_id[atp] <<
+            ",false);";
         //        printf("sql = [%s]\n", (const char *) sql.str().c_str());
         PGresult *res = pg_exec_ss(conn,sql);
         assert (PQresultStatus(res) == PGRES_COMMAND_OK);
