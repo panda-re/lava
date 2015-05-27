@@ -9,6 +9,7 @@ extern "C" {
 #include "../include/lava_bugs.h"
 
 
+std::string BuildPath; 
 char resolved_path[512];
 
 using namespace clang;
@@ -39,12 +40,14 @@ static cl::opt<std::string> LavaDB("lava-db",
         "Created in query mode."),
     cl::cat(LavaCategory),
     cl::init("XXX"));
+
+/*
 static cl::opt<std::string> LavaBugBuildDir("bug-build-dir",
     cl::desc("Path to build dir for bug-inj src" 
         "Used only in inject mode."),
     cl::cat(LavaCategory),
     cl::init("XXX"));
-
+*/
 
 struct Llval {
     std::string name;        // name of constructed lval
@@ -443,7 +446,7 @@ public:
             //            errs() << "i=" << i << "\n";
             Expr *arg = dyn_cast<Expr>(*it);
             if (i == arg_num) {
-                new_call << (ExprStr(arg)) + "+" +  LavaGlobal(bug.id);           
+                new_call << (ExprStr(arg)) + "+" +  LavaGlobal(bug.id) + " * (0x6c617661 == " + LavaGlobal(bug.id) + " || 0x6176616c == " + LavaGlobal(bug.id) + ")";           
             }
             else {
                 new_call << (ExprStr(arg));
@@ -554,16 +557,30 @@ public:
     }
 
     bool VisitCallExpr(CallExpr *e) {
+        errs() << "VisitCallExpr \n";
         SourceManager &sm = rewriter.getSourceMgr();
         FullSourceLoc fullLoc(e->getLocStart(), sm);
-        std::string src_filename = StripPfx(FullPath(fullLoc), LavaBugBuildDir);
+        std::string src_filename;
+        if (LavaAction == LavaInjectBugs) {
+            // we want to strip the build path so that 
+            // we can actually compare bug in and query files for
+            // same source which will be in different directories
+            src_filename = StripPfx(FullPath(fullLoc), BuildPath);
+        }
+        else {
+            src_filename = FullPath(fullLoc);
+        }
         uint32_t src_line = fullLoc.getExpansionLineNumber(); 
+        errs() << "VisitCallExpr " << src_filename << " " << src_line << "\n";
+
         // if we dont know the filename, that indicates unhappy situation.  bail.
         if (src_filename == "") return true;
         FunctionDecl *f = e->getDirectCallee();
         // this is also bad -- bail
         if (!f) return true;
-        std::string fn_name = f->getNameInfo().getName().getAsString();        /*
+        std::string fn_name = f->getNameInfo().getName().getAsString();       
+        errs() << "VisitCallExpr " << src_filename << " " << fn_name << " " << src_line << "\n";
+        /*
           if this is an attack point, we may want to insert code modulo bugs list.
           insert a query "im at an attack point" or add code to use
           lava global to manifest a bug here. 
@@ -729,7 +746,7 @@ public:
     
     void EndSourceFileAction() override {
         SourceManager &sm = rewriter.getSourceMgr();
-        errs() << "** EndSourceFileAction for: "
+        errs() << "*** EndSourceFileAction for: "
                      << sm.getFileEntryForID(sm.getMainFileID())->getName()
                      << "\n";
         // Last thing: include the right file
@@ -763,6 +780,14 @@ private:
 int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
+
+    for (int i=0; i<argc; i++) {
+        if (0 == strncmp(argv[i], "-p", 2)) {
+            BuildPath = std::string(argv[i+1]);
+            errs() << "BuildPath = [" << BuildPath << "]\n";
+        }
+    }
+    
     if (LavaAction == LavaInjectBugs) {
         // get bug info for the injections we are supposed to be doing.
         errs() << "LavaBugList: [" << LavaBugList << "]\n";
