@@ -1,3 +1,5 @@
+import sys
+import random 
 import psycopg2
 import shutil
 import subprocess
@@ -5,8 +7,8 @@ import subprocess
 debugging = False
 db_host = "18.126.0.46"
 db = "tshark"
-db_user = "lava"
-db_password = "llaavvaa"
+db_user = "postgres"
+db_password = "postgrespostgres"
 
 sourcefile = {}
 inputfile = {}
@@ -53,6 +55,18 @@ def next_bug():
     conn.commit()
     conn.close()
     return bug
+
+def get_bug(bug_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("select * from bug where bug_id=%d;" % bug_id)
+    bug = cur.fetchone()
+    # need to do all three of these in order for the writes to db to actually happen
+    cur.close()
+    conn.commit()
+    conn.close()
+    return (bug[1], bug[2])
+    
 
 
 def remaining_inj():
@@ -133,11 +147,8 @@ def filename_suff(p, fn):
         suff = suff[1:]
     return suff
 
-def run_cmd(cmd, cw_dir):
-    if cw_dir:
-        p = subprocess.Popen(cmd.split(), cwd=cw_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    else:
-        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+def run_cmd(cmd, cw_dir,envv):
+    p = subprocess.Popen(cmd.split(), cwd=cw_dir, env=envv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = p.communicate()
     exitcode = p.returncode
     if debugging:
@@ -160,73 +171,185 @@ def inject_bug_part_into_src(bug_id, suff):
     global lavatoll
     global lavadb
     filename_bug_part = bugs_build + "/" + suff
-    make_safe_copy(filename_bug_part)
+#    make_safe_copy(filename_bug_part)
     cmd = lava_tool + ' -action=inject -bug-list=\"' + str(bug_id) \
         + '\" -lava-db=' + lavadb + ' -p ' + bugs_build \
-        + " -bug-build-dir=" + bugs_build \
         + ' ' + filename_bug_part 
-    run_cmd(cmd, None)
+    run_cmd(cmd, None, None)
 
 
 
 
+def add_build_row(bugs, compile_succ):
+    conn = get_conn()
+    cur = conn.cursor()
+    # NB: ignoring binpath for now
+    sql = "INSERT into build (bugs,compile) VALUES (ARRAY" + (str(bugs)) + "," + (str(compile_succ)) + ") RETURNING build_id;"
+    print sql    
+    cur.execute(sql)
+    build_id = cur.fetchone()[0]
+    # need to do all three of these in order for the writes to db to actually happen
+    cur.close()
+    conn.commit()
+    conn.close()
+    return build_id
 
 
-sourcefile = read_i2s("sourcefile")
-inputfile = read_i2s("inputfile")
-lval = read_i2s("lval")
-atptype = read_i2s("atptype")
-
-print remaining_inj()
-(score, bug_id, dua_id, atp_id) = next_bug()
-dua = Dua(dua_id, sourcefile, inputfile, lval)
-atp = Atp(atp_id, sourcefile, inputfile, atptype)
-
-print "------------\n"
-print "SELECTED BUG: " + str(bug_id)
-print "   score=%d " % score
-print "   (%d,%d)" % (dua_id, atp_id)
-print "DUA:"
-print "   " + str(dua)
-print "ATP:"
-print "   " + str(atp)
-
-print "------------\n"
-print "INJECTING BUGS INTO SOURCE"
-# modify src @ the dua to siphon off tainted bytes into global
-inject_bug_part_into_src(bug_id, dua.filename)
-
-# modify src the atp to use that global
-inject_bug_part_into_src(bug_id, atp.filename)
+def get_suffix(fn):
+    return (fn.split("."))[-1]
 
 
-# compile
-print "------------\n"
-print "ATTEMPTING BUILD OF INJECTED BUG"
-(rv, outp) = run_cmd("make", bugs_build)
-if rv==0:
-    # success
-    print "build succeeded"
-    (rv, outp) = run_cmd("make install", bugs_build)
-    # really how can this fail if build succeeds?
-    assert (rv == 0)
-    print "make install succeeded"
-else:
-    # build failed
-    print "build failed"
-    # log that to db
+lava = "lava"
+lava_bytes = [hex(ord(x)) for x in lava]
 
-revert_to_safe_copy(bugs_build + "/" + dua.filename)
-revert_to_safe_copy(bugs_build + "/" + atp.filename)
+# fuzz_offsets is a list of byte offsets within file fn.
+# replace those bytes with random in a new file named new_fn
+def mutfile(fn, fuzz_offsets, new_fn):
+    bytes = open(fn).read()
+    f = open(new_fn, "w")
+    i=0
+    j=0
+    for b in bytes:
+        if (i in fuzz_offsets) and (j<4):
+#            f.write(chr(random.randint(0,255)))
+#            print j
+            f.write(chr(int(lava_bytes[j],16)))
+            j+=1
+        else:
+            f.write(b)
+        i+=1
+
+
+# here's how to run the built program
+def run_prog(install_dir, input_file):
+    cmd = "%s/install/bin/tshark -nnr %s" % (install_dir,input_file)
+    print cmd
+    envv = {}
+    envv["LD_LIBRARY_PATH"] = "%s/install/lib" % install_dir
+    return run_cmd(cmd,install_dir,envv)
+
+
+def add_run_row(build_id, success, exitcode):
+    conn = get_conn()
+    cur = conn.cursor()
+    # NB: ignoring binpath for now
+    sql = "INSERT into run (build_id, run, exitcode) VALUES (" + (str(build_id)) + "," + (str(success)) + "," + (str(exitcode)) + ");"
+    print sql    
+    cur.execute(sql)
+    # need to do all three of these in order for the writes to db to actually happen
+    cur.close()
+    conn.commit()
+    conn.close()
 
 
 
-# add a row to the build table in the db
-#add_build_row([bug_id], success, binpath)
- 
+if __name__ == "__main__":    
 
-#if success:
-    # build succeeded -- try to run in
-    # first, create a modified input
-#    for 
-#    pass
+    if len(sys.argv) == 1:
+        # no args -- get next bug from postgres
+        print remaining_inj()
+        (score, bug_id, dua_id, atp_id) = next_bug()
+    else:
+        bug_id = int(sys.argv[1])
+        score = 0
+        (dua_id, atp_id) = get_bug(bug_id)
+
+    sourcefile = read_i2s("sourcefile")
+    inputfile = read_i2s("inputfile")
+    lval = read_i2s("lval")
+    atptype = read_i2s("atptype")
+
+    dua = Dua(dua_id, sourcefile, inputfile, lval)
+    atp = Atp(atp_id, sourcefile, inputfile, atptype)
+
+    print "------------\n"
+    print "SELECTED BUG: " + str(bug_id)
+    print "   score=%d " % score
+    print "   (%d,%d)" % (dua_id, atp_id)
+    print "DUA:"
+    print "   " + str(dua)
+    print "ATP:"
+    print "   " + str(atp)
+
+
+    # cleanup
+    print "------------\n"
+    print "CLEAN UP SRC"
+    run_cmd("/usr/bin/git checkout -f", bugs_build, None)
+
+    print "------------\n"
+    print "INJECTING BUGS INTO SOURCE"
+
+
+
+    # modify src @ the dua to siphon off tainted bytes into global
+    inject_bug_part_into_src(bug_id, dua.filename)
+
+    # only if they are in different files
+    if dua.filename != atp.filename:
+        # modify src the atp to use that global
+        inject_bug_part_into_src(bug_id, atp.filename)
+
+
+    # compile
+    print "------------\n"
+    print "ATTEMPTING BUILD OF INJECTED BUG"
+    print "build_dir = " + bugs_build
+    (rv, outp) = run_cmd("make", bugs_build, None)
+    build = False
+    if rv!=0:
+        # build failed
+        print "build failed"    
+    else:
+        # build success
+        build = True
+        print "build succeeded"
+        (rv, outp) = run_cmd("make install", bugs_build, None)
+        # really how can this fail if build succeeds?
+        assert (rv == 0)
+        print "make install succeeded"
+
+    # add a row to the build table in the db    
+    build_id = add_build_row([bug_id], build)
+    print "build_id = %d" % build_id
+    inputfile_dir = "/home/tleek/lava/src-to-src/wireshark-1.8.2"
+    if build:
+        try:
+            # build succeeded -- try to run in
+            # first, create a modified input
+            orig_input = "%s/%s" % (inputfile_dir, dua.inputfile)
+            suff = get_suffix(orig_input)
+            fuzzed_input = orig_input + "-fuzzed" + "." + suff
+            print "------------\n"
+            print "FUZZING INPUT"
+            print "orig = [%s]" % orig_input
+            print "fuzzed = [%s]" % fuzzed_input
+            mutfile(orig_input, dua.file_offsets, fuzzed_input)
+            print "------------\n"
+            print "TESTING BUGGY PROGRAM WITH FUZZED INPUT"
+            (rv, outp) = run_prog(bugs_build, fuzzed_input)
+            print "retval = %d" % rv
+            print "output:"
+            for line in outp:
+                print line            
+            add_run_row(build_id, True, rv)
+            print "TEST SUCCESS"
+        except:
+            print "TEST FAIL"
+            add_run_row(build_id, False, 1)
+
+
+        # and also try the regular file to make sure it still gets processed od
+
+
+
+
+    # cleanup
+    print "------------\n"
+    print "CLEAN UP SRC"
+    run_cmd("/usr/bin/git checkout -f", bugs_build, None)
+#    revert_to_safe_copy(bugs_build + "/" + dua.filename)
+#    revert_to_safe_copy(bugs_build + "/" + atp.filename)
+
+
+

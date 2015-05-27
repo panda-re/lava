@@ -131,7 +131,8 @@ CREATE TABLE run (
        run_id             serial primary key,
        build_id           integer references build,   -- the build used to generate this exe
        fuzzed_inputfile   text,                       -- filename of input with dua fuzzed
-       success            boolean,                    -- true iff this input and this build crashed
+       run                boolean,                    -- true if program ran on fuzzed input
+       exitcode           integer,                    -- true iff this input and this build crashed
        UNIQUE(build_id,fuzzed_inputfile)
 );
 
@@ -256,14 +257,13 @@ as $$
   d_argmin = ""
   a_argmin = ""
   for res in reses:
-    inj = False
-    if res["dua_icount"] < min_score:
-      inj = True
-      min_score = res["dua_icount"]
-    if res["atp_icount"] < min_score:
-      inj = True
-      min_score = res["atp_icount"]
-    if inj:
+    # if the bigger of the two counts is smaller than min_score
+    # then this bug is best seen so far
+    bigger = res["dua_icount"] 
+    if res["atp_icount"] > bigger:
+      bigger = res["atp_icount"] 
+    if bigger < min_score:
+      min_score = bigger
       b_argmin = res["bug_id"]
       d_argmin = res["dua_id"]
       a_argmin = res["atp_id"]
