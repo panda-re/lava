@@ -18,7 +18,7 @@
 */
 
 #define __STDC_FORMAT_MACROS
-
+#include "inttypes.h"
 
 extern "C" {
 #include <sys/types.h>
@@ -51,7 +51,7 @@ std::map<uint32_t,std::string> ind2str;
 Instr last_instr_count;
 
 
-
+bool debug = false;
 
 
 void get_last_instr(char *pandalog_filename) {
@@ -82,9 +82,10 @@ std::map <uint32_t, float> read_dead_data(char *pandalog_filename) {
             break;
         }
         if (ple->n_dead_data > 0) {
-            printf ("\n");
             for (uint32_t i=0; i<ple->n_dead_data; i++) {
                 dd[i] = ple->dead_data[i];
+                if (debug) 
+                    printf ("dd %d %.2f\n", i, dd[i]);
             }
         }
         panda__log_entry__free_unpacked(ple, NULL);
@@ -295,6 +296,36 @@ void postgresql_dump_bugs(PGconn *conn, std::set<Bug> &injectable_bugs) {
 
 
 
+void spit_tquls(Panda__TaintQueryUniqueLabelSet *tquls) {
+    printf ("tquls=[ptr=0x%" PRIx64 ",n_label=%d,label=[", tquls->ptr, tquls->n_label);
+    for (uint32_t i=0; i<tquls->n_label; i++) {
+        printf ("%d", tquls->label[i]);
+        if (i+1<tquls->n_label) printf (",");
+    }
+    printf("]]\n");
+}
+
+void spit_tq(Panda__TaintQuery *tq) {
+    printf ("tq=[ptr=0x%" PRIx64 ",tcn=%d,offset=%d]\n", tq->ptr, tq->tcn, tq->offset);
+}
+
+void spit_si(Panda__SrcInfo *si) {
+    printf ("si=[filename='%s',line=%d,", (char*) ind2str[si->filename].c_str(), si->linenum);
+    printf ("astnodename='%s',", (char *) ind2str[si->astnodename].c_str());
+    if (si->has_insertionpoint) {
+        printf ("insertionpoint=%d", si->insertionpoint);
+    }
+    printf ("]\n");
+}
+
+void spit_tqh(Panda__TaintQueryHypercall *tqh) {
+    printf ("tqh=[buf=0x%" PRIx64 ",len=%d,num_tainted=%d]\n", tqh->buf, tqh->len, tqh->num_tainted);
+}
+
+void spit_ap(Panda__AttackPoint *ap) {
+    printf("ap=[info=%d]\n", ap->info);
+}
+                
 
 int main (int argc, char **argv) {
 
@@ -371,6 +402,7 @@ int main (int argc, char **argv) {
                     ii, (uint32_t) u_dua.size(), (uint32_t) u_atp.size(), (uint32_t) injectable_bugs.size());
         }
         if (ple->taint_query_unique_label_set) {
+            if (debug) spit_tquls(ple->taint_query_unique_label_set);
             // this just maintains mapping from ptr (uint64_t) to actual set of taint labels 
             uint32_t i;
             Ptr p = ple->taint_query_unique_label_set->ptr;
@@ -381,10 +413,12 @@ int main (int argc, char **argv) {
         }        
         if (ple->src_info) {
             // save this for later.
+            if (debug) spit_si(ple->src_info);
             current_si = *(ple->src_info);
         }
         if (!in_hc) {
             if (ple->taint_query_hypercall) {
+                if (debug) spit_tqh(ple->taint_query_hypercall);
                 // hypercall taint query on some exent
                 // -- save buf / len / num tainted 
                 // subsequent ple->taint_query entries will 
@@ -401,6 +435,7 @@ int main (int argc, char **argv) {
             }
         }
         if (ple->taint_query) {
+            if (debug) spit_tq(ple->taint_query);
             Panda__TaintQuery *tq = ple->taint_query;
             // this tells us what byte in the extent this query was for
             uint32_t offset = tq->offset;
@@ -422,10 +457,13 @@ int main (int argc, char **argv) {
                 assert (ptr_to_set.count(p) != 0);
                 assert (ptr_to_set[p].size() != 0);
                 // check for too-live data on any label this byte derives form
+                uint32_t n = ptr_to_set[p].size();
                 for ( uint32_t l : ptr_to_set[p] ) {
                     // if liveness too high, discard this byte
                     current_byte_not_ok |= ((dd[l] > max_liveness) << 2);
-                    if (current_byte_not_ok != 0) break;
+                    if (current_byte_not_ok != 0) {
+                        break;
+                    }
                     // collect set of labels on ok bytes for the entire extent
                     if (dd[l] > c_max_liveness) c_max_liveness = dd[l];
                     labels.insert(l);       
@@ -433,21 +471,23 @@ int main (int argc, char **argv) {
             }
             if (current_byte_not_ok) {
                 // we are discarding this byte
-                //                printf ("discarding byte -- flag=0x%x\n", current_byte_not_ok);
+                if (debug) printf ("discarding byte -- flag=0x%x\n", current_byte_not_ok);
             }
             else {
                 // byte is ok to retain.
                 // keep track of highest tcn and card for ok bytes
                 if (tq->tcn > c_max_tcn) c_max_tcn = tq->tcn;
                 if (ptr_to_set[tq->ptr].size() > c_max_card) c_max_card = ptr_to_set[tq->ptr].size();
+                if (debug) printf ("keeping current byte @ offset %d\n", offset); 
                 // add this byte to the list of ok bytes
                 ok_bytes.insert(offset);
             }
         }
         if (in_hc && ple->instr != hc_instr_count) {
+            if (debug) printf ("done with current taint query hypercall\n");
             // done with current hypercall.  
             if ((ok_bytes.size() >= 1) && (labels.size() >= 1)) {
-                //                printf ("%d ok\n", (int) ok_bytes.size());
+                if (debug) printf ("%d ok\n", (int) ok_bytes.size());
                 // at least one byte on this extent is ok
                 seen_first_tq = true;
                 // great -- extent we just looked at was deemed acceptable
@@ -467,13 +507,14 @@ int main (int argc, char **argv) {
                 u_dua.insert(dua);
             }
             else {
-                //                printf ("discarded %d ok bytes  %d labels\n", (int) ok_bytes.size(), (int) labels.size());
+                if (debug) printf ("discarded %d ok bytes  %d labels\n", (int) ok_bytes.size(), (int) labels.size());
             }
             in_hc = false;
         }
         if (in_atp && ple->instr != atp_instr_count) {
             in_atp = false;
             if (seen_first_tq) {
+                if (debug) printf ("done with current attack point\n");
                 // done with current attack point
                 AttackPoint atp = {ind2str[current_si.filename], current_si.linenum, ind2str[atp_info]};
                 if ((u_atp.count(atp) == 0)
@@ -492,6 +533,7 @@ int main (int argc, char **argv) {
             }
         }
         if (!in_atp && ple->attack_point) {
+            if (debug) spit_ap(ple->attack_point);
             in_atp = true;
             atp_instr_count = ple->instr;
             atp_info = ple->attack_point->info;
