@@ -53,9 +53,9 @@ PGconn *pg_connect(void) {
 
 PGresult *pg_exec(PGconn *conn, std::string comm) {
     const char * cmd = (const char *) comm.c_str();
-    //  printf ("sql comm=[%s]\n", cmd);
+    //printf ("sql comm=[%s]\n", cmd);
     PGresult *res = PQexec(conn, cmd);
-    //  printf ("res = %d\n", PQresultStatus(res));
+    //printf ("res = %d\n", PQresultStatus(res));
     return res;
 }
 
@@ -150,6 +150,7 @@ Note:
 "offsets" are byte offsets within the dua 
    and return as a map from dua_id to dua
 */
+#if 0
 std::map<uint32_t,Dua> pg_get_duas(PGconn *conn, Ism &sourcefile, Ism &lval, Ism &inputfile) {
     std::cout << "Reading Duas from postgres\n";
     PGresult *res = pg_exec(conn, "SELECT * FROM dua;");
@@ -225,7 +226,7 @@ std::set<Bug> loadBugs(std::set<uint32_t> &bug_ids) {
     }
     return bugs;
 }
-
+#endif
 
 
 #if TESTING
