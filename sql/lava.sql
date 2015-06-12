@@ -9,6 +9,9 @@ something else will update the scount field when a real bug gets found
 
 */
 
+
+DROP TABLE IF EXISTS run_stats;
+
 DROP TABLE IF EXISTS run;
 DROP TABLE IF EXISTS build;
 DROP TABLE IF EXISTS bug;
@@ -130,11 +133,20 @@ CREATE TABLE build (
 CREATE TABLE run (
        run_id             serial primary key,
        build_id           integer references build,   -- the build used to generate this exe
-       fuzzed_inputfile   text,                       -- filename of input with dua fuzzed
-       run                boolean,                    -- true if program ran on fuzzed input
-       exitcode           integer,                    -- true iff this input and this build crashed
-       UNIQUE(build_id,fuzzed_inputfile)
+       fuzz               boolean,                    -- true if program ran on fuzzed input, false if it ran on orig input
+       exitcode           integer,                    -- exit code of program
+       output_lines       text,                       -- captured output of program
+       success            boolean                     -- true unless some kind of exception in python script fuzzing / testing
 );
+
+
+create table run_stats  (
+       run_id         integer references run,
+       exitcode       int,
+       max_liveness   real,
+       max_tcn        int,
+       max_card       int
+);  
 
 
 
@@ -194,6 +206,8 @@ as $$
       ni += 1
   return ni
 $$ LANGUAGE plpythonu;
+
+
 
 
 -- sets count for table to random num
@@ -282,5 +296,39 @@ create or replace function remaining_uninjected_bugs() returns int
 as $$
     reses = plpy.execute("select * from bug where bug.inj=false")
     return len(reses)
+$$ LANGUAGE plpythonu;
+
+
+
+create or replace function compute_run_stats() returns void
+as $$
+  # should give us the set of bugs (id) that have been successfully injected, compiled, and tested on a fuzzed input
+  reses = plpy.execute("select exitcode,run_id,bugs[1] from run,build where run.build_id = build.build_id;")
+  for res in reses:
+    run_id = int(res["run_id"])
+    bug_id = int(res["bugs"])
+    exitcode = int(res["exitcode"])
+    r2 = plpy.execute("select max_liveness, max_tcn, max_card from dua,bug where dua.dua_id = bug.dua_id and bug.bug_id = %d;" % bug_id)
+    r = r2[0]
+    (max_liveness, max_tcn, max_card) = (float(r["max_liveness"]), int(r["max_tcn"]), int(r["max_card"]))
+    plpy.execute("insert into run_stats (run_id, exitcode, max_liveness, max_tcn, max_card) values (%d, %d, %.3f, %d, %d);" % (run_id,exitcode,max_liveness, max_tcn, max_card))
+#  return { "bug_id": bug_id, "exitcode": exitcode, "max_liveness" : max_liveness, "max_tcn": max_tcn, "max_card": max_card }
+$$ LANGUAGE plpythonu;    
+
+
+
+/*
+  clears all counts in dua / atp
+  resets all bugs to inj = False
+  drops build and run tables
+*/
+create or replace function reset_lava() returns void
+as $$
+  plpy.execute("DELETE FROM run_stats;")
+  plpy.execute("DELETE FROM run;")
+  plpy.execute("DELETE FROM build;")
+  plpy.execute("UPDATE dua set dua_icount = 0, dua_scount = 0;")
+  plpy.execute("UPDATE atp set atp_icount = 0, atp_scount = 0;")
+  plpy.execute("UPDATE bug set inj=False;")
 $$ LANGUAGE plpythonu;
 
