@@ -437,7 +437,7 @@ public:
         // choose an arg at random to add global to.          
         std::default_random_engine generator;
         std::uniform_int_distribution<int> distribution(0,n-1);
-        int arg_num = distribution(generator);  // generates number in the range 1..6 
+        int arg_num = distribution(generator);
         //        errs() <<  "adding global to arg " << arg_num << "\n";
         uint32_t i = 0;
         std::stringstream new_call;
@@ -446,7 +446,16 @@ public:
             //            errs() << "i=" << i << "\n";
             Expr *arg = dyn_cast<Expr>(*it);
             if (i == arg_num) {
-                new_call << (ExprStr(arg)) + "+" +  LavaGlobal(bug.id) + " * (0x6c617661 == " + LavaGlobal(bug.id) + " || 0x6176616c == " + LavaGlobal(bug.id) + ")";           
+                // for malloc, we want the lava switch to undersize the malloc to a few bytes
+                // and hope for an overflow
+                if (fn_name.find("malloc") != std::string::npos) {
+                    new_call << "(0x6c617661 == " + LavaGlobal(bug.id) + " || 0x6176616c == " + LavaGlobal(bug.id) + ") ? 1 : " << (ExprStr(arg));           
+                }
+                else {
+                    // for memcpy, this seems reasonable.  
+                    // others?
+                    new_call << (ExprStr(arg)) + "+" +  LavaGlobal(bug.id) + " * (0x6c617661 == " + LavaGlobal(bug.id) + " || 0x6176616c == " + LavaGlobal(bug.id) + ")";           
+                }
             }
             else {
                 new_call << (ExprStr(arg));
