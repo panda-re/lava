@@ -14,7 +14,7 @@ extern "C" {
 #include <sstream>
 #include <map>
 #include <set>
-
+#include <vector>
 
 // instruction count
 typedef uint64_t Instr;
@@ -29,21 +29,58 @@ std::string iset_str(std::set<uint32_t> &iset);
 
 
 
+struct ByteTaint {
+    uint32_t offset;
+    Ptr taintset;
+};
+
+
+struct DuaKey {
+
+    uint32_t filename;
+    uint32_t linenum;
+    uint32_t astnodename;
+    uint32_t insertionpoint;
+
+    bool operator<(const DuaKey &other) const {
+        if (filename < other.filename) return true;
+        if (filename > other.filename) return false;
+        if (linenum < other.linenum) return true;
+        if (linenum > other.linenum) return false;
+        if (astnodename < other.astnodename) return true;
+        if (astnodename > other.astnodename) return false;
+        return (insertionpoint < other.insertionpoint);
+    }
+    
+    bool operator==(const DuaKey &other) const {
+        return ((filename == other.filename)
+                && (linenum == other.linenum)
+                && (astnodename == other.astnodename)
+                && (insertionpoint == other.insertionpoint));
+    }
+                
+};
+   
+    
+
+    
 struct Dua {    
 
-    std::string filename;               // name of src file this dua is in
-    uint32_t line;                      // line in that src file
-    std::string lvalname;               // name of the lval, i.e. x or y->f or x[i].m or ...
-    uint32_t insertionpoint;            // was query before or after call?
-    std::set<uint32_t> file_offsets;    // byte offsets within input file that taint the dua parts of this lval
-    std::set<uint32_t> lval_offsets;    // offsets within this lval that are dua
-    std::string input_file;             // name of input file used to discover this dua
-    float max_liveness;                 // max liveness of any label in any taint set for dua
-    uint32_t max_tcn;                   // max tcn of any byte of this lval
-    uint32_t max_card;                  // max cardinality of any taint set for any byte of this lval
-    uint32_t icount;                    // num times this dua has been used to inject a bug
-    uint32_t scount;                    // num times this dua has been used to inject a bug that turned out to realy be a bug
-
+    std::string filename;                 // name of src file this dua is in
+    uint32_t line;                        // line in that src file
+    std::string lvalname;                 // name of the lval, i.e. x or y->f or x[i].m or ...
+    uint32_t insertionpoint;              // was query before or after call?
+    std::vector<ByteTaint> viable_bytes;  // keep track of tainted, viable bytes
+    std::set<uint32_t> file_offsets;      // byte offsets within input file that taint the dua parts of this lval
+    std::set<uint32_t> lval_offsets;      // offsets within this lval that are dua
+    std::string input_file;               // name of input file used to discover this dua
+    float max_liveness;                   // max liveness of any label in any taint set for dua
+    uint32_t max_tcn;                     // max tcn of any byte of this lval
+    uint32_t max_card;                    // max cardinality of any taint set for any byte of this lval
+    uint32_t icount;                      // num times this dua has been used to inject a bug
+    uint32_t scount;                      // num times this dua has been used to inject a bug that turned out to realy be a bug
+    uint64_t instr;  // instr count
+    
     std::string str() {
         std::stringstream ss;
         ss << "DUA [" 
@@ -56,6 +93,7 @@ struct Dua {
         // offsets within the lval that are duas
         ss << "{" << iset_str(lval_offsets) << "}";
         ss << "," << max_liveness << "," << max_tcn << "," << max_card ;
+        ss << "," << instr;
         ss << "]";
         return ss.str();
     }    
@@ -81,6 +119,8 @@ struct Dua {
         if (icount > other.icount) return false;
         if (scount < other.scount) return true;
         if (scount > other.scount) return false;
+        if (instr < other.instr) return true;
+        if (instr > other.instr) return false;
         if (file_offsets < other.file_offsets) return true;
         if (file_offsets > other.file_offsets) return false;
         return lval_offsets < other.lval_offsets;
@@ -97,12 +137,34 @@ struct Dua {
                 && (max_card == other.max_card) 
                 && (icount == other.icount) 
                 && (scount == other.scount) 
+                && (instr == other.instr)
                 && (file_offsets == other.file_offsets) 
                 && (lval_offsets == other.lval_offsets));
     }
 
 };
 
+
+struct AttackPointKey {
+    uint32_t filename;
+    uint32_t line;
+    uint32_t typ;
+
+    bool operator<(const AttackPointKey &other) const {
+        if (filename < other.filename) return true;
+        if (filename > other.filename) return false;
+        if (line < other.line) return true;
+        if (line > other.line) return false;
+        return (typ < other.typ);
+    }
+    
+    bool operator==(const AttackPointKey &other) const {
+        return ((filename == other.filename)
+                && (line == other.line)
+                && (typ == other.typ));
+    }
+        
+};
 
 
 struct AttackPoint {
@@ -148,6 +210,28 @@ struct AttackPoint {
 };
 
 
+
+struct BugKey {
+    DuaKey dk;
+    AttackPointKey atpk;
+
+    bool operator<(const BugKey &other) const {
+        if (dk < other.dk) return true;
+        if (!(dk == other.dk)) return false;
+        return (atpk < other.atpk);
+    }
+
+    bool operator==(const BugKey &other) const {
+        return ((dk == other.dk)
+                && (atpk == other.atpk));
+    }
+    
+};
+
+
+
+
+
 struct Bug {
     uint32_t id;
     Dua dua;                 // specifies where the dead data is in the program src
@@ -175,10 +259,10 @@ struct Bug {
     }
 
     bool operator==(const Bug &other) const {
-        if ((dua == other.dua) 
-            && (atp == other.atp) 
-            && (global_name == other.global_name)  
-            && (size == other.size));
+        return ((dua == other.dua) 
+                && (atp == other.atp) 
+                && (global_name == other.global_name)  
+                && (size == other.size));        
     }
     
 };
