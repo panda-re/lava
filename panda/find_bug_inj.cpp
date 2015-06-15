@@ -129,6 +129,7 @@ uint32_t stou(std::string s) {
 }
 
 
+/*
 int get_num_rows(PGconn *conn, std::string table) {
     std::string sql = "select count(*) from " + table + ";";
     PGresult *res = pg_exec(conn, (const char *) sql.c_str());
@@ -137,7 +138,7 @@ int get_num_rows(PGconn *conn, std::string table) {
     PQclear(res);
     return n;
 }
-
+*/
 
 
 // add this string to this table and retrieve 
@@ -232,6 +233,7 @@ int postgres_new_dua(PGconn *conn, Dua &dua) {
 }
 
 
+#if 0
 // replace dua with this id
 void postgres_replace_dua(PGconn *conn, Dua &dua, int dua_id) {
     std::stringstream sql;    
@@ -249,7 +251,7 @@ void postgres_replace_dua(PGconn *conn, Dua &dua, int dua_id) {
     if (debug) std::cout << "Replaced dua id=" << dua_id << "\n";
     PQclear(res);
 }
-    
+#endif    
 
 
 // returns atp_id assigned by postgres
@@ -329,8 +331,6 @@ void spit_ap(Panda__AttackPoint *ap) {
 }
 
         
-uint64_t i0 = 0;
-
 
             
             
@@ -382,44 +382,34 @@ void taint_query_hypercall(Panda__LogEntry *ple,
     uint32_t c_max_tcn, c_max_card;
     c_max_tcn = c_max_card = 0;    
     std::vector<ByteTaint> viable_bytes;
+    // consider all bytes in this extent that were queried and found to be tainted
+    // collect "ok" bytes, which have low enough taint compute num and card,
+    // and also aren't tainted by too-live input bytes
     for (uint32_t i=0; i<tqh->n_taint_query; i++) {
         Panda__TaintQuery *tq = tqh->taint_query[i];        
         if (tq->unique_label_set) {
-            // this one tells us about a new unique taint label set
+            // collect new unique taint label sets
             update_unique_taint_sets(tq->unique_label_set, ptr_to_set);
         }
-        /*
-          this taint query is for a byte on the current extent under consideration
-          offset is where it is in the original extent queried.
-          We will decide that this byte is useable iff
-          1. tcn is low enough (indicating that this byte is not too computationally 
-          distant from input)
-              2. cardinality is low enough (indicating this byte not too compilcated a fn of inpu?)
-              3. none of the labels in this byte's taint label set has a liveness score that is too high
-        */            
         uint32_t offset = tq->offset;
         // flag for tracking *why* we discarded a byte
-        uint32_t current_byte_not_ok = 0;
-        current_byte_not_ok |= 
-            (((tq->tcn > max_tcn) << CBNO_TCN_BIT)
-             | ((ptr_to_set[tq->ptr].size() > max_card) << CBNO_CRD_BIT));
+        uint32_t current_byte_not_ok;
+        current_byte_not_ok = (((tq->tcn > max_tcn) << CBNO_TCN_BIT)
+                               | ((ptr_to_set[tq->ptr].size() > max_card) << CBNO_CRD_BIT));
         if (current_byte_not_ok == 0) {
-            // this byte is still ok -- check liveness
+            // this byte is still ok -- check for too-live taint label
             Ptr p = tq->ptr;
             assert (ptr_to_set.count(p) != 0);
             assert (ptr_to_set[p].size() != 0);
-            // check for too-live data on any label from which this byte derives
             for ( uint32_t l : ptr_to_set[p] ) {
                 current_byte_not_ok |= ((liveness[l] > max_liveness) << CBNO_LVN_BIT);
-                if (current_byte_not_ok != 0) break;
-                // collect set of labels on ok bytes for the entire extent
-                labels.insert(l);       
-                // max liveness of a taint label for this lval
                 c_max_liveness = std::max(liveness[l],c_max_liveness);
+                // dont bother looking at any more labels if byte not ok
+                if (current_byte_not_ok != 0) break;
             }
         }
         if (current_byte_not_ok) {
-            // we are discarding this byte
+            // discard this byte
             if (debug) {
                 printf ("discarding byte -- n");
                 if (current_byte_not_ok & CBNO_TCN_BIT) printf ("** tcn too high\n");
@@ -429,6 +419,11 @@ void taint_query_hypercall(Panda__LogEntry *ple,
         }
         else {
             // byte is ok to retain.
+            // collect set of labels on all ok bytes for this extent
+            Ptr p = tq->ptr;
+            for ( uint32_t l : ptr_to_set[p] ) {
+                labels.insert(l);
+            }
             // keep track of highest tcn and card for ok bytes
             c_max_tcn = std::max(tq->tcn, c_max_tcn);
             c_max_card = std::max((uint32_t) ptr_to_set[tq->ptr].size(), c_max_card);
@@ -457,11 +452,6 @@ void taint_query_hypercall(Panda__LogEntry *ple,
             c_max_liveness, c_max_tcn, c_max_card,
             0,0,instr
         };
-
-        if (i0 == 0) {
-            i0 = instr;
-        }
-
         if (debug) {
             printf ("OK DUA.\n");
             std::cout << dua.str() << "\n";
@@ -469,21 +459,26 @@ void taint_query_hypercall(Panda__LogEntry *ple,
         // keeping track of dead, uncomplicated data extents we have
         // encountered so far in the trace
         assert (si->has_insertionpoint);
-        // this key distinguishes between duas that correspond to the same source code modification
-        DuaKey key = {si->filename, si->linenum, si->astnodename, si->insertionpoint};        
-        if (dua_id.count(key) == 0) {
-            // new dua (in terms of src mod)
-            dua_id[key] = postgres_new_dua(conn, dua);
-            duas[key] = dua;
-            if (debug) printf ("dua is new (by src mod).  Adding id %d\n", dua_id[key]);
+        /*
+          Add dua to db (if it isnt there already).
+          maintain map from dua key to this particular dua.
+          dua key conflates all duas that correspond to the same src query point.
+          so duas[d_key] always contains the most recent dua that
+          corresponds to a particular src query point.
+         */          
+        DuaKey d_key = {si->filename, si->linenum, si->astnodename, si->insertionpoint};        
+        uint32_t d_id = postgres_new_dua(conn, dua);
+        if (d_id == -1) {
+            if (debug) printf ("dua is already in the db\n");
+            assert (dua_id.count(d_key) > 0);
+            d_id = dua_id[d_key];
         }
         else {
-            // we've added dua before that corresponds to this same src change
-            // so now we need to replace
-            postgres_replace_dua(conn, dua, dua_id[key]);
-            duas[key] = dua; 
-            if (debug) printf ("dua is old (by src mod):  Replacing id %d\n", dua_id[key]);
-       }        
+            if (debug) printf ("dua is new (by src mod).  Added. id %d\n", d_id);
+        }
+        // keep these two up-to-date            
+        dua_id[d_key] = d_id;
+        duas[d_key] = dua;
     }
     else {
         if (debug) printf ("discarded %d ok bytes  %d labels\n", (int) ok_bytes.size(), (int) labels.size());
