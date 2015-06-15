@@ -87,7 +87,19 @@ Ism pg_get_string_map(PGconn *conn, std::string tablename) {
 
 /*
   Read *all* of the attack points out of the Atp table in the db
-  Table: atp_id | filename | line | typ | inputfile | atp_icount | atp_scount 
+
+  tshark=# \d atp;
+                              Table "public.atp"
+    Column    |  Type   |                      Modifiers                       
+--------------+---------+------------------------------------------------------
+ atp_id       | integer | not null default nextval('atp_atp_id_seq'::regclass)
+ filename_id  | integer | 
+ line         | integer | 
+ typ_id       | integer | 
+ inputfile_id | integer | 
+ atp_icount   | integer | 
+ atp_scount   | integer | 
+
   and return as a map from atp_id to attack point
 */
 std::map<uint32_t,AttackPoint> pg_get_attack_points(PGconn *conn, Ism &sourcefile, Ism &atptype, Ism &inputfile) {
@@ -136,21 +148,37 @@ std::set<uint32_t> parse_offsets(std::string offs_str) {
     return parse_ints(offs_str1);
 }
 
-    
+
 
 
 /* 
    Read *all* of the duas out of the Dua table in the db
 
-   Table: dua_id | filename | line | lval | file_offsets | lval_offsets | inputfile | max_tcn | max_card | max_liveness | dua_icount | dua_scount 
-              50 |        2 | 4791 |    8 | {586,587}    | {0,1}        |         0 |       2 |        2 |     0.409256 |          3 |          0
+
+tshark=# \d dua
+                                    Table "public.dua"
+     Column     |       Type       |                      Modifiers                       
+----------------+------------------+------------------------------------------------------
+ dua_id         | integer          | not null default nextval('dua_dua_id_seq'::regclass)
+ filename_id    | integer          | 
+ line           | integer          | 
+ lval_id        | integer          | 
+ insertionpoint | integer          | 
+ file_offsets   | integer[]        | 
+ lval_offsets   | integer[]        | 
+ inputfile_id   | integer          | 
+ max_tcn        | real             | 
+ max_card       | integer          | 
+ max_liveness   | double precision | 
+ dua_icount     | integer          | 
+ dua_scount     | integer          | 
+
 
 Note: 
 "bytes" are bytes in the input file that taint this dua
 "offsets" are byte offsets within the dua 
    and return as a map from dua_id to dua
 */
-#if 0
 std::map<uint32_t,Dua> pg_get_duas(PGconn *conn, Ism &sourcefile, Ism &lval, Ism &inputfile) {
     std::cout << "Reading Duas from postgres\n";
     PGresult *res = pg_exec(conn, "SELECT * FROM dua;");
@@ -166,12 +194,12 @@ std::map<uint32_t,Dua> pg_get_duas(PGconn *conn, Ism &sourcefile, Ism &lval, Ism
         std::set<uint32_t> file_offsets = parse_offsets(PQgetvalue(res, row, 5));      
         std::set<uint32_t> lval_offsets = parse_offsets(PQgetvalue(res, row, 6));      
         std::string input_file = inputfile[atoi(PQgetvalue(res, row, 7))];
-        float max_liveness = atof(PQgetvalue(res, row, 8));
-        uint32_t max_tcn = atoi(PQgetvalue(res, row, 9));
-        uint32_t max_card = atoi(PQgetvalue(res, row, 10));
+        uint32_t max_tcn = atoi(PQgetvalue(res, row, 8));
+        uint32_t max_card = atoi(PQgetvalue(res, row, 9));
+        float max_liveness = atof(PQgetvalue(res, row, 10));
         uint32_t icount = atoi(PQgetvalue(res, row, 11));
         uint32_t scount = atoi(PQgetvalue(res, row, 12));        
-        duas[id] = {src_filename,src_line,lvalname,insertion_point,file_offsets,lval_offsets,input_file,max_liveness,max_tcn,max_card,icount,scount};
+        duas[id] = {src_filename,src_line,lvalname,insertion_point,file_offsets,lval_offsets,input_file,max_tcn,max_card,max_liveness,icount,scount};
     }
     return duas;
 }
@@ -193,7 +221,6 @@ std::map<uint32_t,Bug> pg_get_bugs(PGconn *conn, std::map<uint32_t,Dua> &duas, s
     }   
     return bugs;
 }       
-    
 
 
 // load this set of bugs from db
@@ -226,7 +253,7 @@ std::set<Bug> loadBugs(std::set<uint32_t> &bug_ids) {
     }
     return bugs;
 }
-#endif
+
 
 
 #if TESTING

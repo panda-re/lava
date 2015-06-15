@@ -4,6 +4,7 @@ import psycopg2
 import shutil
 import subprocess
 
+
 debugging = False
 db_host = "18.126.0.46"
 db = "tshark"
@@ -229,11 +230,13 @@ def run_prog(install_dir, input_file):
     return run_cmd(cmd,install_dir,envv)
 
 
-def add_run_row(build_id, success, exitcode):
+def add_run_row(build_id, fuzz, exitcode, lines, success):
+    lines = lines.translate(None, '\'\"')
+    lines = lines[0:1024]
     conn = get_conn()
     cur = conn.cursor()
     # NB: ignoring binpath for now
-    sql = "INSERT into run (build_id, run, exitcode) VALUES (" + (str(build_id)) + "," + (str(success)) + "," + (str(exitcode)) + ");"
+    sql = "INSERT into run (build_id, fuzz, exitcode, output_lines, success) VALUES (" + (str(build_id)) + "," + (str(fuzz)) + "," + (str(exitcode)) + ",\'" + lines + "\'," + (str(success)) + ");"
     print sql    
     cur.execute(sql)
     # need to do all three of these in order for the writes to db to actually happen
@@ -245,10 +248,12 @@ def add_run_row(build_id, success, exitcode):
 
 if __name__ == "__main__":    
 
+    next_bug_db = False
     if len(sys.argv) == 1:
         # no args -- get next bug from postgres
         print remaining_inj()
         (score, bug_id, dua_id, atp_id) = next_bug()
+        next_bug_db = True
     else:
         bug_id = int(sys.argv[1])
         score = 0
@@ -271,7 +276,6 @@ if __name__ == "__main__":
     print "ATP:"
     print "   " + str(atp)
 
-
     # cleanup
     print "------------\n"
     print "CLEAN UP SRC"
@@ -279,9 +283,6 @@ if __name__ == "__main__":
 
     print "------------\n"
     print "INJECTING BUGS INTO SOURCE"
-
-
-
     # modify src @ the dua to siphon off tainted bytes into global
     inject_bug_part_into_src(bug_id, dua.filename)
 
@@ -310,46 +311,56 @@ if __name__ == "__main__":
         print "make install succeeded"
 
     # add a row to the build table in the db    
-    build_id = add_build_row([bug_id], build)
-    print "build_id = %d" % build_id
+    if next_bug_db:
+        build_id = add_build_row([bug_id], build)
+        print "build_id = %d" % build_id
     inputfile_dir = "/home/tleek/lava/src-to-src/wireshark-1.8.2"
     if build:
         try:
-            # build succeeded -- try to run in
-            # first, create a modified input
+            # build succeeded -- testing
+            print "------------\n"
+            # first, try the original file
+            print "TESTING -- ORIG INPUT"
             orig_input = "%s/%s" % (inputfile_dir, dua.inputfile)
+            (rv, outp) = run_prog(bugs_build, orig_input)
+            print "retval = %d" % rv
+            print "output:"
+            lines = outp[0] + " ; " + outp[1]
+            print lines
+            if next_bug_db:
+                add_run_row(build_id, False, rv, lines, True)
+            print "SUCCESS"
+            # second, fuzz it with the magic value
+            print "TESTING -- FUZZED INPUT"
             suff = get_suffix(orig_input)
             fuzzed_input = orig_input + "-fuzzed" + "." + suff
-            print "------------\n"
-            print "FUZZING INPUT"
-            print "orig = [%s]" % orig_input
             print "fuzzed = [%s]" % fuzzed_input
             mutfile(orig_input, dua.file_offsets, fuzzed_input)
-            print "------------\n"
-            print "TESTING BUGGY PROGRAM WITH FUZZED INPUT"
             (rv, outp) = run_prog(bugs_build, fuzzed_input)
             print "retval = %d" % rv
             print "output:"
-            for line in outp:
-                print line            
-            add_run_row(build_id, True, rv)
-            print "TEST SUCCESS"
+            lines = outp[0] + " ; " + outp[1]
+            print lines
+            if next_bug_db:        
+                add_run_row(build_id, True, rv, lines, True)
+            print "TESTING COMPLETE"
+            # NB: at the end of testing, the fuzzed input is still in place
+            # if you want to try it 
         except:
-            print "TEST FAIL"
-            add_run_row(build_id, False, 1)
-
-
-        # and also try the regular file to make sure it still gets processed od
+            print "TESTING FAIL"
+            if next_bug_db:
+                add_run_row(build_id, False, 1, "", True)
 
 
 
 
     # cleanup
-    print "------------\n"
-    print "CLEAN UP SRC"
-    run_cmd("/usr/bin/git checkout -f", bugs_build, None)
+#    print "------------\n"
+#    print "CLEAN UP SRC"
+#    run_cmd("/usr/bin/git checkout -f", bugs_build, None)
 #    revert_to_safe_copy(bugs_build + "/" + dua.filename)
 #    revert_to_safe_copy(bugs_build + "/" + atp.filename)
 
 
 
+ 
