@@ -248,10 +248,12 @@ def add_run_row(build_id, fuzz, exitcode, lines, success):
 
 if __name__ == "__main__":    
 
+    next_bug_db = False
     if len(sys.argv) == 1:
         # no args -- get next bug from postgres
         print remaining_inj()
         (score, bug_id, dua_id, atp_id) = next_bug()
+        next_bug_db = True
     else:
         bug_id = int(sys.argv[1])
         score = 0
@@ -309,8 +311,9 @@ if __name__ == "__main__":
         print "make install succeeded"
 
     # add a row to the build table in the db    
-    build_id = add_build_row([bug_id], build)
-    print "build_id = %d" % build_id
+    if next_bug_db:
+        build_id = add_build_row([bug_id], build)
+        print "build_id = %d" % build_id
     inputfile_dir = "/home/tleek/lava/src-to-src/wireshark-1.8.2"
     if build:
         try:
@@ -324,7 +327,8 @@ if __name__ == "__main__":
             print "output:"
             lines = outp[0] + " ; " + outp[1]
             print lines
-            add_run_row(build_id, False, rv, lines, True)
+            if next_bug_db:
+                add_run_row(build_id, False, rv, lines, True)
             print "SUCCESS"
             # second, fuzz it with the magic value
             print "TESTING -- FUZZED INPUT"
@@ -337,13 +341,15 @@ if __name__ == "__main__":
             print "output:"
             lines = outp[0] + " ; " + outp[1]
             print lines
-            add_run_row(build_id, True, rv, lines, True)
+            if next_bug_db:        
+                add_run_row(build_id, True, rv, lines, True)
             print "TESTING COMPLETE"
             # NB: at the end of testing, the fuzzed input is still in place
             # if you want to try it 
         except:
             print "TESTING FAIL"
-            add_run_row(build_id, False, 1, "", True)
+            if next_bug_db:
+                add_run_row(build_id, False, 1, "", True)
 
 
 

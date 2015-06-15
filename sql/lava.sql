@@ -87,6 +87,7 @@ CREATE TABLE dua (
        max_liveness    float,                        -- max liveness of any label in any taint label set for any byte in the dua      
        dua_icount      integer,                      -- number of times used to inject a bug                                          
        dua_scount      integer,                      -- number of times used to inject a bug that was successful                      
+       instr           numeric,                      -- instruction count for this dua
        UNIQUE(filename_id,line,lval_id,insertionpoint,file_offsets,lval_offsets,inputfile_id)
 );
 

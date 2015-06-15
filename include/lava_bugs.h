@@ -74,9 +74,9 @@ struct Dua {
     std::set<uint32_t> file_offsets;      // byte offsets within input file that taint the dua parts of this lval
     std::set<uint32_t> lval_offsets;      // offsets within this lval that are dua
     std::string input_file;               // name of input file used to discover this dua
-    float max_liveness;                   // max liveness of any label in any taint set for dua
     uint32_t max_tcn;                     // max tcn of any byte of this lval
     uint32_t max_card;                    // max cardinality of any taint set for any byte of this lval
+    float max_liveness;                   // max liveness of any label in any taint set for dua
     uint32_t icount;                      // num times this dua has been used to inject a bug
     uint32_t scount;                      // num times this dua has been used to inject a bug that turned out to realy be a bug
     uint64_t instr;  // instr count

@@ -3,6 +3,7 @@ extern "C" {
 #include <stdlib.h>
 }
 
+#include <set>
 #include "includes.h"
 #include "lavaDB.h"
 
@@ -429,7 +430,7 @@ public:
         Insertions inss;        
         if (bug.atp.filename != bug.dua.filename) {
             // only needed if dua is in different file from attack point
-            inss.top_of_file = "extern int " + LavaGlobal(bug.id) + ";\n";
+            inss.top_of_file = "int " + LavaGlobal(bug.id) + "  __attribute__((weak)) ;\n";
         }
         std::string fn_name = call_expr->getDirectCallee()->getNameInfo().getName().getAsString();
         uint32_t n = call_expr->getNumArgs();
