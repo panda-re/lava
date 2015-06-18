@@ -37,16 +37,16 @@ extern "C" {
 #include <set>
 #include <vector>
 #include <sstream>
+#include <algorithm>
 #include "pandalog.h"
 #include "../src_clang/lavaDB.h"
 #include "../include/lava_bugs.h"
-
 
 #define CBNO_TCN_BIT 0
 #define CBNO_CRD_BIT 1
 #define CBNO_LVN_BIT 2
 
-
+#define MIN_VIABLE_BYTES 1
 
 std::string inputfile;
 std::string src_pfx;
@@ -85,6 +85,7 @@ std::pair<float, float> update_range(float val, std::pair<float, float> range) {
     return range;
 }
 
+
 std::pair<uint32_t, uint32_t> update_range(uint32_t val, std::pair<uint32_t, uint32_t> range) {
     if (val < range.first) {
         range.first = val;
@@ -101,7 +102,6 @@ std::map<uint32_t,std::string> LoadIDB(std::string fn) {
     std::map<std::string,uint32_t> x = LoadDB(sfn);
     return InvertDB(x);
 }
-
 
 
 void spit_res(PGresult *res) {
@@ -121,24 +121,10 @@ void spit_res(PGresult *res) {
 }
 
 
-
-
 uint32_t stou(std::string s) {
     const char * cs = s.c_str();
     return (uint32_t) atoi(cs);
 }
-
-
-/*
-int get_num_rows(PGconn *conn, std::string table) {
-    std::string sql = "select count(*) from " + table + ";";
-    PGresult *res = pg_exec(conn, (const char *) sql.c_str());
-    assert (PQresultStatus(res) == PGRES_TUPLES_OK);
-    uint32_t n = stou(PQgetvalue(res, 0, 0));
-    PQclear(res);
-    return n;
-}
-*/
 
 
 // add this string to this table and retrieve 
@@ -151,8 +137,6 @@ int addstr(PGconn *conn, std::string table, std::string str) {
     PGresult *res = pg_exec_ss(conn, sql);
     if (PQntuples(res) > 0 ) {
         PQclear(res);
-
-        //        printf ("its already there\n");
     }
     else {
         PQclear(res);
@@ -175,8 +159,8 @@ int addstr(PGconn *conn, std::string table, std::string str) {
 }
 
 
-
-std::map<DuaKey,int> dua_id;
+// postgres unique ids for dua and attack point 
+std::map<Dua,int> dua_id;
 std::map<AttackPoint,int> atp_id;
 
 
@@ -199,7 +183,37 @@ std::string strip_pfx(std::string filename, std::string pfx) {
     return suff;
 }
 
-                                                                               
+
+// returns -1 if dua isnt there.  else returns dua_id
+int postgres_get_dua_id(PGconn *conn, Dua &dua) {
+    PGresult *res;
+    // add source filename to sourcefile table
+    std::string filename = dua.filename;
+    int filename_id = addstr(conn, "sourcefile", strip_pfx(filename, src_pfx));
+    std::string lvalname = dua.lvalname;
+    int lval_id = addstr(conn, "lval", lvalname);
+    std::stringstream sql;
+    sql << "SELECT dua_id from dua where "
+        << " filename_id = " << filename_id 
+        << " and line = " << dua.line   
+        << " and lval_id = " << lval_id 
+        << " and insertionpoint = " << dua.insertionpoint
+        << " and file_offset = " << "'{" << iset_str(dua.file_offsets) << "}'" 
+        << " and lval_taint = " << "'{" << pvec_str(dua.lval_taint) << "}'" 
+        << " and inputfile_id = " << inputfile_id
+        << " and max_liveness = " << dua.max_liveness
+        << " and max_tcn = " << dua.max_tcn
+        << " and max_card = " << dua.max_card 
+        << " and instr = " << dua.instr << ";";
+    res = pg_exec_ss(conn,sql);
+    assert (PQresultStatus(res) == PGRES_TUPLES_OK);
+    if (PQntuples(res) == 1) {
+        return stou(PQgetvalue(res, 0, 0));
+    }
+    else return -1;
+}
+
+
 // returns dua_id assigned by postgres
 // -1 if none (error or already there)
 int postgres_new_dua(PGconn *conn, Dua &dua) {
@@ -210,18 +224,19 @@ int postgres_new_dua(PGconn *conn, Dua &dua) {
     std::string lvalname = dua.lvalname;
     int lval_id = addstr(conn, "lval", lvalname);
     std::stringstream sql;
-    sql << "INSERT INTO dua (filename_id,line,lval_id,insertionpoint,file_offsets,lval_offsets,inputfile_id,max_liveness,max_tcn,max_card,dua_icount,dua_scount) VALUES ("
+    sql << "INSERT INTO dua (filename_id,line,lval_id,insertionpoint,file_offset,lval_taint,inputfile_id,max_tcn,max_card,max_liveness,dua_icount,dua_scount,instr) VALUES ("
         << filename_id << ","
         << dua.line << ","  
         << lval_id << ","
         << dua.insertionpoint << ","
         // offsets within the input file that taint dua
         << "'{" << iset_str(dua.file_offsets) << "}'" << ","
-        // offsets within the lval that are duas
-        << "'{"  << iset_str(dua.lval_offsets) << "}'" << ","
+        // a list of ptrs to taint sets. 0 means this byte in the lval in untainted
+        << "'{" << pvec_str(dua.lval_taint) << "}'" << ","
         << inputfile_id << ","
-        << dua.max_liveness << "," << dua.max_tcn << "," << dua.max_card 
-        << ",0,0) RETURNING dua_id;";
+        << dua.max_tcn << "," << dua.max_card << "," << dua.max_liveness
+        << ",0,0, "
+        << dua.instr << ") RETURNING dua_id;";
     res = pg_exec_ss(conn,sql);
     int n = -1;
     if (PQresultStatus(res) == PGRES_TUPLES_OK) {
@@ -233,30 +248,31 @@ int postgres_new_dua(PGconn *conn, Dua &dua) {
 }
 
 
-#if 0
-// replace dua with this id
-void postgres_replace_dua(PGconn *conn, Dua &dua, int dua_id) {
-    std::stringstream sql;    
-    sql << "UPDATE dua SET file_offsets = "
-        << "'{" << iset_str(dua.file_offsets) << "}'" << ","
-        << "lval_offsets = "        
-        << "'{"  << iset_str(dua.lval_offsets) << "}'" << ","
-        << "max_liveness = " << dua.max_liveness << ","
-        << "max_tcn = " << dua.max_tcn << ","
-        << "max_card = " << dua.max_card
-        << " WHERE dua_id=" << dua_id << ";";
-    PGresult *res = pg_exec_ss(conn,sql);
-    if (debug) printf ("update result: %d\n", PQresultStatus(res) );
-    assert (PQresultStatus(res) == PGRES_COMMAND_OK);
-    if (debug) std::cout << "Replaced dua id=" << dua_id << "\n";
-    PQclear(res);
+int postgres_get_atp_id(PGconn *conn, AttackPoint &atp) {
+    PGresult *res;
+    // add source filename to sourcefile table
+    std::string filename = atp.filename;
+    int filename_id = addstr(conn, "sourcefile", strip_pfx(filename, src_pfx));
+    std::string info = atp.typ;
+    int typ_id = addstr(conn, "atptype", info);
+    std::stringstream sql;
+    sql << "SELECT atp_id from atp where " // (filename_id,line,typ_id,inputfile_id,atp_icount,atp_scount) VALUES ("
+        << " filename_id = " << filename_id 
+        << " and line = " << atp.line 
+        << " and typ_id = " << typ_id 
+        << " and inputfile_id = " << inputfile_id << ";";
+    res = pg_exec_ss(conn,sql);
+    assert (PQresultStatus(res) == PGRES_TUPLES_OK);
+    if (PQntuples(res) == 1) {
+        return stou(PQgetvalue(res, 0, 0));
+    }
+    else return -1;
 }
-#endif    
-
+    
 
 // returns atp_id assigned by postgres
 // -1 if non (error or already there)
-int postgres_dump_atp(PGconn *conn, AttackPoint &atp) {
+int postgres_new_atp(PGconn *conn, AttackPoint &atp) {
     PGresult *res;
     // add source filename to sourcefile table
     std::string filename = atp.filename;
@@ -282,16 +298,45 @@ int postgres_dump_atp(PGconn *conn, AttackPoint &atp) {
 }
 
 
-void add_bug_to_db(PGconn *conn, uint32_t dua_id, uint32_t atp_id) {
+// add bug corresponding to this dua / atp combo to db
+// add the dua & atp first, if necessary
+// ... unless its already there in which case we don't add it
+void add_bug_to_db(PGconn *conn, Dua &dua, AttackPoint &atp) {
     std::stringstream sql;
-    // we don't need to get bug_id back
-    sql << "INSERT INTO bug (dua_id,atp_id,inj) VALUES ("
-        << dua_id << ","
-        << atp_id <<
-        ",false);";
+    printf ("dua_id.count(dua) = %d\n", dua_id.count(dua));
+    printf ("atp_id.count(atp) = %d\n", atp_id.count(atp));    
+    int did = postgres_get_dua_id(conn, dua);
+    if (did == -1) {
+        did = postgres_new_dua(conn, dua);
+        dua_id[dua] = did; 
+    }
+    int aid = postgres_get_atp_id(conn, atp);
+    if (aid == -1 ) {
+        aid = postgres_new_atp(conn, atp);
+        atp_id[atp] = aid;
+    }
+    printf ("dua_id = %d  bug_id = %d\n", did, aid);
+    assert (did != -1);
+    assert (aid != -1);
+    // is the bug already there?
+    sql << "SELECT * from bug where dua_id = " << did
+        << " and atp_id = " << aid << ";";
     PGresult *res = pg_exec_ss(conn,sql);
-    //        assert (PQresultStatus(res) == PGRES_COMMAND_OK);
-    PQclear(res);    
+    assert (PQresultStatus(res) == PGRES_TUPLES_OK);
+    if (PQntuples(res) == 1) {
+        if (debug) printf ("bug is already in db\n");
+        PQclear(res);
+        return;
+    }
+    else {
+        // we don't need to get bug_id back
+        sql << "INSERT INTO bug (dua_id,atp_id,inj) VALUES ("
+            << did << "," << aid <<
+            ",false);";
+        PGresult *res = pg_exec_ss(conn,sql);
+        //        assert (PQresultStatus(res) == PGRES_COMMAND_OK);
+        PQclear(res);
+    }
 }
 
 
@@ -330,12 +375,9 @@ void spit_ap(Panda__AttackPoint *ap) {
     printf("ap=[info=%d]", ap->info);
 }
 
-        
 
-            
-            
-            
-void update_unique_taint_sets(Panda__TaintQueryUniqueLabelSet *tquls, std::map<Ptr,std::set<uint32_t>> &ptr_to_set) {                                
+void update_unique_taint_sets(PGconn *conn, Panda__TaintQueryUniqueLabelSet *tquls,
+                              std::map<Ptr,std::set<uint32_t>> &ptr_to_set) {                                
     if (debug) {
         printf ("UNIQUE TAINT SET\n");
         spit_tquls(tquls);
@@ -344,12 +386,30 @@ void update_unique_taint_sets(Panda__TaintQueryUniqueLabelSet *tquls, std::map<P
     // maintain mapping from ptr (uint64_t) to actual set of taint labels 
     uint32_t i;
     Ptr p = tquls->ptr;
-    for (i=0; i<tquls->n_label; i++) {
-        uint32_t l = tquls->label[i];
-        ptr_to_set[p].insert(l);
+    if (ptr_to_set.count(p) == 0) {
+        // new taint set
+        for (i=0; i<tquls->n_label; i++) {
+            uint32_t l = tquls->label[i];
+            ptr_to_set[p].insert(l);
+        }
+        std::stringstream sql;
+        sql << "INSERT INTO unique_taint_set (ptr,file_offset) VALUES ("
+            << p << ","
+            << "'{" << iset_str(ptr_to_set[p]) << "}');";
+        PGresult *res = pg_exec_ss(conn,sql);
+        assert (PQresultStatus(res) == PGRES_COMMAND_OK);
     }
+    if (debug) printf ("%d unique taint sets\n", ptr_to_set.size());
 }
 
+
+uint32_t count_viable_bytes(std::vector<Ptr> viable_byte) {
+    uint32_t num_viable = 0;
+    for (auto p : viable_byte) {
+        num_viable += (p!=0);
+    }
+    return num_viable;
+}
 
 
 void taint_query_hypercall(Panda__LogEntry *ple,
@@ -375,81 +435,94 @@ void taint_query_hypercall(Panda__LogEntry *ple,
     uint64_t instr = ple->instr;
     if (debug) printf ("TAINT QUERY HYPERCALL len=%d num_tainted=%d\n", len, num_tainted);
     std::set<uint32_t> labels;
-    std::set <uint32_t> ok_bytes;
     // keep track of min / max for each of these measures over all bytes
     // in this queried lval
     float c_max_liveness = 0.0;
     uint32_t c_max_tcn, c_max_card;
     c_max_tcn = c_max_card = 0;    
-    std::vector<ByteTaint> viable_bytes;
+    // if lval is 12 bytes, this vector will have 12 elements
+    // viable_byte[i] is 0 if it is NOT viable
+    // otherwise it is a ptr to a taint set.
+    std::vector<Ptr> viable_byte;
     // consider all bytes in this extent that were queried and found to be tainted
     // collect "ok" bytes, which have low enough taint compute num and card,
     // and also aren't tainted by too-live input bytes
+    uint32_t max_offset = 0;
+    // determine largest offset into this lval
     for (uint32_t i=0; i<tqh->n_taint_query; i++) {
         Panda__TaintQuery *tq = tqh->taint_query[i];        
+        // offset w/in lval for the byte that was queried for taint
+        uint32_t offset = tq->offset;
+        max_offset = std::max(offset,max_offset);
+    }
+    // assume all bytes non-viable to start
+    for (uint32_t i=0; i<=max_offset; i++)
+        viable_byte.push_back(0);
+    for (uint32_t i=0; i<tqh->n_taint_query; i++) {
+        Panda__TaintQuery *tq = tqh->taint_query[i];        
+        uint32_t offset = tq->offset;    
         if (tq->unique_label_set) {
             // collect new unique taint label sets
-            update_unique_taint_sets(tq->unique_label_set, ptr_to_set);
+            update_unique_taint_sets(conn, tq->unique_label_set, ptr_to_set);
         }
-        uint32_t offset = tq->offset;
+        viable_byte[offset] = 0;
         // flag for tracking *why* we discarded a byte
         uint32_t current_byte_not_ok;
         current_byte_not_ok = (((tq->tcn > max_tcn) << CBNO_TCN_BIT)
                                | ((ptr_to_set[tq->ptr].size() > max_card) << CBNO_CRD_BIT));
         if (current_byte_not_ok == 0) {
-            // this byte is still ok -- check for too-live taint label
+            // check for too-live taint label associated with this byte
             Ptr p = tq->ptr;
             assert (ptr_to_set.count(p) != 0);
             assert (ptr_to_set[p].size() != 0);
             for ( uint32_t l : ptr_to_set[p] ) {
                 current_byte_not_ok |= ((liveness[l] > max_liveness) << CBNO_LVN_BIT);
                 c_max_liveness = std::max(liveness[l],c_max_liveness);
-                // dont bother looking at any more labels if byte not ok
+                // dont bother looking at any more labels
                 if (current_byte_not_ok != 0) break;
             }
         }
         if (current_byte_not_ok) {
             // discard this byte
             if (debug) {
-                printf ("discarding byte -- n");
+                printf ("discarding byte -- here's why: \n");
                 if (current_byte_not_ok & CBNO_TCN_BIT) printf ("** tcn too high\n");
                 if (current_byte_not_ok & CBNO_CRD_BIT) printf ("** card too high\n");
                 if (current_byte_not_ok & CBNO_LVN_BIT) printf ("** liveness too high\n");
             }
         }
         else {
-            // byte is ok to retain.
+            // retaint this byte
             // collect set of labels on all ok bytes for this extent
+            // remember: labels are offsets into input file
             Ptr p = tq->ptr;
             for ( uint32_t l : ptr_to_set[p] ) {
                 labels.insert(l);
             }
-            // keep track of highest tcn and card for ok bytes
+            // keep track of highest tcn and card for any viable byte for this lval
             c_max_tcn = std::max(tq->tcn, c_max_tcn);
             c_max_card = std::max((uint32_t) ptr_to_set[tq->ptr].size(), c_max_card);
             if (debug) printf ("keeping byte @ offset %d\n", offset); 
             // add this byte to the list of ok bytes
-            ok_bytes.insert(offset);
-            ByteTaint vb = {offset, tq->ptr};            
-            viable_bytes.push_back(vb);
+            viable_byte[offset] = tq->ptr;
         }
     }
+    uint32_t num_viable = count_viable_bytes(viable_byte);
     if (debug) {
-        printf ("%d ok bytes in lval  %d labels\n",
-                (int) ok_bytes.size(), (int) labels.size());
+        printf ("%d viable bytes in lval  %d labels\n",
+                num_viable, (int) labels.size());
     }
-    if ((ok_bytes.size() >= 1) && (labels.size() >= 1)) {
-        // great -- extent we just looked at was deemed acceptable
+    if ((num_viable > MIN_VIABLE_BYTES) && (labels.size() >= 1)) {
+        // tainted lval we just considered was deemed viable
         Dua dua = {
             ind2str[si->filename], 
             si->linenum, 
             ind2str[si->astnodename],
             si->insertionpoint,
-            viable_bytes,           // viable, tainted bytes
-            labels,       // file offsets
-            ok_bytes,     // lval offsets
+            labels,                 // file offsets
+            viable_byte,            
             inputfile,   
-            c_max_liveness, c_max_tcn, c_max_card,
+            c_max_tcn, c_max_card, c_max_liveness, 
             0,0,instr
         };
         if (debug) {
@@ -459,36 +532,34 @@ void taint_query_hypercall(Panda__LogEntry *ple,
         // keeping track of dead, uncomplicated data extents we have
         // encountered so far in the trace
         assert (si->has_insertionpoint);
-        /*
-          Add dua to db (if it isnt there already).
-          maintain map from dua key to this particular dua.
-          dua key conflates all duas that correspond to the same src query point.
-          so duas[d_key] always contains the most recent dua that
-          corresponds to a particular src query point.
-         */          
-        DuaKey d_key = {si->filename, si->linenum, si->astnodename, si->insertionpoint};        
-        uint32_t d_id = postgres_new_dua(conn, dua);
-        if (d_id == -1) {
-            if (debug) printf ("dua is already in the db\n");
-            assert (dua_id.count(d_key) > 0);
-            d_id = dua_id[d_key];
+        // this is set of lval offsets that will be used to construct the dua
+        // and thus is part of what determines the precise src mods
+        std::set<uint32_t> viable_offsets;
+        for (uint32_t i=0; i<max_offset; i++) {
+            if (viable_byte[i] != 0) {
+                viable_offsets.insert(i);
+            }
         }
-        else {
-            if (debug) printf ("dua is new (by src mod).  Added. id %d\n", d_id);
+        // Maintain map from dua key (which represents a unique src modification @ dua site)
+        // and the most recent incarnation of that dua that we have observed.
+        DuaKey d_key = {si->filename, si->linenum, si->astnodename, si->insertionpoint, viable_offsets};        
+        if (debug) {
+            if (duas.count(d_key)==0) printf ("new dua key\n");
+            else printf ("previously observed dua key\n");
         }
-        // keep these two up-to-date            
-        dua_id[d_key] = d_id;
         duas[d_key] = dua;
     }
     else {
-        if (debug) printf ("discarded %d ok bytes  %d labels\n", (int) ok_bytes.size(), (int) labels.size());
+        if (debug) printf ("discarded %d viable bytes  %d labels\n", num_viable, (int) labels.size());
     }
 }
+
 
 // update liveness measure for each of taint labels (file bytes) associated with a byte in lval that was queried
 void update_liveness(Panda__LogEntry *ple,    
                      std::map<Ptr,std::set<uint32_t>> &ptr_to_set,
-                     std::map <uint32_t, float> &liveness) {
+                     std::map <uint32_t, float> &liveness,
+                     PGconn *conn) {
     assert (ple != NULL);
     Panda__TaintedBranch *tb = ple->tainted_branch;
     assert (tb != NULL);
@@ -497,17 +568,15 @@ void update_liveness(Panda__LogEntry *ple,
         Panda__TaintQuery *tq = tb->taint_query[i];
         assert (tq);
         if (tq->unique_label_set) {
-            // this one tells us about a new unique taint label set
-            update_unique_taint_sets(tq->unique_label_set, ptr_to_set);
+            // keep track of unique taint label sets
+            update_unique_taint_sets(conn, tq->unique_label_set, ptr_to_set);
         }
         if (debug) {
             spit_tq(tq);
             printf ("\n");
         }
         // this tells us what byte in the extent this query was for
-        //        uint32_t offset = tq->offset;
-        Ptr p = tq->ptr;
-        for ( uint32_t l : ptr_to_set[p] ) {
+        for ( uint32_t l : ptr_to_set[tq->ptr] ) {
             liveness[l] ++;
         }
     }
@@ -515,39 +584,41 @@ void update_liveness(Panda__LogEntry *ple,
 
 
 // determine if this dua is viable
-bool check_dua_viability (Dua &dua, std::map <uint32_t,float> &liveness,
-                          std::map<Ptr,std::set<uint32_t>> &ptr_to_set,
-                          float max_liveness) {                         
-    std::vector<ByteTaint> new_viable_bytes;
+bool is_dua_viable (Dua &dua, std::map <uint32_t,float> &liveness,
+                    std::map<Ptr,std::set<uint32_t>> &ptr_to_set,
+                    float max_liveness) {                         
     if (debug)
         printf ("checking viability of dua: currently %d viable bytes\n",
-                (int) dua.viable_bytes.size());
-    for (auto vb : dua.viable_bytes) {
-        // vb is a viable byte of this lval.
-        // liveness is below threshold and its tainted
-        uint32_t off = vb.offset;
-        Ptr ts = vb.taintset;
+                count_viable_bytes(dua.lval_taint));
+    std::vector<Ptr> new_viable_byte;
+    // NB: we have already checked dua for viability wrt tcn & card at induction
+    for (uint32_t off=0; off<dua.lval_taint.size(); off++) {
+        Ptr ts = dua.lval_taint[off];
+        // determine if liveness for this offset is still low enough
         bool viable = true;
-        // iterate over file offsets (labels) in taint set
         for (auto l : ptr_to_set[ts]) {
             if (liveness[l] > max_liveness) {
-                // this byte is no longer viable; liveness for one
-                // of the file offsets from which it derives is too high
                 if (debug)
-                    printf ("byte offset=%d is nonviable b/c label %d has liveness %.3f",
+                    printf ("byte offset=%d is nonviable b/c label %d has liveness %.3f\n",
                             off, l, liveness[l]);
                 viable = false;
                 break;
             }
         }
-        if (viable) {
-            new_viable_bytes.push_back(vb);
-        }
+        // NB: 0 indicates untainted & nonviable
+        if (viable)
+            new_viable_byte.push_back(ts);
+        else
+            new_viable_byte.push_back(0);
     }
-    dua.viable_bytes = new_viable_bytes;
-    if (debug) printf ("dua has %d viable bytes\n", (int) new_viable_bytes.size());
+    dua.lval_taint = new_viable_byte;
+    uint32_t num_viable = count_viable_bytes(new_viable_byte);
+    if (debug) {
+        std::cout << dua.str() << "\n";
+        printf ("dua has %d viable bytes\n", num_viable);
+    }
     // dua is viable iff it has more than one viable byte
-    return (new_viable_bytes.size() > 1);
+    return (num_viable > MIN_VIABLE_BYTES);
 }
 
 
@@ -577,57 +648,53 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
     assert (si != NULL);
     if (debug) printf ("ATTACK POINT\n");
     if (duas.size() == 0) {
-        if (debug) printf ("no duas yet -- discarding atp\n");
+        if (debug) printf ("no duas yet -- discarding attack point\n");
         return;
     }
-    std::set <DuaKey> non_viable_duas;
+    std::vector <DuaKey> non_viable_duas;
     if (debug)  printf ("checking viability of %d duas\n", (int) duas.size());
+    // collect list of nonviable duas
     for (auto kvp : duas) {
         DuaKey dk = kvp.first;
         Dua dua = kvp.second;
         // is this dua still viable?
-        if (!(check_dua_viability(dua, liveness, ptr_to_set, max_liveness))) {
-            if (debug) printf (" ** DUA %d not viable\n", dua_id[dk]);
-            non_viable_duas.insert(dk);
+        if (!(is_dua_viable(dua, liveness, ptr_to_set, max_liveness))) {
+            if (debug) {
+                std::cout << dua.str() << "\n";
+                printf (" ** DUA not viable\n");
+            }
+            non_viable_duas.push_back(dk);
         }
     }
-    if (debug) printf ("Found %d nonviable duas \n", (int) non_viable_duas.size());
-    // discard unviable duas
+    if (debug) printf ("%d non-viable duas \n", (int) non_viable_duas.size());
+    // discard non-viable duas
     for (auto dk : non_viable_duas) {
         duas.erase(dk);
     }
+    if (debug) printf ("%d viable duas remain\n", (int) duas.size());
     AttackPoint atp = {ind2str[si->filename], si->linenum, ind2str[pleatp->info]};      
     AttackPointKey atpk = {si->filename, si->linenum, pleatp->info};
-    if (atp_id.count(atp) == 0) {
-        // new attack point
-        atp_id[atp] = postgres_dump_atp(conn, atp);
-        if (debug) printf ("** new ATP id %d\n", atp_id[atp]);
-    }
     if (debug) {
         std::cout << "@ ATP: " << atp.str() << "\n";
     }
     uint32_t num_bugs_added_to_db = 0;
-    // every viable dua is a bug inj opportunity at this point in trace
+    // every still viable dua is a bug inj opportunity at this point in trace
     for ( auto kvp : duas ) {
         DuaKey dk = kvp.first;
+        Dua dua = kvp.second;
         BugKey b = {dk, atpk};
-        if (debug) {
-            printf ("considering bug {dua_id=%d atp_id=%d} \n", dua_id[dk], atp_id[atp]);
-        }
         if (bugs.count(b) == 0) {
-            // this is a new bug 
+            // this is a new bug (new src mods for both dua and atp)
             bugs.insert(b);
-            /*
-            std::cout << "dua: " << duas[dk].str() << "\n";
-            std::cout << "atp: " << atp.str() << "\n";
-            */
-            //            if (debug) {
-            uint64_t i1 = duas[dk].instr ;
-            uint64_t i2 = instr ;
-            float rdf_frac = ((float)i1) / ((float)i2);
-            printf ("new bug.  Added to db:  bug -- %d %d i1=%" PRId64 " i2=%" PRId64 " rdf_frac=%.5f\n",  dua_id[dk], atp_id[atp], i1, i2, rdf_frac);            
-                //            }                                  
-            add_bug_to_db(conn, dua_id[dk], atp_id[atp]);
+            add_bug_to_db(conn, dua, atp);
+            if (debug) {
+                uint64_t i1 = duas[dk].instr ;
+                uint64_t i2 = instr ;
+                float rdf_frac = ((float)i1) / ((float)i2);
+                printf ("new bug.  Added to db:  bug -- %d %d i1=%" PRId64
+                        " i2=%" PRId64 " rdf_frac=%.5f\n",  dua_id[dua],
+                        atp_id[atp], i1, i2, rdf_frac);            
+            }                                  
             num_bugs_added_to_db ++;
         }
         else {
@@ -635,62 +702,44 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
                 printf ("not a new bug\n");
             }
         }
-
     }
     printf ("instr  %" PRId64 " -- %d viable duas -- ", instr, (int) duas.size());
     printf ("Added %d new bugs to db -- ", num_bugs_added_to_db);
-    printf ("total of %d injectable bugs\n", (int) bugs.size());
-   
+    printf ("total of %d injectable bugs\n", (int) bugs.size());   
 }
 
 
 int main (int argc, char **argv) {
-
     if (argc != 8) {
         printf ("usage: fbi plog lavadb max_liveness max_card max_tcn inputfile src_pfx\n");
         exit (1);
     }
-
     // panda log file
     char *plf = argv[1];
-
     // maps from ind -> (filename, lvalname, attackpointname)
     ind2str = LoadIDB(argv[2]);
     printf ("%d strings in lavadb\n", (int) ind2str.size());
-    
     get_last_instr(plf);
-
     float max_liveness = atof(argv[3]);
     printf ("maximum liveness score of %.2f\n", max_liveness);
-
     uint32_t max_card = stou(argv[4]);
     printf ("max card of taint set returned by query = %d\n", max_card);
-
     uint32_t max_tcn = stou(argv[5]);
     printf ("max tcn for addr = %d\n", max_tcn);
-
     inputfile = std::string(argv[6]);
-
     src_pfx = std::string(argv[7]);
-
     std::map <uint32_t, float> liveness;
-
     PGconn *conn = pg_connect();    
-
     inputfile_id = addstr(conn, "inputfile", inputfile);
-    
     /*
      re-read pandalog, this time focusing on taint queries.  Look for
      dead available data, attack points, and thus bug injection oppotunities
     */
-
     pandalog_open(plf, "r");
-    std::map <Ptr, std::set<uint32_t> > ptr_to_set;
+    std::map <Ptr, std::set<uint32_t>> ptr_to_set;
     uint64_t ii=0;
+    // currently believed to be viable duas, keyed by unique src mod
     std::map <DuaKey,Dua> duas;
-    std::set <AttackPoint> u_atp;
-    std::set <Bug> injectable_bugs;
-    
     while (1) {
         // collect log entries that have same instr count (and pc).
         // these are to be considered together.
@@ -705,31 +754,14 @@ int main (int argc, char **argv) {
                                   max_tcn, max_card, conn);
         }
         if (ple->tainted_branch) {
-            update_liveness(ple, ptr_to_set, liveness);
+            update_liveness(ple, ptr_to_set, liveness, conn);
         }
         if (ple->attack_point) {
             find_bug_inj_opportunities(ple, duas, ptr_to_set,
                                        liveness, max_liveness, conn);
         }
     }
-    
     pandalog_close();
-
-/*
-    printf ("%u queried extents\n", num_queried_extents);
-
-    printf ("%u dead-uncomplicated-available-data.  %u attack-points\n",
-            (uint32_t) u_dua.size(), (uint32_t) u_atp.size());
-
-    printf ("%u injectable bugs\n", (uint32_t) injectable_bugs.size());
-
-    PGresult   *res;
-
-    postgresql_dump_duas(conn,u_dua);
-    postgresql_dump_atps(conn,u_atp);
-    postgresql_dump_bugs(conn,injectable_bugs);
-    PQfinish(conn);
-*/
 }
 
 

@@ -64,7 +64,16 @@ CREATE TABLE atptype (
 );
 
 
- 
+
+drop table if exists unique_taint_set;
+
+CREATE TABLE unique_taint_set (
+  ptr          numeric,
+  file_offset  integer,
+  UNIQUE(ptr,file_offset)
+); 
+
+    
 -- CREATE OR REPLACE FUNCTION take_lock ( h text, r text, w datetime ) 
 --    if (select (*) from 
 
@@ -75,23 +84,21 @@ CREATE TABLE atptype (
 -- taint many branches
 CREATE TABLE dua (
        dua_id          serial primary key, 
-       filename_id	   integer references sourcefile,   -- source file containing this dua (see SourceFile table)
-       line	           integer,                        -- line in source file
-       lval_id	       integer references lval,      -- name of the lval, at least some bytes of which are dua 
-       insertionpoint  integer,                      -- tells us if dua came from a taint query before (1) or after (2) the fn call   
-       file_offsets    integer[],                    -- bytes in the input file that taint this dua                                   
-       lval_offsets	   integer[],                    -- offsets within the lval that are the dua                                      
-       inputfile_id     integer references inputfile,  -- input file that gave us this dua                                              
-       max_tcn         real,                         -- max taint compute number across bytes in this dua                             
-       max_card	       integer,                      -- max cardinality of a taint label set for any byte in the dua                  
-       max_liveness    float,                        -- max liveness of any label in any taint label set for any byte in the dua      
-       dua_icount      integer,                      -- number of times used to inject a bug                                          
-       dua_scount      integer,                      -- number of times used to inject a bug that was successful                      
-       instr           numeric,                      -- instruction count for this dua
-       UNIQUE(filename_id,line,lval_id,insertionpoint,file_offsets,lval_offsets,inputfile_id)
+       filename_id	   integer references sourcefile, -- source file containing this dua (see SourceFile table)
+       line	           integer,                       -- line in source file
+       lval_id	       integer references lval,       -- name of the lval, at least some bytes of which are dua 
+       insertionpoint  integer,                       -- tells us if dua came from a taint query before (1) or after (2) the fn call   
+       file_offset     integer[],                     -- bytes in the input file that taint this dua                                   
+       lval_taint	   numeric[],                     -- lval_taint[0] is ptr to taint set.  0 means untainted
+       inputfile_id    integer references inputfile,  -- input file that gave us this dua                                              
+       max_tcn         real,                          -- max taint compute number across bytes in this dua                             
+       max_card	       integer,                       -- max cardinality of a taint label set for any byte in the dua                  
+       max_liveness    float,                         -- max liveness of any label in any taint label set for any byte in the dua      
+       dua_icount      integer,                       -- number of times used to inject a bug                                          
+       dua_scount      integer,                        -- number of times used to inject a bug that was successful                      
+       instr           numeric,                       -- instruction count for this dua (uint64) 
+       UNIQUE(filename_id,line,lval_id,insertionpoint,file_offset,lval_taint,inputfile_id)
 );
-
-
 
 
 

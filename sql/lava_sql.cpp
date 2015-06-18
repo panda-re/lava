@@ -12,7 +12,6 @@ extern "C" {
 
 
 
-
 std::string iset_str(std::set<uint32_t> &iset) {
     std::stringstream ss;
     uint32_t n = iset.size();
@@ -25,6 +24,21 @@ std::string iset_str(std::set<uint32_t> &iset) {
     return ss.str();
 }
 
+
+// translate lval taint into a string
+std::string pvec_str(std::vector<Ptr> &pvec) {
+    std::stringstream ss;
+    uint32_t n = pvec.size();
+    uint32_t i=0; 
+    for (auto ptr : pvec) {
+        i++;
+        ss << ptr;
+        if (i != n) ss << ",";
+    }
+    return ss.str();
+}
+        
+    
 
 void pg_exit_nicely(PGconn *conn) {
     PQfinish(conn);
@@ -53,9 +67,9 @@ PGconn *pg_connect(void) {
 
 PGresult *pg_exec(PGconn *conn, std::string comm) {
     const char * cmd = (const char *) comm.c_str();
-    //printf ("sql comm=[%s]\n", cmd);
+            printf ("sql comm=[%s]\n", cmd);
     PGresult *res = PQexec(conn, cmd);
-    //printf ("res = %d\n", PQresultStatus(res));
+        printf ("res = %d\n", PQresultStatus(res));
     return res;
 }
 
@@ -139,6 +153,24 @@ std::set<uint32_t> parse_ints(std::string offs_str_orig) {
     return offs;
 }
 
+// this time, parse into a vector of uint64
+std::vector<uint64_t> parse_u64s(std::string ptrs_str_orig) {
+    uint32_t l = ptrs_str_orig.length();
+    std::string ptrs_str = ptrs_str_orig;
+    if (ptrs_str[0] == '\"' && ptrs_str[l-1] == '\"') {
+        ptrs_str = ptrs_str.substr(1, l-2);
+    }
+    // split on ,    
+    std::stringstream ptrs_str_ss(ptrs_str);
+    std::vector<uint64_t> ptrs;
+    std::string token;
+    while (std::getline(ptrs_str_ss, token, ',')) {
+        ptrs.push_back(strtoull(token.c_str(),0,0));
+    }
+    return ptrs;
+}
+
+
 
 // parse {44,55} into a set of uint32
 std::set<uint32_t> parse_offsets(std::string offs_str) {
@@ -149,11 +181,16 @@ std::set<uint32_t> parse_offsets(std::string offs_str) {
 }
 
 
+std::vector<Ptr> parse_ptrs(std::string ptrs_str) {
+    uint32_t l = ptrs_str.size();
+    // discard { }
+    std::string ptrs_str1 = ptrs_str.substr(1, l-2);
+    return parse_u64s(ptrs_str1);
+}
 
 
 /* 
    Read *all* of the duas out of the Dua table in the db
-
 
 tshark=# \d dua
                                     Table "public.dua"
@@ -165,7 +202,7 @@ tshark=# \d dua
  lval_id        | integer          | 
  insertionpoint | integer          | 
  file_offsets   | integer[]        | 
- lval_offsets   | integer[]        | 
+ lval_offsets   | numeric[]        | 
  inputfile_id   | integer          | 
  max_tcn        | real             | 
  max_card       | integer          | 
@@ -190,16 +227,17 @@ std::map<uint32_t,Dua> pg_get_duas(PGconn *conn, Ism &sourcefile, Ism &lval, Ism
         std::string src_filename = sourcefile[atoi(PQgetvalue(res, row, 1))];
         uint32_t src_line = atoi(PQgetvalue(res, row, 2));
         std::string lvalname = lval[atoi(PQgetvalue(res, row, 3))];
-        uint32_t insertion_point = atoi(PQgetvalue(res, row, 4));        
-        std::set<uint32_t> file_offsets = parse_offsets(PQgetvalue(res, row, 5));      
-        std::set<uint32_t> lval_offsets = parse_offsets(PQgetvalue(res, row, 6));      
+        uint32_t insertion_point = atoi(PQgetvalue(res, row, 4));
+        std::set<uint32_t> file_offsets = parse_offsets(PQgetvalue(res, row, 6));      
+        std::vector<Ptr> viable_bytes = parse_ptrs(PQgetvalue(res, row, 5));      
         std::string input_file = inputfile[atoi(PQgetvalue(res, row, 7))];
         uint32_t max_tcn = atoi(PQgetvalue(res, row, 8));
         uint32_t max_card = atoi(PQgetvalue(res, row, 9));
         float max_liveness = atof(PQgetvalue(res, row, 10));
         uint32_t icount = atoi(PQgetvalue(res, row, 11));
         uint32_t scount = atoi(PQgetvalue(res, row, 12));        
-        duas[id] = {src_filename,src_line,lvalname,insertion_point,file_offsets,lval_offsets,input_file,max_tcn,max_card,max_liveness,icount,scount};
+        uint64_t instr = strtoull(PQgetvalue(res, row, 13), 0, 0);
+        duas[id] = {src_filename,src_line,lvalname,insertion_point,file_offsets,viable_bytes,input_file,max_tcn,max_card,max_liveness,icount,scount,instr};
     }
     return duas;
 }
