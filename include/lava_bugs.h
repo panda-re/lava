@@ -26,22 +26,20 @@ typedef uint64_t Ptr;
 
 
 std::string iset_str(std::set<uint32_t> &iset);
+std::string pvec_str(std::vector<Ptr> &pvec);
 
 
 
-struct ByteTaint {
-    uint32_t offset;
-    Ptr taintset;
-};
-
-
+// represents the src mod for a dua
+// note that two duas can map to the same src mod
 struct DuaKey {
 
     uint32_t filename;
     uint32_t linenum;
     uint32_t astnodename;
     uint32_t insertionpoint;
-
+    std::set<uint32_t> lval_offsets_tainted;
+    
     bool operator<(const DuaKey &other) const {
         if (filename < other.filename) return true;
         if (filename > other.filename) return false;
@@ -49,14 +47,17 @@ struct DuaKey {
         if (linenum > other.linenum) return false;
         if (astnodename < other.astnodename) return true;
         if (astnodename > other.astnodename) return false;
-        return (insertionpoint < other.insertionpoint);
+        if (insertionpoint < other.insertionpoint) return true;
+        if (insertionpoint > other.insertionpoint) return false;
+        return (lval_offsets_tainted < other.lval_offsets_tainted);
     }
     
     bool operator==(const DuaKey &other) const {
         return ((filename == other.filename)
                 && (linenum == other.linenum)
                 && (astnodename == other.astnodename)
-                && (insertionpoint == other.insertionpoint));
+                && (insertionpoint == other.insertionpoint)
+                && (lval_offsets_tainted == other.lval_offsets_tainted));
     }
                 
 };
@@ -70,16 +71,15 @@ struct Dua {
     uint32_t line;                        // line in that src file
     std::string lvalname;                 // name of the lval, i.e. x or y->f or x[i].m or ...
     uint32_t insertionpoint;              // was query before or after call?
-    std::vector<ByteTaint> viable_bytes;  // keep track of tainted, viable bytes
-    std::set<uint32_t> file_offsets;      // byte offsets within input file that taint the dua parts of this lval
-    std::set<uint32_t> lval_offsets;      // offsets within this lval that are dua
+    std::set<uint32_t> file_offsets;      // byte offsets w/in input that taint dua 
+    std::vector<Ptr> lval_taint;          // vector of taint set pointers, one per byte in the lval
     std::string input_file;               // name of input file used to discover this dua
     uint32_t max_tcn;                     // max tcn of any byte of this lval
-    uint32_t max_card;                    // max cardinality of any taint set for any byte of this lval
+    uint32_t max_card;                    // max cardinality of taint set for lval
     float max_liveness;                   // max liveness of any label in any taint set for dua
     uint32_t icount;                      // num times this dua has been used to inject a bug
     uint32_t scount;                      // num times this dua has been used to inject a bug that turned out to realy be a bug
-    uint64_t instr;  // instr count
+    uint64_t instr;                       // instr count
     
     std::string str() {
         std::stringstream ss;
@@ -91,7 +91,7 @@ struct Dua {
         // offsets within the input file that taint dua
         ss << "{" << iset_str(file_offsets) << "},"; 
         // offsets within the lval that are duas
-        ss << "{" << iset_str(lval_offsets) << "}";
+        ss << "{" << pvec_str(lval_taint) << "}";
         ss << "," << max_liveness << "," << max_tcn << "," << max_card ;
         ss << "," << instr;
         ss << "]";
@@ -123,7 +123,7 @@ struct Dua {
         if (instr > other.instr) return false;
         if (file_offsets < other.file_offsets) return true;
         if (file_offsets > other.file_offsets) return false;
-        return lval_offsets < other.lval_offsets;
+        return lval_taint < other.lval_taint;
     }
 
     bool operator==(const Dua &other) const {
@@ -139,7 +139,7 @@ struct Dua {
                 && (scount == other.scount) 
                 && (instr == other.instr)
                 && (file_offsets == other.file_offsets) 
-                && (lval_offsets == other.lval_offsets));
+                && (lval_taint == other.lval_taint));
     }
 
 };
