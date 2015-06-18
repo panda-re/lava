@@ -181,6 +181,30 @@ std::set<uint32_t> parse_offsets(std::string offs_str) {
 }
 
 
+/*
+  Read all of the unique taint sets out of the db
+
+tshark=# \d unique_taint_set
+   Table "public.unique_taint_set"
+   Column    |   Type    | Modifiers 
+-------------+-----------+-----------
+ ptr         | numeric   | 
+ file_offset | integer[] | 
+ */
+
+std::map<Ptr, std::set<uint32_t>> pg_get_unique_taint_sets(PGconn *conn) {
+    std::cout << "Reading unique taint sets from postgres\n";
+    PGresult *res = pg_exec(conn, "SELECT * FROM unique_taint_set;");
+    assert (PQresultStatus(res) == PGRES_TUPLES_OK);
+    std::map<Ptr, std::set<uint32_t>> ptr_to_set;
+    for (int row=0; row<PQntuples(res); row++) {
+        uint32_t ptr = atoi(PQgetvalue(res, row, 0));             
+        ptr_to_set[ptr] = parse_offsets(PQgetvalue(res, row, 1));
+    }
+    return ptr_to_set;
+}
+
+
 std::vector<Ptr> parse_ptrs(std::string ptrs_str) {
     uint32_t l = ptrs_str.size();
     // discard { }
@@ -189,33 +213,7 @@ std::vector<Ptr> parse_ptrs(std::string ptrs_str) {
 }
 
 
-/* 
-   Read *all* of the duas out of the Dua table in the db
-
-tshark=# \d dua
-                                    Table "public.dua"
-     Column     |       Type       |                      Modifiers                       
-----------------+------------------+------------------------------------------------------
- dua_id         | integer          | not null default nextval('dua_dua_id_seq'::regclass)
- filename_id    | integer          | 
- line           | integer          | 
- lval_id        | integer          | 
- insertionpoint | integer          | 
- file_offsets   | integer[]        | 
- lval_offsets   | numeric[]        | 
- inputfile_id   | integer          | 
- max_tcn        | real             | 
- max_card       | integer          | 
- max_liveness   | double precision | 
- dua_icount     | integer          | 
- dua_scount     | integer          | 
-
-
-Note: 
-"bytes" are bytes in the input file that taint this dua
-"offsets" are byte offsets within the dua 
-   and return as a map from dua_id to dua
-*/
+//   Read *all* of the duas out of the Dua table in the db
 std::map<uint32_t,Dua> pg_get_duas(PGconn *conn, Ism &sourcefile, Ism &lval, Ism &inputfile) {
     std::cout << "Reading Duas from postgres\n";
     PGresult *res = pg_exec(conn, "SELECT * FROM dua;");
@@ -261,23 +259,27 @@ std::map<uint32_t,Bug> pg_get_bugs(PGconn *conn, std::map<uint32_t,Dua> &duas, s
 }       
 
 
+
+
+std::map<Ptr, std::set<uint32_t>> loadTaintSets() {
+    PGconn *conn = pg_connect();
+    return pg_get_unique_taint_sets(conn);
+}
+
+
 // load this set of bugs from db
 // a bug is a dua/atp pair, effectively
 std::set<Bug> loadBugs(std::set<uint32_t> &bug_ids) {
-
     // XXX: pg_connect fn contains hard-coded server addr, usernames, and passwords
     // really these should be cmdline params that are args to pg_connect.
-    PGconn *conn = pg_connect();
-        
+    PGconn *conn = pg_connect();        
     Ism sourcefile = pg_get_string_map(conn, "sourcefile");
     Ism atptype = pg_get_string_map(conn, "atptype");
     Ism inputfile = pg_get_string_map(conn, "inputfile");    
     Ism lval = pg_get_string_map(conn, "lval");
-
     std::map<uint32_t,Dua> duas = pg_get_duas(conn, sourcefile, lval, inputfile);
     std::map<uint32_t,AttackPoint> atps = pg_get_attack_points(conn, sourcefile, atptype, inputfile);
-    std::map<uint32_t,Bug> all_bugs = pg_get_bugs(conn, duas, atps);
-    
+    std::map<uint32_t,Bug> all_bugs = pg_get_bugs(conn, duas, atps);    
     // ids of bugs to inject
     //    std::set<uint32_t> bug_ids = parse_ints(LavaBugList);
 

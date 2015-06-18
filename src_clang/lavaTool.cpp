@@ -71,6 +71,9 @@ struct Insertions {
 
 
 
+
+std::map<Ptr, std::set<uint32_t>> ptr_to_set;
+
 static std::set<Bug> bugs;
 
 
@@ -406,13 +409,16 @@ public:
         uint32_t i = 0;
         std::string gn = LavaGlobal(bug.id);
         ss << gn << " = 0;\n";
-        for ( auto o : bug.dua.lval_offsets ) {
-            // byte o in lval is dead
-            ss << LavaGlobal(bug.id) 
-               << " |= (((unsigned char *) &" 
-               << bug.dua.lvalname << "))[" << o << "] << (" << i << "*8);";
-            i ++;
-            // only need 4 bytes
+        uint32_t o = 0;
+        for ( auto ptr : bug.dua.lval_taint ) {
+            // 0 means this offset of the lval is either untainted or not-viable for use by lava
+            if (ptr != 0) {
+                ss << LavaGlobal(bug.id) 
+                   << " |= (((unsigned char *) &" 
+                   << bug.dua.lvalname << "))[" << o << "] << (" << i << "*8);";
+                i ++;
+            }
+            // we don't need more than 4 bytes of dua
             if (i == 4) break;
         }
         inss.after_part = ss.str();
@@ -805,6 +811,7 @@ int main(int argc, const char **argv) {
         std::set<uint32_t> bug_ids = parse_ints(LavaBugList);
         printf ("%d bug_ids\n", bug_ids.size());
         bugs = loadBugs(bug_ids);        
+        ptr_to_set = loadTaintSets();
         for ( auto bug : bugs ) {
             errs() << bug.str() << "\n";
         }
