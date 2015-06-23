@@ -6,6 +6,7 @@
     ../src_clang/lavaDB.cpp \
     ../../panda/qemu/panda/pandalog.c \
     ../../panda/qemu/panda/pandalog.pb-c.c \
+    ../../panda/qemu/panda/pandalog_print.c \
     -L/usr/local/lib -lprotobuf-c  -I ../../panda/qemu -I ../../panda/qemu/panda  -lz -D PANDALOG_READER  -std=c++11  -O2 -lpq
     
   ./fbi pandalog lavadb ml mtcn mc minl maxl inputfilename
@@ -39,6 +40,7 @@ extern "C" {
 #include <sstream>
 #include <algorithm>
 #include "pandalog.h"
+#include "pandalog_print.h"
 #include "../src_clang/lavaDB.h"
 #include "../include/lava_bugs.h"
 
@@ -57,7 +59,7 @@ std::map<uint32_t,std::string> ind2str;
 Instr last_instr_count;
 
 
-bool debug = true;
+bool debug = false;
 
 
 void get_last_instr(char *pandalog_filename) {
@@ -301,10 +303,9 @@ int postgres_new_atp(PGconn *conn, AttackPoint &atp) {
 // add bug corresponding to this dua / atp combo to db
 // add the dua & atp first, if necessary
 // ... unless its already there in which case we don't add it
-void add_bug_to_db(PGconn *conn, Dua &dua, AttackPoint &atp) {
+// returns True iff this is a new bug
+bool add_bug_to_db(PGconn *conn, Dua &dua, AttackPoint &atp) {
     std::stringstream sql;
-    printf ("dua_id.count(dua) = %d\n", dua_id.count(dua));
-    printf ("atp_id.count(atp) = %d\n", atp_id.count(atp));    
     int did = postgres_get_dua_id(conn, dua);
     if (did == -1) {
         did = postgres_new_dua(conn, dua);
@@ -315,7 +316,6 @@ void add_bug_to_db(PGconn *conn, Dua &dua, AttackPoint &atp) {
         aid = postgres_new_atp(conn, atp);
         atp_id[atp] = aid;
     }
-    printf ("dua_id = %d  bug_id = %d\n", did, aid);
     assert (did != -1);
     assert (aid != -1);
     // is the bug already there?
@@ -326,17 +326,25 @@ void add_bug_to_db(PGconn *conn, Dua &dua, AttackPoint &atp) {
     if (PQntuples(res) == 1) {
         if (debug) printf ("bug is already in db\n");
         PQclear(res);
-        return;
+        return false;
     }
-    else {
-        // we don't need to get bug_id back
-        sql << "INSERT INTO bug (dua_id,atp_id,inj) VALUES ("
-            << did << "," << aid <<
-            ",false);";
-        PGresult *res = pg_exec_ss(conn,sql);
-        //        assert (PQresultStatus(res) == PGRES_COMMAND_OK);
-        PQclear(res);
-    }
+    printf ("-----------------------------------------------------\n");
+    printf ("Adding new bug to db.  dua_id = %d  atp_id = %d\n", did, aid);
+    std::cout << "Dua:\n" << dua.str() << "\n";
+    std::cout << "Atp:\n" << atp.str() << "\n";
+    // we don't need to get bug_id back
+    sql << "INSERT INTO bug (dua_id,atp_id,inj) VALUES ("
+        << did << "," << aid <<
+        ",false) returning bug_id;";
+    PQclear(res);
+    res = pg_exec_ss(conn,sql);
+    int bug_id = -1;
+    assert (PQresultStatus(res) == PGRES_TUPLES_OK);
+    bug_id = stou(PQgetvalue(res, 0, 0));
+    std::cout << "bug_id = " << bug_id << "\n";
+    printf ("-----------------------------------------------------\n");
+    PQclear(res);
+    return true;
 }
 
 
@@ -429,6 +437,11 @@ void taint_query_hypercall(Panda__LogEntry *ple,
     // entry 1 is source info
     Panda__SrcInfo *si = tqh->src_info;
     assert (si != NULL);
+    bool ddebug = false;
+    if ((ind2str[si->filename].compare("addr_resolv.c") == 0) && (si->linenum == 1000 || si->linenum == 1001)) {
+        printf ("ddebug is on\n");
+        ddebug = true;
+    }
     // entry 2 is callstack -- ignore
     Panda__CallStack *cs = tqh->call_stack;
     assert (cs != NULL);
@@ -449,18 +462,22 @@ void taint_query_hypercall(Panda__LogEntry *ple,
     // and also aren't tainted by too-live input bytes
     uint32_t max_offset = 0;
     // determine largest offset into this lval
+    if (ddebug) pprint_taint_query_hypercall(tqh);
     for (uint32_t i=0; i<tqh->n_taint_query; i++) {
         Panda__TaintQuery *tq = tqh->taint_query[i];        
         // offset w/in lval for the byte that was queried for taint
         uint32_t offset = tq->offset;
         max_offset = std::max(offset,max_offset);
     }
+    if (ddebug) printf ("max_offset = %d\n", max_offset);
     // assume all bytes non-viable to start
     for (uint32_t i=0; i<=max_offset; i++)
         viable_byte.push_back(0);
+    if (ddebug) printf ("considering taint queries on %d bytes\n", tqh->n_taint_query);
     for (uint32_t i=0; i<tqh->n_taint_query; i++) {
         Panda__TaintQuery *tq = tqh->taint_query[i];        
         uint32_t offset = tq->offset;    
+        if (ddebug) printf ("offset = %d\n", offset);
         if (tq->unique_label_set) {
             // collect new unique taint label sets
             update_unique_taint_sets(conn, tq->unique_label_set, ptr_to_set);
@@ -471,6 +488,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
         current_byte_not_ok = (((tq->tcn > max_tcn) << CBNO_TCN_BIT)
                                | ((ptr_to_set[tq->ptr].size() > max_card) << CBNO_CRD_BIT));
         if (current_byte_not_ok == 0) {
+            if (ddebug) printf ("tcn and card ok.  checking liveness\n");
             // check for too-live taint label associated with this byte
             Ptr p = tq->ptr;
             assert (ptr_to_set.count(p) != 0);
@@ -479,20 +497,24 @@ void taint_query_hypercall(Panda__LogEntry *ple,
                 current_byte_not_ok |= ((liveness[l] > max_liveness) << CBNO_LVN_BIT);
                 c_max_liveness = std::max(liveness[l],c_max_liveness);
                 // dont bother looking at any more labels
-                if (current_byte_not_ok != 0) break;
+                if (current_byte_not_ok != 0) {
+                    if (ddebug) printf ("label %d is too live (%d). discarding byte\n", l, liveness[l]);
+                    break;
+                }
             }
         }
         if (current_byte_not_ok) {
             // discard this byte
             if (debug) {
-                printf ("discarding byte -- here's why: \n");
-                if (current_byte_not_ok & CBNO_TCN_BIT) printf ("** tcn too high\n");
-                if (current_byte_not_ok & CBNO_CRD_BIT) printf ("** card too high\n");
-                if (current_byte_not_ok & CBNO_LVN_BIT) printf ("** liveness too high\n");
+                printf ("discarding byte -- here's why: %x\n", current_byte_not_ok);
+                if (current_byte_not_ok & (1<<CBNO_TCN_BIT)) printf ("** tcn too high\n");
+                if (current_byte_not_ok & (1<<CBNO_CRD_BIT)) printf ("** card too high\n");
+                if (current_byte_not_ok & (1<<CBNO_LVN_BIT)) printf ("** liveness too high\n");
             }
         }
         else {
-            // retaint this byte
+            if (ddebug) printf ("retaining byte\n");
+            // retain this byte
             // collect set of labels on all ok bytes for this extent
             // remember: labels are offsets into input file
             Ptr p = tq->ptr;
@@ -550,7 +572,14 @@ void taint_query_hypercall(Panda__LogEntry *ple,
         duas[d_key] = dua;
     }
     else {
-        if (debug) printf ("discarded %d viable bytes  %d labels\n", num_viable, (int) labels.size());
+        if (debug) {
+            std::cout << "discarded " << num_viable << " viable bytes "
+                      << labels.size() << " labels "
+                      << ind2str[si->filename] << " "
+                      << si->linenum << " "
+                      << ind2str[si->astnodename] << " "
+                      << si->insertionpoint << "\n";
+        }
     }
 }
 
@@ -686,14 +715,12 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
         if (bugs.count(b) == 0) {
             // this is a new bug (new src mods for both dua and atp)
             bugs.insert(b);
-            add_bug_to_db(conn, dua, atp);
-            if (debug) {
+            bool newb = add_bug_to_db(conn, dua, atp);
+            if (newb) {
                 uint64_t i1 = duas[dk].instr ;
                 uint64_t i2 = instr ;
                 float rdf_frac = ((float)i1) / ((float)i2);
-                printf ("new bug.  Added to db:  bug -- %d %d i1=%" PRId64
-                        " i2=%" PRId64 " rdf_frac=%.5f\n",  dua_id[dua],
-                        atp_id[atp], i1, i2, rdf_frac);            
+                std::cout << "i1=" << i1 << " i2=" << i2 << " rdf_frac=" << rdf_frac << "\n";
             }                                  
             num_bugs_added_to_db ++;
         }
@@ -703,9 +730,6 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
             }
         }
     }
-    printf ("instr  %" PRId64 " -- %d viable duas -- ", instr, (int) duas.size());
-    printf ("Added %d new bugs to db -- ", num_bugs_added_to_db);
-    printf ("total of %d injectable bugs\n", (int) bugs.size());   
 }
 
 
@@ -747,7 +771,7 @@ int main (int argc, char **argv) {
         if (ple == NULL)  break;
         ii ++;
         if ((ii % 10000) == 0) {
-            printf ("processed %lu pandalog entries.", ii);
+            printf ("processed %lu pandalog entries\n", ii);
         }
         if (ple->taint_query_hypercall) {
             taint_query_hypercall(ple, ptr_to_set, liveness, duas, max_liveness,
