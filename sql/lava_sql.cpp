@@ -67,9 +67,9 @@ PGconn *pg_connect(void) {
 
 PGresult *pg_exec(PGconn *conn, std::string comm) {
     const char * cmd = (const char *) comm.c_str();
-            printf ("sql comm=[%s]\n", cmd);
+    //       printf ("sql comm=[%s]\n", cmd);
     PGresult *res = PQexec(conn, cmd);
-        printf ("res = %d\n", PQresultStatus(res));
+    //    printf ("res = %d\n", PQresultStatus(res));
     return res;
 }
 
