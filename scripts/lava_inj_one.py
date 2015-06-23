@@ -77,6 +77,15 @@ def remaining_inj():
     return cur.rowcount
 
 
+def ptr_to_set(ptr):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("select * from unique_taint_set where ptr = " + (str(ptr)) + ";")
+    (x, file_offsets) = cur.fetchone()
+    assert (x == ptr)
+    return file_offsets 
+
+
 class Dua:
 
     # initialize dua obtaining all info from db
@@ -89,9 +98,15 @@ class Dua:
         cur = conn.cursor()
         cur.execute("select * from dua where dua_id=%d" % dua_id)
         (x, self.filename_id, self.line, self.lval_id, self.insertionpoint,  \
-             self.file_offsets, self.lval_offsets, self.inputfile_id, self.max_tcn, \
-             self.max_card, self.max_liveness, self.dua_icount, self.dua_scount) \
+             self.file_offsets, self.lval_taint, self.inputfile_id, self.max_tcn, \
+             self.max_card, self.max_liveness, self.dua_icount, self.dua_scount, self.instr) \
              = cur.fetchone()
+        self.instr = int(self.instr)
+        # obtain actual taint label sets from db
+        n = len(self.lval_taint)
+        for i in range(n):
+            ptr = self.lval_taint[i]
+            self.lval_taint[i] = ptr_to_set(ptr)            
         assert(x==dua_id)
         self.filename = self.sourcefile[self.filename_id] 
         self.lval = self.lval[self.lval_id]
@@ -99,7 +114,7 @@ class Dua:
 
     def as_array(self):
         return [self.dua_id, self.filename, self.line, self.lval, \
-            self.insertionpoint, self.file_offsets, self.lval_offsets, \
+            self.insertionpoint, self.file_offsets, self.lval_taint, \
             self.inputfile, self.max_tcn, self.max_card, self.max_liveness, \
             self.dua_icount, self.dua_scount]
 
@@ -205,17 +220,26 @@ lava_bytes = [hex(ord(x)) for x in lava]
 
 # fuzz_offsets is a list of byte offsets within file fn.
 # replace those bytes with random in a new file named new_fn
-def mutfile(fn, fuzz_offsets, new_fn):
+def mutfile(fn, lval_taint, new_fn):
+    # collect set of offsets in file to fuzz in order to manipulate at most
+    # the first 4 bytes of lval
+    fuzz_offsets = set([])
+    for ts in lval_taint:
+        for off in ts:
+            fuzz_offsets.add(off)
     bytes = open(fn).read()
     f = open(new_fn, "w")
     i=0
     j=0
     for b in bytes:
-        if (i in fuzz_offsets) and (j<4):
+        if (i in fuzz_offsets):
 #            f.write(chr(random.randint(0,255)))
 #            print j
             f.write(chr(int(lava_bytes[j],16)))
             j+=1
+            # just use those bytes over and over
+            if j == len(lava_bytes):
+                j = 0
         else:
             f.write(b)
         i+=1
@@ -335,7 +359,7 @@ if __name__ == "__main__":
             suff = get_suffix(orig_input)
             fuzzed_input = orig_input + "-fuzzed" + "." + suff
             print "fuzzed = [%s]" % fuzzed_input
-            mutfile(orig_input, dua.file_offsets, fuzzed_input)
+            mutfile(orig_input, dua.lval_taint, fuzzed_input)
             (rv, outp) = run_prog(bugs_build, fuzzed_input)
             print "retval = %d" % rv
             print "output:"

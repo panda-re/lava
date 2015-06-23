@@ -420,6 +420,7 @@ public:
             }
             // we don't need more than 4 bytes of dua
             if (i == 4) break;
+            o ++;
         }
         inss.after_part = ss.str();
         inss.top_of_file = "int " + gn + ";\n";
