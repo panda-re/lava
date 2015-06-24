@@ -5,14 +5,13 @@
 # End-to end LAVA for tshark.
 # 6/23/15
 # 
-# Uses 
+# Uses code tagged "lava_0" in both
 #
-# this commit from https://github.com/moyix/panda
-# d5951bcb13f7e95ef302f6576574233886dc6f45
-# 
-# and this commit from https://bitbucket.org/moyix/lava
-# 968b6bf47c74e4a941b2e7c3d620067554cf659f
+# https://github.com/moyix/panda
 #
+# and 
+#
+# from https://bitbucket.org/moyix/lava
 
 
 
