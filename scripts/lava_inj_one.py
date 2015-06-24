@@ -304,6 +304,10 @@ if __name__ == "__main__":
     print "------------\n"
     print "CLEAN UP SRC"
     run_cmd("/usr/bin/git checkout -f", bugs_build, None)
+    # ugh -- with tshark if you *dont* do this, your bug-inj source may not build, sadly
+    # it looks like their makefile doesn't understand its own dependencies, in fact
+    run_cmd("make clean", bugs_build, None)
+
 
     print "------------\n"
     print "INJECTING BUGS INTO SOURCE"
@@ -320,7 +324,7 @@ if __name__ == "__main__":
     print "------------\n"
     print "ATTEMPTING BUILD OF INJECTED BUG"
     print "build_dir = " + bugs_build
-    (rv, outp) = run_cmd("make", bugs_build, None)
+    (rv, outp) = run_cmd("make -j 12 ", bugs_build, None)
     build = False
     if rv!=0:
         # build failed
