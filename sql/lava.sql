@@ -308,19 +308,39 @@ $$ LANGUAGE plpythonu;
 
 
 
-create or replace function compute_run_stats() returns void
+
+drop type if exists fishy_run;
+
+create type fishy_run as (
+  exitcode int,
+  run    int,
+  bug    int,
+  dua    int,
+  atp    int
+);
+
+
+-- input param is attack point type number
+-- this fn returns run/bug/dua/atp for every *fuzzed* input run for which the source code mod at the attack point corresponds
+create or replace function get_runs(atp_typ int) returns SETOF fishy_run
 as $$
   # should give us the set of bugs (id) that have been successfully injected, compiled, and tested on a fuzzed input
-  reses = plpy.execute("select exitcode,run_id,bugs[1] from run,build where run.build_id = build.build_id;")
+  reses = plpy.execute("select run_id,bugs[1],exitcode from run,build where run.build_id = build.build_id and fuzz = true;")
+  fishy = []
   for res in reses:
+    # fuzz=true and exitcode=ec is fishy
     run_id = int(res["run_id"])
     bug_id = int(res["bugs"])
     exitcode = int(res["exitcode"])
-    r2 = plpy.execute("select max_liveness, max_tcn, max_card from dua,bug where dua.dua_id = bug.dua_id and bug.bug_id = %d;" % bug_id)
-    r = r2[0]
-    (max_liveness, max_tcn, max_card) = (float(r["max_liveness"]), int(r["max_tcn"]), int(r["max_card"]))
-    plpy.execute("insert into run_stats (run_id, exitcode, max_liveness, max_tcn, max_card) values (%d, %d, %.3f, %d, %d);" % (run_id,exitcode,max_liveness, max_tcn, max_card))
-#  return { "bug_id": bug_id, "exitcode": exitcode, "max_liveness" : max_liveness, "max_tcn": max_tcn, "max_card": max_card }
+    # a fuzz run that had exitcode 0?
+    res2 = plpy.execute("select typ_id,bug.dua_id,bug.atp_id from bug,atp where bug.atp_id = atp.atp_id and bug.bug_id = %d" % bug_id)
+    typ_id = res2[0]["typ_id"]
+    if typ_id == atp_typ:
+      dua_id = res2[0]["dua_id"]
+      atp_id = res2[0]["atp_id"]      
+      r = { "exitcode": exitcode, "run": run_id, "bug": bug_id, "dua": dua_id, "atp": atp_id }
+      fishy.append(r)
+  return fishy
 $$ LANGUAGE plpythonu;    
 
 
