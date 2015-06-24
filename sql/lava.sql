@@ -308,6 +308,7 @@ $$ LANGUAGE plpythonu;
 
 
 
+drop function get_runs(integer);
 
 drop type if exists fishy_run;
 
