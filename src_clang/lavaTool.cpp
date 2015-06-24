@@ -408,7 +408,7 @@ public:
         std::stringstream ss;
         uint32_t i = 0;
         std::string gn = LavaGlobal(bug.id);
-        ss << gn << " = 0;\n";
+        ss << "int " << gn << " = 0;\n";
         uint32_t o = 0;
         for ( auto ptr : bug.dua.lval_taint ) {
             // 0 means this offset of the lval is either untainted or not-viable for use by lava
@@ -422,8 +422,10 @@ public:
             if (i == 4) break;
             o ++;
         }
+        ss << "lava_set(" << gn << ");\n";
         inss.after_part = ss.str();
-        inss.top_of_file = "int " + gn + ";\n";
+        // this is prototype for setter 
+        inss.top_of_file = "void lava_set(unsigned int val);\n";
         return inss;
     }
 
@@ -437,7 +439,8 @@ public:
         Insertions inss;        
         if (bug.atp.filename != bug.dua.filename) {
             // only needed if dua is in different file from attack point
-            inss.top_of_file = "int " + LavaGlobal(bug.id) + "  __attribute__((weak)) ;\n";
+            //           inss.top_of_file = "int " + LavaGlobal(bug.id) + "  __attribute__((weak)) ;\n";
+            inss.top_of_file = "extern unsigned int lava_get(void) ;\n";
         }
         std::string fn_name = call_expr->getDirectCallee()->getNameInfo().getName().getAsString();
         uint32_t n = call_expr->getNumArgs();
@@ -450,6 +453,7 @@ public:
         uint32_t i = 0;
         std::stringstream new_call;
         new_call << fn_name << "(";
+        std::string gn = "(lava_get())"; // LavaGlobal(bug.id);
         for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {
             //            errs() << "i=" << i << "\n";
             Expr *arg = dyn_cast<Expr>(*it);
@@ -457,12 +461,12 @@ public:
                 // for malloc, we want the lava switch to undersize the malloc to a few bytes
                 // and hope for an overflow
                 if (fn_name.find("malloc") != std::string::npos) {
-                    new_call << "(0x6c617661 == " + LavaGlobal(bug.id) + " || 0x6176616c == " + LavaGlobal(bug.id) + ") ? 1 : " << (ExprStr(arg));           
+                    new_call << "(0x6c617661 == " + gn + " || 0x6176616c == " + gn + ") ? 1 : " << (ExprStr(arg));           
                 }
                 else {
                     // for memcpy, this seems reasonable.  
                     // others?
-                    new_call << (ExprStr(arg)) + "+" +  LavaGlobal(bug.id) + " * (0x6c617661 == " + LavaGlobal(bug.id) + " || 0x6176616c == " + LavaGlobal(bug.id) + ")";           
+                    new_call << (ExprStr(arg)) + "+" +  gn + " * (0x6c617661 == " + gn + " || 0x6176616c == " + gn + ")";           
                 }
             }
             else {
