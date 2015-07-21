@@ -9,12 +9,13 @@
     ../../panda/qemu/panda/pandalog_print.c \
     -L/usr/local/lib -lprotobuf-c  -I ../../panda/qemu -I ../../panda/qemu/panda  -lz -D PANDALOG_READER  -std=c++11  -O2 -lpq
     
-  ./fbi pandalog lavadb ml mtcn mc minl maxl inputfilename
+  ./fbi pandalog lavadb ml mtcn mc minl maxl maxlval inputfilename
 
   ml = 0.5 means max liveness of any byte on extent is 0.5
   mtcn = 10 means max taint compute number of any byte on extent is 10
   mc =4 means max card of a taint labelset on any byte on extent is 4
   min maxl  = 1 1000 means extents must be between 1 and 1000 bytes long
+  maxlval = 16 means lvals must be no larger than 16 bytes
 
 */
 
@@ -427,6 +428,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
                            float max_liveness,
                            uint32_t max_tcn,
                            uint32_t max_card,
+                           uint32_t max_lval,
                            PGconn *conn) {
     assert (ple != NULL);
     Panda__TaintQueryHypercall *tqh = ple->taint_query_hypercall;
@@ -482,6 +484,14 @@ void taint_query_hypercall(Panda__LogEntry *ple,
             // collect new unique taint label sets
             update_unique_taint_sets(conn, tq->unique_label_set, ptr_to_set);
         }
+    }
+
+    // bdg: don't try handle lvals that are bigger than our max lval
+    if (len > max_lval) return;
+
+    for (uint32_t i=0; i<tqh->n_taint_query; i++) {
+        Panda__TaintQuery *tq = tqh->taint_query[i];        
+        uint32_t offset = tq->offset;    
         viable_byte[offset] = 0;
         // flag for tracking *why* we discarded a byte
         uint32_t current_byte_not_ok;
@@ -657,6 +667,8 @@ uint32_t num_bugs = 0;
 
 std::set<BugKey> bugs;
 
+uint64_t new_bugs_found = 0;
+uint64_t num_bugs_added_to_db = 0;
 
 /*
   we are at an attack point
@@ -706,7 +718,6 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
     if (debug) {
         std::cout << "@ ATP: " << atp.str() << "\n";
     }
-    uint32_t num_bugs_added_to_db = 0;
     // every still viable dua is a bug inj opportunity at this point in trace
     for ( auto kvp : duas ) {
         DuaKey dk = kvp.first;
@@ -721,6 +732,7 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
                 uint64_t i2 = instr ;
                 float rdf_frac = ((float)i1) / ((float)i2);
                 std::cout << "i1=" << i1 << " i2=" << i2 << " rdf_frac=" << rdf_frac << "\n";
+                new_bugs_found ++;
             }                                  
             num_bugs_added_to_db ++;
         }
@@ -734,8 +746,8 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
 
 
 int main (int argc, char **argv) {
-    if (argc != 8) {
-        printf ("usage: fbi plog lavadb max_liveness max_card max_tcn inputfile src_pfx\n");
+    if (argc != 9) {
+        printf ("usage: fbi plog lavadb max_liveness max_card max_tcn max_lval inputfile src_pfx\n");
         exit (1);
     }
     // panda log file
@@ -750,8 +762,10 @@ int main (int argc, char **argv) {
     printf ("max card of taint set returned by query = %d\n", max_card);
     uint32_t max_tcn = stou(argv[5]);
     printf ("max tcn for addr = %d\n", max_tcn);
-    inputfile = std::string(argv[6]);
-    src_pfx = std::string(argv[7]);
+    uint32_t max_lval = stou(argv[6]);
+    printf ("max tcn for addr = %d\n", max_tcn);
+    inputfile = std::string(argv[7]);
+    src_pfx = std::string(argv[8]);
     std::map <uint32_t, float> liveness;
     PGconn *conn = pg_connect();    
     inputfile_id = addstr(conn, "inputfile", inputfile);
@@ -775,7 +789,7 @@ int main (int argc, char **argv) {
         }
         if (ple->taint_query_hypercall) {
             taint_query_hypercall(ple, ptr_to_set, liveness, duas, max_liveness,
-                                  max_tcn, max_card, conn);
+                                  max_tcn, max_card, max_lval, conn);
         }
         if (ple->tainted_branch) {
             update_liveness(ple, ptr_to_set, liveness, conn);
@@ -785,6 +799,7 @@ int main (int argc, char **argv) {
                                        liveness, max_liveness, conn);
         }
     }
+    std::cout << new_bugs_found << " new bugs / " << num_bugs_added_to_db << " total\n";
     pandalog_close();
 }
 
