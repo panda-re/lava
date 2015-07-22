@@ -385,7 +385,7 @@ void spit_ap(Panda__AttackPoint *ap) {
 }
 
 
-void update_unique_taint_sets(PGconn *conn, Panda__TaintQueryUniqueLabelSet *tquls,
+void update_unique_taint_sets(PGconn *conn, Panda__TaintQueryUniqueLabelSet *tquls, uint32_t max_card,
                               std::map<Ptr,std::set<uint32_t>> &ptr_to_set) {                                
     if (debug) {
         printf ("UNIQUE TAINT SET\n");
@@ -401,13 +401,16 @@ void update_unique_taint_sets(PGconn *conn, Panda__TaintQueryUniqueLabelSet *tqu
             uint32_t l = tquls->label[i];
             ptr_to_set[p].insert(l);
         }
-        std::stringstream sql;
-        sql << "INSERT INTO unique_taint_set (ptr,file_offset,inputfile_id) VALUES ("
-            << p << ","
-            << "'{" << iset_str(ptr_to_set[p]) << "}',"
-            << inputfile_id << ");";
-        PGresult *res = pg_exec_ss(conn,sql);
-        assert (PQresultStatus(res) == PGRES_COMMAND_OK);
+        // Don't try to put huge taint sets into the db
+        if (tquls->n_label <= max_card) {
+            std::stringstream sql;
+            sql << "INSERT INTO unique_taint_set (ptr,file_offset,inputfile_id) VALUES ("
+                << p << ","
+                << "'{" << iset_str(ptr_to_set[p]) << "}',"
+                << inputfile_id << ");";
+            PGresult *res = pg_exec_ss(conn,sql);
+            assert (PQresultStatus(res) == PGRES_COMMAND_OK);
+        }
     }
     if (debug) printf ("%d unique taint sets\n", ptr_to_set.size());
 }
@@ -481,7 +484,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
         if (ddebug) printf ("offset = %d\n", offset);
         if (tq->unique_label_set) {
             // collect new unique taint label sets
-            update_unique_taint_sets(conn, tq->unique_label_set, ptr_to_set);
+            update_unique_taint_sets(conn, tq->unique_label_set, max_card, ptr_to_set);
         }
     }
 
@@ -597,6 +600,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
 void update_liveness(Panda__LogEntry *ple,    
                      std::map<Ptr,std::set<uint32_t>> &ptr_to_set,
                      std::map <uint32_t, float> &liveness,
+                     uint32_t max_card,
                      PGconn *conn) {
     assert (ple != NULL);
     Panda__TaintedBranch *tb = ple->tainted_branch;
@@ -607,7 +611,7 @@ void update_liveness(Panda__LogEntry *ple,
         assert (tq);
         if (tq->unique_label_set) {
             // keep track of unique taint label sets
-            update_unique_taint_sets(conn, tq->unique_label_set, ptr_to_set);
+            update_unique_taint_sets(conn, tq->unique_label_set, max_card, ptr_to_set);
         }
         if (debug) {
             spit_tq(tq);
@@ -791,7 +795,7 @@ int main (int argc, char **argv) {
                                   max_tcn, max_card, max_lval, conn);
         }
         if (ple->tainted_branch) {
-            update_liveness(ple, ptr_to_set, liveness, conn);
+            update_liveness(ple, ptr_to_set, liveness, max_card, conn);
         }
         if (ple->attack_point) {
             find_bug_inj_opportunities(ple, duas, ptr_to_set,
