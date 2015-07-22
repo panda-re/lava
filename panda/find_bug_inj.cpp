@@ -402,9 +402,10 @@ void update_unique_taint_sets(PGconn *conn, Panda__TaintQueryUniqueLabelSet *tqu
             ptr_to_set[p].insert(l);
         }
         std::stringstream sql;
-        sql << "INSERT INTO unique_taint_set (ptr,file_offset) VALUES ("
+        sql << "INSERT INTO unique_taint_set (ptr,file_offset,inputfile_id) VALUES ("
             << p << ","
-            << "'{" << iset_str(ptr_to_set[p]) << "}');";
+            << "'{" << iset_str(ptr_to_set[p]) << "}',"
+            << inputfile_id << ");";
         PGresult *res = pg_exec_ss(conn,sql);
         assert (PQresultStatus(res) == PGRES_COMMAND_OK);
     }

@@ -30,7 +30,6 @@ bugs_build = target_dir + "/wireshark-1.8.2.bugs"
 
 lavadb = home_dir + "/tshark-lavadb"
 
-
 def get_conn():
     conn = psycopg2.connect(host=db_host, database=db, user=db_user, password=db_password)
     return conn;
@@ -77,12 +76,12 @@ def remaining_inj():
     return cur.rowcount
 
 
-def ptr_to_set(ptr):
+def ptr_to_set(ptr, inputfile_id):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("select * from unique_taint_set where ptr = " + (str(ptr)) + ";")
-    (x, file_offsets) = cur.fetchone()
-    assert (x == ptr)
+    cur.execute("select * from unique_taint_set where ptr = " + (str(ptr)) + " and inputfile_id = " + str(inputfile_id) + ";")
+    (x, file_offsets, ret_inputfile_id) = cur.fetchone()
+    assert (x == ptr and inputfile_id == ret_inputfile_id)
     return file_offsets 
 
 
@@ -106,7 +105,7 @@ class Dua:
         n = len(self.lval_taint)
         for i in range(n):
             ptr = self.lval_taint[i]
-            self.lval_taint[i] = ptr_to_set(ptr)            
+            self.lval_taint[i] = ptr_to_set(ptr, self.inputfile_id)
         assert(x==dua_id)
         self.filename = self.sourcefile[self.filename_id] 
         self.lval = self.lval[self.lval_id]
