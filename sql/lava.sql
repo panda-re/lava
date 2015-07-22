@@ -70,7 +70,8 @@ drop table if exists unique_taint_set;
 CREATE TABLE unique_taint_set (
   ptr          numeric,
   file_offset  integer[],
-  UNIQUE(ptr,file_offset)
+  inputfile_id integer references inputfile,
+  UNIQUE(ptr,inputfile_id)
 ); 
 
     
