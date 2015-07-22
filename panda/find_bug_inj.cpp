@@ -421,6 +421,7 @@ uint32_t count_viable_bytes(std::vector<Ptr> viable_byte) {
     return num_viable;
 }
 
+std::set<Ptr> labelset_blacklist;
 
 void taint_query_hypercall(Panda__LogEntry *ple,
                            std::map<Ptr,std::set<uint32_t>> &ptr_to_set,
@@ -441,10 +442,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
     Panda__SrcInfo *si = tqh->src_info;
     assert (si != NULL);
     bool ddebug = false;
-    if ((ind2str[si->filename].compare("addr_resolv.c") == 0) && (si->linenum == 1000 || si->linenum == 1001)) {
-        printf ("ddebug is on\n");
-        ddebug = true;
-    }
+    
     // entry 2 is callstack -- ignore
     Panda__CallStack *cs = tqh->call_stack;
     assert (cs != NULL);
@@ -455,7 +453,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
     // in this queried lval
     float c_max_liveness = 0.0;
     uint32_t c_max_tcn, c_max_card;
-    c_max_tcn = c_max_card = 0;    
+    c_max_tcn = c_max_card = 0;
     // if lval is 12 bytes, this vector will have 12 elements
     // viable_byte[i] is 0 if it is NOT viable
     // otherwise it is a ptr to a taint set.
