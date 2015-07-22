@@ -57,4 +57,4 @@ for i in $c_files; do
     -p="$source/compile_commands.json" "$i"
 done
 
-progress "Done inserting queries. Time to make and run automate."
+progress "Done inserting queries. Time to make and run actuate.py on a 64-BIT machine!"
