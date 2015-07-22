@@ -6,6 +6,7 @@ import subprocess32
 import shutil
 import time
 import pipes
+import json
 from colorama import Fore, Back, Style
 from pexpect import spawn, fdpexpect
 
@@ -35,27 +36,47 @@ def sockexpect(path):
 def progress(msg):
     print Fore.RED + msg + Fore.RESET
 
-if len(sys.argv) < 6:
-    print >>sys.stderr, "Usage: python actuate.py qemu qcow snapshot CD command"
+if len(sys.argv) < 2:
+    print >>sys.stderr, "Usage: python project.json"
     sys.exit(1)
+
+project = json.load(open(sys.argv[1], "r"))
+assert 'qemu' in project
+assert 'snapshot' in project
+assert 'directory' in project
+assert 'command' in project
+assert 'qcow' in project
+assert 'name' in project
+
+progress("Entering {}.".format(project['directory']))
+os.chdir(os.path.join(project['directory'], project['name']))
+files = os.listdir('.')
+sourcedir = ""
+for f in files:
+    if os.path.isdir(f):
+        sourcedir = f
+
+progress("Creaing ISO {}.iso...".format(sourcedir))
+subprocess32.check_call(['genisoimage', '-R', '-J',
+    '-o', sourcedir + '.iso', sourcedir])
 
 tempdir = tempfile.mkdtemp()
 
 monitor_path = os.path.join(tempdir, 'monitor')
 serial_path = os.path.join(tempdir, 'serial')
-qemu_args = [sys.argv[2], '-loadvm', sys.argv[3],
+qemu_args = [project['qcow'], '-loadvm', project['snapshot'],
         '-monitor', 'unix:' + monitor_path + ',server,nowait',
         '-serial', 'unix:' + serial_path + ',server,nowait',
         '-vnc', ':9']
 
 progress("Running qemu with args:")
-print qemu_args
+print project['qemu'], " ".join(qemu_args)
 print
 
 try:
     os.mkfifo(monitor_path)
     os.mkfifo(serial_path)
-    qemu = spawn(sys.argv[1], qemu_args)
+    qemu = spawn(project['qemu'], qemu_args)
     time.sleep(1)
 except OSError, msg:
     cleanup(msg)
@@ -63,7 +84,9 @@ except OSError, msg:
 
 try:
     monitor = spawn("socat", ["stdin", "unix-connect:" + monitor_path])
+    monitor.logfile = open(os.path.join(tempdir, 'monitor.txt'), 'w')
     console = spawn("socat", ["stdin", "unix-connect:" + serial_path])
+    console.logfile = open(os.path.join(tempdir, 'console.txt'), 'w')
 
     def run_monitor(cmd):
         print Style.BRIGHT + "(qemu)" + Style.RESET_ALL,
@@ -83,7 +106,7 @@ try:
     console.expect_exact("root@debian-i386:~#")
 
     progress("Inserting CD...")
-    run_monitor("change ide1-cd0 {}".format(sys.argv[4]))
+    run_monitor("change ide1-cd0 {}".format(sourcedir + '.iso'))
     run_console("mkdir -p /mnt/cdrom")
     run_console("umount /mnt/cdrom")
     run_console("mount /dev/cdrom /mnt/cdrom")
@@ -92,7 +115,7 @@ try:
     run_monitor("begin_record queries")
 
     progress("Running command inside guest...")
-    run_console(" ".join(map(pipes.quote, sys.argv[5:])))
+    run_console(project['command'])
 
     progress("Ending recording...")
     run_monitor("end_record")
