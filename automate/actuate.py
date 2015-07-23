@@ -28,6 +28,7 @@ assert 'command' in project
 assert 'qcow' in project
 assert 'name' in project
 assert 'dbhost' in project
+assert 'input_filename' in project
 
 lavadir = dirname(dirname(abspath(sys.argv[0])))
 
@@ -38,6 +39,7 @@ sourcedir = ""
 for f in files:
     if os.path.isdir(f):
         sourcedir = f
+sourcedir = os.path.abspath(sourcedir)
 
 print
 progress("Creaing ISO {}.iso...".format(sourcedir))
@@ -109,7 +111,7 @@ shutil.rmtree(tempdir)
 progress("Starting first-pass replay...")
 qemu_args = ['-replay', replay_name,
         '-panda', 'taint2:no_tp',
-        '-panda', 'file_taint:notaint,filename=' + project['filename']]
+        '-panda', 'file_taint:notaint,filename=' + project['input_filename']]
 qemu_replay = spawn(project['qemu'], qemu_args)
 qemu_replay.logfile_read = sys.stdout
 qemu_replay.expect_exact("saw open of file we want to taint")
@@ -126,7 +128,7 @@ qemu_args = ['-replay', replay_name,
         '-panda', 'taint2:no_tp',
         '-panda', 'tainted_branch',
         '-panda', 'file_taint:pos,first_instr={},filename={}'.format(
-            instr, project['filename'])]
+            instr, project['input_filename'])]
 
 subprocess32.check_call([project['qemu']]+ qemu_args, stdout=sys.stdout, stderr=sys.stderr)
 
@@ -148,4 +150,7 @@ else:
 print
 progress("Calling the FBI on queries.plog...")
 fbi_args = [join(lavadir, 'panda', 'fbi'), project_file, sourcedir]
-print " ".join(fbi_args)
+subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
+
+print
+progress("Found Bugs, Injectable!!")
