@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS run_stats;
 DROP TABLE IF EXISTS run;
 DROP TABLE IF EXISTS build;
 DROP TABLE IF EXISTS bug;
+DROP TABLE IF EXISTS bugkey;
 
 DROP TABLE IF EXISTS dua;
 DROP TABLE IF EXISTS atp;
@@ -127,6 +128,18 @@ CREATE TABLE bug (
        UNIQUE(dua_id,atp_id)
 );
 
+CREATE TABLE bugkey (
+   bugkey_id           serial primary key,
+   dua_filename_id	   integer references sourcefile, -- source file containing this dua (see SourceFile table)
+   dua_line	           integer,                       -- line in source file
+   dua_lval_id	       integer references lval,       -- name of the lval, at least some bytes of which are dua 
+   dua_insertionpoint  integer,                       -- tells us if dua came from a taint query before (1) or after (2) the fn call   
+   dua_file_offset     integer[],                     -- bytes in the input file that taint this dua                                   
+   atp_filename_id     integer references sourcefile,   -- source file containing this ap (see SourceFile table)
+   atp_line            integer,                         -- line in source file
+   atp_typ_id          integer references atptype,      -- type of attack point (see AttackPoint table)
+   UNIQUE(dua_filename_id, dua_line, dua_lval_id, dua_insertionpoint, dua_file_offset, atp_filename_id, atp_line, atp_typ_id)
+);
 
 -- Table of inject / build attempts
 CREATE TABLE build (
