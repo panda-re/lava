@@ -47,13 +47,11 @@ void pg_exit_nicely(PGconn *conn) {
 
 
 
-PGconn *pg_connect(void) {
-    std::string dbhostaddr = "18.126.0.46";
-    std::string dbname = "tshark";    
-    std::string conninfo = "hostaddr=" + dbhostaddr + " dbname=" + dbname + " user=postgres password=postgrespostgres";  // lava password=llaavvaa";
+PGconn *pg_connect(std::string dbhost, std::string dbname) {
+    std::string conninfo = "host=" + dbhost + " dbname=" + dbname + " user=postgres password=postgrespostgres";  // lava password=llaavvaa";
     PGresult   *res;
     //    PGconn *conn = PQconnectdb ((const char *) conninfo.c_str());
-    PGconn *conn = PQconnectdb ("hostaddr=18.126.0.46 dbname=tshark user=postgres password=postgrespostgres");
+    PGconn *conn = PQconnectdb (conninfo.c_str());
     if (PQstatus(conn) != CONNECTION_OK) {
         fprintf(stderr, "Connection to database failed: %s",
                 PQerrorMessage(conn));
@@ -261,18 +259,16 @@ std::map<uint32_t,Bug> pg_get_bugs(PGconn *conn, std::map<uint32_t,Dua> &duas, s
 
 
 
-std::map<Ptr, std::set<uint32_t>> loadTaintSets() {
-    PGconn *conn = pg_connect();
+std::map<Ptr, std::set<uint32_t>> loadTaintSets(PGconn *conn) {
+    assert(conn);
     return pg_get_unique_taint_sets(conn);
 }
 
 
 // load this set of bugs from db
 // a bug is a dua/atp pair, effectively
-std::set<Bug> loadBugs(std::set<uint32_t> &bug_ids) {
-    // XXX: pg_connect fn contains hard-coded server addr, usernames, and passwords
-    // really these should be cmdline params that are args to pg_connect.
-    PGconn *conn = pg_connect();        
+std::set<Bug> loadBugs(std::set<uint32_t> &bug_ids, PGconn *conn) {
+    assert(conn);
     Ism sourcefile = pg_get_string_map(conn, "sourcefile");
     Ism atptype = pg_get_string_map(conn, "atptype");
     Ism inputfile = pg_get_string_map(conn, "inputfile");    
@@ -303,7 +299,7 @@ std::set<Bug> loadBugs(std::set<uint32_t> &bug_ids) {
  */
 
 int main () {
-    PGconn *conn = pg_connect();
+    PGconn *conn = pg_connect("laredo-26.mit.edu", "tshark");
 
     Ism sourcefile = pg_get_string_map(conn, "sourcefile");
     Ism atptype = pg_get_string_map(conn, "atptype");

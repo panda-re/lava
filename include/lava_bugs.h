@@ -268,7 +268,7 @@ struct Bug {
 };
 
 
-PGconn *pg_connect(void);
+PGconn *pg_connect(std::string dbhost, std::string dbname);
 
 void exit_nicely(PGconn *conn);
 
@@ -288,10 +288,10 @@ std::map < uint32_t, std::string > pq_get_string_map(PGconn *conn, std::string t
 
 std::set<uint32_t> parse_ints(std::string offs_str);
 
-std::map<Ptr, std::set<uint32_t>> loadTaintSets();
+std::map<Ptr, std::set<uint32_t>> loadTaintSets(PGconn *conn);
 
 // load this set of bugs out of the db given their ids
-std::set<Bug> loadBugs(std::set<uint32_t> &bug_ids);
+std::set<Bug> loadBugs(std::set<uint32_t> &bug_ids, PGconn *conn);
 
 
 #endif

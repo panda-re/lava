@@ -33,6 +33,8 @@ extern "C" {
 
 }
 
+#include <json/json.h>
+
 #include <iostream>
 #include <fstream>
 #include <map>
@@ -63,7 +65,7 @@ Instr last_instr_count;
 bool debug = false;
 
 
-void get_last_instr(char *pandalog_filename) {
+void get_last_instr(const char *pandalog_filename) {
     printf ("Computing dua and ap stats\n");
     pandalog_open(pandalog_filename, "r");
     while (1) {
@@ -749,28 +751,46 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
 
 
 int main (int argc, char **argv) {
-    if (argc != 9) {
-        printf ("usage: fbi plog lavadb max_liveness max_card max_tcn max_lval inputfile src_pfx\n");
+    if (argc != 3) {
+        printf ("usage: fbi project.json src_pfx\n");
+        printf("    src_pfx: Prefix of source tree from lavaTool queries, so we can strip it\n");
+        printf("    JSON file should have properties:\n");
+        printf("        max_liveness: Maximum liveness for DUAs\n");
+        printf("        max_cardinality: Maximum cardinality for labelsets on DUAs\n");
+        printf("        max_tcn: Maximum taint compute number for DUAs\n");
+        printf("        max_lval_size: Maximum bytewise size for \n");
+        printf("        input_filename: Filename of input to program in query replay (malware.pcap, e.g.)\n");
         exit (1);
     }
+
+    std::ifstream json_file(argv[1]);
+    Json::Value root;
+    json_file >> root;
+
+    std::string root_directory = root["directory"].asString();
+    std::string name = root["name"].asString();
+    std::string directory = root_directory + "/" + name;
+
+    std::string plog = directory + "/queries.plog";
+
     // panda log file
-    char *plf = argv[1];
+    const char *plf = plog.c_str();
     // maps from ind -> (filename, lvalname, attackpointname)
-    ind2str = LoadIDB(argv[2]);
+    ind2str = LoadIDB(plf);
     printf ("%d strings in lavadb\n", (int) ind2str.size());
     get_last_instr(plf);
-    float max_liveness = atof(argv[3]);
+    float max_liveness = root["max_liveness"].asFloat();
     printf ("maximum liveness score of %.2f\n", max_liveness);
-    uint32_t max_card = stou(argv[4]);
+    uint32_t max_card = root["max_cardinality"].asUInt();
     printf ("max card of taint set returned by query = %d\n", max_card);
-    uint32_t max_tcn = stou(argv[5]);
+    uint32_t max_tcn = root["max_tcn"].asUInt();
     printf ("max tcn for addr = %d\n", max_tcn);
-    uint32_t max_lval = stou(argv[6]);
-    printf ("max tcn for addr = %d\n", max_tcn);
-    inputfile = std::string(argv[7]);
-    src_pfx = std::string(argv[8]);
+    uint32_t max_lval = root["max_lval_size"].asUInt();
+    printf ("max lval size = %d\n", max_lval);
+    inputfile = root["input_filename"].asString();
+    src_pfx = std::string(argv[2]);
     std::map <uint32_t, float> liveness;
-    PGconn *conn = pg_connect();    
+    PGconn *conn = pg_connect(root["dbhost"].asString(), root["db"].asString());
     inputfile_id = addstr(conn, "inputfile", inputfile);
     /*
      re-read pandalog, this time focusing on taint queries.  Look for

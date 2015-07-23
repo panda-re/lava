@@ -41,6 +41,10 @@ static cl::opt<std::string> LavaDB("lava-db",
         "Created in query mode."),
     cl::cat(LavaCategory),
     cl::init("XXX"));
+static cl::opt<std::string> ProjectFile("project-file",
+    cl::desc("Path to project.json file."),
+    cl::cat(LavaCategory),
+    cl::init("XXX"));
 
 /*
 static cl::opt<std::string> LavaBugBuildDir("bug-build-dir",
@@ -808,19 +812,26 @@ int main(int argc, const char **argv) {
             errs() << "BuildPath = [" << BuildPath << "]\n";
         }
     }
-    
+
+    std::ifstream json_file(ProjectFile);
+    Json::Value root;
+    json_file >> root;
+
+    std::string dbhost(root["dbhost"].asString());
+    std::string dbname(root["db"].asString());
+
     if (LavaAction == LavaInjectBugs) {
+        PGconn *conn = pg_connect(dbhost, dbname);
         // get bug info for the injections we are supposed to be doing.
         errs() << "LavaBugList: [" << LavaBugList << "]\n";
 
         std::set<uint32_t> bug_ids = parse_ints(LavaBugList);
         printf ("%d bug_ids\n", bug_ids.size());
-        bugs = loadBugs(bug_ids);        
-        ptr_to_set = loadTaintSets();
+        bugs = loadBugs(bug_ids, conn);
+        ptr_to_set = loadTaintSets(conn);
         for ( auto bug : bugs ) {
             errs() << bug.str() << "\n";
         }
     } 
     return Tool.run(newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
 }
-
