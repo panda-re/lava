@@ -147,5 +147,5 @@ else:
 
 print
 progress("Calling the FBI on queries.plog...")
-fbi_args = [join(lavadir, 'panda', 'fbi'), project_file]
+fbi_args = [join(lavadir, 'panda', 'fbi'), project_file, sourcedir]
 print " ".join(fbi_args)
