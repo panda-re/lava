@@ -58,12 +58,7 @@ std::string src_pfx;
 int inputfile_id;
 std::map<uint32_t,std::string> ind2str;
 
-
-Instr last_instr_count;
-
-
 bool debug = false;
-
 
 void get_last_instr(const char *pandalog_filename) {
     printf ("Computing dua and ap stats\n");
@@ -307,7 +302,7 @@ int postgres_new_atp(PGconn *conn, AttackPoint &atp) {
 // add the dua & atp first, if necessary
 // ... unless its already there in which case we don't add it
 // returns True iff this is a new bug
-bool add_bug_to_db(PGconn *conn, Dua &dua, AttackPoint &atp) {
+bool add_bug_to_db(PGconn *conn, Dua &dua, AttackPoint &atp, BugKey &b) {
     std::stringstream sql;
     int did = postgres_get_dua_id(conn, dua);
     if (did == -1) {
@@ -331,11 +326,41 @@ bool add_bug_to_db(PGconn *conn, Dua &dua, AttackPoint &atp) {
         PQclear(res);
         return false;
     }
+    // is the bug there from a previous run?
+    int dua_filename_id = addstr(conn, "sourcefile", strip_pfx(ind2str[b.dk.filename], src_pfx));
+    int dua_lval_id = addstr(conn, "lval", ind2str[b.dk.astnodename]);
+    int atp_filename_id = addstr(conn, "sourcefile", strip_pfx(ind2str[b.atpk.filename], src_pfx));
+    int atp_typ_id = addstr(conn, "atptype", ind2str[b.atpk.typ]);
+    sql.str("");
+    sql.clear();
+    sql << "INSERT INTO bugkey (dua_filename_id, dua_line, dua_lval_id, dua_insertionpoint, dua_file_offset, atp_filename_id, atp_line, atp_typ_id) VALUES (";
+    sql << dua_filename_id << ","
+        << b.dk.linenum << ","
+        << dua_lval_id << ","
+        << b.dk.insertionpoint << ","
+        << "'{" << iset_str(b.dk.lval_offsets_tainted) << "}'" << ","
+        << atp_filename_id << ","
+        << b.atpk.line << ","
+        << atp_typ_id << ");";
+    res = pg_exec_ss(conn,sql);
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        if (std::string(PQresultErrorMessage(res)).find("duplicate key value") != std::string::npos) {
+            return false;
+        }
+        else {
+            // Some other error - fail!
+            printf("Fatal postgresql error %s: %s\n", PQresStatus(PQresultStatus(res)), PQresultErrorMessage(res));
+            assert(false);
+        }
+    }
+
     printf ("-----------------------------------------------------\n");
     printf ("Adding new bug to db.  dua_id = %d  atp_id = %d\n", did, aid);
     std::cout << "Dua:\n" << dua.str() << "\n";
     std::cout << "Atp:\n" << atp.str() << "\n";
     // we don't need to get bug_id back
+    sql.str("");
+    sql.clear();
     sql << "INSERT INTO bug (dua_id,atp_id,inj) VALUES ("
         << did << "," << aid <<
         ",false) returning bug_id;";
@@ -425,8 +450,6 @@ uint32_t count_viable_bytes(std::vector<Ptr> viable_byte) {
     }
     return num_viable;
 }
-
-std::set<Ptr> labelset_blacklist;
 
 void taint_query_hypercall(Panda__LogEntry *ple,
                            std::map<Ptr,std::set<uint32_t>> &ptr_to_set,
@@ -672,8 +695,9 @@ uint32_t num_bugs = 0;
 
 std::set<BugKey> bugs;
 
-uint64_t new_bugs_found = 0;
+uint64_t num_bugs_local = 0;
 uint64_t num_bugs_added_to_db = 0;
+uint64_t num_bugs_attempted = 0;
 
 /*
   we are at an attack point
@@ -731,21 +755,22 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
         if (bugs.count(b) == 0) {
             // this is a new bug (new src mods for both dua and atp)
             bugs.insert(b);
-            bool newb = add_bug_to_db(conn, dua, atp);
+            bool newb = add_bug_to_db(conn, dua, atp, b);
             if (newb) {
                 uint64_t i1 = duas[dk].instr ;
                 uint64_t i2 = instr ;
                 float rdf_frac = ((float)i1) / ((float)i2);
                 std::cout << "i1=" << i1 << " i2=" << i2 << " rdf_frac=" << rdf_frac << "\n";
-                new_bugs_found ++;
+                num_bugs_added_to_db ++;
             }                                  
-            num_bugs_added_to_db ++;
+            num_bugs_local ++;
         }
         else {
             if (debug) {
                 printf ("not a new bug\n");
             }
         }
+        num_bugs_attempted ++;
     }
 }
 
@@ -779,7 +804,6 @@ int main (int argc, char **argv) {
     // maps from ind -> (filename, lvalname, attackpointname)
     ind2str = LoadIDB(lavadb);
     printf ("%d strings in lavadb\n", (int) ind2str.size());
-    get_last_instr(plf);
     float max_liveness = root["max_liveness"].asFloat();
     printf ("maximum liveness score of %.2f\n", max_liveness);
     uint32_t max_card = root["max_cardinality"].asUInt();
@@ -822,8 +846,9 @@ int main (int argc, char **argv) {
             find_bug_inj_opportunities(ple, duas, ptr_to_set,
                                        liveness, max_liveness, conn);
         }
+        pandalog_free_entry(ple);
     }
-    std::cout << new_bugs_found << " new bugs / " << num_bugs_added_to_db << " total\n";
+    std::cout << num_bugs_added_to_db << " added to db " << num_bugs_local << " local bugs " << num_bugs_attempted << " total attempted\n";
     pandalog_close();
 }
 
