@@ -772,11 +772,12 @@ int main (int argc, char **argv) {
     std::string directory = root_directory + "/" + name;
 
     std::string plog = directory + "/queries.plog";
+    std::string lavadb = directory + "/lavadb";
 
     // panda log file
     const char *plf = plog.c_str();
     // maps from ind -> (filename, lvalname, attackpointname)
-    ind2str = LoadIDB(plf);
+    ind2str = LoadIDB(lavadb);
     printf ("%d strings in lavadb\n", (int) ind2str.size());
     get_last_instr(plf);
     float max_liveness = root["max_liveness"].asFloat();
