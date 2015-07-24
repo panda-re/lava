@@ -35,16 +35,14 @@ lavadir = dirname(dirname(abspath(sys.argv[0])))
 progress("Entering {}.".format(project['directory']))
 os.chdir(os.path.join(project['directory'], project['name']))
 files = os.listdir('.')
-sourcedir = ""
-for f in files:
-    if os.path.isdir(f):
-        sourcedir = f
-sourcedir = os.path.abspath(sourcedir)
+
+tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']])
+sourcedir = tar_files.splitlines()[0].split(os.path.sep)[0]
 
 print
 progress("Creaing ISO {}.iso...".format(sourcedir))
 subprocess32.check_call(['genisoimage', '-R', '-J',
-    '-o', sourcedir + '.iso', sourcedir])
+    '-o', sourcedir + '.iso', join(sourcedir, 'lava-install')])
 
 tempdir = tempfile.mkdtemp()
 
