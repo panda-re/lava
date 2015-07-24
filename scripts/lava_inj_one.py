@@ -384,14 +384,13 @@ if __name__ == "__main__":
     if next_bug_db:
         build_id = add_build_row([bug_id], build)
         print "build_id = %d" % build_id
-    inputfile_dir = "/home/tleek/lava/src-to-src/wireshark-1.8.2"
     if build:
         try:
             # build succeeded -- testing
             print "------------\n"
             # first, try the original file
             print "TESTING -- ORIG INPUT"
-            orig_input = "%s/%s" % (inputfile_dir, dua.inputfile)
+            orig_input = join(queries_build, 'lava-install', dua.inputfile)
             (rv, outp) = run_prog(bugs_install, orig_input)
             print "retval = %d" % rv
             print "output:"
@@ -430,7 +429,3 @@ if __name__ == "__main__":
 #    run_cmd("/usr/bin/git checkout -f", bugs_build, None)
 #    revert_to_safe_copy(bugs_build + "/" + dua.filename)
 #    revert_to_safe_copy(bugs_build + "/" + atp.filename)
-
-
-
- 
