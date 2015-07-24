@@ -69,6 +69,7 @@ cp /home/tleek/tshark-lavadb /nas/tleek/lava/tshark/src-to-src/
 #
 #################################
 # Step 2 -- create PANDA recording of tshark with some inputs
+# NOTE: PANDA must be compiled with -DLAVA in order for this stuff to work.
 
 # this iso can be mounted by PANDA to get the instrumented tshark onto the guest
 cd ~/lava/src-to-src/wireshark-1.8.2/wireshark-1.8.2.queries
