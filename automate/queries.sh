@@ -70,8 +70,10 @@ done
 
 progress "Inserting queries..."
 for i in $c_files; do
-  $lava/src_clang/build/lavaTool -action=query -lava-db=lavadb \
-    -p="$source/compile_commands.json" "$i"
+  $lava/src_clang/build/lavaTool -action=query \
+    -lava-db="$directory/$name/lavadb" \
+    -p="$source/compile_commands.json" \
+    -project-file="$json" "$i"
 done
 
 progress "Done inserting queries. Time to make and run actuate.py on a 64-BIT machine!"
