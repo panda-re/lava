@@ -19,7 +19,7 @@ if len(sys.argv) < 2:
     print >>sys.stderr, "Usage: python project.json"
     sys.exit(1)
 
-project_file = sys.argv[1]
+project_file = abspath(sys.argv[1])
 project = json.load(open(project_file, "r"))
 assert 'qemu' in project
 assert 'snapshot' in project
@@ -38,6 +38,7 @@ files = os.listdir('.')
 
 tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']])
 sourcedir = tar_files.splitlines()[0].split(os.path.sep)[0]
+sourcedir = abspath(sourcedir)
 
 print
 progress("Creaing ISO {}.iso...".format(sourcedir))
