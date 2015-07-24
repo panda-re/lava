@@ -15,11 +15,13 @@ from os.path import dirname, abspath, join
 def progress(msg):
     print Fore.RED + msg + Fore.RESET
 
-if len(sys.argv) < 2:
-    print >>sys.stderr, "Usage: python project.json"
+if len(sys.argv) < 3:
+    print >>sys.stderr, "Usage: python project.json inputfile"
     sys.exit(1)
 
 project_file = abspath(sys.argv[1])
+input_file = abspath(sys.argv[2])
+input_file_base = os.path.basename(input_file)
 project = json.load(open(project_file, "r"))
 assert 'qemu' in project
 assert 'snapshot' in project
@@ -28,22 +30,23 @@ assert 'command' in project
 assert 'qcow' in project
 assert 'name' in project
 assert 'dbhost' in project
-assert 'input_filename' in project
 
 lavadir = dirname(dirname(abspath(sys.argv[0])))
 
 progress("Entering {}.".format(project['directory']))
 os.chdir(os.path.join(project['directory'], project['name']))
-files = os.listdir('.')
 
 tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']])
 sourcedir = tar_files.splitlines()[0].split(os.path.sep)[0]
 sourcedir = abspath(sourcedir)
 
 print
-progress("Creaing ISO {}.iso...".format(sourcedir))
+isoname = '{}-{}.iso'.format(sourcedir, input_file_base)
+progress("Creaing ISO {}...".format(isoname))
+installdir = join(sourcedir, 'lava-install')
+shutil.copy(input_file, installdir + '/')
 subprocess32.check_call(['genisoimage', '-R', '-J',
-    '-o', sourcedir + '.iso', join(sourcedir, 'lava-install')])
+    '-o', isoname, installdir])
 
 tempdir = tempfile.mkdtemp()
 
@@ -87,17 +90,22 @@ console.sendline("")
 console.expect_exact("root@debian-i386:~#")
 
 progress("Inserting CD...")
-run_monitor("change ide1-cd0 {}".format(sourcedir + '.iso'))
+run_monitor("change ide1-cd0 {}".format(isoname))
 run_console("mkdir -p /mnt/cdrom")
 run_console("umount /mnt/cdrom")
 run_console("mount /dev/cdrom /mnt/cdrom")
 
-replay_name = "queries"
+# Use the ISO name as the replay name.
 progress("Beginning recording queries...")
-run_monitor("begin_record {}".format(replay_name))
+run_monitor("begin_record {}".format(isoname))
 
 progress("Running command inside guest...")
-run_console(project['command'])
+input_file_guest = join('/mnt/cdrom', input_file_base)
+run_console("LD_LIBRARY_PATH={} {}".format(
+    project['library_path'].format(install_dir='/mnt/cdrom'),
+    project['command'].format(
+        install_dir='/mnt/cdrom',
+        input_file=input_file_guest)))
 
 progress("Ending recording...")
 run_monitor("end_record")
@@ -108,26 +116,28 @@ console.close()
 shutil.rmtree(tempdir)
 
 progress("Starting first-pass replay...")
-qemu_args = ['-replay', replay_name,
+qemu_args = ['-replay', isoname,
         '-panda', 'taint2:no_tp',
-        '-panda', 'file_taint:notaint,filename=' + project['input_filename']]
+        '-panda', 'file_taint:notaint,filename=' + input_file_guest]
 qemu_replay = spawn(project['qemu'], qemu_args)
 qemu_replay.logfile_read = sys.stdout
 qemu_replay.expect_exact("saw open of file we want to taint")
 
-after_progress = qemu_replay.before.rpartition(replay_name + ":")[2]
+after_progress = qemu_replay.before.rpartition(os.path.basename(isoname) + ":")[2]
+print after_progress
 instr = int(after_progress.strip().split()[0])
 assert instr != 0
 qemu_replay.close()
 
 print
 progress("Starting second-pass replay, tainting from {}...".format(instr))
-qemu_args = ['-replay', replay_name,
-        '-pandalog', 'queries.plog',
+pandalog = 'queries-{}.plog'.format(os.path.basename(isoname))
+qemu_args = ['-replay', isoname,
+        '-pandalog', pandalog,
         '-panda', 'taint2:no_tp',
         '-panda', 'tainted_branch',
         '-panda', 'file_taint:pos,first_instr={},filename={}'.format(
-            instr, project['input_filename'])]
+            instr, input_file_guest)]
 
 subprocess32.check_call([project['qemu']]+ qemu_args, stdout=sys.stdout, stderr=sys.stderr)
 
@@ -148,7 +158,7 @@ else:
 
 print
 progress("Calling the FBI on queries.plog...")
-fbi_args = [join(lavadir, 'panda', 'fbi'), project_file, sourcedir]
+fbi_args = [join(lavadir, 'panda', 'fbi'), project_file, sourcedir, pandalog]
 subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
 
 print
