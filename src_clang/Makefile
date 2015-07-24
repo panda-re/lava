@@ -29,7 +29,7 @@ $(info Using LLVM_BIN_PATH = $(LLVM_BIN_PATH))
 $(info -----------------------------------------------)
 
 CXX := g++
-CXXFLAGS := -fexceptions -fno-rtti -O0 -g -std=c++11 -lpq
+CXXFLAGS := -fexceptions -fno-rtti -O0 -g -std=c++11 -lpq -I/usr/include/jsoncpp -ljsoncpp
 PLUGIN_CXXFLAGS := -fpic -fexceptions
 
 LLVM_CXXFLAGS := `$(LLVM_BIN_PATH)/llvm-config --cxxflags`

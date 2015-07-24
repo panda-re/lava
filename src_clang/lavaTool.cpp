@@ -3,6 +3,8 @@ extern "C" {
 #include <stdlib.h>
 }
 
+#include <json/json.h>
+
 #include <set>
 #include "includes.h"
 #include "lavaDB.h"
