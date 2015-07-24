@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import sys
 import random 
 import psycopg2
@@ -5,6 +7,7 @@ import shutil
 import subprocess32
 import json
 import os
+import shlex
 from os.path import dirname, join, abspath
 
 f = open(sys.argv[1])
@@ -25,7 +28,7 @@ atptype = {}
 # This is top-level directory for our LAVA stuff.
 top_dir = join(project['directory'], project['name'])
 lava_dir = dirname(dirname(abspath(sys.argv[0])))
-lava_tool = join(lava_dir, 'build', 'lavaTool')
+lava_tool = join(lava_dir, 'src_clang', 'build', 'lavaTool')
 
 # bugs_build dir assumptions
 # 1. we have run configure
@@ -39,10 +42,30 @@ except: pass
 tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
 bugs_root = tar_files.splitlines()[0].split(os.path.sep)[0]
 
+queries_build = join(top_dir, bugs_root)
 bugs_build = join(bugs_parent, bugs_root)
-print bugs_build
-subprocess32.check_call(['tar', 'xf', join(top_dir, 'btraced.tar.gz'),
-    '-C', bugs_parent], stderr=sys.stderr)
+bugs_install = join(bugs_build, 'lava-install')
+# Make sure directories and btrace is ready for bug injection.
+def run(args, **kwargs):
+    subprocess32.check_call(args, cwd=bugs_build,
+            stdout=sys.stdout, stderr=sys.stderr, **kwargs)
+if not os.path.exists(bugs_build):
+    subprocess32.check_call(['tar', 'xf', project['tarfile'],
+        '-C', bugs_parent], stderr=sys.stderr)
+if not os.path.exists(join(bugs_build, '.git')):
+    run(['git', 'init'])
+    run(['git', 'add', '-A', '.'])
+    run(['git', 'commit', '-m', 'Unmodified source.'])
+if not os.path.exists(join(bugs_build, 'btrace.log')):
+    run(shlex.split(project['configure']) + ['--prefix=' + bugs_install])
+    run([join(lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
+if not os.path.exists(join(bugs_build, 'compile_commands.json')):
+    run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'),
+            '/home/moyix/git/llvm/Debug+Asserts/lib/clang/3.6.1/include'])
+    run(['git', 'add', 'compile_commands.json'])
+    run(['git', 'commit', '-m', 'Add compile_commands.json.'])
+if not os.path.exists(bugs_install):
+    run(project['install'], shell=True)
 
 lavadb = join(top_dir, 'lavadb')
 
@@ -346,6 +369,7 @@ if __name__ == "__main__":
     build = False
     if rv!=0:
         # build failed
+        print outp
         print "build failed"    
     else:
         # build success
@@ -368,7 +392,7 @@ if __name__ == "__main__":
             # first, try the original file
             print "TESTING -- ORIG INPUT"
             orig_input = "%s/%s" % (inputfile_dir, dua.inputfile)
-            (rv, outp) = run_prog(bugs_build, orig_input)
+            (rv, outp) = run_prog(bugs_install, orig_input)
             print "retval = %d" % rv
             print "output:"
             lines = outp[0] + " ; " + outp[1]
@@ -382,7 +406,7 @@ if __name__ == "__main__":
             fuzzed_input = orig_input + "-fuzzed" + "." + suff
             print "fuzzed = [%s]" % fuzzed_input
             mutfile(orig_input, dua.lval_taint, fuzzed_input)
-            (rv, outp) = run_prog(bugs_build, fuzzed_input)
+            (rv, outp) = run_prog(bugs_install, fuzzed_input)
             print "retval = %d" % rv
             print "output:"
             lines = outp[0] + " ; " + outp[1]
