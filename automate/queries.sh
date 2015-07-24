@@ -1,4 +1,4 @@
-# Query insertion script. 
+# Query insertion script.
 #!/bin/bash
 
 progress() {
@@ -26,22 +26,39 @@ cd "$directory/$name"
 tarfile="$(jq -r .tarfile $json)"
 
 progress "Untarring $tarfile..."
-tar xf "$(jq -r .tarfile $json)"
-source=$(ls)
+source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
+if [ -e "$source" ]; then
+  rm -rf "$source"
+fi
+tar xf "$tarfile"
 
 progress "Entering $source."
 cd "$source"
 
+progress "Creating git repo."
+git init
+git add -A .
+git commit -m 'Unmodified source.'
+
 progress "Configuring..."
-$(jq -r .configure $json)
+mkdir -p lava-install
+$(jq -r .configure $json) --prefix=$(pwd)/lava-install
 
 progress "Making..."
 $lava/btrace/sw-btrace $(jq -r .make $json)
 
+progress "Installing..."
+$(jq -r .install $json)
+
 progress "Creating compile_commands.json..."
 $lava/btrace/sw-btrace-to-compiledb /home/moyix/git/llvm/Debug+Asserts/lib/clang/3.6.1/include
+git add compile_commands.json
+git commit -m 'Add compile_commands.json.'
 
 cd ..
+
+tar czf "btraced.tar.gz" "$source"
+
 c_files=$(python $lava/src_clang/get_c_files.py $source)
 c_dirs=$(for i in $c_files; do dirname $i; done | sort | uniq)
 
