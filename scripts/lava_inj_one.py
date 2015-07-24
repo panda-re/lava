@@ -2,12 +2,18 @@ import sys
 import random 
 import psycopg2
 import shutil
-import subprocess
+import subprocess32
+import json
+import os
+from os.path import dirname, join, abspath
 
+f = open(sys.argv[1])
+project = json.load(f)
+f.close()
 
 debugging = False
-db_host = "18.126.0.46"
-db = "tshark"
+db_host = project['dbhost']
+db = project['db']
 db_user = "postgres"
 db_password = "postgrespostgres"
 
@@ -16,19 +22,29 @@ inputfile = {}
 lval = {}
 atptype = {}
 
-home_dir = "/home/tleek"
-target_dir = home_dir + "/lava/src-to-src/wireshark-1.8.2"
-query_build = target_dir + "/wireshark-1.8.2.orig"
-git_dir = home_dir + "/git"
-lava_tool = git_dir + "/lava/src_clang/build/lavaTool"
+# This is top-level directory for our LAVA stuff.
+top_dir = join(project['directory'], project['name'])
+lava_dir = dirname(dirname(abspath(sys.argv[0])))
+lava_tool = join(lava_dir, 'build', 'lavaTool')
 
 # bugs_build dir assumptions
 # 1. we have run configure
 # 2. we have run make and make install
 # 3. compile_commands.json exists in bugs build dir and refers to files in the bugs_build dir
-bugs_build = target_dir + "/wireshark-1.8.2.bugs"
+bugs_parent = join(top_dir, 'bugs')
+try:
+    os.makedirs(bugs_parent)
+except: pass
 
-lavadb = home_dir + "/tshark-lavadb"
+tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
+bugs_root = tar_files.splitlines()[0].split(os.path.sep)[0]
+
+bugs_build = join(bugs_parent, bugs_root)
+print bugs_build
+subprocess32.check_call(['tar', 'xf', join(top_dir, 'btraced.tar.gz'),
+    '-C', bugs_parent], stderr=sys.stderr)
+
+lavadb = join(top_dir, 'lavadb')
 
 def get_conn():
     conn = psycopg2.connect(host=db_host, database=db, user=db_user, password=db_password)
@@ -77,6 +93,7 @@ def remaining_inj():
 
 
 def ptr_to_set(ptr, inputfile_id):
+    if ptr == 0: return []
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("select * from unique_taint_set where ptr = " + (str(ptr)) + " and inputfile_id = " + str(inputfile_id) + ";")
@@ -163,7 +180,7 @@ def filename_suff(p, fn):
     return suff
 
 def run_cmd(cmd, cw_dir,envv):
-    p = subprocess.Popen(cmd.split(), cwd=cw_dir, env=envv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess32.Popen(cmd.split(), cwd=cw_dir, env=envv, stdout=subprocess32.PIPE, stderr=subprocess32.PIPE)
     output = p.communicate()
     exitcode = p.returncode
     if debugging:
@@ -246,10 +263,10 @@ def mutfile(fn, lval_taint, new_fn):
 
 # here's how to run the built program
 def run_prog(install_dir, input_file):
-    cmd = "%s/install/bin/tshark -nnr %s" % (install_dir,input_file)
+    cmd = project['test_command'].format(install_dir=install_dir,input_file=input_file)
     print cmd
     envv = {}
-    envv["LD_LIBRARY_PATH"] = "%s/install/lib" % install_dir
+    envv["LD_LIBRARY_PATH"] = join(install_dir, project['library_path'])
     return run_cmd(cmd,install_dir,envv)
 
 
@@ -273,12 +290,14 @@ if __name__ == "__main__":
 
     next_bug_db = False
     if len(sys.argv) == 1:
+        print "usage: python lava_inj_one.py JSON [bugid]"
+    elif len(sys.argv) == 2:
         # no args -- get next bug from postgres
         print remaining_inj()
         (score, bug_id, dua_id, atp_id) = next_bug()
         next_bug_db = True
     else:
-        bug_id = int(sys.argv[1])
+        bug_id = int(sys.argv[2])
         score = 0
         (dua_id, atp_id) = get_bug(bug_id)
 
@@ -305,7 +324,7 @@ if __name__ == "__main__":
     run_cmd("/usr/bin/git checkout -f", bugs_build, None)
     # ugh -- with tshark if you *dont* do this, your bug-inj source may not build, sadly
     # it looks like their makefile doesn't understand its own dependencies, in fact
-    run_cmd("make clean", bugs_build, None)
+    #run_cmd("make clean", bugs_build, None)
 
 
     print "------------\n"
