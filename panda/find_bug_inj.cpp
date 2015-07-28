@@ -60,21 +60,6 @@ std::map<uint32_t,std::string> ind2str;
 
 bool debug = false;
 
-void get_last_instr(const char *pandalog_filename) {
-    printf ("Computing dua and ap stats\n");
-    pandalog_open(pandalog_filename, "r");
-    while (1) {
-        Panda__LogEntry *ple = pandalog_read_entry();
-        if (ple == NULL) break;
-        if (ple->instr != -1) {
-            last_instr_count = ple->instr;
-        }
-    }
-    //    printf ("%" PRIu64 "is last instr\n", last_instr_count);
-    pandalog_close();
-}
-    
-
 std::pair<float, float> update_range(float val, std::pair<float, float> range) {
     if (val < range.first) {
         range.first = val;
@@ -776,15 +761,16 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
 
 
 int main (int argc, char **argv) {
-    if (argc != 3) {
-        printf ("usage: fbi project.json src_pfx\n");
+    if (argc != 5) {
+        printf ("usage: fbi project.json src_pfx pandalog inputfile\n");
         printf("    src_pfx: Prefix of source tree from lavaTool queries, so we can strip it\n");
         printf("    JSON file should have properties:\n");
         printf("        max_liveness: Maximum liveness for DUAs\n");
         printf("        max_cardinality: Maximum cardinality for labelsets on DUAs\n");
         printf("        max_tcn: Maximum taint compute number for DUAs\n");
         printf("        max_lval_size: Maximum bytewise size for \n");
-        printf("        input_filename: Filename of input to program in query replay (malware.pcap, e.g.)\n");
+        printf("    pandalog: Pandalog. Should be like queries-file-5.22-bash.iso.plog\n");
+        printf("    inputfile: Input file path as known to the guest, like /mnt/cdrom/malware.pcap");
         exit (1);
     }
 
@@ -796,7 +782,7 @@ int main (int argc, char **argv) {
     std::string name = root["name"].asString();
     std::string directory = root_directory + "/" + name;
 
-    std::string plog = directory + "/queries.plog";
+    std::string plog(argv[3]);
     std::string lavadb = directory + "/lavadb";
 
     // panda log file
@@ -812,7 +798,7 @@ int main (int argc, char **argv) {
     printf ("max tcn for addr = %d\n", max_tcn);
     uint32_t max_lval = root["max_lval_size"].asUInt();
     printf ("max lval size = %d\n", max_lval);
-    inputfile = root["input_filename"].asString();
+    inputfile = std::string(argv[4]);
     src_pfx = std::string(argv[2]);
     std::map <uint32_t, float> liveness;
     PGconn *conn = pg_connect(root["dbhost"].asString(), root["db"].asString());
