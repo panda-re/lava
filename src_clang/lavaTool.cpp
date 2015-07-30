@@ -169,7 +169,40 @@ public:
         }
         return query.str();
     }
-        
+
+    /*
+      recurse to determine if this statement contains any declarations 
+      if expr is a fn arg this would mean any lvals for those decls wouldn't be in scope before
+      the fn call
+    */
+    bool ContainsDecl(Stmt *s) {
+        if (s) {
+            //            s->dump();
+            DeclStmt *ds = dyn_cast<DeclStmt>(s);
+            if (ds) {
+                //                errs() << "is a decl\n";
+                return true;  // found decl
+            }
+            if (s->child_begin() == s->child_end()) {
+                // leaf node
+                //                errs() << "leaf\n";
+                return false;
+            }
+            else {
+                //                errs() << "nonleaf\n";
+                // s not a leaf -- has children
+                int i = 0;
+                for ( auto &child : s->children() ) {
+                    i ++;
+                    //                    errs() << "child " << i << "\n";
+                    if  (ContainsDecl(child)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+
     void CollectLvalsStmt(Stmt *s, std::set<Expr *> &lvals) {
         if (s) {
             if (s->child_begin() == s->child_end()) {
@@ -203,7 +236,9 @@ public:
     // Find lvals buried in e. new lvals get added to lvals set
     void CollectLvals(Expr *e, std::set<Expr *> &lvals) {
         Stmt *s = dyn_cast<Stmt>(e);
-        CollectLvalsStmt(s, lvals);
+        if (s) {
+            CollectLvalsStmt(s, lvals);
+        }
     }
 
     /*
@@ -213,15 +248,16 @@ public:
     */
     void CollectLlvalsStruct1stLevel(std::string lv_name, RecordDecl *rd, bool pointer, std::set<Llval> &llvals) {
         for (auto field : rd->fields()) {
-            if (!field->isBitField()) {
-                if (! InFieldBlackList(field->getName().str())) {
-                    std::string accessor =
-                        (pointer ? (std::string("->")) : (std::string(".")));                    
-                    std::string lval_ss = 
-                        lv_name + accessor + field->getName().str();
-                    std::string pointer_tst = (pointer ? lv_name : "");
-                    llvals.insert( { lval_ss, pointer_tst } ); 
-                }
+            if ( (!(field->getType()->isIncompleteType()))
+                 && (!(field->getType()->isIncompleteArrayType()))
+                 && (!(field->isBitField())) 
+                 && (!(InFieldBlackList(field->getName().str())))) {
+                std::string accessor =
+                    (pointer ? (std::string("->")) : (std::string(".")));                    
+                std::string lval_ss = 
+                    lv_name + accessor + field->getName().str();
+                std::string pointer_tst = (pointer ? lv_name : "");
+                llvals.insert( { lval_ss, pointer_tst } ); 
             }
         }
     }
@@ -257,8 +293,8 @@ public:
     bool CanGetSizeOf(Expr *e) {
         assert (e->isLValue());
         DeclRefExpr *d = dyn_cast<DeclRefExpr>(e);
-        const Type *t = e->getType().getTypePtr();
         if (d) {
+            const Type *t = e->getType().getTypePtr();
             VarDecl *vd = dyn_cast<VarDecl>(d->getDecl());
             if (vd) {
                 if (vd->getStorageClass() == SC_Register) return false;
@@ -468,6 +504,8 @@ public:
         for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {
             //            errs() << "i=" << i << "\n";
             Expr *arg = dyn_cast<Expr>(*it);
+            // really, this cast can't fail, right?
+            assert(arg); 
             if (i == arg_num) {
                 // for malloc, we want the lava switch to undersize the malloc to a few bytes
                 // and hope for an overflow
@@ -651,18 +689,31 @@ public:
                 rv_before = (rqt.getAsString()) + " " + retvalname + " = ";
                 rv_after = retvalname + ";";
             }
+            int i = 0;
             for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
-                Expr *arg = dyn_cast<Expr>(*it);
-                // collect all lvals explicit in expr (so, 'a' and 'b' for 'a+b')
-                std::set<Expr *> lvals;
-                CollectLvals(arg, lvals);
-                // now collect lvals as llvals
-                // for lvals that are structs, for all 1st-level fields.  
-                for ( auto lval : lvals ) {
-                    std::string lv_name = "(" + ExprStr(lval) + ")";
-                    std::string pointer_tst = (lval->getType().getTypePtr()->isPointerType() ? lv_name : "");
-                    llvals.insert( {lv_name, pointer_tst} );
-                    CollectLlvalsStruct(lval, llvals);
+                i ++;
+                Stmt *stmt = dyn_cast<Stmt>(*it);
+                if (stmt) {
+                    Expr *arg = dyn_cast<Expr>(*it);
+                    // can't fail, right? 
+                    assert (arg);
+                    //                    arg->dump();
+                    errs() << "arg " << i << " ";
+                    bool cd = ContainsDecl(stmt);
+                    errs() << "containsdecl? " << cd << "\n";
+                    if (! cd) {
+                        // collect all lvals explicit in expr (so, 'a' and 'b' for 'a+b')
+                        std::set<Expr *> lvals;
+                        CollectLvals(arg, lvals);
+                        // now collect lvals as llvals
+                        // for lvals that are structs, for all 1st-level fields.  
+                        for ( auto lval : lvals ) {
+                            std::string lv_name = "(" + ExprStr(lval) + ")";
+                            std::string pointer_tst = (lval->getType().getTypePtr()->isPointerType() ? lv_name : "");
+                            llvals.insert( {lv_name, pointer_tst} );
+                            CollectLlvalsStruct(lval, llvals);
+                        }
+                    }
                 }
             }
             // compose and collect dua code: either taint queries or dua siphoning
@@ -742,8 +793,7 @@ public:
             //(*b)->dump();
             VarDecl *vd = dyn_cast<VarDecl>(*b);
             if (vd) {
-                if (vd->isFileVarDecl() && vd->hasGlobalStorage())
-                {
+                if (vd->isFileVarDecl() && vd->hasGlobalStorage())  {
                     globalVars.push_back(vd);
                 }  
             }
