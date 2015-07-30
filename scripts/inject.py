@@ -251,8 +251,11 @@ def add_build_row(bugs, compile_succ):
 
 
 def get_suffix(fn):
-    return (fn.split("."))[-1]
-
+    split = fn.split(".")
+    if len(split) == 0:
+        return ""
+    else:
+        return "." + split[-1]
 
 lava = "lava"
 lava_bytes = [hex(ord(x)) for x in lava]
@@ -402,7 +405,8 @@ if __name__ == "__main__":
             # second, fuzz it with the magic value
             print "TESTING -- FUZZED INPUT"
             suff = get_suffix(orig_input)
-            fuzzed_input = orig_input + "-fuzzed" + "." + suff
+            pref = orig_input[:-len(suff)]
+            fuzzed_input = pref + "-fuzzed" + suff
             print "fuzzed = [%s]" % fuzzed_input
             mutfile(orig_input, dua.lval_taint, fuzzed_input)
             (rv, outp) = run_prog(bugs_install, fuzzed_input)
