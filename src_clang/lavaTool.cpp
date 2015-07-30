@@ -720,7 +720,7 @@ public:
 
     bool VisitFunctionDecl(FunctionDecl *FD) {
         //printf("FunctionDecl %s!\n", FD->getName().str().c_str());
-        if (FD->getName() == "main") {
+        if (LavaAction == LavaInjectBugs && FD->getName() == "main") {
             // This is the file with main! insert lava_[gs]et and whatever.
             std::string lava_funcs_path(LavaPath + "/src_clang/lava_set.c");
             std::ifstream lava_funcs_file(lava_funcs_path);
@@ -730,6 +730,7 @@ public:
             printf("%s", temp.str().c_str());
             new_start_of_file_src << temp.str();
         }
+        return true;
     }
 
 private:
