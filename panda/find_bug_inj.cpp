@@ -770,7 +770,7 @@ int main (int argc, char **argv) {
         printf("        max_tcn: Maximum taint compute number for DUAs\n");
         printf("        max_lval_size: Maximum bytewise size for \n");
         printf("    pandalog: Pandalog. Should be like queries-file-5.22-bash.iso.plog\n");
-        printf("    inputfile: Input file path as known to the guest, like /mnt/cdrom/malware.pcap");
+        printf("    inputfile: Input file basename, like malware.pcap");
         exit (1);
     }
 
