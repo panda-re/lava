@@ -92,7 +92,6 @@ console.expect_exact("root@debian-i386:~#")
 progress("Inserting CD...")
 run_monitor("change ide1-cd0 {}".format(isoname))
 run_console("mkdir -p /mnt/cdrom")
-run_console("umount /mnt/cdrom")
 run_console("mount /dev/cdrom /mnt/cdrom")
 
 # Use the ISO name as the replay name.
@@ -158,7 +157,7 @@ else:
 
 print
 progress("Calling the FBI on queries.plog...")
-fbi_args = [join(lavadir, 'panda', 'fbi'), project_file, sourcedir, pandalog, input_file_guest]
+fbi_args = [join(lavadir, 'panda', 'fbi'), project_file, sourcedir, pandalog, input_file_base]
 subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
 
 print

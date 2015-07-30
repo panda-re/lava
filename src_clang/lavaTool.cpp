@@ -1,6 +1,7 @@
 
 extern "C" {
 #include <stdlib.h>
+#include <libgen.h>
 }
 
 #include <json/json.h>
@@ -14,6 +15,7 @@ extern "C" {
 
 std::string BuildPath; 
 char resolved_path[512];
+std::string LavaPath;
 
 using namespace clang;
 using namespace clang::driver;
@@ -772,6 +774,21 @@ public:
     */
     }
 
+    bool VisitFunctionDecl(FunctionDecl *FD) {
+        //printf("FunctionDecl %s!\n", FD->getName().str().c_str());
+        if (LavaAction == LavaInjectBugs && FD->getName() == "main") {
+            // This is the file with main! insert lava_[gs]et and whatever.
+            std::string lava_funcs_path(LavaPath + "/src_clang/lava_set.c");
+            std::ifstream lava_funcs_file(lava_funcs_path);
+            std::stringbuf temp;
+            lava_funcs_file.get(temp, '\0');
+            printf("Inserting stufff from %s:\n", lava_funcs_path.c_str());
+            printf("%s", temp.str().c_str());
+            new_start_of_file_src << temp.str();
+        }
+        return true;
+    }
+
 private:
 
     std::map<std::string,uint32_t> &StringIDs;
@@ -863,8 +880,10 @@ int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
 
+    LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
+
     for (int i=0; i<argc; i++) {
-        if (0 == strncmp(argv[i], "-p", 2)) {
+        if (0 == strcmp(argv[i], "-p")) {
             BuildPath = std::string(argv[i+1]);
             errs() << "BuildPath = [" << BuildPath << "]\n";
         }

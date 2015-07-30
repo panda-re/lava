@@ -8,13 +8,14 @@ import subprocess32
 import json
 import os
 import shlex
-from os.path import dirname, join, abspath
+from os.path import basename, dirname, join, abspath
 
-f = open(sys.argv[1])
+project_file = sys.argv[1]
+f = open(project_file)
 project = json.load(f)
 f.close()
 
-debugging = False
+debugging = True
 db_host = project['dbhost']
 db = project['db']
 db_user = "postgres"
@@ -229,7 +230,8 @@ def inject_bug_part_into_src(bug_id, suff):
 #    make_safe_copy(filename_bug_part)
     cmd = lava_tool + ' -action=inject -bug-list=\"' + str(bug_id) \
         + '\" -lava-db=' + lavadb + ' -p ' + bugs_build \
-        + ' ' + filename_bug_part 
+        + ' ' + filename_bug_part \
+        + ' ' + '-project-file=' + project_file
     run_cmd(cmd, None, None)
 
 
@@ -251,8 +253,11 @@ def add_build_row(bugs, compile_succ):
 
 
 def get_suffix(fn):
-    return (fn.split("."))[-1]
-
+    split = basename(fn).split(".")
+    if len(split) == 1:
+        return ""
+    else:
+        return "." + split[-1]
 
 lava = "lava"
 lava_bytes = [hex(ord(x)) for x in lava]
@@ -286,7 +291,7 @@ def mutfile(fn, lval_taint, new_fn):
 
 # here's how to run the built program
 def run_prog(install_dir, input_file):
-    cmd = project['test_command'].format(install_dir=install_dir,input_file=input_file)
+    cmd = project['command'].format(install_dir=install_dir,input_file=input_file)
     print cmd
     envv = {}
     envv["LD_LIBRARY_PATH"] = join(install_dir, project['library_path'])
@@ -352,14 +357,13 @@ if __name__ == "__main__":
 
     print "------------\n"
     print "INJECTING BUGS INTO SOURCE"
+    inject_files = set([dua.filename, atp.filename, project['main_file']])
     # modify src @ the dua to siphon off tainted bytes into global
-    inject_bug_part_into_src(bug_id, dua.filename)
-
+    # modify src the atp to use that global
+    # modify main to include lava_set
     # only if they are in different files
-    if dua.filename != atp.filename:
-        # modify src the atp to use that global
-        inject_bug_part_into_src(bug_id, atp.filename)
-
+    for f in inject_files:
+        inject_bug_part_into_src(bug_id, f)
 
     # compile
     print "------------\n"
@@ -391,6 +395,7 @@ if __name__ == "__main__":
             # first, try the original file
             print "TESTING -- ORIG INPUT"
             orig_input = join(queries_build, 'lava-install', dua.inputfile)
+            print orig_input
             (rv, outp) = run_prog(bugs_install, orig_input)
             print "retval = %d" % rv
             print "output:"
@@ -402,7 +407,8 @@ if __name__ == "__main__":
             # second, fuzz it with the magic value
             print "TESTING -- FUZZED INPUT"
             suff = get_suffix(orig_input)
-            fuzzed_input = orig_input + "-fuzzed" + "." + suff
+            pref = orig_input[:-len(suff)] if suff != "" else orig_input
+            fuzzed_input = pref + "-fuzzed" + suff
             print "fuzzed = [%s]" % fuzzed_input
             mutfile(orig_input, dua.lval_taint, fuzzed_input)
             (rv, outp) = run_prog(bugs_install, fuzzed_input)
