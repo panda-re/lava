@@ -10,7 +10,8 @@ import os
 import shlex
 from os.path import dirname, join, abspath
 
-f = open(sys.argv[1])
+project_file = sys.argv[1]
+f = open(project_file)
 project = json.load(f)
 f.close()
 
@@ -229,7 +230,8 @@ def inject_bug_part_into_src(bug_id, suff):
 #    make_safe_copy(filename_bug_part)
     cmd = lava_tool + ' -action=inject -bug-list=\"' + str(bug_id) \
         + '\" -lava-db=' + lavadb + ' -p ' + bugs_build \
-        + ' ' + filename_bug_part 
+        + ' ' + filename_bug_part \
+        + ' ' + '-project-file=' + project_file
     run_cmd(cmd, None, None)
 
 

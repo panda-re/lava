@@ -809,7 +809,7 @@ int main(int argc, const char **argv) {
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
 
     for (int i=0; i<argc; i++) {
-        if (0 == strncmp(argv[i], "-p", 2)) {
+        if (0 == strcmp(argv[i], "-p")) {
             BuildPath = std::string(argv[i+1]);
             errs() << "BuildPath = [" << BuildPath << "]\n";
         }
