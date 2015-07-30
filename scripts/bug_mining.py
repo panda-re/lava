@@ -92,7 +92,6 @@ console.expect_exact("root@debian-i386:~#")
 progress("Inserting CD...")
 run_monitor("change ide1-cd0 {}".format(isoname))
 run_console("mkdir -p /mnt/cdrom")
-run_console("umount /mnt/cdrom")
 run_console("mount /dev/cdrom /mnt/cdrom")
 
 # Use the ISO name as the replay name.
