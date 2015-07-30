@@ -1,0 +1,7 @@
+includes.h.gch
+*.o
+*.so
+/libexec
+btrace.log
+.*.swp
+~*
