@@ -174,14 +174,19 @@ public:
         if (s) {
             if (s->child_begin() == s->child_end()) {
                 // s is a leaf node -- it must be an expression?
-                Expr *e = dyn_cast<Expr>(s)->IgnoreCasts(); 
-                if (e->isLValue()) {
-                    StringLiteral *sl = dyn_cast<StringLiteral>(e);
-                    if (!sl) {
-                        // e is an lval and NOT a string literl
-                        if (CanGetSizeOf(e)) {
-                            // make sure its not a register
-                            lvals.insert(e->IgnoreCasts());
+                Expr *e = dyn_cast<Expr>(s);
+                if (e) {
+                    if (! ((e->getType().getTypePtr())->isNullPtrType()) ) {
+                        Expr *eic = e->IgnoreCasts(); 
+                        if (eic->isLValue()) {
+                            StringLiteral *sl = dyn_cast<StringLiteral>(eic);
+                            if (!sl) {
+                                // e is an lval and NOT a string literl
+                                if (CanGetSizeOf(eic)) {
+                                    // make sure its not a register
+                                    lvals.insert(eic->IgnoreCasts());
+                                }
+                            }
                         }
                     }
                 }
@@ -819,10 +824,11 @@ int main(int argc, const char **argv) {
     Json::Value root;
     json_file >> root;
 
-    std::string dbhost(root["dbhost"].asString());
-    std::string dbname(root["db"].asString());
 
     if (LavaAction == LavaInjectBugs) {
+        std::string dbhost(root["dbhost"].asString());
+        std::string dbname(root["db"].asString());
+
         PGconn *conn = pg_connect(dbhost, dbname);
         // get bug info for the injections we are supposed to be doing.
         errs() << "LavaBugList: [" << LavaBugList << "]\n";
