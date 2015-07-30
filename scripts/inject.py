@@ -357,14 +357,13 @@ if __name__ == "__main__":
 
     print "------------\n"
     print "INJECTING BUGS INTO SOURCE"
+    inject_files = set([dua.filename, atp.filename, project['main_file']])
     # modify src @ the dua to siphon off tainted bytes into global
-    inject_bug_part_into_src(bug_id, dua.filename)
-
+    # modify src the atp to use that global
+    # modify main to include lava_set
     # only if they are in different files
-    if dua.filename != atp.filename:
-        # modify src the atp to use that global
-        inject_bug_part_into_src(bug_id, atp.filename)
-
+    for f in inject_files:
+        inject_bug_part_into_src(bug_id, f)
 
     # compile
     print "------------\n"
