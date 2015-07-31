@@ -1,5 +1,17 @@
 # Query insertion script.
 #!/bin/bash
+#
+# Takes one argument, a json project file.
+# That must contain all of the following
+#
+# name         name for project, usually the name of the software (binutils-2.25, openssh-2.1, etc)
+# directory    directory in which src-2-src query injection will occur -- should be somewhere on the nas
+# tarfile      path to software tar file
+# configure    how to configure the software (./configure plus arguments)
+# make         how to make the software (make might have args or might have FOO=bar required precursors)
+# install      how to install the software (note that configure will be run with --prefix ...lava-install)
+#
+
 
 progress() {
   echo
