@@ -2,7 +2,7 @@
 #!/bin/bash
 #
 # Takes one argument, a json project file.
-# That must contain all of the following
+# That json file must contain all of the following
 #
 # name         name for project, usually the name of the software (binutils-2.25, openssh-2.1, etc)
 # directory    directory in which src-2-src query injection will occur -- should be somewhere on the nas
@@ -10,6 +10,20 @@
 # configure    how to configure the software (./configure plus arguments)
 # make         how to make the software (make might have args or might have FOO=bar required precursors)
 # install      how to install the software (note that configure will be run with --prefix ...lava-install)
+#
+# script proceeds to untar the software, run btrace on it to extract a compile_commands.json file,
+# which contains all information needed to compile every file in the project.
+# then, the script runs lavaTool using that compile_commands.json file, on every source file,
+# adding extra source code to perform taint queries.  At the time of this writing, the taint
+# queries were for every argument of every fn call, injected both before and after the call.
+# Also, the return value of the fn is queried.  Oh, and lavaTool also injects "queries" that
+# indicate when a potential attack point has been encountered.  At the time of this writing,
+# that includes calls to memcpy and malloc.
+#
+# After lavaTool has transformed this source, it exits.  You should now try to make the project
+# and deal with any complaints (often src-to-src breaks the code a little). Once you have a working
+# version of the compiled exec with queries you will need to log on to a 64-bit machine
+# and run the bug_mining.py script (which uses PANDA to trace taint).
 #
 
 
