@@ -20,17 +20,21 @@ DROP TABLE IF EXISTS bugkey;
 DROP TABLE IF EXISTS dua;
 DROP TABLE IF EXISTS atp;
 
-
 DROP TABLE IF EXISTS sourcefile;
-DROP TABLE IF EXISTS inputfile;
 DROP TABLE IF EXISTS lval;
 DROP TABLE IF EXISTS atptype;
+
+drop table if exists unique_taint_set;
+
+DROP TABLE IF EXISTS inputfile;
+
 
 -- DROP TABLE IF EXISTS lava_lock;
 
 -- drop database if exists tshark;
-drop role if exists lava;
+drop user if exists lava;
 
+create language plpythonu;
 
 CREATE USER lava WITH PASSWORD 'llaavvaa';
 -- create DATABASE tshark;
@@ -66,7 +70,6 @@ CREATE TABLE atptype (
 
 
 
-drop table if exists unique_taint_set;
 
 CREATE TABLE unique_taint_set (
   ptr          numeric,
@@ -322,7 +325,7 @@ $$ LANGUAGE plpythonu;
 
 
 
-drop function get_runs(integer);
+drop function if exists get_runs(integer);
 
 drop type if exists fishy_run;
 

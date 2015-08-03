@@ -108,12 +108,14 @@ console = spawn("socat", ["stdin", "unix-connect:" + serial_path])
 console.logfile = open(os.path.join(tempdir, 'console.txt'), 'w')
 
 def run_monitor(cmd):
+    print "monitor cmd: [%s]" % cmd
     print Style.BRIGHT + "(qemu)" + Style.RESET_ALL,
     monitor.sendline(cmd)
     monitor.expect_exact("(qemu)")
     print monitor.before.partition("\r\n")[2]
 
 def run_console(cmd):
+    print "console cmd: [%s]" % cmd
     print Style.BRIGHT + "root@debian-i386:~#" + Style.RESET_ALL,
     console.sendline(cmd)
     console.expect_exact("root@debian-i386:~#")
@@ -193,6 +195,7 @@ else:
 print
 progress("Calling the FBI on queries.plog...")
 fbi_args = [join(lavadir, 'panda', 'fbi'), project_file, sourcedir, pandalog, input_file_base]
+print "fbi invocation: [%s]" (" ".join(fbi_args))
 subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
 
 print
