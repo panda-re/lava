@@ -1,3 +1,22 @@
+'''
+This script assumes you have already done src-to-src transformation with
+lavaTool to add taint and attack point queries to a program, AND managed to
+get it to compile.  The script 
+
+Only two inputs to the script.
+
+First is a json project file.  The set of asserts below 
+indicate the required json fields and their meaning.
+
+Second is input file you want to run, under panda, to get taint info.  
+
+
+'''
+
+
+
+
+
 import os
 import socket
 import sys
@@ -23,13 +42,29 @@ project_file = abspath(sys.argv[1])
 input_file = abspath(sys.argv[2])
 input_file_base = os.path.basename(input_file)
 project = json.load(open(project_file, "r"))
+
+
+# *** Required json fields 
+# path to qemu exec (correct guest)
 assert 'qemu' in project
+# name of snapshot from which to revert which will be booted & logged in as root?
 assert 'snapshot' in project
+# same directory as in add_queries.sh, under which will be the build
 assert 'directory' in project
+# command line to run the target program (already instrumented with taint and attack queries)
 assert 'command' in project
+# path to guest qcow
 assert 'qcow' in project
+# name of project 
 assert 'name' in project
+# path to tarfile for target (original source)
+assert 'tarfile' in project
+# if needed, what to set LD_LIBRARY_PATH to
+assert 'library_path' in project
+# network name of host where postgres is running
 assert 'dbhost' in project
+# namespace in db for prospective bugs
+assert 'db' in project
 
 lavadir = dirname(dirname(abspath(sys.argv[0])))
 
@@ -149,9 +184,9 @@ createdb_result = subprocess32.call(createdb_args, stdout=sys.stdout, stderr=sys
 print
 if createdb_result == 0: # Created new DB; now populate
     progress("Database created. Initializing...")
-    pgsql_args = ['pgsql', '-h', project['dbhost'], '-U', 'postgres',
+    psql_args = ['psql', '-h', project['dbhost'], '-U', 'postgres',
             '-d', project['db'], '-f', join(join(lavadir, 'sql'), 'lava.sql')]
-    subprocess32.check_call(pgsql_args, stdout=sys.stdout, stderr=sys.stderr)
+    subprocess32.check_call(psql_args, stdout=sys.stdout, stderr=sys.stderr)
 else:
     progress("Database already exists.")
 
