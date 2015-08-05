@@ -7,6 +7,5 @@ fbi: find_bug_inj.cpp \
     ../sql/lava_sql.cpp \
     ../src_clang/lavaDB.cpp \
     ../../panda/qemu/panda/pandalog.c \
-    ../../panda/qemu/panda/pandalog.pb-c.c \
-    ../../panda/qemu/panda/pandalog_print.c
+    ../../panda/qemu/panda/pandalog.pb-c.c
 	g++ -o $@ $^ $(LDFLAGS) $(CXXFLAGS)
