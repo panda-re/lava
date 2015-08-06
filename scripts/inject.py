@@ -407,7 +407,7 @@ if __name__ == "__main__":
             print "------------\n"
             # first, try the original file
             print "TESTING -- ORIG INPUT"
-            orig_input = join(queries_build, 'lava-install', dua.inputfile)
+            orig_input = join(top_dir, 'inputs', dua.inputfile)
             print orig_input
             (rv, outp) = run_prog(bugs_install, orig_input)
             print "retval = %d" % rv
