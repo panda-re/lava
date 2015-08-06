@@ -81,9 +81,13 @@ print
 isoname = '{}-{}.iso'.format(sourcedir, input_file_base)
 progress("Creaing ISO {}...".format(isoname))
 installdir = join(sourcedir, 'lava-install')
-shutil.copy(input_file, installdir + '/')
+shutil.copy(input_file, join(installdir, input_file_base))
 subprocess32.check_call(['genisoimage', '-R', '-J',
     '-o', isoname, installdir])
+try: os.mkdir('inputs')
+except: pass
+shutil.copy(input_file, 'inputs/')
+os.unlink(join(installdir, input_file_base))
 
 tempdir = tempfile.mkdtemp()
 
