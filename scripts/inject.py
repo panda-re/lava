@@ -421,7 +421,7 @@ if __name__ == "__main__":
             print "TESTING -- FUZZED INPUT"
             suff = get_suffix(orig_input)
             pref = orig_input[:-len(suff)] if suff != "" else orig_input
-            fuzzed_input = pref + "-fuzzed" + suff
+            fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug_id, suff)
             print "fuzzed = [%s]" % fuzzed_input
             mutfile(orig_input, dua.lval_taint, fuzzed_input)
             (rv, outp) = run_prog(bugs_install, fuzzed_input)
