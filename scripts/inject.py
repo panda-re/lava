@@ -217,35 +217,17 @@ def get_suffix(fn):
     else:
         return "." + split[-1]
 
-lava = "lava"
-lava_bytes = [hex(ord(x)) for x in lava]
+# fuzz_offsets is a list of tainted byte offsets within file filename.
+# replace those bytes with random in a new file named new_filename
+def mutfile(filename, lval_taint, new_filename):
+    # collect set of tainted offsets in file.
+    fuzz_offsets = set(sum(lval_taint, []))
+    file_bytes = bytearray(open(filename).read())
 
-# fuzz_offsets is a list of byte offsets within file fn.
-# replace those bytes with random in a new file named new_fn
-def mutfile(fn, lval_taint, new_fn):
-    # collect set of offsets in file to fuzz in order to manipulate at most
-    # the first 4 bytes of lval
-    fuzz_offsets = set([])
-    for ts in lval_taint:
-        for off in ts:
-            fuzz_offsets.add(off)
-    bytes = open(fn).read()
-    f = open(new_fn, "w")
-    i=0
-    j=0
-    for b in bytes:
-        if (i in fuzz_offsets):
-#            f.write(chr(random.randint(0,255)))
-#            print j
-            f.write(chr(int(lava_bytes[j],16)))
-            j+=1
-            # just use those bytes over and over
-            if j == len(lava_bytes):
-                j = 0
-        else:
-            f.write(b)
-        i+=1
-
+    # change first 4 bytes to "lava"
+    for (i, offset) in zip(range(4), fuzz_offsets):
+        file_bytes[offset] = "lava"[i]
+    open(new_filename, "w").write(file_bytes)
 
 # here's how to run the built program
 def run_prog(install_dir, input_file):
