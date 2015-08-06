@@ -438,6 +438,7 @@ if __name__ == "__main__":
             print "TESTING FAIL"
             if next_bug_db:
                 add_run_row(build_id, False, 1, "", True)
+            raise
 
 
 
