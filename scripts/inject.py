@@ -369,7 +369,7 @@ if __name__ == "__main__":
     print "------------\n"
     print "ATTEMPTING BUILD OF INJECTED BUG"
     print "build_dir = " + bugs_build
-    (rv, outp) = run_cmd("make -j 12 ", bugs_build, None)
+    (rv, outp) = run_cmd(project['make'] + " -j12", bugs_build, None)
     build = False
     if rv!=0:
         # build failed
