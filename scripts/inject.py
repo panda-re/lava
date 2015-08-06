@@ -5,70 +5,15 @@ import random
 import psycopg2
 import shutil
 import subprocess32
+import argparse
 import json
 import os
 import shlex
 from os.path import basename, dirname, join, abspath
 
-project_file = sys.argv[1]
-f = open(project_file)
-project = json.load(f)
-f.close()
+project = None
 
-debugging = True
-db_host = project['dbhost']
-db = project['db']
-db_user = "postgres"
-db_password = "postgrespostgres"
-
-sourcefile = {}
-inputfile = {}
-lval = {}
-atptype = {}
-
-# This is top-level directory for our LAVA stuff.
-top_dir = join(project['directory'], project['name'])
-lava_dir = dirname(dirname(abspath(sys.argv[0])))
-lava_tool = join(lava_dir, 'src_clang', 'build', 'lavaTool')
-
-# bugs_build dir assumptions
-# 1. we have run configure
-# 2. we have run make and make install
-# 3. compile_commands.json exists in bugs build dir and refers to files in the bugs_build dir
-bugs_parent = join(top_dir, 'bugs')
-try:
-    os.makedirs(bugs_parent)
-except: pass
-
-tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
-bugs_root = tar_files.splitlines()[0].split(os.path.sep)[0]
-
-queries_build = join(top_dir, bugs_root)
-bugs_build = join(bugs_parent, bugs_root)
-bugs_install = join(bugs_build, 'lava-install')
-# Make sure directories and btrace is ready for bug injection.
-def run(args, **kwargs):
-    subprocess32.check_call(args, cwd=bugs_build,
-            stdout=sys.stdout, stderr=sys.stderr, **kwargs)
-if not os.path.exists(bugs_build):
-    subprocess32.check_call(['tar', 'xf', project['tarfile'],
-        '-C', bugs_parent], stderr=sys.stderr)
-if not os.path.exists(join(bugs_build, '.git')):
-    run(['git', 'init'])
-    run(['git', 'add', '-A', '.'])
-    run(['git', 'commit', '-m', 'Unmodified source.'])
-if not os.path.exists(join(bugs_build, 'btrace.log')):
-    run(shlex.split(project['configure']) + ['--prefix=' + bugs_install])
-    run([join(lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
-if not os.path.exists(join(bugs_build, 'compile_commands.json')):
-    run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'),
-            '/home/moyix/git/llvm/Debug+Asserts/lib/clang/3.6.1/include'])
-    run(['git', 'add', 'compile_commands.json'])
-    run(['git', 'commit', '-m', 'Add compile_commands.json.'])
-if not os.path.exists(bugs_install):
-    run(project['install'], shell=True)
-
-lavadb = join(top_dir, 'lavadb')
+debugging = False
 
 def get_conn():
     conn = psycopg2.connect(host=db_host, database=db, user=db_user, password=db_password)
@@ -95,6 +40,19 @@ def next_bug():
     conn.commit()
     conn.close()
     return bug
+
+def next_bug_random():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM bug WHERE inj=false OFFSET floor(random() * (SELECT COUNT(*) FROM bug WHERE inj=false) ) LIMIT 1;");
+    bug = cur.fetchone()
+    # need to do all three of these in order for the writes to db to actually happen
+    cur.close()
+    conn.commit()
+    conn.close()
+    return bug
+
+
 
 def get_bug(bug_id):
     conn = get_conn()
@@ -317,30 +275,103 @@ def add_run_row(build_id, fuzz, exitcode, lines, success):
 if __name__ == "__main__":    
 
     next_bug_db = False
-    if len(sys.argv) == 1:
-        print "usage: python lava_inj_one.py JSON [bugid]"
-    elif len(sys.argv) == 2:
-        # no args -- get next bug from postgres
-        print remaining_inj()
-        (score, bug_id, dua_id, atp_id) = next_bug()
-        next_bug_db = True
-    else:
-        bug_id = int(sys.argv[2])
+    parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
+    parser.add_argument('project', type=argparse.FileType('r'),
+            help = 'JSON project file')
+    parser.add_argument('bugid', nargs='?', type=int, default=-1,
+            help = 'Bug id (otherwise, highest scored will be chosen)')
+    parser.add_argument('-r', '--randomize', action='store_true', default = False,
+            help = 'Choose the next bug randomly rather than by score')
+    args = parser.parse_args()
+    project = json.load(args.project)
+    project_file = args.project.name
+
+    # Set up our globals now that we have a project
+
+    db_host = project['dbhost']
+    db = project['db']
+    db_user = "postgres"
+    db_password = "postgrespostgres"
+
+    sourcefile = {}
+    inputfile = {}
+    lval = {}
+    atptype = {}
+
+    # This is top-level directory for our LAVA stuff.
+    top_dir = join(project['directory'], project['name'])
+    lava_dir = dirname(dirname(abspath(sys.argv[0])))
+    lava_tool = join(lava_dir, 'src_clang', 'build', 'lavaTool')
+
+    # bugs_build dir assumptions
+    # 1. we have run configure
+    # 2. we have run make and make install
+    # 3. compile_commands.json exists in bugs build dir and refers to files in the bugs_build dir
+    bugs_parent = join(top_dir, 'bugs')
+    try:
+        os.makedirs(bugs_parent)
+    except: pass
+
+    tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
+    bugs_root = tar_files.splitlines()[0].split(os.path.sep)[0]
+
+    queries_build = join(top_dir, bugs_root)
+    bugs_build = join(bugs_parent, bugs_root)
+    bugs_install = join(bugs_build, 'lava-install')
+    # Make sure directories and btrace is ready for bug injection.
+    def run(args, **kwargs):
+        subprocess32.check_call(args, cwd=bugs_build,
+                stdout=sys.stdout, stderr=sys.stderr, **kwargs)
+    if not os.path.exists(bugs_build):
+        subprocess32.check_call(['tar', 'xf', project['tarfile'],
+            '-C', bugs_parent], stderr=sys.stderr)
+    if not os.path.exists(join(bugs_build, '.git')):
+        run(['git', 'init'])
+        run(['git', 'add', '-A', '.'])
+        run(['git', 'commit', '-m', 'Unmodified source.'])
+    if not os.path.exists(join(bugs_build, 'btrace.log')):
+        run(shlex.split(project['configure']) + ['--prefix=' + bugs_install])
+        run([join(lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
+    if not os.path.exists(join(bugs_build, 'compile_commands.json')):
+        run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'),
+                '/home/moyix/git/llvm/Debug+Asserts/lib/clang/3.6.1/include'])
+        run(['git', 'add', 'compile_commands.json'])
+        run(['git', 'commit', '-m', 'Add compile_commands.json.'])
+    if not os.path.exists(bugs_install):
+        run(project['install'], shell=True)
+
+    lavadb = join(top_dir, 'lavadb')
+
+    # Now start picking the bug and injecting
+    if args.bugid != -1:
+        bug_id = int(args.bugid)
         score = 0
         (dua_id, atp_id) = get_bug(bug_id)
+    elif args.randomize:
+        print "Remaining to inject:", remaining_inj()
+        print "Using strategy: random"
+        (bug_id, dua_id, atp_id, inj) = next_bug_random()
+        next_bug_db = True
+    else:
+        # no args -- get next bug from postgres
+        print "Remaining to inject:", remaining_inj()
+        print "Using strategy: score"
+        (score, bug_id, dua_id, atp_id) = next_bug()
+        next_bug_db = True
 
     sourcefile = read_i2s("sourcefile")
     inputfile = read_i2s("inputfile")
     lval = read_i2s("lval")
     atptype = read_i2s("atptype")
 
+    print "------------\n"
+    print "SELECTED BUG: " + str(bug_id)
+    if not args.randomize: print "   score=%d " % score
+    print "   (%d,%d)" % (dua_id, atp_id)
+
     dua = Dua(dua_id, sourcefile, inputfile, lval)
     atp = Atp(atp_id, sourcefile, inputfile, atptype)
 
-    print "------------\n"
-    print "SELECTED BUG: " + str(bug_id)
-    print "   score=%d " % score
-    print "   (%d,%d)" % (dua_id, atp_id)
     print "DUA:"
     print "   " + str(dua)
     print "ATP:"
