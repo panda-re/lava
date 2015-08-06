@@ -224,8 +224,8 @@ std::map<uint32_t,Dua> pg_get_duas(PGconn *conn, Ism &sourcefile, Ism &lval, Ism
         uint32_t src_line = atoi(PQgetvalue(res, row, 2));
         std::string lvalname = lval[atoi(PQgetvalue(res, row, 3))];
         uint32_t insertion_point = atoi(PQgetvalue(res, row, 4));
-        std::set<uint32_t> file_offsets = parse_offsets(PQgetvalue(res, row, 6));      
-        std::vector<Ptr> viable_bytes = parse_ptrs(PQgetvalue(res, row, 5));      
+        std::set<uint32_t> file_offsets = parse_offsets(PQgetvalue(res, row, 5));      
+        std::vector<Ptr> viable_bytes = parse_ptrs(PQgetvalue(res, row, 6));      
         std::string input_file = inputfile[atoi(PQgetvalue(res, row, 7))];
         uint32_t max_tcn = atoi(PQgetvalue(res, row, 8));
         uint32_t max_card = atoi(PQgetvalue(res, row, 9));

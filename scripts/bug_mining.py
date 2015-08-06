@@ -81,9 +81,13 @@ print
 isoname = '{}-{}.iso'.format(sourcedir, input_file_base)
 progress("Creaing ISO {}...".format(isoname))
 installdir = join(sourcedir, 'lava-install')
-shutil.copy(input_file, installdir + '/')
+shutil.copy(input_file, join(installdir, input_file_base))
 subprocess32.check_call(['genisoimage', '-R', '-J',
     '-o', isoname, installdir])
+try: os.mkdir('inputs')
+except: pass
+shutil.copy(input_file, 'inputs/')
+os.unlink(join(installdir, input_file_base))
 
 tempdir = tempfile.mkdtemp()
 
@@ -161,7 +165,7 @@ qemu_args = ['-replay', isoname,
         '-panda', 'file_taint:notaint,filename=' + input_file_guest]
 qemu_replay = spawn(project['qemu'], qemu_args)
 qemu_replay.logfile_read = sys.stdout
-qemu_replay.expect_exact("saw open of file we want to taint")
+qemu_replay.expect_exact("saw open of file we want to taint", timeout=300)
 
 after_progress = qemu_replay.before.rpartition(os.path.basename(isoname) + ":")[2]
 print after_progress
@@ -200,7 +204,7 @@ print
 progress("Calling the FBI on queries.plog...")
 fbi_args = [join(lavadir, 'panda', 'fbi'), project_file, sourcedir, pandalog, input_file_base]
 if debug:
-    print "fbi invocation: [%s]" (" ".join(fbi_args))
+    print "fbi invocation: [%s]" % (" ".join(fbi_args))
 subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
 
 print
