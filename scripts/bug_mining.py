@@ -33,6 +33,11 @@ from os.path import dirname, abspath, join
 
 debug = True
 
+
+def dprint(msg):
+    if debug:
+        print msg
+
 def progress(msg):
     print Fore.RED + msg + Fore.RESET
 
@@ -159,6 +164,10 @@ progress("Starting first-pass replay...")
 qemu_args = ['-replay', isoname,
         '-panda', 'taint2:no_tp',
         '-panda', 'file_taint:notaint,filename=' + input_file_guest]
+
+
+dprint ("qemu args: [%s]" % (" ".join(qemu_args)))
+
 qemu_replay = spawn(project['qemu'], qemu_args)
 qemu_replay.logfile_read = sys.stdout
 qemu_replay.expect_exact("saw open of file we want to taint")
@@ -179,9 +188,9 @@ qemu_args = ['-replay', isoname,
         '-panda', 'file_taint:pos,first_instr={},filename={}'.format(
             instr, input_file_guest)]
 
+dprint ("qemu args: [%s]" % (" ".join(qemu_args)))
 subprocess32.check_call([project['qemu']]+ qemu_args, stdout=sys.stdout, stderr=sys.stderr)
 
-print
 progress("Trying to create database {}...".format(project['name']))
 createdb_args = ['createdb', '-h', project['dbhost'],
         '-U', 'postgres', project['db']]
@@ -192,6 +201,7 @@ if createdb_result == 0: # Created new DB; now populate
     progress("Database created. Initializing...")
     psql_args = ['psql', '-h', project['dbhost'], '-U', 'postgres',
             '-d', project['db'], '-f', join(join(lavadir, 'sql'), 'lava.sql')]
+    dprint ("psql invocation: [%s]" % (" ".join(psql_args)))
     subprocess32.check_call(psql_args, stdout=sys.stdout, stderr=sys.stderr)
 else:
     progress("Database already exists.")
@@ -199,8 +209,7 @@ else:
 print
 progress("Calling the FBI on queries.plog...")
 fbi_args = [join(lavadir, 'panda', 'fbi'), project_file, sourcedir, pandalog, input_file_base]
-if debug:
-    print "fbi invocation: [%s]" % (" ".join(fbi_args))
+dprint ("fbi invocation: [%s]" % (" ".join(fbi_args)))
 subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
 
 print
