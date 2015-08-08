@@ -59,13 +59,19 @@ static cl::opt<std::string> LavaBugBuildDir("bug-build-dir",
 */
 
 struct Llval {
-    std::string name;        // name of constructed lval
+    std::string name;         // name of constructed lval
     std::string pointer_tst;  // name of base ptr for null test
-    
+    std::string len;          // string repr of computation of lval length
+    const Type *typ;                // type of lval
+
     bool operator<(const Llval &other) const {
         if (name < other.name) return true;
         if (name > other.name) return false;
-        return (pointer_tst < other.pointer_tst);
+        if (pointer_tst < other.pointer_tst) return true;
+        if (pointer_tst > other.pointer_tst) return false;
+        if (len < other.len) return true;
+        if (len > other.len) return false;
+        return (typ < other.typ);
     }      
 };
 
@@ -86,6 +92,9 @@ static std::set<Bug> bugs;
 
 
 std::stringstream new_start_of_file_src;
+
+
+#define MAX_STRNLEN 64
 
 /*******************************************************************************
  * LavaTaintQuery
@@ -161,7 +170,7 @@ public:
         }
         query << "vm_lava_query_buffer("
               << "&(" << llval.name << "), " 
-              << "sizeof(" << llval.name << "), "
+              << llval.len << ", "
               << filename_id << ", "
               << GetStringID(llval.name) << ", "
               << line << ", "
@@ -243,12 +252,66 @@ public:
         }
     }
 
+
+    
+    std::pair<bool, Llval> ConstructLlval(std::string lvalname, std::string pointer_tst, const Type *lval_type) {
+        std::string lvalderef;
+        std::string lvallen;
+        bool success = true;
+        if (lval_type->isPointerType()) {
+            const Type *pt = lval_type->getPointeeType().getTypePtr();
+            lvalderef = "*(" + lvalname + ")";
+            if (pt->isCharType()) {                
+                // lval is a string
+                lvallen = "strnlen(" + lvalname + "," + std::to_string(MAX_STRNLEN) + ")";
+            }
+            else {
+                if ( pt->isVoidType() ) 
+                    success = false;
+                // lval is a pointer, but not a string
+                lvallen = "sizeof(*(" + lvalname + "))";
+            }
+        } 
+        else {
+            // lval not a pointer
+            if ( lval_type->isVoidType() ) 
+                success = false;
+            lvalderef = "(" + lvalname + ")";
+            lvallen = "sizeof(" + lvalname + ")";
+        }
+        assert (lvalderef.length() != 0);
+        assert (lvallen.length() != 0);
+        // t is not a pointer
+        Llval llval = { lvalderef, pointer_tst, lvallen, lval_type };
+        return std::make_pair(success,llval);
+    }        
+
+
+    // based on type, determine if this lval is queriable
+    // which means can we get an addr out of it in ways we'll need to
+    // and determine its size
+    bool QueriableType(const Type *lval_type) {
+        if ((lval_type->isIncompleteType())  
+            || (lval_type->isIncompleteArrayType())
+            || (lval_type->isVoidType())
+            || (lval_type->isNullPtrType())
+            ) {
+            return false;
+        }
+        if (lval_type->isPointerType()) {
+            const Type *pt = lval_type->getPointeeType().getTypePtr();
+            return QueriableType(pt);
+        }           
+        return true;
+    }
+    
     /*
       lv_name is base for a struct.  Might be a pointer.
       Use rd to iterate over slots in that struct and collect llvals.  
       pointer indicates if lv_name is a pointer (and thus needs a null test)
     */
-    void CollectLlvalsStruct1stLevel(std::string lv_name, RecordDecl *rd, bool pointer, std::set<Llval> &llvals) {
+    void CollectLlvalsStruct1stLevel(std::string lv_name, RecordDecl *rd, 
+                                     bool pointer, std::set<Llval> &llvals) {
         for (auto field : rd->fields()) {
             if ( (!(field->getType()->isIncompleteType()))
                  && (!(field->getType()->isIncompleteArrayType()))
@@ -258,8 +321,14 @@ public:
                     (pointer ? (std::string("->")) : (std::string(".")));                    
                 std::string lval_ss = 
                     lv_name + accessor + field->getName().str();
-                std::string pointer_tst = (pointer ? lv_name : "");
-                llvals.insert( { lval_ss, pointer_tst } ); 
+                std::string pointer_tst = (pointer ? lv_name : "");                
+                QualType qt = field->getType();
+                std::pair<bool, Llval> res = ConstructLlval(lval_ss, pointer_tst, qt.getTypePtr());
+                bool success = res.first;
+                if (success) {
+                    Llval llval = res.second;                
+                    llvals.insert(llval); 
+                }
             }
         }
     }
@@ -291,6 +360,7 @@ public:
             }
         }
     }
+
 
     bool CanGetSizeOf(Expr *e) {
         assert (e->isLValue());
@@ -644,7 +714,6 @@ public:
         }
         uint32_t src_line = fullLoc.getExpansionLineNumber(); 
         errs() << "VisitCallExpr " << src_filename << " " << src_line << "\n";
-
         // if we dont know the filename, that indicates unhappy situation.  bail.
         if (src_filename == "") return true;
         FunctionDecl *f = e->getDirectCallee();
@@ -653,10 +722,9 @@ public:
         std::string fn_name = f->getNameInfo().getName().getAsString();       
         errs() << "VisitCallExpr " << src_filename << " " << fn_name << " " << src_line << "\n";
         /*
-          if this is an attack point, we may want to insert code modulo bugs list.
-          insert a query "im at an attack point" or add code to use
-          lava global to manifest a bug here. 
-          if its an attackpoint, figure out what code to insert
+          if this is an attack point, we will either 
+          * insert code to say "im at an attack point" 
+          * insert code to use lava global modulo bugs list 
         */
         Insertions inssAtp;        
         if (IsAttackPoint(e->getDirectCallee())) {
@@ -665,18 +733,16 @@ public:
         /*
           Regardless of whether or not this is an attack point there may be 
           duas in CallExpr. Could be buried in expression args. 
-          Or could be the return value. We might want to query any of these 
-          lvals for taint or add code to siphon dua bytes into globals. 
+          Or could be the return value. 
+          Either 
+          * add taint query for each discovered lval
+          * add code to siphon dua bytes into global. 
         */
         Insertions inssDua;                
-        // NB: there are some fns for which we will skip this step. 
         bool any_dua_insertions = false;
+        // NB: there are some fns for which we will skip this step. 
         if (!(InFnBlackList(fn_name))) {
-            // collect lval names for this fn.
-            // one for the retval (if there is one).
-            // plus potentially many for each arg.
-            // if arg is an expression than that could contain many lvals
-            // further, if arg is a pointer to a struct we collect slot lvals 
+            // collect queriable / siphonable lvals for this fn.
             std::set<Llval> llvals;
             QualType rqt = e->getCallReturnType(); 
             bool has_retval = CallExprHasRetVal(rqt);
@@ -684,12 +750,27 @@ public:
             std::string rv_before;
             std::string rv_after;            
             Llval rv_llval;
+            bool queriable_retval = false;
             if (has_retval) {
-                std::string pointer_tst = (rqt.getTypePtr()->isPointerType() ? retvalname : "");                
-                rv_llval = {retvalname, pointer_tst};
-                //                llvals.insert({retvalname, pointer_tst});
+                errs() << "1 has retval\n";
+                std::string pointer_tst = (rqt.getTypePtr()->isPointerType() ? retvalname : "");
+                if (QueriableType(rqt.getTypePtr())) {
+                    errs() << "is queriable type\n";
+                    std::pair<bool, Llval> res = ConstructLlval(retvalname, pointer_tst, rqt.getTypePtr());
+                    queriable_retval = res.first;
+                    if (queriable_retval) {
+                        rv_llval = res.second;
+                        errs() << "1 rv_llval.length() = " << (rv_llval.name.length()) << "\n";
+                        assert (rv_llval.name.length() > 0);
+                        //                llvals.insert({retvalname, pointer_tst});
+                    }
+                }
                 rv_before = (rqt.getAsString()) + " " + retvalname + " = ";
                 rv_after = retvalname + ";";
+                
+                errs() << "rv_before: [" << rv_before << "]\n";
+                errs() << "rv_after: [" << rv_after << "]\n";
+
             }
             int i = 0;
             for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
@@ -699,21 +780,25 @@ public:
                     Expr *arg = dyn_cast<Expr>(*it);
                     // can't fail, right? 
                     assert (arg);
-                    //                    arg->dump();
-                    errs() << "arg " << i << " ";
+                    // if this arg contains a decl, i.e., { int x; ... }, discard
                     bool cd = ContainsDecl(stmt);
-                    errs() << "containsdecl? " << cd << "\n";
                     if (! cd) {
-                        // collect all lvals explicit in expr (so, 'a' and 'b' for 'a+b')
+                        // collect all lvals buried in expr (so, 'a' and 'b' for 'a+b')
                         std::set<Expr *> lvals;
                         CollectLvals(arg, lvals);
-                        // now collect lvals as llvals
-                        // for lvals that are structs, for all 1st-level fields.  
+                        // Now collect lvals as llvals.
+                        // And, for lvals that are structs, for all 1st-level fields.  
                         for ( auto lval : lvals ) {
                             std::string lv_name = "(" + ExprStr(lval) + ")";
                             std::string pointer_tst = (lval->getType().getTypePtr()->isPointerType() ? lv_name : "");
-                            llvals.insert( {lv_name, pointer_tst} );
-                            CollectLlvalsStruct(lval, llvals);
+                            std::pair<bool, Llval> res = ConstructLlval(lv_name, pointer_tst, lval->getType().getTypePtr());
+                            bool success = res.first;
+                            if (success) {
+                                Llval llval = res.second;
+                                assert (lv_name.length() != 0);
+                                llvals.insert(llval);
+                                CollectLlvalsStruct(lval, llvals);
+                            }
                         }
                     }
                 }
@@ -722,6 +807,10 @@ public:
             std::stringstream dua_src_before;
             std::stringstream dua_src_after;            
             for ( auto llval : llvals ) {
+                assert (llval.name.length() > 0);
+                if (!(QueriableType(llval.typ))) {
+                    continue;
+                }
                 Insertions inss_before;
                 Insertions inss_after; 
                 if (LavaAction == LavaQueries) {
@@ -743,10 +832,17 @@ public:
                 inssDua.before_part = "({" + dua_src_before.str() + rv_before;
                 inssDua.after_part = ";" + dua_src_after.str();
                 if (has_retval) {
-                    Insertions inss = ComposeDuaNewSrc(rv_llval, src_filename, src_line, 
-                        INSERTION_POINT_AFTER_CALL);
-                    inssDua.top_of_file += inss.top_of_file ;
-                    inssDua.after_part +=  inss.after_part ;
+                    errs() << "2 has retval\n";
+                    errs() << "2 rv_llval.length() = " << (rv_llval.name.length()) << "\n";
+                    errs() << "rv_before: [" << rv_before << "]\n";
+                    errs() << "rv_after: [" << rv_after << "]\n";
+                    if (queriable_retval) {
+                        assert (rv_llval.name.length() > 0);
+                        Insertions inss = ComposeDuaNewSrc(rv_llval, src_filename, src_line, 
+                                                           INSERTION_POINT_AFTER_CALL);
+                        inssDua.top_of_file += inss.top_of_file ;
+                        inssDua.after_part +=  inss.after_part ;
+                    }
                 }
                 inssDua.after_part +=  rv_after + "})";
             }
