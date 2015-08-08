@@ -819,7 +819,8 @@ int main (int argc, char **argv) {
         if (ple == NULL)  break;
         ii ++;
         if ((ii % 10000) == 0) {
-            printf ("processed %lu pandalog entries\n", ii);
+            printf ("processed %lu pandalog entries \n", ii);
+            std::cout << num_bugs_added_to_db << " added to db " << num_bugs_local << " local bugs " << num_bugs_attempted << " total attempted" << (duas.size()) << " duas\n";
         }
         if (ple->taint_query_hypercall) {
             taint_query_hypercall(ple, ptr_to_set, liveness, duas, max_liveness,
