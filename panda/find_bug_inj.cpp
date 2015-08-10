@@ -770,7 +770,7 @@ int main (int argc, char **argv) {
         printf("        max_tcn: Maximum taint compute number for DUAs\n");
         printf("        max_lval_size: Maximum bytewise size for \n");
         printf("    pandalog: Pandalog. Should be like queries-file-5.22-bash.iso.plog\n");
-        printf("    inputfile: Input file path as known to the guest, like /mnt/cdrom/malware.pcap");
+        printf("    inputfile: Input file basename, like malware.pcap");
         exit (1);
     }
 
@@ -819,7 +819,8 @@ int main (int argc, char **argv) {
         if (ple == NULL)  break;
         ii ++;
         if ((ii % 10000) == 0) {
-            printf ("processed %lu pandalog entries\n", ii);
+            printf ("processed %lu pandalog entries \n", ii);
+            std::cout << num_bugs_added_to_db << " added to db " << num_bugs_local << " local bugs " << num_bugs_attempted << " total attempted" << (duas.size()) << " duas\n";
         }
         if (ple->taint_query_hypercall) {
             taint_query_hypercall(ple, ptr_to_set, liveness, duas, max_liveness,

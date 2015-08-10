@@ -5,69 +5,15 @@ import random
 import psycopg2
 import shutil
 import subprocess32
+import argparse
 import json
 import os
 import shlex
-from os.path import dirname, join, abspath
+from os.path import basename, dirname, join, abspath
 
-f = open(sys.argv[1])
-project = json.load(f)
-f.close()
+project = None
 
 debugging = False
-db_host = project['dbhost']
-db = project['db']
-db_user = "postgres"
-db_password = "postgrespostgres"
-
-sourcefile = {}
-inputfile = {}
-lval = {}
-atptype = {}
-
-# This is top-level directory for our LAVA stuff.
-top_dir = join(project['directory'], project['name'])
-lava_dir = dirname(dirname(abspath(sys.argv[0])))
-lava_tool = join(lava_dir, 'src_clang', 'build', 'lavaTool')
-
-# bugs_build dir assumptions
-# 1. we have run configure
-# 2. we have run make and make install
-# 3. compile_commands.json exists in bugs build dir and refers to files in the bugs_build dir
-bugs_parent = join(top_dir, 'bugs')
-try:
-    os.makedirs(bugs_parent)
-except: pass
-
-tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
-bugs_root = tar_files.splitlines()[0].split(os.path.sep)[0]
-
-queries_build = join(top_dir, bugs_root)
-bugs_build = join(bugs_parent, bugs_root)
-bugs_install = join(bugs_build, 'lava-install')
-# Make sure directories and btrace is ready for bug injection.
-def run(args, **kwargs):
-    subprocess32.check_call(args, cwd=bugs_build,
-            stdout=sys.stdout, stderr=sys.stderr, **kwargs)
-if not os.path.exists(bugs_build):
-    subprocess32.check_call(['tar', 'xf', project['tarfile'],
-        '-C', bugs_parent], stderr=sys.stderr)
-if not os.path.exists(join(bugs_build, '.git')):
-    run(['git', 'init'])
-    run(['git', 'add', '-A', '.'])
-    run(['git', 'commit', '-m', 'Unmodified source.'])
-if not os.path.exists(join(bugs_build, 'btrace.log')):
-    run(shlex.split(project['configure']) + ['--prefix=' + bugs_install])
-    run([join(lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
-if not os.path.exists(join(bugs_build, 'compile_commands.json')):
-    run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'),
-            '/home/moyix/git/llvm/Debug+Asserts/lib/clang/3.6.1/include'])
-    run(['git', 'add', 'compile_commands.json'])
-    run(['git', 'commit', '-m', 'Add compile_commands.json.'])
-if not os.path.exists(bugs_install):
-    run(project['install'], shell=True)
-
-lavadb = join(top_dir, 'lavadb')
 
 def get_conn():
     conn = psycopg2.connect(host=db_host, database=db, user=db_user, password=db_password)
@@ -94,6 +40,19 @@ def next_bug():
     conn.commit()
     conn.close()
     return bug
+
+def next_bug_random():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM bug WHERE inj=false OFFSET floor(random() * (SELECT COUNT(*) FROM bug WHERE inj=false) ) LIMIT 1;");
+    bug = cur.fetchone()
+    # need to do all three of these in order for the writes to db to actually happen
+    cur.close()
+    conn.commit()
+    conn.close()
+    return bug
+
+
 
 def get_bug(bug_id):
     conn = get_conn()
@@ -229,7 +188,8 @@ def inject_bug_part_into_src(bug_id, suff):
 #    make_safe_copy(filename_bug_part)
     cmd = lava_tool + ' -action=inject -bug-list=\"' + str(bug_id) \
         + '\" -lava-db=' + lavadb + ' -p ' + bugs_build \
-        + ' ' + filename_bug_part 
+        + ' ' + filename_bug_part \
+        + ' ' + '-project-file=' + project_file
     run_cmd(cmd, None, None)
 
 
@@ -251,42 +211,27 @@ def add_build_row(bugs, compile_succ):
 
 
 def get_suffix(fn):
-    return (fn.split("."))[-1]
+    split = basename(fn).split(".")
+    if len(split) == 1:
+        return ""
+    else:
+        return "." + split[-1]
 
+# fuzz_offsets is a list of tainted byte offsets within file filename.
+# replace those bytes with random in a new file named new_filename
+def mutfile(filename, lval_taint, new_filename):
+    # collect set of tainted offsets in file.
+    fuzz_offsets = set(sum(lval_taint, []))
+    file_bytes = bytearray(open(filename).read())
 
-lava = "lava"
-lava_bytes = [hex(ord(x)) for x in lava]
-
-# fuzz_offsets is a list of byte offsets within file fn.
-# replace those bytes with random in a new file named new_fn
-def mutfile(fn, lval_taint, new_fn):
-    # collect set of offsets in file to fuzz in order to manipulate at most
-    # the first 4 bytes of lval
-    fuzz_offsets = set([])
-    for ts in lval_taint:
-        for off in ts:
-            fuzz_offsets.add(off)
-    bytes = open(fn).read()
-    f = open(new_fn, "w")
-    i=0
-    j=0
-    for b in bytes:
-        if (i in fuzz_offsets):
-#            f.write(chr(random.randint(0,255)))
-#            print j
-            f.write(chr(int(lava_bytes[j],16)))
-            j+=1
-            # just use those bytes over and over
-            if j == len(lava_bytes):
-                j = 0
-        else:
-            f.write(b)
-        i+=1
-
+    # change first 4 bytes to "lava"
+    for (i, offset) in zip(range(4), fuzz_offsets):
+        file_bytes[offset] = "lava"[i]
+    open(new_filename, "w").write(file_bytes)
 
 # here's how to run the built program
 def run_prog(install_dir, input_file):
-    cmd = project['test_command'].format(install_dir=install_dir,input_file=input_file)
+    cmd = project['command'].format(install_dir=install_dir,input_file=input_file)
     print cmd
     envv = {}
     envv["LD_LIBRARY_PATH"] = join(install_dir, project['library_path'])
@@ -312,30 +257,103 @@ def add_run_row(build_id, fuzz, exitcode, lines, success):
 if __name__ == "__main__":    
 
     next_bug_db = False
-    if len(sys.argv) == 1:
-        print "usage: python lava_inj_one.py JSON [bugid]"
-    elif len(sys.argv) == 2:
-        # no args -- get next bug from postgres
-        print remaining_inj()
-        (score, bug_id, dua_id, atp_id) = next_bug()
-        next_bug_db = True
-    else:
-        bug_id = int(sys.argv[2])
+    parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
+    parser.add_argument('project', type=argparse.FileType('r'),
+            help = 'JSON project file')
+    parser.add_argument('bugid', nargs='?', type=int, default=-1,
+            help = 'Bug id (otherwise, highest scored will be chosen)')
+    parser.add_argument('-r', '--randomize', action='store_true', default = False,
+            help = 'Choose the next bug randomly rather than by score')
+    args = parser.parse_args()
+    project = json.load(args.project)
+    project_file = args.project.name
+
+    # Set up our globals now that we have a project
+
+    db_host = project['dbhost']
+    db = project['db']
+    db_user = "postgres"
+    db_password = "postgrespostgres"
+
+    sourcefile = {}
+    inputfile = {}
+    lval = {}
+    atptype = {}
+
+    # This is top-level directory for our LAVA stuff.
+    top_dir = join(project['directory'], project['name'])
+    lava_dir = dirname(dirname(abspath(sys.argv[0])))
+    lava_tool = join(lava_dir, 'src_clang', 'build', 'lavaTool')
+
+    # bugs_build dir assumptions
+    # 1. we have run configure
+    # 2. we have run make and make install
+    # 3. compile_commands.json exists in bugs build dir and refers to files in the bugs_build dir
+    bugs_parent = join(top_dir, 'bugs')
+    try:
+        os.makedirs(bugs_parent)
+    except: pass
+
+    tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
+    bugs_root = tar_files.splitlines()[0].split(os.path.sep)[0]
+
+    queries_build = join(top_dir, bugs_root)
+    bugs_build = join(bugs_parent, bugs_root)
+    bugs_install = join(bugs_build, 'lava-install')
+    # Make sure directories and btrace is ready for bug injection.
+    def run(args, **kwargs):
+        subprocess32.check_call(args, cwd=bugs_build,
+                stdout=sys.stdout, stderr=sys.stderr, **kwargs)
+    if not os.path.exists(bugs_build):
+        subprocess32.check_call(['tar', 'xf', project['tarfile'],
+            '-C', bugs_parent], stderr=sys.stderr)
+    if not os.path.exists(join(bugs_build, '.git')):
+        run(['git', 'init'])
+        run(['git', 'add', '-A', '.'])
+        run(['git', 'commit', '-m', 'Unmodified source.'])
+    if not os.path.exists(join(bugs_build, 'btrace.log')):
+        run(shlex.split(project['configure']) + ['--prefix=' + bugs_install])
+        run([join(lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
+    if not os.path.exists(join(bugs_build, 'compile_commands.json')):
+        run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'),
+                '/home/moyix/git/llvm/Debug+Asserts/lib/clang/3.6.1/include'])
+        run(['git', 'add', 'compile_commands.json'])
+        run(['git', 'commit', '-m', 'Add compile_commands.json.'])
+    if not os.path.exists(bugs_install):
+        run(project['install'], shell=True)
+
+    lavadb = join(top_dir, 'lavadb')
+
+    # Now start picking the bug and injecting
+    if args.bugid != -1:
+        bug_id = int(args.bugid)
         score = 0
         (dua_id, atp_id) = get_bug(bug_id)
+    elif args.randomize:
+        print "Remaining to inject:", remaining_inj()
+        print "Using strategy: random"
+        (bug_id, dua_id, atp_id, inj) = next_bug_random()
+        next_bug_db = True
+    else:
+        # no args -- get next bug from postgres
+        print "Remaining to inject:", remaining_inj()
+        print "Using strategy: score"
+        (score, bug_id, dua_id, atp_id) = next_bug()
+        next_bug_db = True
 
     sourcefile = read_i2s("sourcefile")
     inputfile = read_i2s("inputfile")
     lval = read_i2s("lval")
     atptype = read_i2s("atptype")
 
+    print "------------\n"
+    print "SELECTED BUG: " + str(bug_id)
+    if not args.randomize: print "   score=%d " % score
+    print "   (%d,%d)" % (dua_id, atp_id)
+
     dua = Dua(dua_id, sourcefile, inputfile, lval)
     atp = Atp(atp_id, sourcefile, inputfile, atptype)
 
-    print "------------\n"
-    print "SELECTED BUG: " + str(bug_id)
-    print "   score=%d " % score
-    print "   (%d,%d)" % (dua_id, atp_id)
     print "DUA:"
     print "   " + str(dua)
     print "ATP:"
@@ -352,20 +370,19 @@ if __name__ == "__main__":
 
     print "------------\n"
     print "INJECTING BUGS INTO SOURCE"
+    inject_files = set([dua.filename, atp.filename, project['main_file']])
     # modify src @ the dua to siphon off tainted bytes into global
-    inject_bug_part_into_src(bug_id, dua.filename)
-
+    # modify src the atp to use that global
+    # modify main to include lava_set
     # only if they are in different files
-    if dua.filename != atp.filename:
-        # modify src the atp to use that global
-        inject_bug_part_into_src(bug_id, atp.filename)
-
+    for f in inject_files:
+        inject_bug_part_into_src(bug_id, f)
 
     # compile
     print "------------\n"
     print "ATTEMPTING BUILD OF INJECTED BUG"
     print "build_dir = " + bugs_build
-    (rv, outp) = run_cmd("make -j 12 ", bugs_build, None)
+    (rv, outp) = run_cmd(project['make'] + " -j12", bugs_build, None)
     build = False
     if rv!=0:
         # build failed
@@ -390,7 +407,8 @@ if __name__ == "__main__":
             print "------------\n"
             # first, try the original file
             print "TESTING -- ORIG INPUT"
-            orig_input = join(queries_build, 'lava-install', dua.inputfile)
+            orig_input = join(top_dir, 'inputs', dua.inputfile)
+            print orig_input
             (rv, outp) = run_prog(bugs_install, orig_input)
             print "retval = %d" % rv
             print "output:"
@@ -402,7 +420,8 @@ if __name__ == "__main__":
             # second, fuzz it with the magic value
             print "TESTING -- FUZZED INPUT"
             suff = get_suffix(orig_input)
-            fuzzed_input = orig_input + "-fuzzed" + "." + suff
+            pref = orig_input[:-len(suff)] if suff != "" else orig_input
+            fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug_id, suff)
             print "fuzzed = [%s]" % fuzzed_input
             mutfile(orig_input, dua.lval_taint, fuzzed_input)
             (rv, outp) = run_prog(bugs_install, fuzzed_input)
@@ -419,6 +438,7 @@ if __name__ == "__main__":
             print "TESTING FAIL"
             if next_bug_db:
                 add_run_row(build_id, False, 1, "", True)
+            raise
 
 
 

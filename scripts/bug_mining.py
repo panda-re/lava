@@ -1,3 +1,22 @@
+'''
+This script assumes you have already done src-to-src transformation with
+lavaTool to add taint and attack point queries to a program, AND managed to
+get it to compile.  The script 
+
+Only two inputs to the script.
+
+First is a json project file.  The set of asserts below 
+indicate the required json fields and their meaning.
+
+Second is input file you want to run, under panda, to get taint info.  
+
+
+'''
+
+
+
+
+
 import os
 import socket
 import sys
@@ -12,6 +31,13 @@ from colorama import Fore, Back, Style
 from pexpect import spawn, fdpexpect
 from os.path import dirname, abspath, join
 
+debug = True
+
+
+def dprint(msg):
+    if debug:
+        print msg
+
 def progress(msg):
     print Fore.RED + msg + Fore.RESET
 
@@ -23,13 +49,29 @@ project_file = abspath(sys.argv[1])
 input_file = abspath(sys.argv[2])
 input_file_base = os.path.basename(input_file)
 project = json.load(open(project_file, "r"))
+
+
+# *** Required json fields 
+# path to qemu exec (correct guest)
 assert 'qemu' in project
+# name of snapshot from which to revert which will be booted & logged in as root?
 assert 'snapshot' in project
+# same directory as in add_queries.sh, under which will be the build
 assert 'directory' in project
+# command line to run the target program (already instrumented with taint and attack queries)
 assert 'command' in project
+# path to guest qcow
 assert 'qcow' in project
+# name of project 
 assert 'name' in project
+# path to tarfile for target (original source)
+assert 'tarfile' in project
+# if needed, what to set LD_LIBRARY_PATH to
+assert 'library_path' in project
+# network name of host where postgres is running
 assert 'dbhost' in project
+# namespace in db for prospective bugs
+assert 'db' in project
 
 lavadir = dirname(dirname(abspath(sys.argv[0])))
 
@@ -44,9 +86,13 @@ print
 isoname = '{}-{}.iso'.format(sourcedir, input_file_base)
 progress("Creaing ISO {}...".format(isoname))
 installdir = join(sourcedir, 'lava-install')
-shutil.copy(input_file, installdir + '/')
+shutil.copy(input_file, join(installdir, input_file_base))
 subprocess32.check_call(['genisoimage', '-R', '-J',
     '-o', isoname, installdir])
+try: os.mkdir('inputs')
+except: pass
+shutil.copy(input_file, 'inputs/')
+os.unlink(join(installdir, input_file_base))
 
 tempdir = tempfile.mkdtemp()
 
@@ -73,12 +119,16 @@ console = spawn("socat", ["stdin", "unix-connect:" + serial_path])
 console.logfile = open(os.path.join(tempdir, 'console.txt'), 'w')
 
 def run_monitor(cmd):
+    if debug:
+        print "monitor cmd: [%s]" % cmd
     print Style.BRIGHT + "(qemu)" + Style.RESET_ALL,
     monitor.sendline(cmd)
     monitor.expect_exact("(qemu)")
     print monitor.before.partition("\r\n")[2]
 
 def run_console(cmd):
+    if debug:
+        print "console cmd: [%s]" % cmd
     print Style.BRIGHT + "root@debian-i386:~#" + Style.RESET_ALL,
     console.sendline(cmd)
     console.expect_exact("root@debian-i386:~#")
@@ -92,7 +142,6 @@ console.expect_exact("root@debian-i386:~#")
 progress("Inserting CD...")
 run_monitor("change ide1-cd0 {}".format(isoname))
 run_console("mkdir -p /mnt/cdrom")
-run_console("umount /mnt/cdrom")
 run_console("mount /dev/cdrom /mnt/cdrom")
 
 # Use the ISO name as the replay name.
@@ -119,9 +168,13 @@ progress("Starting first-pass replay...")
 qemu_args = ['-replay', isoname,
         '-panda', 'taint2:no_tp',
         '-panda', 'file_taint:notaint,filename=' + input_file_guest]
+
+
+dprint ("qemu args: [%s]" % (" ".join(qemu_args)))
+
 qemu_replay = spawn(project['qemu'], qemu_args)
 qemu_replay.logfile_read = sys.stdout
-qemu_replay.expect_exact("saw open of file we want to taint")
+qemu_replay.expect_exact("saw open of file we want to taint", timeout=300)
 
 after_progress = qemu_replay.before.rpartition(os.path.basename(isoname) + ":")[2]
 print after_progress
@@ -139,9 +192,9 @@ qemu_args = ['-replay', isoname,
         '-panda', 'file_taint:pos,first_instr={},filename={}'.format(
             instr, input_file_guest)]
 
+dprint ("qemu args: [%s]" % (" ".join(qemu_args)))
 subprocess32.check_call([project['qemu']]+ qemu_args, stdout=sys.stdout, stderr=sys.stderr)
 
-print
 progress("Trying to create database {}...".format(project['name']))
 createdb_args = ['createdb', '-h', project['dbhost'],
         '-U', 'postgres', project['db']]
@@ -150,15 +203,17 @@ createdb_result = subprocess32.call(createdb_args, stdout=sys.stdout, stderr=sys
 print
 if createdb_result == 0: # Created new DB; now populate
     progress("Database created. Initializing...")
-    pgsql_args = ['pgsql', '-h', project['dbhost'], '-U', 'postgres',
+    psql_args = ['psql', '-h', project['dbhost'], '-U', 'postgres',
             '-d', project['db'], '-f', join(join(lavadir, 'sql'), 'lava.sql')]
-    subprocess32.check_call(pgsql_args, stdout=sys.stdout, stderr=sys.stderr)
+    dprint ("psql invocation: [%s]" % (" ".join(psql_args)))
+    subprocess32.check_call(psql_args, stdout=sys.stdout, stderr=sys.stderr)
 else:
     progress("Database already exists.")
 
 print
 progress("Calling the FBI on queries.plog...")
-fbi_args = [join(lavadir, 'panda', 'fbi'), project_file, sourcedir, pandalog, input_file_guest]
+fbi_args = [join(lavadir, 'panda', 'fbi'), project_file, sourcedir, pandalog, input_file_base]
+dprint ("fbi invocation: [%s]" % (" ".join(fbi_args)))
 subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
 
 print
