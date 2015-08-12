@@ -53,6 +53,9 @@ extern "C" {
 
 #define MIN_VIABLE_BYTES 1
 
+// lval may have lots of tainted bytes.  We only use the first few.
+#define MAX_TAINTED_LVAL_BYTES 4
+
 std::string inputfile;
 std::string src_pfx;
 int inputfile_id;
@@ -578,14 +581,24 @@ void taint_query_hypercall(Panda__LogEntry *ple,
         assert (si->has_insertionpoint);
         // this is set of lval offsets that will be used to construct the dua
         // and thus is part of what determines the precise src mods
-        std::set<uint32_t> viable_offsets;
+        std::set<uint32_t> viable_offsets_all;
         for (uint32_t i=0; i<max_offset; i++) {
             if (viable_byte[i] != 0) {
-                viable_offsets.insert(i);
+                viable_offsets_all.insert(i);
             }
+        }
+        // keep only the first MAX_TAINTED_LVAL_BYTES
+        std::set<uint32_t> viable_offsets;
+        uint32_t ni = 0;
+        for (auto o : viable_offsets) {
+            viable_offsets.insert(o);
+            ni++;
+            if (ni == MAX_TAINTED_LVAL_BYTES) break;
         }
         // Maintain map from dua key (which represents a unique src modification @ dua site)
         // and the most recent incarnation of that dua that we have observed.
+        
+        
         DuaKey d_key = {si->filename, si->linenum, si->astnodename, si->insertionpoint, viable_offsets};        
         if (debug) {
             if (duas.count(d_key)==0) printf ("new dua key\n");
