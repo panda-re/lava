@@ -237,10 +237,18 @@ def run_prog(install_dir, input_file):
     envv["LD_LIBRARY_PATH"] = join(install_dir, project['library_path'])
     return run_cmd(cmd,install_dir,envv)
 
+import string
+
+def printable(text):
+    import string
+    # Get the difference of all ASCII characters from the set of printable characters
+    nonprintable = set([chr(i) for i in range(256)]).difference(string.printable)
+    return ''.join([ '.' if (c in nonprintable)  else c for c in text])
+
 
 def add_run_row(build_id, fuzz, exitcode, lines, success):
     lines = lines.translate(None, '\'\"')
-    lines = lines[0:1024]
+    lines = printable(lines[0:1024])
     conn = get_conn()
     cur = conn.cursor()
     # NB: ignoring binpath for now
@@ -376,6 +384,7 @@ if __name__ == "__main__":
     # modify main to include lava_set
     # only if they are in different files
     for f in inject_files:
+        print "injecting code into [%s]" % f
         inject_bug_part_into_src(bug_id, f)
 
     # compile
