@@ -63,6 +63,7 @@ struct Llval {
     std::string pointer_tst;  // name of base ptr for null test
     std::string len;          // string repr of computation of lval length
     const Type *typ;                // type of lval
+    bool is_ptr;              // true if name represents ptr to what we are supposed to trace taint on (so no need to use '&').
 
     bool operator<(const Llval &other) const {
         if (name < other.name) return true;
@@ -71,7 +72,9 @@ struct Llval {
         if (pointer_tst > other.pointer_tst) return false;
         if (len < other.len) return true;
         if (len > other.len) return false;
-        return (typ < other.typ);
+        if (typ < other.typ) return true;
+        if (typ > other.typ) return false;
+        return is_ptr < other.is_ptr;
     }      
 };
 
@@ -165,19 +168,37 @@ public:
     std::string ComposeDuaTaintQuery(Llval &llval, uint32_t filename_id, uint32_t line, uint32_t insertion_point) {
         Insertions inss;
         std::stringstream query;
-        if (!(llval.pointer_tst == "")) {
-            query << "if (" << llval.pointer_tst << ")  {";
+
+        if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
+            query << "if (";
+
+        if (!(llval.pointer_tst == ""))  {
+            query << "(" << llval.pointer_tst << ")";
+            if (llval.is_ptr) 
+                query << " && ";
         }
-        query << "vm_lava_query_buffer("
-              << "&(" << llval.name << "), " 
-              << llval.len << ", "
+
+        if (llval.is_ptr) 
+            query << "(" << llval.name << ")";
+        
+        if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
+            query << ")  {";
+        
+            
+        query << "vm_lava_query_buffer(";
+        if (llval.is_ptr) 
+            query << "(" << llval.name << "), " ;
+        else 
+            query << "&(" << llval.name << "), " ;
+        query << llval.len << ", "
               << filename_id << ", "
               << GetStringID(llval.name) << ", "
               << line << ", "
               << insertion_point << ");\n";
-        if (!(llval.pointer_tst == "")) {
+
+        if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
             query << "}";
-        }
+        
         return query.str();
     }
 
@@ -258,9 +279,11 @@ public:
         std::string lvalderef;
         std::string lvallen;
         bool success = true;
-        if (lval_type->isPointerType()) {
+        bool is_ptr = false;
+        if (lval_type->isPointerType()) {            
+            is_ptr = true;
             const Type *pt = lval_type->getPointeeType().getTypePtr();
-            lvalderef = "*(" + lvalname + ")";
+            //            lvalderef = "(" + lvalname + ")";
             if (pt->isCharType()) {                
                 // lval is a string
                 lvallen = "strnlen(" + lvalname + "," + std::to_string(MAX_STRNLEN) + ")";
@@ -276,13 +299,13 @@ public:
             // lval not a pointer
             if ( lval_type->isVoidType() ) 
                 success = false;
-            lvalderef = "(" + lvalname + ")";
+            //            lvalderef = "(" + lvalname + ")";
             lvallen = "sizeof(" + lvalname + ")";
         }
-        assert (lvalderef.length() != 0);
+        //        assert (lvalderef.length() != 0);
         assert (lvallen.length() != 0);
         // t is not a pointer
-        Llval llval = { lvalderef, pointer_tst, lvallen, lval_type };
+        Llval llval = { lvalname, pointer_tst, lvallen, lval_type, is_ptr };
         return std::make_pair(success,llval);
     }        
 
@@ -438,9 +461,28 @@ public:
         return false;
     }
 
-    bool IsAttackPoint(FunctionDecl *fd) {
-        std::string fn_name = fd->getNameInfo().getName().getAsString();
-        return 
+    bool IsAttackPoint(CallExpr *e) {
+        for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
+            Stmt *stmt = dyn_cast<Stmt>(*it);
+            if (stmt) {
+                Expr *arg = dyn_cast<Expr>(*it);
+                // can't fail, right? 
+                assert (arg);
+                const Type *t = arg->getType().getTypePtr();
+                if (t->isPointerType()) {
+                    const Type *pt = t->getPointeeType().getTypePtr();
+                    // its a pointer to a non-void 
+                    if ( ! (pt->isVoidType() ) ) 
+                        return true;
+                }
+                if (t->isIntegerType() || t->isCharType()) 
+                    return true;
+            }
+        }
+        return false;
+        /*
+        std::string fn_name = fd->getDirectCallee()->getNameInfo().getName().getAsString();
+        return
             ((fn_name.find("memcpy") != std::string::npos) 
              || (fn_name.find("malloc") != std::string::npos)
              || (fn_name.find("memmove") != std::string::npos)
@@ -451,6 +493,7 @@ public:
              || (fn_name.find("strncat") != std::string::npos)
              || (fn_name.find("exec") != std::string::npos)
              || (fn_name.find("popen") != std::string::npos));
+        */
     }
 
     // insertions are like parentheses.  they have to match
@@ -477,16 +520,19 @@ public:
     Insertions ComposeAtpQuery(CallExpr *ce, std::string filename, uint32_t line) {
         std::string fn_name =  ce->getDirectCallee()->getNameInfo().getName().getAsString();
         Insertions inss;
-        if ((fn_name.find("memcpy") != std::string::npos) 
-            || (fn_name.find("malloc") != std::string::npos)
-            || (fn_name.find("memmove") != std::string::npos)
-            || (fn_name.find("bcopy") != std::string::npos)
-            || (fn_name.find("strcpy") != std::string::npos)
-            || (fn_name.find("strncpy") != std::string::npos)
-            || (fn_name.find("strcat") != std::string::npos)
-            || (fn_name.find("strncat") != std::string::npos)
-            || (fn_name.find("exec") != std::string::npos)
-            || (fn_name.find("popen") != std::string::npos)) {
+        if (IsAttackPoint(ce)) {                
+            /*
+              if ((fn_name.find("memcpy") != std::string::npos) 
+              || (fn_name.find("malloc") != std::string::npos)
+              || (fn_name.find("memmove") != std::string::npos)
+              || (fn_name.find("bcopy") != std::string::npos)
+              || (fn_name.find("strcpy") != std::string::npos)
+              || (fn_name.find("strncpy") != std::string::npos)
+              || (fn_name.find("strcat") != std::string::npos)
+              || (fn_name.find("strncat") != std::string::npos)
+              || (fn_name.find("exec") != std::string::npos)
+              || (fn_name.find("popen") != std::string::npos)) {
+            */
             // this is an attack point              
             std::stringstream before;
             std::stringstream after;
@@ -521,28 +567,48 @@ public:
        i = 0; // byte # in global
        lava_1 |=  (((unsigned char *) &dua))[o] << (i*8) ;
     */
-    Insertions ComposeDuaSiphoning(Bug &bug) {
+    Insertions ComposeDuaSiphoning(Llval &llval, Bug &bug) {
         errs() << "ComposeDuaSiphoning\n";
         Insertions inss;
-        std::stringstream ss;
+        std::stringstream siphon;
+        if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
+            siphon << "if (";
+        if (!(llval.pointer_tst == ""))  {
+            siphon << "(" << llval.pointer_tst << ")";
+            if (llval.is_ptr) 
+                siphon << " && ";
+        }
+        if (llval.is_ptr) 
+            siphon << "(" << llval.name << ")";       
+        if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
+            siphon << ")  {";
+
         uint32_t i = 0;
         std::string gn = LavaGlobal(bug.id);
-        ss << "int " << gn << " = 0;\n";
+        siphon << "int " << gn << " = 0;\n";
         uint32_t o = 0;
+        std::string lval_base;
+        if (llval.is_ptr) 
+            lval_base = llval.name;
+        else 
+            lval_base = "&(" + llval.name + ")";
         for ( auto ptr : bug.dua.lval_taint ) {
             // 0 means this offset of the lval is either untainted or not-viable for use by lava
             if (ptr != 0) {
-                ss << LavaGlobal(bug.id) 
-                   << " |= (((unsigned char *) &" 
-                   << bug.dua.lvalname << "))[" << o << "] << (" << i << "*8);";
+                siphon << LavaGlobal(bug.id) 
+                   << " |= ((unsigned char *) " 
+                   << lval_base << ")[" << o << "] << (" << i << "*8);";
                 i ++;
             }
             // we don't need more than 4 bytes of dua
             if (i == 4) break;
             o ++;
         }
-        ss << "lava_set(" << gn << ");\n";
-        inss.after_part = ss.str();
+        siphon << "lava_set(" << gn << ");\n";
+        if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
+            siphon << "}";       
+
+        inss.after_part = siphon.str();
         // this is prototype for setter 
         inss.top_of_file = "void lava_set(unsigned int val);\n";
         return inss;
@@ -612,16 +678,20 @@ public:
       by different parts of the input
       returns Bug 
     */
-    bool AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint, Bug *the_bug ) {
+    bool AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint, 
+               uint32_t insertion_point, Bug *the_bug ) {
         for ( auto bug : bugs ) {
             bool atbug = false;
             if (atAttackPoint) {
-                atbug = (filename == bug.atp.filename && line == bug.atp.line);
+                // this is where we'll use the dua.  only need to match the file and line
+                assert (insertion_point == -1);
+                atbug = (filename == bug.atp.filename && line == bug.atp.line );
             }
             else {
-                if (filename == bug.dua.filename && line == bug.dua.line) {
-                    atbug = (lvalname == bug.dua.lvalname);
-                }
+                // this is the dua siphon -- need to match most every part of dua
+                atbug = (filename == bug.dua.filename && line == bug.dua.line 
+                         && lvalname == bug.dua.lvalname
+                         && insertion_point == bug.dua.insertionpoint);
             }
             if (atbug) {
                 errs() << "Injecting bug @ line " << line << "\n";
@@ -646,16 +716,19 @@ public:
       1 = query was before call
       2 = query was after call
     */
-    Insertions ComposeDuaNewSrc(Llval &llval, std::string filename, uint32_t line, uint32_t insertion_point) {
+    Insertions ComposeDuaNewSrc(Llval &llval, std::string filename, uint32_t line,
+                                uint32_t insertion_point) {
         Insertions inss;
         if (LavaAction == LavaQueries) {
-            inss.after_part = ComposeDuaTaintQuery(llval, GetStringID(filename), line, insertion_point);
+            inss.after_part = ComposeDuaTaintQuery(llval, GetStringID(filename), 
+                                                   line, insertion_point);
         }
         else if (LavaAction == LavaInjectBugs) {
             Bug bug;
-            if (AtBug(llval.name, filename, line, /*atAttackPoint=*/false, &bug)) {
+            if (AtBug(llval.name, filename, line, /*atAttackPoint=*/false,
+                      insertion_point, &bug)) {
                 errs() << "at bug in ComposeDuaNewSrc\n";
-                inss = ComposeDuaSiphoning(bug);
+                inss = ComposeDuaSiphoning(llval, bug);
             }
         }
         else {
@@ -676,7 +749,7 @@ public:
         }
         else if (LavaAction == LavaInjectBugs) {
             Bug bug;
-            if (AtBug("", filename, line, /*atAttackPoint=*/true, &bug)) {
+            if (AtBug("", filename, line, /*atAttackPoint=*/true, /*insertion_point=*/-1, &bug)) {
                 errs() << "at bug in ComposeAtpNewSrc\n";
                 // NB: No insertion -- we insert things into the call 
                 inss = ComposeAtpGlobalUse(call_expr, bug);
@@ -726,8 +799,8 @@ public:
           * insert code to say "im at an attack point" 
           * insert code to use lava global modulo bugs list 
         */
-        Insertions inssAtp;        
-        if (IsAttackPoint(e->getDirectCallee())) {
+        Insertions inssAtp;
+        if (IsAttackPoint(e)) {
             inssAtp = ComposeAtpNewSrc(e, src_filename, src_line);
         }
         /*
@@ -813,11 +886,12 @@ public:
                 }
                 Insertions inss_before;
                 Insertions inss_after; 
-                if (LavaAction == LavaQueries) {
-                    inss_before = ComposeDuaNewSrc(
-                        llval, src_filename, src_line,
-                        INSERTION_POINT_BEFORE_CALL);
-                }
+                // for taint queries, we want to insert *both* before and after call, potentially
+                // for dua siphoning, we want to insert *either* before or after.
+                // based on the bug
+                inss_before = ComposeDuaNewSrc(
+                    llval, src_filename, src_line,
+                    INSERTION_POINT_BEFORE_CALL);
                 inss_after = ComposeDuaNewSrc(
                     llval, src_filename, src_line,
                     INSERTION_POINT_AFTER_CALL);
@@ -838,6 +912,7 @@ public:
                     errs() << "rv_after: [" << rv_after << "]\n";
                     if (queriable_retval) {
                         assert (rv_llval.name.length() > 0);
+                        // for both query & dua siphon, only makes sense to insert *after* return value is set.
                         Insertions inss = ComposeDuaNewSrc(rv_llval, src_filename, src_line, 
                                                            INSERTION_POINT_AFTER_CALL);
                         inssDua.top_of_file += inss.top_of_file ;
@@ -872,7 +947,8 @@ public:
 
     bool VisitFunctionDecl(FunctionDecl *FD) {
         //printf("FunctionDecl %s!\n", FD->getName().str().c_str());
-        if (LavaAction == LavaInjectBugs && FD->getName() == "main") {
+        if (LavaAction == LavaInjectBugs && FD->getName() == "main"
+            && FD->doesThisDeclarationHaveABody()) {
             // This is the file with main! insert lava_[gs]et and whatever.
             std::string lava_funcs_path(LavaPath + "/src_clang/lava_set.c");
             std::ifstream lava_funcs_file(lava_funcs_path);
