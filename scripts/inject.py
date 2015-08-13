@@ -192,6 +192,18 @@ def inject_bug_part_into_src(bug_id, suff):
         + ' ' + '-project-file=' + project_file
     run_cmd(cmd, None, None)
 
+def instrument_main(suff):
+    global query_build
+    global bugs_build
+    global lavatoll
+    global lavadb
+    filename_bug_part = bugs_build + "/" + suff
+    cmd = lava_tool + ' -action=inject -bug-list=\"\"' \
+        + ' -lava-db=' + lavadb + ' -p ' + bugs_build \
+        + ' ' + filename_bug_part \
+        + ' ' + '-project-file=' + project_file
+    run_cmd(cmd, None, None)
+
 
 
 
@@ -322,15 +334,23 @@ if __name__ == "__main__":
     if not os.path.exists(join(bugs_build, 'btrace.log')):
         run(shlex.split(project['configure']) + ['--prefix=' + bugs_install])
         run([join(lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
+
+    lavadb = join(top_dir, 'lavadb')
+
     if not os.path.exists(join(bugs_build, 'compile_commands.json')):
         run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'),
                 '/home/moyix/git/llvm/Debug+Asserts/lib/clang/3.6.1/include'])
+        # also insert instr for main() fn in all files that need it
+        inject_files = set(project['main_file'])
+        print "Instrumenting main fn by running lavatool on %d files\n" % (len(inject_files))
+        for f in inject_files:
+            print "injecting code into [%s]" % f
+            instrument_main(f)
+            run(['git', 'add', f])
         run(['git', 'add', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json.'])
     if not os.path.exists(bugs_install):
         run(project['install'], shell=True)
-
-    lavadb = join(top_dir, 'lavadb')
 
     # Now start picking the bug and injecting
     if args.bugid != -1:
@@ -378,7 +398,10 @@ if __name__ == "__main__":
 
     print "------------\n"
     print "INJECTING BUGS INTO SOURCE"
-    inject_files = set([dua.filename, atp.filename, project['main_file']])
+    inject_files = [dua.filename, atp.filename]
+#    inject_files.extend(project['main_file'])
+    inject_files = set(inject_files)
+    print "Running lavatool on %d files\n" % (len(inject_files))
     # modify src @ the dua to siphon off tainted bytes into global
     # modify src the atp to use that global
     # modify main to include lava_set
