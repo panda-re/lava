@@ -198,7 +198,7 @@ def instrument_main(suff):
     global lavatoll
     global lavadb
     filename_bug_part = bugs_build + "/" + suff
-    cmd = lava_tool + ' -action=inject -bug-list=\"\"' \
+    cmd = lava_tool + ' -action=main -bug-list=\"\"' \
         + ' -lava-db=' + lavadb + ' -p ' + bugs_build \
         + ' ' + filename_bug_part \
         + ' ' + '-project-file=' + project_file

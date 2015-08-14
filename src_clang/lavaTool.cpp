@@ -28,11 +28,12 @@ static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp(
     "\nTODO: Add descriptive help message.  "
     "Automatic clang stuff is ok for now.\n\n");
-enum action { LavaQueries, LavaInjectBugs };
+enum action { LavaQueries, LavaInjectBugs, LavaInstrumentMain };
 static cl::opt<action> LavaAction("action", cl::desc("LAVA Action"),
     cl::values(
         clEnumValN(LavaQueries, "query", "Add taint queries"),
         clEnumValN(LavaInjectBugs, "inject", "Inject bugs"),
+        clEnumValN(LavaInstrumentMain, "main", "Insert lava fns into file containing main"),
         clEnumValEnd),
     cl::cat(LavaCategory),
     cl::Required);
@@ -947,7 +948,7 @@ public:
 
     bool VisitFunctionDecl(FunctionDecl *FD) {
         //printf("FunctionDecl %s!\n", FD->getName().str().c_str());
-        if (LavaAction == LavaInjectBugs && FD->getName() == "main"
+        if (LavaAction == LavaInstrumentMain && FD->getName() == "main"
             && FD->doesThisDeclarationHaveABody()) {
             // This is the file with main! insert lava_[gs]et and whatever.
             std::string lava_funcs_path(LavaPath + "/src_clang/lava_set.c");
