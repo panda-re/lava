@@ -111,6 +111,17 @@ public:
         std::vector< VarDecl* > &globalVars, std::map<std::string,uint32_t> &StringIDs) :
             rewriter(rewriter), globalVars(globalVars), StringIDs(StringIDs)  {}
 
+    
+    void SpitLlval(Llval &llval) {
+        errs() << "name=" << llval.name << 
+            " pointer_tst=" << llval.pointer_tst << 
+            " len=" << llval.len << 
+            " is_ptr=" << llval.is_ptr;
+        llval.typ->dump();
+        
+    }            
+
+
     uint32_t GetStringID(std::string s) {
         if (StringIDs.find(s) == StringIDs.end()) {
             StringIDs[s] = StringIDs.size();
@@ -287,7 +298,7 @@ public:
             //            lvalderef = "(" + lvalname + ")";
             if (pt->isCharType()) {                
                 // lval is a string
-                lvallen = "strnlen(" + lvalname + "," + std::to_string(MAX_STRNLEN) + ")";
+                lvallen = "(size_t) -1";  // strnlen(" + lvalname + "," + std::to_string(MAX_STRNLEN) + ")";
             }
             else {
                 if ( pt->isVoidType() ) 
@@ -735,6 +746,14 @@ public:
         else {
             assert (1==0);
         }
+
+        errs() << "ComposeDuaNewSrc start\n";
+        errs() << "llval:\n";
+        SpitLlval(llval);
+        errs() << "inss:\n";
+        SpitInsertions(inss);
+        errs() << "ComposeDuaNewSrc end\n";
+
         return inss;
     }
     
