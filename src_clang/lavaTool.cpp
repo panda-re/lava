@@ -743,6 +743,9 @@ public:
                 inss = ComposeDuaSiphoning(llval, bug);
             }
         }
+        else if (LavaAction == LavaInstrumentMain) {
+            // do nothing
+        }
         else {
             assert (1==0);
         }
@@ -774,6 +777,9 @@ public:
                 // NB: No insertion -- we insert things into the call 
                 inss = ComposeAtpGlobalUse(call_expr, bug);
             }
+        }
+        else if (LavaAction == LavaInstrumentMain) {
+            // do nothing
         }
         else {
             assert (1==0);
