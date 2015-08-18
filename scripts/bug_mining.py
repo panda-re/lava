@@ -101,7 +101,7 @@ serial_path = os.path.join(tempdir, 'serial')
 qemu_args = [project['qcow'], '-loadvm', project['snapshot'],
         '-monitor', 'unix:' + monitor_path + ',server,nowait',
         '-serial', 'unix:' + serial_path + ',server,nowait',
-        '-vnc', ':9']
+        '-display', 'none'] 
 
 print
 progress("Running qemu with args:")
