@@ -512,6 +512,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
         uint32_t current_byte_not_ok;
         current_byte_not_ok = (((tq->tcn > max_tcn) << CBNO_TCN_BIT)
                                | ((ptr_to_set[tq->ptr].size() > max_card) << CBNO_CRD_BIT));
+        float current_byte_max_liveness = 0.0;
         if (current_byte_not_ok == 0) {
             if (ddebug) printf ("tcn and card ok.  checking liveness\n");
             // check for too-live taint label associated with this byte
@@ -520,12 +521,13 @@ void taint_query_hypercall(Panda__LogEntry *ple,
             assert (ptr_to_set[p].size() != 0);
             for ( uint32_t l : ptr_to_set[p] ) {
                 current_byte_not_ok |= ((liveness[l] > max_liveness) << CBNO_LVN_BIT);
+                current_byte_max_liveness = std::max(liveness[l], current_byte_max_liveness);
                 // dont bother looking at any more labels
                 if (current_byte_not_ok != 0) {
                     if (ddebug) printf ("label %d is too live (%d). discarding byte\n", l, liveness[l]);
                     break;
                 }
-            }
+            }             
         }
         if (current_byte_not_ok) {
             // discard this byte
@@ -548,7 +550,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
             // keep track of highest tcn, liveness, and card for any viable byte for this lval
             c_max_tcn = std::max(tq->tcn, c_max_tcn);
             c_max_card = std::max((uint32_t) ptr_to_set[tq->ptr].size(), c_max_card);
-            c_max_liveness = std::max(liveness[l],c_max_liveness);
+            c_max_liveness = std::max(current_byte_max_liveness, c_max_liveness);
             if (debug) printf ("keeping byte @ offset %d\n", offset); 
             // add this byte to the list of ok bytes
             viable_byte[offset] = tq->ptr;
