@@ -393,7 +393,7 @@ if __name__ == "__main__":
     run_cmd("/usr/bin/git checkout -f", bugs_build, None)
     # ugh -- with tshark if you *dont* do this, your bug-inj source may not build, sadly
     # it looks like their makefile doesn't understand its own dependencies, in fact
-    if (project['makeclean']):
+    if ('makeclean' in project) and (project['makeclean']):
         run_cmd("make clean", bugs_build, None)
 
 
