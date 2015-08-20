@@ -475,14 +475,16 @@ public:
 
     bool IsArgAttackable(Expr *arg) {
         const Type *t = arg->getType().getTypePtr();
-        if (t->isPointerType()) {
-            const Type *pt = t->getPointeeType().getTypePtr();
-            // its a pointer to a non-void 
-            if ( ! (pt->isVoidType() ) ) 
+        if (QueriableType(t)) {
+            if (t->isPointerType()) {
+                const Type *pt = t->getPointeeType().getTypePtr();
+                // its a pointer to a non-void 
+                if ( ! (pt->isVoidType() ) ) 
+                    return true;
+            }
+            if (t->isIntegerType() || t->isCharType()) 
                 return true;
         }
-        if (t->isIntegerType() || t->isCharType()) 
-            return true;
         return false;
     }
 
@@ -677,7 +679,7 @@ public:
                 else {
                     // for everything else we add lava_get() to the arg an hope to break things
                     // not that the arg, if attackable, is a pointer *or* some kind of integer
-                    new_call << (ExprStr(arg)) + "+" +  gn + " * (0x6c617661 == " + gn + " || 0x6176616c == " + gn + ")";           
+                    new_call << "((char *) (" + (ExprStr(arg)) + ")) + " +  gn + " * (0x6c617661 == " + gn + " || 0x6176616c == " + gn + ")";           
                 }
             }
             else {
