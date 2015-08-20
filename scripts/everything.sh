@@ -105,9 +105,12 @@ do
   lf="$logs/bug_mining-$i.log"
   progress "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
   run_remote "$pandahost" "$python $scripts/bug_mining.py $json $input >& $lf"
+  echo -n "Num Bugs in db: "
+  run_remote "$dbhost" "/usr/bin/psql -d $db -U postgres -c 'select count(*) from bug' | head -3 | tail -1"
 done
 
 lf="$logs/inject.log"  
 progress "Injecting a single bug -- logging to $lf"
 run_remote "$testinghost" "$python $scripts/inject.py $json >& $lf"
 
+progress "Everthing finished."
