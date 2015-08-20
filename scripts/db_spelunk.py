@@ -80,6 +80,7 @@ duas = get_duas()
 
 max_tcns = {}
 max_lvns = {}
+max_crds = {}
 for run_id in runs.keys():
      (build_id, fuzz, exitcode, output_lines, success) = runs[run_id]
      (buglist, binpath, compiles) = builds[build_id]
@@ -90,11 +91,15 @@ for run_id in runs.keys():
          if not exitcode in max_tcns:
              max_tcns[exitcode] = []
              max_lvns[exitcode] = []
+             max_crds[exitcode] = []
          max_tcns[exitcode].append(max_tcn)
          max_lvns[exitcode].append(max_liveness)
+         max_crds[exitcode].append(max_card)
 
 for exitcode in max_tcns:
     mt = numpy.array(max_tcns[exitcode])
     ml = numpy.array(max_lvns[exitcode])
-    print "exitcode=%4d n=%5d max_tcn = (%.2f +/ %.2f)  max_lvn = (%.2f +/ %.2f)" % (exitcode, len(mt), mt.mean(), mt.std(), ml.mean(), ml.std())
+    mc = numpy.array(max_crds[exitcode])
+    print "exitcode=%4d n=%5d max_tcn = (%.2f +/- %.2f)  max_lvn = (%.2f +/- %.2f)  max_crd =  (%.2f +/- %.2f) " \
+        % (exitcode, len(mt), mt.mean(), mt.std(), ml.mean(), ml.std(), mc.mean(), mc.std())
 
