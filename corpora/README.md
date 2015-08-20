@@ -12,7 +12,7 @@ Wireshark
 ---------
 * CVE 2011-1591 - 1.4.x before 1.4.5 - DECT dissector in epan
 * CVE 2011-0024 - 1.2 - Heap overflow in pcapng.c
-* CVE 2011-0444 - 1.2-1.2.13 and 1.4.2 - Oveflow in packet-mac-lte.c
+* CVE 2011-0444 - 1.2-1.2.13 and 1.4.2 - Oveflow in packet-mac-lte.c  dissect_mac_lte()?
 * CVE 2010-4538 - 1.4.2 - Buffer overflow in sect_enttec_dmx_da packet -enttec.c
 * CVE 2012-4297 - 1.6.x and 1.8.x - packet-gsm_rlcmac.c
 * CVE 2014-4174 - 1.10.x before 1.10.4 - memory corruption in libpcap file parser in libpcap.c 
