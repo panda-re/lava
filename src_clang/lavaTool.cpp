@@ -473,6 +473,19 @@ public:
         return false;
     }
 
+    bool IsArgAttackable(Expr *arg) {
+        const Type *t = arg->getType().getTypePtr();
+        if (t->isPointerType()) {
+            const Type *pt = t->getPointeeType().getTypePtr();
+            // its a pointer to a non-void 
+            if ( ! (pt->isVoidType() ) ) 
+                return true;
+        }
+        if (t->isIntegerType() || t->isCharType()) 
+            return true;
+        return false;
+    }
+
     bool IsAttackPoint(CallExpr *e) {
         for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
             Stmt *stmt = dyn_cast<Stmt>(*it);
@@ -480,15 +493,7 @@ public:
                 Expr *arg = dyn_cast<Expr>(*it);
                 // can't fail, right? 
                 assert (arg);
-                const Type *t = arg->getType().getTypePtr();
-                if (t->isPointerType()) {
-                    const Type *pt = t->getPointeeType().getTypePtr();
-                    // its a pointer to a non-void 
-                    if ( ! (pt->isVoidType() ) ) 
-                        return true;
-                }
-                if (t->isIntegerType() || t->isCharType()) 
-                    return true;
+                if (IsArgAttackable(arg)) return true;
             }
         }
         return false;
@@ -636,47 +641,55 @@ public:
         Insertions inss;        
         if (bug.atp.filename != bug.dua.filename) {
             // only needed if dua is in different file from attack point
-            //           inss.top_of_file = "int " + LavaGlobal(bug.id) + "  __attribute__((weak)) ;\n";
             inss.top_of_file = "extern unsigned int lava_get(void) ;\n";
         }
         std::string fn_name = call_expr->getDirectCallee()->getNameInfo().getName().getAsString();
-        uint32_t n = call_expr->getNumArgs();
-        //        errs() << "n=" << n << "\n";
-        // choose an arg at random to add global to.          
+        uint32_t num_args = call_expr->getNumArgs();
+        std::vector<uint32_t> attackable_args;        
+        uint32_t i=0;
+        // collect inds of attackable args
+        for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {            
+            if (IsArgAttackable(dyn_cast<Expr>(*it))) 
+                attackable_args.push_back(i);
+            i ++;
+        }
+        // choose arg at random to attack
         std::default_random_engine generator;
-        std::uniform_int_distribution<int> distribution(0,n-1);
-        int arg_num = distribution(generator);
-        //        errs() <<  "adding global to arg " << arg_num << "\n";
-        uint32_t i = 0;
+        std::uniform_int_distribution<int> distribution(0,attackable_args.size()-1);
+        int arg_to_attack = distribution(generator);
+        Expr *arg = call_expr->getArgs()[arg_to_attack];            
         std::stringstream new_call;
         new_call << fn_name << "(";
-        std::string gn = "(lava_get())"; // LavaGlobal(bug.id);
+        std::string gn = "(lava_get())";
+        i=0;        
         for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {
-            //            errs() << "i=" << i << "\n";
             Expr *arg = dyn_cast<Expr>(*it);
             // really, this cast can't fail, right?
             assert(arg); 
-            if (i == arg_num) {
+            if (i == arg_to_attack) {
+                // attack this arg.
+                // nasty heuristic.
                 // for malloc, we want the lava switch to undersize the malloc to a few bytes
                 // and hope for an overflow
                 if (fn_name.find("malloc") != std::string::npos) {
                     new_call << "(0x6c617661 == " + gn + " || 0x6176616c == " + gn + ") ? 1 : " << (ExprStr(arg));           
                 }
                 else {
-                    // for memcpy, this seems reasonable.  
-                    // others?
+                    // for everything else we add lava_get() to the arg an hope to break things
+                    // not that the arg, if attackable, is a pointer *or* some kind of integer
                     new_call << (ExprStr(arg)) + "+" +  gn + " * (0x6c617661 == " + gn + " || 0x6176616c == " + gn + ")";           
                 }
             }
             else {
+                // this arg gets used in original form
                 new_call << (ExprStr(arg));
             }
-            if (i < n-1) {
+            if (i < num_args-1) {
                 new_call << ",";
             }
             i++;
         }
-        new_call << ")";
+        new_call << ")";        
         SourceRange sr = SourceRange(call_expr->getLocStart(),call_expr->getLocEnd());
         rewriter.ReplaceText(sr, new_call.str());
         return inss;
@@ -750,12 +763,14 @@ public:
             assert (1==0);
         }
 
+        /*
         errs() << "ComposeDuaNewSrc start\n";
         errs() << "llval:\n";
         SpitLlval(llval);
         errs() << "inss:\n";
         SpitInsertions(inss);
         errs() << "ComposeDuaNewSrc end\n";
+        */
 
         return inss;
     }
