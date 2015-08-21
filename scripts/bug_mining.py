@@ -45,8 +45,12 @@ if len(sys.argv) < 3:
     print >>sys.stderr, "Usage: python project.json inputfile"
     sys.exit(1)
 
+
 project_file = abspath(sys.argv[1])
 input_file = abspath(sys.argv[2])
+
+print "bug_mining.py %s %s" % (project_file, input_file)
+
 input_file_base = os.path.basename(input_file)
 project = json.load(open(project_file, "r"))
 

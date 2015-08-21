@@ -16,7 +16,7 @@ project = None
 debugging = False
 
 def get_conn():
-    conn = psycopg2.connect(host=db_host, database=db, user=db_user, password=db_password)
+    conn = psycopg2.connect(database=db, user=db_user, password=db_password)
     return conn;
 
 
@@ -44,8 +44,9 @@ def next_bug():
 def next_bug_random():
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM bug WHERE inj=false OFFSET floor(random() * (SELECT COUNT(*) FROM bug WHERE inj=false) ) LIMIT 1;");
+    cur.execute("SELECT * FROM bug WHERE inj=false OFFSET floor(random() * (SELECT COUNT(*) FROM bug WHERE inj=false) ) LIMIT 1;")
     bug = cur.fetchone()
+    cur.execute("UPDATE bug SET inj=true WHERE bug_id={};".format(bug[0]))
     # need to do all three of these in order for the writes to db to actually happen
     cur.close()
     conn.commit()
@@ -314,8 +315,11 @@ if __name__ == "__main__":
         os.makedirs(bugs_parent)
     except: pass
 
-    tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
-    bugs_root = tar_files.splitlines()[0].split(os.path.sep)[0]
+    if 'source_root' in project:
+        bugs_root = project['source_root']
+    else:
+        tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
+        bugs_root = tar_files.splitlines()[0].split(os.path.sep)[0]
 
     queries_build = join(top_dir, bugs_root)
     bugs_build = join(bugs_parent, bugs_root)

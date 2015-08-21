@@ -473,6 +473,21 @@ public:
         return false;
     }
 
+    bool IsArgAttackable(Expr *arg) {
+        const Type *t = arg->getType().getTypePtr();
+        if (QueriableType(t)) {
+            if (t->isPointerType()) {
+                const Type *pt = t->getPointeeType().getTypePtr();
+                // its a pointer to a non-void 
+                if ( ! (pt->isVoidType() ) ) 
+                    return true;
+            }
+            if (t->isIntegerType() || t->isCharType()) 
+                return true;
+        }
+        return false;
+    }
+
     bool IsAttackPoint(CallExpr *e) {
         for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
             Stmt *stmt = dyn_cast<Stmt>(*it);
@@ -480,15 +495,7 @@ public:
                 Expr *arg = dyn_cast<Expr>(*it);
                 // can't fail, right? 
                 assert (arg);
-                const Type *t = arg->getType().getTypePtr();
-                if (t->isPointerType()) {
-                    const Type *pt = t->getPointeeType().getTypePtr();
-                    // its a pointer to a non-void 
-                    if ( ! (pt->isVoidType() ) ) 
-                        return true;
-                }
-                if (t->isIntegerType() || t->isCharType()) 
-                    return true;
+                if (IsArgAttackable(arg)) return true;
             }
         }
         return false;
@@ -548,7 +555,7 @@ public:
             // this is an attack point              
             std::stringstream before;
             std::stringstream after;
-            errs() << "Found attack point at " << filename << ":" << line << "\n";
+            //            errs() << "Found attack point at " << filename << ":" << line << "\n";
             before << "({";
             QualType rqt = ce->getCallReturnType();
             bool has_retval = CallExprHasRetVal(rqt);
@@ -580,7 +587,7 @@ public:
        lava_1 |=  (((unsigned char *) &dua))[o] << (i*8) ;
     */
     Insertions ComposeDuaSiphoning(Llval &llval, Bug &bug) {
-        errs() << "ComposeDuaSiphoning\n";
+        //        errs() << "ComposeDuaSiphoning\n";
         Insertions inss;
         std::stringstream siphon;
         if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
@@ -636,47 +643,55 @@ public:
         Insertions inss;        
         if (bug.atp.filename != bug.dua.filename) {
             // only needed if dua is in different file from attack point
-            //           inss.top_of_file = "int " + LavaGlobal(bug.id) + "  __attribute__((weak)) ;\n";
             inss.top_of_file = "extern unsigned int lava_get(void) ;\n";
         }
         std::string fn_name = call_expr->getDirectCallee()->getNameInfo().getName().getAsString();
-        uint32_t n = call_expr->getNumArgs();
-        //        errs() << "n=" << n << "\n";
-        // choose an arg at random to add global to.          
+        uint32_t num_args = call_expr->getNumArgs();
+        std::vector<uint32_t> attackable_args;        
+        uint32_t i=0;
+        // collect inds of attackable args
+        for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {            
+            if (IsArgAttackable(dyn_cast<Expr>(*it))) 
+                attackable_args.push_back(i);
+            i ++;
+        }
+        // choose arg at random to attack
         std::default_random_engine generator;
-        std::uniform_int_distribution<int> distribution(0,n-1);
-        int arg_num = distribution(generator);
-        //        errs() <<  "adding global to arg " << arg_num << "\n";
-        uint32_t i = 0;
+        std::uniform_int_distribution<int> distribution(0,attackable_args.size()-1);
+        int arg_to_attack = distribution(generator);
+        Expr *arg = call_expr->getArgs()[arg_to_attack];            
         std::stringstream new_call;
         new_call << fn_name << "(";
-        std::string gn = "(lava_get())"; // LavaGlobal(bug.id);
+        std::string gn = "(lava_get())";
+        i=0;        
         for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {
-            //            errs() << "i=" << i << "\n";
             Expr *arg = dyn_cast<Expr>(*it);
             // really, this cast can't fail, right?
             assert(arg); 
-            if (i == arg_num) {
+            if (i == arg_to_attack) {
+                // attack this arg.
+                // nasty heuristic.
                 // for malloc, we want the lava switch to undersize the malloc to a few bytes
                 // and hope for an overflow
                 if (fn_name.find("malloc") != std::string::npos) {
                     new_call << "(0x6c617661 == " + gn + " || 0x6176616c == " + gn + ") ? 1 : " << (ExprStr(arg));           
                 }
                 else {
-                    // for memcpy, this seems reasonable.  
-                    // others?
-                    new_call << (ExprStr(arg)) + "+" +  gn + " * (0x6c617661 == " + gn + " || 0x6176616c == " + gn + ")";           
+                    // for everything else we add lava_get() to the arg an hope to break things
+                    // not that the arg, if attackable, is a pointer *or* some kind of integer
+                    new_call << "((char *) (" + (ExprStr(arg)) + ")) + " +  gn + " * (0x6c617661 == " + gn + " || 0x6176616c == " + gn + ")";           
                 }
             }
             else {
+                // this arg gets used in original form
                 new_call << (ExprStr(arg));
             }
-            if (i < n-1) {
+            if (i < num_args-1) {
                 new_call << ",";
             }
             i++;
         }
-        new_call << ")";
+        new_call << ")";        
         SourceRange sr = SourceRange(call_expr->getLocStart(),call_expr->getLocEnd());
         rewriter.ReplaceText(sr, new_call.str());
         return inss;
@@ -706,7 +721,7 @@ public:
                          && insertion_point == bug.dua.insertionpoint);
             }
             if (atbug) {
-                errs() << "Injecting bug @ line " << line << "\n";
+                //                errs() << "Injecting bug @ line " << line << "\n";
                 *the_bug = bug;
                 return true;
             }
@@ -739,7 +754,7 @@ public:
             Bug bug;
             if (AtBug(llval.name, filename, line, /*atAttackPoint=*/false,
                       insertion_point, &bug)) {
-                errs() << "at bug in ComposeDuaNewSrc\n";
+                //                errs() << "at bug in ComposeDuaNewSrc\n";
                 inss = ComposeDuaSiphoning(llval, bug);
             }
         }
@@ -750,12 +765,14 @@ public:
             assert (1==0);
         }
 
+        /*
         errs() << "ComposeDuaNewSrc start\n";
         errs() << "llval:\n";
         SpitLlval(llval);
         errs() << "inss:\n";
         SpitInsertions(inss);
         errs() << "ComposeDuaNewSrc end\n";
+        */
 
         return inss;
     }
@@ -773,7 +790,7 @@ public:
         else if (LavaAction == LavaInjectBugs) {
             Bug bug;
             if (AtBug("", filename, line, /*atAttackPoint=*/true, /*insertion_point=*/-1, &bug)) {
-                errs() << "at bug in ComposeAtpNewSrc\n";
+                //                errs() << "at bug in ComposeAtpNewSrc\n";
                 // NB: No insertion -- we insert things into the call 
                 inss = ComposeAtpGlobalUse(call_expr, bug);
             }
@@ -798,7 +815,7 @@ public:
     }
 
     bool VisitCallExpr(CallExpr *e) {
-        errs() << "VisitCallExpr \n";
+        //        errs() << "VisitCallExpr \n";
         SourceManager &sm = rewriter.getSourceMgr();
         FullSourceLoc fullLoc(e->getLocStart(), sm);
         std::string src_filename;
@@ -812,14 +829,14 @@ public:
             src_filename = FullPath(fullLoc);
         }
         uint32_t src_line = fullLoc.getExpansionLineNumber(); 
-        errs() << "VisitCallExpr " << src_filename << " " << src_line << "\n";
+        //        errs() << "VisitCallExpr " << src_filename << " " << src_line << "\n";
         // if we dont know the filename, that indicates unhappy situation.  bail.
         if (src_filename == "") return true;
         FunctionDecl *f = e->getDirectCallee();
         // this is also bad -- bail
         if (!f) return true;
         std::string fn_name = f->getNameInfo().getName().getAsString();       
-        errs() << "VisitCallExpr " << src_filename << " " << fn_name << " " << src_line << "\n";
+        //        errs() << "VisitCallExpr " << src_filename << " " << fn_name << " " << src_line << "\n";
         /*
           if this is an attack point, we will either 
           * insert code to say "im at an attack point" 
@@ -851,25 +868,25 @@ public:
             Llval rv_llval;
             bool queriable_retval = false;
             if (has_retval) {
-                errs() << "1 has retval\n";
+                //                errs() << "1 has retval\n";
                 std::string pointer_tst = (rqt.getTypePtr()->isPointerType() ? retvalname : "");
                 if (QueriableType(rqt.getTypePtr())) {
-                    errs() << "is queriable type\n";
+                    //                    errs() << "is queriable type\n";
                     std::pair<bool, Llval> res = ConstructLlval(retvalname, pointer_tst, rqt.getTypePtr());
                     queriable_retval = res.first;
                     if (queriable_retval) {
                         rv_llval = res.second;
-                        errs() << "1 rv_llval.length() = " << (rv_llval.name.length()) << "\n";
+                        //                        errs() << "1 rv_llval.length() = " << (rv_llval.name.length()) << "\n";
                         assert (rv_llval.name.length() > 0);
                         //                llvals.insert({retvalname, pointer_tst});
                     }
                 }
                 rv_before = (rqt.getAsString()) + " " + retvalname + " = ";
                 rv_after = retvalname + ";";
-                
+                /*
                 errs() << "rv_before: [" << rv_before << "]\n";
                 errs() << "rv_after: [" << rv_after << "]\n";
-
+                */
             }
             int i = 0;
             for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
@@ -932,10 +949,12 @@ public:
                 inssDua.before_part = "({" + dua_src_before.str() + rv_before;
                 inssDua.after_part = ";" + dua_src_after.str();
                 if (has_retval) {
+                    /*
                     errs() << "2 has retval\n";
                     errs() << "2 rv_llval.length() = " << (rv_llval.name.length()) << "\n";
                     errs() << "rv_before: [" << rv_before << "]\n";
                     errs() << "rv_after: [" << rv_after << "]\n";
+                    */
                     if (queriable_retval) {
                         assert (rv_llval.name.length() > 0);
                         // for both query & dua siphon, only makes sense to insert *after* return value is set.
