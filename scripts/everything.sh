@@ -151,6 +151,10 @@ do
     progress "Injecting bug $i -- logging to $lf"
     run_remote "$testinghost" "$python $scripts/inject.py -r $json >& $lf"
     grep retval "$lf"
+    a=`psql -d file2 -U postgres -c "select count(*) from run where fuzz=true and exitcode != -11" | head -3  | tail -1 `
+    b=`psql -d file2 -U postgres -c "select count(*) from run where fuzz=true and exitcode = -11" | head -3  | tail -1 `
+    y=`bc <<< "scale=3; $b/($a+$b)"`
+    echo "Yield: $y"
 done
 
 progress "Everthing finished."
