@@ -97,7 +97,7 @@ db="$(jq -r .db $json)"
 tarfile="$(jq -r .tarfile $json)"
 directory="$(jq -r .directory $json)"
 name="$(jq -r .name $json)"
-inputs=`jq -r '.inputs' /nas/tleek/lava/s2s/file.json  | jq 'join (" ")' | sed 's/\"//g' ` 
+inputs=`jq -r '.inputs' $json  | jq 'join (" ")' | sed 's/\"//g' ` 
 buildhost="$(jq -r .buildhost $json)"
 pandahost="$(jq -r .pandahost $json)"
 dbhost="$(jq -r .dbhost $json)"
@@ -151,10 +151,11 @@ do
     progress "Injecting bug $i -- logging to $lf"
     run_remote "$testinghost" "$python $scripts/inject.py -r $json >& $lf"
     grep retval "$lf"
-    a=`psql -d file2 -U postgres -c "select count(*) from run where fuzz=true and exitcode != -11" | head -3  | tail -1 `
-    b=`psql -d file2 -U postgres -c "select count(*) from run where fuzz=true and exitcode = -11" | head -3  | tail -1 `
+    a=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode != -11" | head -3  | tail -1 `
+    b=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode = -11" | head -3  | tail -1 `
     y=`bc <<< "scale=3; $b/($a+$b)"`
-    echo "Yield: $y"
+    t=`bc <<< "$a + $b"`
+    echo "Runs: $t  Yield: $y"
 done
 
 progress "Everthing finished."
