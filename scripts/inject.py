@@ -16,7 +16,7 @@ project = None
 debugging = False
 
 def get_conn():
-    conn = psycopg2.connect(host=db_host, database=db, user=db_user, password=db_password)
+    conn = psycopg2.connect(database=db, user=db_user, password=db_password)
     return conn;
 
 
@@ -315,8 +315,11 @@ if __name__ == "__main__":
         os.makedirs(bugs_parent)
     except: pass
 
-    tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
-    bugs_root = tar_files.splitlines()[0].split(os.path.sep)[0]
+    if 'source_root' in project:
+        bugs_root = project['source_root']
+    else:
+        tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
+        bugs_root = tar_files.splitlines()[0].split(os.path.sep)[0]
 
     queries_build = join(top_dir, bugs_root)
     bugs_build = join(bugs_parent, bugs_root)
