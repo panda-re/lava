@@ -30,6 +30,13 @@
 # testinghost: what host to test injected bugs on
 # 
 
+
+set -e # Exit on error                                                                                                                                                                                          
+if [ $# -lt 1 ]; then
+  echo "Usage: $0 JSONfile "
+  exit 1
+fi      
+
 progress() {
   echo  
   date
@@ -37,12 +44,46 @@ progress() {
  
 }   
 
+# defaults
+num_inject=1
+skip_to_inject=0
+ok=0
+
+# -s means skip everything up to injection
+# -i 15 means inject 15 bugs (default is 1)
+echo 
+progress "Parsing args"
+while getopts  "si:k" flag
+do
+#  echo "$flag $OPTARG"
+  if [ "$flag" = "s" ]; then
+    skip_to_inject=1
+    progress "-s: Skipping ahead to inject bugs"
+  fi  
+  if [ "$flag" = "i" ]; then
+    num_inject=$OPTARG
+    progress "-i: num_inject = $num_inject"
+  fi
+  if [ "$flag" = "k" ]; then
+    ok=1 
+    progress "-k: Okaying my way through"
+  fi
+done
+shift $((OPTIND -1))
+
+
 
 deldir () {
   deldir=$1
   progress "Deleteing $deldir.  Type ok to go ahead."
-  read ans
-  if [ "$ans" = "ok" ] 
+  if [[ $ok -eq 0 ]] 
+  then
+      # they have to actually type 'ok'
+      read ans
+  else
+      ans=ok
+  fi
+  if [[ "$ans" = "ok" ]]
   then 
       echo "...deleting"
       rm -rf $deldir
@@ -60,33 +101,6 @@ run_remote() {
 }
 
         
-set -e # Exit on error                                                                                                                                                                                          
-if [ $# -lt 1 ]; then
-  echo "Usage: $0 JSONfile "
-  exit 1
-fi      
-
-# defaults
-num_inject=1
-skip_to_inject=0
-
-# -s means skip everything up to injection
-# -i 15 means inject 15 bugs (default is 1)
-while getopts  "si:" flag
-do
-#  echo "$flag $OPTARG"
-  if [ "$flag" = "s" ]; then
-    skip_to_inject=1
-    echo "Skipping ahead to inject bugs"
-  fi  
-  if [ "$flag" = "i" ]; then
-    num_inject=$OPTARG
-    echo "num_inject = $num_inject"
-  fi
-done
-shift $((OPTIND -1))
-
-#echo "skip_to_inject $skip_to_inject"
 
 json="$(realpath $1)"
 
@@ -106,9 +120,9 @@ testinghost="$(jq -r .testinghost $json)"
 scripts="$lava/scripts"
 python="/usr/bin/python"
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
-sourcedir="$directory/$source/$source"
-bugsdir="$directory/$source/bugs"
-logs="$directory/$source/logs"
+sourcedir="$directory/$name/$source"
+bugsdir="$directory/$name/bugs/$source"
+logs="$directory/$name/logs"
 
 
 if [ $skip_to_inject -eq 0 ]; then
