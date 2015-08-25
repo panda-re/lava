@@ -16,7 +16,7 @@ Second is input file you want to run, under panda, to get taint info.
 
 
 
-
+import re
 import os
 import socket
 import sys
@@ -178,17 +178,20 @@ dprint ("qemu args: [%s]" % (" ".join(qemu_args)))
 
 qemu_replay = spawn(project['qemu'], qemu_args)
 qemu_replay.logfile_read = sys.stdout
-qemu_replay.expect_exact("saw open of file we want to taint", timeout=300)
+# trying to match this: saw open of file we want to taint: [/mnt/cdrom/bash] insn 10022563
+qemu_replay.expect(re.compile("saw open of file we want to taint: \[.*\] insn ([0-9]+)"), timeout=400)
 
-after_progress = qemu_replay.before.rpartition(os.path.basename(isoname) + ":")[2]
-print after_progress
-instr = int(after_progress.strip().split()[0])
+#after_progress = qemu_replay.before.rpartition(os.path.basename(isoname) + ":")[2]
+#instr = int(after_progress.strip().split()[0])
+
+instr = (int (qemu_replay.match.groups()[0])) - 10000
 assert instr != 0
 qemu_replay.close()
 
 print
 progress("Starting second-pass replay, tainting from {}...".format(instr))
 pandalog = 'queries-{}.plog'.format(os.path.basename(isoname))
+
 qemu_args = ['-replay', isoname,
         '-pandalog', pandalog,
         '-panda', 'taint2:no_tp',

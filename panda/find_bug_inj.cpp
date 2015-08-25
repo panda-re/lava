@@ -51,7 +51,7 @@ extern "C" {
 #define CBNO_CRD_BIT 1
 #define CBNO_LVN_BIT 2
 
-#define MIN_VIABLE_BYTES 1
+#define MIN_VIABLE_BYTES 2
 
 // lval may have lots of tainted bytes.  We only use the first few.
 #define MAX_TAINTED_LVAL_BYTES 4
@@ -561,7 +561,8 @@ void taint_query_hypercall(Panda__LogEntry *ple,
         printf ("%d viable bytes in lval  %d labels\n",
                 num_viable, (int) labels.size());
     }
-    if ((num_viable > MIN_VIABLE_BYTES) && (labels.size() >= 1)) {
+    if ((num_viable >= MIN_VIABLE_BYTES) && (labels.size() >= 1)) {
+        assert (c_max_liveness <= max_liveness);
         // tainted lval we just considered was deemed viable
         Dua dua = {
             ind2str[si->filename], 
@@ -685,7 +686,7 @@ bool is_dua_viable (Dua &dua, std::map <uint32_t,float> &liveness,
         printf ("dua has %d viable bytes\n", num_viable);
     }
     // dua is viable iff it has more than one viable byte
-    return (num_viable > MIN_VIABLE_BYTES);
+    return (num_viable >= MIN_VIABLE_BYTES);
 }
 
 
@@ -755,6 +756,9 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
         if (bugs.count(b) == 0) {
             // this is a new bug (new src mods for both dua and atp)
             bugs.insert(b);
+
+            assert (dua.max_liveness < max_liveness);
+
             bool newb = add_bug_to_db(conn, dua, atp, b);
             if (newb) {
                 uint64_t i1 = duas[dk].instr ;
