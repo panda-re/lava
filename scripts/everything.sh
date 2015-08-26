@@ -111,8 +111,10 @@ run_remote() {
     echo "exit code was $ret_code"
   if [ $ret_code != 0 ]; then
     echo "exit code was $ret_code"
+    exit $ret_code
   fi
-  return $ret_code
+  
+  #return $ret_code
 }
         
 
