@@ -281,7 +281,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
     parser.add_argument('project', type=argparse.FileType('r'),
             help = 'JSON project file')
-    parser.add_argument('bugid', nargs='?', type=int, default=-1,
+    parser.add_argument('-b', '--bugid', action="store", default=-1,
             help = 'Bug id (otherwise, highest scored will be chosen)')
     parser.add_argument('-r', '--randomize', action='store_true', default = False,
             help = 'Choose the next bug randomly rather than by score')
