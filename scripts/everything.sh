@@ -108,12 +108,10 @@ run_remote() {
   echo "ssh $remote_machine $command"
   ssh $remote_machine $command
   ret_code=$?
-#    echo "exit code was $ret_code"
   if [ $ret_code != 0 ]; then
     echo "exit code was $ret_code"
     exit $ret_code
-  fi
-  
+  fi  
   #return $ret_code
 }
         
@@ -198,6 +196,7 @@ do
     lf="$logs/inject-$i.log"  
     progress "Injecting bug $i -- logging to $lf"
     run_remote "$testinghost" "$python $scripts/inject.py -r $json >& $lf"
+    grep Remaining $lf
     grep SELECTED $lf
     grep retval "$lf"
     a=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode != -11" | head -3  | tail -1 `
