@@ -208,9 +208,6 @@ def instrument_main(suff):
         + ' ' + '-project-file=' + project_file
     run_cmd(cmd, None, None)
 
-
-
-
 def add_build_row(bugs, compile_succ):
     conn = get_conn()
     cur = conn.cursor()
@@ -376,7 +373,7 @@ if __name__ == "__main__":
             instrument_main(f)
             run(['git', 'add', f])
         run(['git', 'add', 'compile_commands.json'])
-        run(['git', 'commit', '-m', 'Add compile_commands.json.'])
+        run(['git', 'commit', '-m', 'Add compile_commands.json and instrument main.'])
     if not os.path.exists(bugs_install):
         run(project['install'], shell=True)
 
