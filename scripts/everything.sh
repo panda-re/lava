@@ -2,10 +2,15 @@
 #
 # A script to run all of lava.
 #
-# everything.sh -s -i 15 jsonfile
-#  
-# -s skips ahead to injection
-# -i 15 injects 15 bugs (default is 1)
+# Common uses
+# 
+# 1. Reproduce entire lava through 1 injection (-k okays you through deleting things)
+#
+#    everything.sh -k jsonfile
+# 
+# 2. Skip to injecting 100 bugs
+#
+#    everything.sh -s -i 100 jsonfile  
 #
 # Here is what everything consists of.
 # 
