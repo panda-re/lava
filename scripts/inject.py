@@ -318,10 +318,11 @@ if __name__ == "__main__":
     candidate = 0
     bugs_lock = None
     while bugs_parent == "":
-        lock = lockfile.LockFile(str(candidate))
+        candidate_path = join(bugs_top_dir, str(candidate))
+        lock = lockfile.LockFile(candidate_path)
         try:
             lock.acquire(timeout=-1)
-            bugs_parent = join(bugs_top_dir, str(candidate))
+            bugs_parent = join(candidate_path)
             bugs_lock = lock
         except lockfile.AlreadyLocked:
             candidate += 1
