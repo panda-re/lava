@@ -335,7 +335,9 @@ if __name__ == "__main__":
     for sig in [signal.SIGINT, signal.SIGTERM]:
         signal.signal(sig, lambda s, f: sys.exit(0))
 
-    os.mkdir(bugs_parent)
+    try:
+        os.mkdir(bugs_parent)
+    except: pass
 
     if 'source_root' in project:
         source_root = project['source_root']
