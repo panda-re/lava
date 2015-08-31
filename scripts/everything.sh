@@ -1,16 +1,17 @@
 
 #
 # A script to run all of lava.
-#
-# Common uses
 # 
-# 1. Reproduce entire lava through 1 injection (-k okays you through deleting things)
-#
-#    everything.sh -k jsonfile
+# Lava consists of three main steps.
 # 
-# 2. Skip to injecting 100 bugs
+# Step Q: Add taint and attack point queries to source.
+# Step M: Make the source with the queries
+# Step T: Use panda & fbi to populate db with prospective bugs
+# Step I: Try injecting bugs.
 #
-#    everything.sh -s -i 100 jsonfile  
+# -q, -m, -t and -i: use these to turn on each of the three steps
+# 
+# everything -q -m -t -i -A -M -I jsonfile
 #
 # Here is what everything consists of.
 # 
@@ -33,7 +34,9 @@
 # pandahost:   what remote host to run panda on
 # dbhost:      host with postgres on it
 # testinghost: what host to test injected bugs on
-# 
+# fixupscript: script to run after add_query to fix up src before make 
+#
+ 
 
 #set -e # Exit on error                                                                                                                                                                                          
 
@@ -47,39 +50,47 @@ fi
 
 progress() {
   echo  
-  date
-  echo -e "\e[32m[everything]\e[0m \e[1m$1\e[0m"
- 
+  if [ $1 -eq 1 ]; then
+      date
+  fi
+  echo -e "\e[32m[everything]\e[0m \e[1m$2\e[0m" 
 }   
 
 # defaults
-num_inject=1
-skip_to_inject=0
 ok=0
-skip_deleting=0
+add_queries=0
+make=0
+taint=0
+inject=0
+num_inject=0
+
 
 # -s means skip everything up to injection
 # -i 15 means inject 15 bugs (default is 1)
 echo 
-progress "Parsing args"
-while getopts  "sni:k" flag
+progress 0 "Parsing args"
+while getopts  "qmti:k" flag
 do
-#  echo "$flag $OPTARG"
-  if [ "$flag" = "s" ]; then
-    skip_to_inject=1
-    progress "-s: Skipping ahead to inject bugs"
-  fi  
-  if [ "$flag" = "n" ]; then
-    skip_deleting=1
-    progress "-s: Skipping deleting of directories and dbs"
-  fi    
+  if [ "$flag" = "q" ]; then
+      add_queries=1
+      progress 0 "Add queries step will be executed"
+  fi
+  if [ "$flag" = "m" ]; then
+      make=1
+      progress 0 "Make step will be executed"
+  fi
+  if [ "$flag" = "t" ]; then
+      taint=1
+      progress 0 "Taint step will be executed"
+  fi
   if [ "$flag" = "i" ]; then
-    num_inject=$OPTARG
-    progress "-i: num_inject = $num_inject"
+      inject=1
+      num_inject=$OPTARG
+      progress 0 "Inject step will be executed: num_inject = $num_inject"
   fi
   if [ "$flag" = "k" ]; then
-    ok=1 
-    progress "-k: Okaying my way through"
+      ok=1 
+      progress 0 "-k: Okaying through deletes"
   fi
 done
 shift $((OPTIND -1))
@@ -89,7 +100,7 @@ json="$(realpath $1)"
 
 deldir () {
   deldir=$1
-  progress "Deleteing $deldir.  Type ok to go ahead."
+  progress 0 "Deleteing $deldir.  Type ok to go ahead."
   if [[ $ok -eq 0 ]] 
   then
       # they have to actually type 'ok'
@@ -122,7 +133,7 @@ run_remote() {
         
 
 
-progress "JSON file is $json"
+progress 1 "JSON file is $json"
 
 lava="$(jq -r .lava $json)"
 db="$(jq -r .db $json)"
@@ -134,6 +145,8 @@ buildhost="$(jq -r .buildhost $json)"
 pandahost="$(jq -r .pandahost $json)"
 dbhost="$(jq -r .dbhost $json)"
 testinghost="$(jq -r .testinghost $json)"
+fixupscript="$(jq -r .fixupscript $json)"
+
 
 scripts="$lava/scripts"
 python="/usr/bin/python"
@@ -142,74 +155,83 @@ sourcedir="$directory/$name/$source"
 bugsdir="$directory/$name/bugs/$source"
 logs="$directory/$name/logs"
 
+/bin/mkdir -p $logs
 
-if [ $skip_to_inject -eq 0 ]; then
 
+if [ $add_queries -eq 1 ]; then
+    progress 1  "Add queries step -- btrace lavatool and fixups"
     dbexists=$(psql -tAc "SELECT 1 from pg_database where datname='$db'" -U postgres)
-    echo "dbexists $dbexists"
-
+    echo "dbexists $dbexists"    
     if [ -z $dbexists ]; then
-        progress "No db -- creating $db"
+        progress 0 "No db -- creating $db"
         run_remote "$dbhost" "createdb -U postgres $db"
     else
         if [ $dbexists -eq 1 ]; then
-            progress "database $db already exists"
+            progress 0 "database $db already exists"
         else 
-            progess "wtf"
+            progess 0 "wtf"
             exit 1111
         fi
     fi
-
-    if [ $skip_deleting -eq 0 ]; then
-        deldir "$sourcedir"
-        deldir "$logs"
-        deldir "$bugsdir"
-        /bin/mkdir -p $logs
-        lf="$logs/dbwipe.log"  
-        progress "Wiping db $db & setting up anew -- logging to $lf"
-        run_remote "$dbhost" "/usr/bin/psql -d $db -f $lava/sql/lava.sql -U postgres >& $lf"
-    fi
+    deldir "$sourcedir"
+    deldir "$logs"
+    deldir "$bugsdir"
     /bin/mkdir -p $logs
-
+    lf="$logs/dbwipe.log"  
+    progress 1  "Wiping db $db & setting up anew -- logging to $lf"
+    run_remote "$dbhost" "/usr/bin/psql -d $db -f $lava/sql/lava.sql -U postgres >& $lf"
+    /bin/mkdir -p $logs
     lf="$logs/add_queries.log" 
-    progress "Adding queries to source -- logging to $lf"
+    progress 1 "Adding queries to source -- logging to $lf"
     run_remote "$buildhost" "$scripts/add_queries.sh $json >& $lf" 
-    
-    lf="$logs/make.log"
-    progress "Making 32-bit version with queries -- logging to $lf"
+    if [ "$fixupscript" != "null" ]; then
+        lf="$logs/fixups.log"
+        progress 1 "Fixups -- logging to $lf"
+        run_remote "$buildhost" "$fixupscript"
+    else
+        progress 1 "No fixups"
+    fi
+fi
+
+
+if [ $make -eq 1 ]; then 
+    progress 1 "Make step -- making 32-bit version with queries"
+    lf="$logs/make.log"    
     run_remote "$buildhost" "cd $sourcedir && make -j `nproc`  >& $lf"
     run_remote "$buildhost" "cd $sourcedir && make install   &>> $lf"
+fi
+
     
+if [ $taint -eq 1 ]; then 
+    progress 1 "Taint step -- running panda and fbi"
     for input in $inputs
     do
         i=`echo $input | sed 's/\//-/g'`
         lf="$logs/bug_mining-$i.log"
-        progress "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
+        progress 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
         run_remote "$pandahost" "$python $scripts/bug_mining.py $json $input >& $lf"
         echo -n "Num Bugs in db: "
         run_remote "$dbhost" "/usr/bin/psql -d $db -U postgres -c 'select count(*) from bug' | head -3 | tail -1"
     done
-else
-    progress "Skipping ahead to injection"
 fi
 
-/bin/mkdir -p $logs
+if [ $inject -eq 1 ]; then
+    progress 1 "Injecting step -- trying $num_inject bugs"
+    for i in `seq $num_inject`
+    do    
+        lf="$logs/inject-$i.log"  
+        progress 1 "Injecting bug $i -- logging to $lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -r $json >& $lf"
+        grep Remaining $lf
+        grep SELECTED $lf
+        grep retval "$lf"
+        a=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode != -11" | head -3  | tail -1 `
+        b=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode = -11" | head -3  | tail -1 `
+        y=`bc <<< "scale=3; $b/($a+$b)"`
+        t=`bc <<< "$a + $b"`
+        echo "Runs: $t  Yield: $y"
+    done
+fi
 
-progress "Injecting $num_inject bugs"
-for i in `seq $num_inject`
-do    
-    lf="$logs/inject-$i.log"  
-    progress "Injecting bug $i -- logging to $lf"
-    run_remote "$testinghost" "$python $scripts/inject.py -r $json >& $lf"
-    grep Remaining $lf
-    grep SELECTED $lf
-    grep retval "$lf"
-    a=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode != -11" | head -3  | tail -1 `
-    b=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode = -11" | head -3  | tail -1 `
-    y=`bc <<< "scale=3; $b/($a+$b)"`
-    t=`bc <<< "$a + $b"`
-    echo "Runs: $t  Yield: $y"
-done
-
-progress "Everthing finished."
+progress 1 "Everthing finished."
 
