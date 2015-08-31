@@ -487,10 +487,11 @@ void taint_query_hypercall(Panda__LogEntry *ple,
         max_offset = std::max(offset,max_offset);
     }
     if (ddebug) printf ("max_offset = %d\n", max_offset);
-    // assume all bytes non-viable to start
+    // assume all bytes non-viable to start (0 means untainted)
     for (uint32_t i=0; i<=max_offset; i++)
         viable_byte.push_back(0);
     if (ddebug) printf ("considering taint queries on %d bytes\n", tqh->n_taint_query);
+    // go through and deal with new unique taint sets first
     for (uint32_t i=0; i<tqh->n_taint_query; i++) {
         Panda__TaintQuery *tq = tqh->taint_query[i];        
         uint32_t offset = tq->offset;    
@@ -500,10 +501,9 @@ void taint_query_hypercall(Panda__LogEntry *ple,
             update_unique_taint_sets(conn, tq->unique_label_set, max_card, ptr_to_set);
         }
     }
-
     // bdg: don't try handle lvals that are bigger than our max lval
-    if (len > max_lval) return;
-
+    // NB: must do this *after* dealing with unique taint sets
+    if (max_offset > max_lval) return;
     for (uint32_t i=0; i<tqh->n_taint_query; i++) {
         Panda__TaintQuery *tq = tqh->taint_query[i];        
         uint32_t offset = tq->offset;    
