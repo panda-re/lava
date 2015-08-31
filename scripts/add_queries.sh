@@ -83,7 +83,7 @@ git commit -m 'Add compile_commands.json.'
 
 cd ..
 
-tar czf "btraced.tar.gz" "$source"
+#tar czf "btraced.tar.gz" "$source"
 
 c_files=$(python $lava/src_clang/get_c_files.py $source)
 c_dirs=$(for i in $c_files; do dirname $i; done | sort | uniq)

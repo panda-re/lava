@@ -9,6 +9,9 @@ import argparse
 import json
 import os
 import shlex
+import lockfile
+import signal
+import atexit
 from os.path import basename, dirname, join, abspath
 
 project = None
@@ -205,9 +208,6 @@ def instrument_main(suff):
         + ' ' + '-project-file=' + project_file
     run_cmd(cmd, None, None)
 
-
-
-
 def add_build_row(bugs, compile_succ):
     conn = get_conn()
     cur = conn.cursor()
@@ -281,7 +281,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
     parser.add_argument('project', type=argparse.FileType('r'),
             help = 'JSON project file')
-    parser.add_argument('bugid', nargs='?', type=int, default=-1,
+    parser.add_argument('-b', '--bugid', action="store", default=-1,
             help = 'Bug id (otherwise, highest scored will be chosen)')
     parser.add_argument('-r', '--randomize', action='store_true', default = False,
             help = 'Choose the next bug randomly rather than by score')
@@ -306,23 +306,45 @@ if __name__ == "__main__":
     lava_dir = dirname(dirname(abspath(sys.argv[0])))
     lava_tool = join(lava_dir, 'src_clang', 'build', 'lavaTool')
 
-    # bugs_build dir assumptions
-    # 1. we have run configure
-    # 2. we have run make and make install
-    # 3. compile_commands.json exists in bugs build dir and refers to files in the bugs_build dir
-    bugs_parent = join(top_dir, 'bugs')
+    # This should be {{directory}}/{{name}}/bugs
+    bugs_top_dir = join(top_dir, 'bugs')
     try:
-        os.makedirs(bugs_parent)
+        os.makedirs(bugs_top_dir)
+    except: pass
+
+    # This is where we're going to do our injection. We need to make sure it's
+    # not being used by another inject.py.
+    bugs_parent = ""
+    candidate = 0
+    bugs_lock = None
+    while bugs_parent == "":
+        candidate_path = join(bugs_top_dir, str(candidate))
+        lock = lockfile.LockFile(candidate_path)
+        try:
+            lock.acquire(timeout=-1)
+            bugs_parent = join(candidate_path)
+            bugs_lock = lock
+        except lockfile.AlreadyLocked:
+            candidate += 1
+
+    print "Using dir", bugs_parent
+
+    atexit.register(bugs_lock.release)
+    for sig in [signal.SIGINT, signal.SIGTERM]:
+        signal.signal(sig, lambda s, f: sys.exit(0))
+
+    try:
+        os.mkdir(bugs_parent)
     except: pass
 
     if 'source_root' in project:
-        bugs_root = project['source_root']
+        source_root = project['source_root']
     else:
         tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
-        bugs_root = tar_files.splitlines()[0].split(os.path.sep)[0]
+        source_root = tar_files.splitlines()[0].split(os.path.sep)[0]
 
-    queries_build = join(top_dir, bugs_root)
-    bugs_build = join(bugs_parent, bugs_root)
+    queries_build = join(top_dir, source_root)
+    bugs_build = join(bugs_parent, source_root)
     bugs_install = join(bugs_build, 'lava-install')
     # Make sure directories and btrace is ready for bug injection.
     def run(args, **kwargs):
@@ -352,7 +374,7 @@ if __name__ == "__main__":
             instrument_main(f)
             run(['git', 'add', f])
         run(['git', 'add', 'compile_commands.json'])
-        run(['git', 'commit', '-m', 'Add compile_commands.json.'])
+        run(['git', 'commit', '-m', 'Add compile_commands.json and instrument main.'])
     if not os.path.exists(bugs_install):
         run(project['install'], shell=True)
 

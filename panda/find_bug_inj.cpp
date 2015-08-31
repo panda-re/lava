@@ -548,9 +548,12 @@ void taint_query_hypercall(Panda__LogEntry *ple,
                 labels.insert(l);
             }
             // keep track of highest tcn, liveness, and card for any viable byte for this lval
-            c_max_tcn = std::max(tq->tcn, c_max_tcn);
-            c_max_card = std::max((uint32_t) ptr_to_set[tq->ptr].size(), c_max_card);
-            c_max_liveness = std::max(current_byte_max_liveness, c_max_liveness);
+            // but only do this for first 4 viable bytes b/c that's all we'd end up using as a dua?
+            if (viable_bytes.size() < 4) {
+                c_max_tcn = std::max(tq->tcn, c_max_tcn);
+                c_max_card = std::max((uint32_t) ptr_to_set[tq->ptr].size(), c_max_card);
+                c_max_liveness = std::max(current_byte_max_liveness, c_max_liveness);
+            }
             if (debug) printf ("keeping byte @ offset %d\n", offset); 
             // add this byte to the list of ok bytes
             viable_byte[offset] = tq->ptr;

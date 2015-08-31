@@ -358,11 +358,17 @@ public:
                     lv_name + accessor + field->getName().str();
                 std::string pointer_tst = (pointer ? lv_name : "");                
                 QualType qt = field->getType();
-                std::pair<bool, Llval> res = ConstructLlval(lval_ss, pointer_tst, qt.getTypePtr());
-                bool success = res.first;
-                if (success) {
-                    Llval llval = res.second;                
-                    llvals.insert(llval); 
+                // discard a->b when it is a pointer.  
+                // why?  because what if a is non-null but doesnt point to valid memory? 
+                // a->b is a deref that will seg fault.  
+                const Type *lval_type = qt.getTypePtr();
+                if (!lval_type->isPointerType()) {
+                    std::pair<bool, Llval> res = ConstructLlval(lval_ss, pointer_tst, lval_type);
+                    bool success = res.first;
+                    if (success) {
+                        Llval llval = res.second;                
+                        llvals.insert(llval); 
+                    }
                 }
             }
         }
