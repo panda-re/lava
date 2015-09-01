@@ -70,7 +70,7 @@ progress "Configuring..."
 mkdir -p lava-install
 $(jq -r .configure $json) --prefix=$(pwd)/lava-install
 
-progress "Making..."
+progress "Making with btrace..."
 $lava/btrace/sw-btrace $(jq -r .make $json)
 
 progress "Installing..."
