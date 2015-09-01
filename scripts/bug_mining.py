@@ -135,7 +135,7 @@ def run_console(cmd):
         print "console cmd: [%s]" % cmd
     print Style.BRIGHT + "root@debian-i386:~#" + Style.RESET_ALL,
     console.sendline(cmd)
-    if expect in project:
+    if 'expect' in project:
         console.expect_exact(project['expect'])
     else:
         console.expect_exact("root@debian-i386:~#")
