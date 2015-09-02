@@ -51,7 +51,7 @@ extern "C" {
 #define CBNO_CRD_BIT 1
 #define CBNO_LVN_BIT 2
 
-#define MIN_VIABLE_BYTES 2
+#define MIN_VIABLE_BYTES 4
 
 // lval may have lots of tainted bytes.  We only use the first few.
 #define MAX_TAINTED_LVAL_BYTES 4
@@ -464,6 +464,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
     assert (cs != NULL);
     uint64_t instr = ple->instr;
     if (debug) printf ("TAINT QUERY HYPERCALL len=%d num_tainted=%d\n", len, num_tainted);
+    // collects set of labels on all viable bytes that are actually used in dua
     std::set<uint32_t> labels;
     // keep track of min / max for each of these measures over all bytes
     // in this queried lval
@@ -540,19 +541,21 @@ void taint_query_hypercall(Panda__LogEntry *ple,
         }
         else {
             if (ddebug) printf ("retaining byte\n");
-            // retain this byte
-            // collect set of labels on all ok bytes for this extent
-            // remember: labels are offsets into input file
-            Ptr p = tq->ptr;
-            for ( uint32_t l : ptr_to_set[p] ) {
-                labels.insert(l);
-            }
+            // this byte is ok to retain
+            
             // keep track of highest tcn, liveness, and card for any viable byte for this lval
             // but only do this for first 4 viable bytes b/c that's all we'd end up using as a dua?
             if (viable_byte.size() < 4) {
                 c_max_tcn = std::max(tq->tcn, c_max_tcn);
                 c_max_card = std::max((uint32_t) ptr_to_set[tq->ptr].size(), c_max_card);
-                c_max_liveness = std::max(current_byte_max_liveness, c_max_liveness);
+                c_max_liveness = std::max(current_byte_max_liveness, c_max_liveness);            
+                // collect set of labels on all ok bytes for this extent
+                // remember: labels are offsets into input file
+                // NB: only do this for bytes that will actually be used in the dua
+                Ptr p = tq->ptr;
+                for ( uint32_t l : ptr_to_set[p] ) {
+                    labels.insert(l);
+                }
             }
             if (debug) printf ("keeping byte @ offset %d\n", offset); 
             // add this byte to the list of ok bytes
@@ -564,7 +567,9 @@ void taint_query_hypercall(Panda__LogEntry *ple,
         printf ("%d viable bytes in lval  %d labels\n",
                 num_viable, (int) labels.size());
     }
-    if ((num_viable >= MIN_VIABLE_BYTES) && (labels.size() >= 1)) {
+    // we need # of unique labels to be at least 4 since
+    // that's how big our 'lava' key is
+    if ((num_viable >= MIN_VIABLE_BYTES) && (labels.size() >= 4)) {
         assert (c_max_liveness <= max_liveness);
         // tainted lval we just considered was deemed viable
         Dua dua = {
