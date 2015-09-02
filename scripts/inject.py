@@ -15,8 +15,9 @@ import atexit
 from os.path import basename, dirname, join, abspath
 
 project = None
-
-debugging = False
+# this is how much code we add to top of any file with main fn in it
+NUM_LINES_MAIN_INSTR = 5
+debugging = True
 
 def get_conn():
     conn = psycopg2.connect(database=db, user=db_user, password=db_password)
@@ -183,15 +184,16 @@ def revert_to_safe_copy(fn):
     shutil.copyfile(fn + ".sav", fn)
 
 
-def inject_bug_part_into_src(bug_id, suff):
+def inject_bug_part_into_src(bug_id, suff, offset):
     global query_build
     global bugs_build
-    global lavatoll
+    global lavatool
     global lavadb
     filename_bug_part = bugs_build + "/" + suff
 #    make_safe_copy(filename_bug_part)
     cmd = lava_tool + ' -action=inject -bug-list=\"' + str(bug_id) \
         + '\" -lava-db=' + lavadb + ' -p ' + bugs_build \
+        + ' -main_instr_correction=' + (str(offset)) \
         + ' ' + filename_bug_part \
         + ' ' + '-project-file=' + project_file
     run_cmd(cmd, None, None)
@@ -199,7 +201,7 @@ def inject_bug_part_into_src(bug_id, suff):
 def instrument_main(suff):
     global query_build
     global bugs_build
-    global lavatoll
+    global lavatool
     global lavadb
     filename_bug_part = bugs_build + "/" + suff
     cmd = lava_tool + ' -action=main -bug-list=\"\"' \
@@ -363,14 +365,15 @@ if __name__ == "__main__":
 
     lavadb = join(top_dir, 'lavadb')
 
+    main_files = set(project['main_file'])
+
     if not os.path.exists(join(bugs_build, 'compile_commands.json')):
         run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'),
                 '/home/moyix/git/llvm/Debug+Asserts/lib/clang/3.6.1/include'])
         # also insert instr for main() fn in all files that need it
-        inject_files = set(project['main_file'])
-        print "Instrumenting main fn by running lavatool on %d files\n" % (len(inject_files))
-        for f in inject_files:
-            print "injecting code into [%s]" % f
+        print "Instrumenting main fn by running lavatool on %d files\n" % (len(main_files))
+        for f in main_files:
+            print "injecting lava_set and lava_get code into [%s]" % f
             instrument_main(f)
             run(['git', 'add', f])
         run(['git', 'add', 'compile_commands.json'])
@@ -435,7 +438,10 @@ if __name__ == "__main__":
     # only if they are in different files
     for f in inject_files:
         print "injecting code into [%s]" % f
-        inject_bug_part_into_src(bug_id, f)
+        offset = 0
+        if f in main_files:
+            offset = NUM_LINES_MAIN_INSTR
+        inject_bug_part_into_src(bug_id, f, offset)
 
     # compile
     print "------------\n"

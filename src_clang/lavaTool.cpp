@@ -51,6 +51,14 @@ static cl::opt<std::string> ProjectFile("project-file",
     cl::cat(LavaCategory),
     cl::init("XXX"));
 
+static cl::opt<std::string> SMainInstrCorrection("main_instr_correction",
+    cl::desc("Insertion line correction for post-main instr"), 
+    cl::cat(LavaCategory),
+    cl::init("XXX"));
+                    
+         
+uint32_t MainInstrCorrection;
+
 /*
 static cl::opt<std::string> LavaBugBuildDir("bug-build-dir",
     cl::desc("Path to build dir for bug-inj src" 
@@ -722,7 +730,7 @@ public:
             }
             else {
                 // this is the dua siphon -- need to match most every part of dua
-                atbug = (filename == bug.dua.filename && line == bug.dua.line 
+                atbug = (filename == bug.dua.filename && line == (bug.dua.line + MainInstrCorrection)
                          && lvalname == bug.dua.lvalname
                          && insertion_point == bug.dua.insertionpoint);
             }
@@ -1104,6 +1112,12 @@ int main(int argc, const char **argv) {
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
 
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
+
+    //    printf ("main instr correction = %s\n", (char *) SMainInstrCorrection.c_str());
+    MainInstrCorrection = atoi(SMainInstrCorrection.c_str());
+
+    printf ("main instr correction = %d\n", MainInstrCorrection);
+
 
     for (int i=0; i<argc; i++) {
         if (0 == strcmp(argv[i], "-p")) {
