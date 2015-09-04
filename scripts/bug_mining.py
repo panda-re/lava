@@ -182,8 +182,8 @@ dprint ("qemu args: [%s]" % (" ".join(qemu_args)))
 
 qemu_replay = spawn(project['qemu'], qemu_args)
 qemu_replay.logfile_read = sys.stdout
-# trying to match this: saw open of file we want to taint: [/mnt/cdrom/bash] insn 10022563
-qemu_replay.expect(re.compile("saw open of file we want to taint: \[.*\] insn ([0-9]+)"), timeout=400)
+# trying to match this: saw open of file we want to taint: [/mnt/bash] insn 10022563
+qemu_replay.expect(re.compile("saw open of file we want to taint: \[.*\] insn ([0-9]+)"), timeout=1000)
 
 #after_progress = qemu_replay.before.rpartition(os.path.basename(isoname) + ":")[2]
 #instr = int(after_progress.strip().split()[0])
