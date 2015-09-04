@@ -249,7 +249,8 @@ def run_prog(install_dir, input_file):
     cmd = project['command'].format(install_dir=install_dir,input_file=input_file)
     print cmd
     envv = {}
-    envv["LD_LIBRARY_PATH"] = join(install_dir, project['library_path'])
+    lib_path = project['library_path'].format(install_dir=install_dir)
+    envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
     return run_cmd(cmd,install_dir,envv)
 
 import string

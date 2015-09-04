@@ -133,6 +133,7 @@ def run_monitor(cmd):
 def run_console(cmd):
     if debug:
         print "console cmd: [%s]" % cmd
+    cmd += " > /dev/null"
     print Style.BRIGHT + "root@debian-i386:~#" + Style.RESET_ALL,
     console.sendline(cmd)
     if 'expect' in project:
