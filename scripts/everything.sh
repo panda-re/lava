@@ -179,11 +179,11 @@ if [ $add_queries -eq 1 ]; then
     /bin/mkdir -p $logs
     lf="$logs/dbwipe.log"  
     progress 1  "Wiping db $db & setting up anew -- logging to $lf"
-    run_remote "$dbhost" "/usr/bin/psql -d $db -f $lava/sql/lava.sql -U postgres >& $lf"
+    run_remote "$dbhost" "/usr/bin/psql -d $db -f $lava/sql/lava.sql -U postgres > $lf"
     /bin/mkdir -p $logs
     lf="$logs/add_queries.log" 
     progress 1 "Adding queries to source -- logging to $lf"
-    run_remote "$buildhost" "$scripts/add_queries.sh $json >& $lf" 
+    run_remote "$buildhost" "$scripts/add_queries.sh $json > $lf" 
     if [ "$fixupscript" != "null" ]; then
         lf="$logs/fixups.log"
         progress 1 "Fixups -- logging to $lf"
@@ -197,7 +197,7 @@ fi
 if [ $make -eq 1 ]; then 
     progress 1 "Make step -- making 32-bit version with queries"
     lf="$logs/make.log"    
-    run_remote "$buildhost" "cd $sourcedir && make -j `nproc`  >& $lf"
+    run_remote "$buildhost" "cd $sourcedir && make -j `nproc`  > $lf"
     run_remote "$buildhost" "cd $sourcedir && make install   &>> $lf"
 fi
 
@@ -215,7 +215,8 @@ if [ $taint -eq 1 ]; then
     done
 fi
 
-if [ $inject -eq 1 ]; then
+
+if [ $inject -eq 1 ]; then 
     progress 1 "Injecting step -- trying $num_inject bugs"
     for i in `seq $num_inject`
     do    
