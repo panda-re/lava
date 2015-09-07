@@ -560,7 +560,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
             viable_byte[offset] = tq->ptr;
         }
         // we can stop examining query when we have enough viable bytes
-        printf ("in loop -- %d viable bytes\n", count_viable_bytes(viable_byte));
+        //        printf ("in loop -- %d viable bytes\n", count_viable_bytes(viable_byte));
         if (count_viable_bytes(viable_byte) >= LAVA_MAGIC_VALUE_SIZE) break;
     }
     uint32_t num_viable = count_viable_bytes(viable_byte);
@@ -570,7 +570,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
     }
     // we need # of unique labels to be at least 4 since
     // that's how big our 'lava' key is
-    printf ("num_viable = %d\n", num_viable);
+    //    printf ("num_viable = %d\n", num_viable);
     if ((num_viable >= LAVA_MAGIC_VALUE_SIZE) && (labels.size() >= LAVA_MAGIC_VALUE_SIZE)) {
         assert (c_max_liveness <= max_liveness);
         // tainted lval we just considered was deemed viable
@@ -609,7 +609,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
             Ptr p = kvp.second;
             if (p != 0) viable_offsets.insert(i);
         }
-        printf ("viable_offsets size = %d\n", viable_offsets.size());
+        //        printf ("viable_offsets size = %d\n", viable_offsets.size());
         assert (viable_offsets.size() == LAVA_MAGIC_VALUE_SIZE);
         /*
         // keep only the first MAX_TAINTED_LVAL_BYTES
