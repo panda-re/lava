@@ -49,7 +49,11 @@ def next_bug_random():
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("SELECT * FROM bug WHERE inj=false OFFSET floor(random() * (SELECT COUNT(*) FROM bug WHERE inj=false) ) LIMIT 1;")
+#    cur.execute("select bug_id from bug,dua where (bug.dua_id=dua.dua_id) and (dua.max_liveness=0) and (dua.max_tcn=0);")
+#    bugid = cur.fetchone()[0]
+#    cur.execute("select * from bug where bug_id=%d" % bugid);
     bug = cur.fetchone()
+#    cur.execute("UPDATE bug SET inj=true WHERE bug_id=%d;" % bugid)
     cur.execute("UPDATE bug SET inj=true WHERE bug_id={};".format(bug[0]))
     # need to do all three of these in order for the writes to db to actually happen
     cur.close()
