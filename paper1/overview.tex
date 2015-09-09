@@ -14,8 +14,22 @@ which refer to the worked example in Figure~\ref{worked-example}.
 
 
 \begin{figure} 
-
-
+\begin{tabular}{ll}
+1 & \verb+ void foo(int a, int b, int c) {+ \\
+2 & \verb-   int d=a+b+c;- \\
+3 & \verb+   if (a == 0xdeadbeef) return;+ \\ 
+4 & \verb+   memcpy(d,s,n);+ \\
+5 & \verb_   // BUG_ \\
+6 & \verb_   // memcpy(d+(b==0x666666)*b,s,n);_ \\
+7 & \verb+ }+ \\
+\end{tabular}
+\caption{
+LAVA worked example.  
+a, b, and c are direct copies of input bytes at the start of function foo.
+a is bytes 0..3, b is 4..7, and c is 8..11.
+The value in b at the call to memcpy has tcn=0 and liveness=0,
+so it can be used to trigger and control a vulnerability there.
+}
 \label{worked-example}
 \end{figure}
 
@@ -83,6 +97,9 @@ However, in order to ensure that the bug only manifest itself very occasionally,
 
 In the worked example in Figure~\ref{worked-example}, the DUA \verb+x+ is still in scope at the \verb+memcpy+ attack point and
  the only source code modification necessary is to make use of it to introduce the vulnerability if it matches a particular value.  
+
+
+
 
 
 
