@@ -429,6 +429,7 @@ if __name__ == "__main__":
     # it looks like their makefile doesn't understand its own dependencies, in fact
     if ('makeclean' in project) and (project['makeclean']):
         run_cmd("make clean", bugs_build, None)
+        (rv, outp) = run_cmd(project['make'] + " -j12", bugs_build, None)
 
 
     print "------------\n"
