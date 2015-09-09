@@ -7,14 +7,10 @@
 
 %\documentclass[a4paper,10pt]{article}
 \usepackage[utf8]{inputenc}
-\usepackage{xeCJK}
-\setmainfont{Times}
-\setCJKmainfont[BoldFont=STHeiti,ItalicFont=STKaiti]{STSong}
-\setCJKsansfont[BoldFont=STHeiti]{STXihei}
-\setCJKmonofont{STFangsong}
+\usepackage{times}
 
 %opening
-\title{Repeatable Reverse Engineering with PANDA
+\title{AVID: Automatic vulnerability injection on demand
   \thanks{This work is sponsored by the Assistant Secretary of Defense
     for Research \& Engineering under Air Force Contract
     \#FA8721-05-C-0002.  Opinions, interpretations, conclusions and
@@ -22,13 +18,13 @@
     endorsed by the United States Government.} }
 
 \author{
-\IEEEauthorblockN{Brendan Dolan-Gavitt\IEEEauthorrefmark{1}, Josh Hodosh\IEEEauthorrefmark{2}, Patrick Hulin\IEEEauthorrefmark{2}, Tim Leek\IEEEauthorrefmark{2}, Ryan Whelan\IEEEauthorrefmark{2}}
+\IEEEauthorblockN{Brendan Dolan-Gavitt\IEEEauthorrefmark{1}, Patrick Hulin\IEEEauthorrefmark{2}, Tim Leek\IEEEauthorrefmark{2}, Ryan Whelan\IEEEauthorrefmark{2}}
 \\
 \small (Authors listed alphabetically) \\
 \\
 \IEEEauthorblockA{\IEEEauthorrefmark{1}NYU\\brendandg@nyu.edu}
 \IEEEauthorblockA{\IEEEauthorrefmark{2}MIT Lincoln Laboratory\\
-\{josh.hodosh,patrick.hulin,tleek,rwhelan\}@ll.mit.edu}
+\{patrick.hulin,tleek,rwhelan\}@ll.mit.edu}
 }
 
 \begin{document}
@@ -37,26 +33,18 @@
 
 \begin{abstract}
 
-We present PANDA, an open-source tool that has been purpose-built to support whole
-system reverse engineering. It is built upon the
-QEMU whole system emulator, and so analyses have access to all code
-executing in the guest and all data.  PANDA adds the ability to record
-and replay executions, enabling iterative, deep, whole system
-analyses.  Further, the replay log files are compact and shareable,
-allowing for repeatable experiments.  A nine billion instruction
-boot of FreeBSD, e.g., is represented by only a few hundred
-MB.  PANDA leverages QEMU's support of thirteen different
-CPU architectures to make analyses of those diverse instruction sets possible
-within the LLVM IR.  In this way, PANDA can have a single dynamic
-taint analysis, for example, that precisely supports many CPUs.  PANDA
-analyses are written in a simple plugin architecture which includes a
-mechanism to share functionality between plugins, increasing analysis
-code re-use and simplifying complex analysis development.  We
-demonstrate PANDA's effectiveness via a number of use cases, including
-enabling an old but legitimately purchased game to run despite a
-lost CD key, in-depth diagnosis of an Internet Explorer crash, and
-uncovering the censorship activities and mechanisms of an IM
-client.
+Work on automating vulnerability discovery has long been hampered by a shortage of ground-truth corpora with which to evaluate tools and techniques.
+To begin to address this, we present LAVA, a system for automatically and quickly injecting large numbers of realistic bugs into program source code.  
+LAVA employs a pair of taint-based measures to identify program quantities that both depend upon specific input bytes in a simple way but also do not overly influence control flow.
+These DUAs (dead-uncomplicated and available data) are employed, via source-to-source transformation, to perturb program quantities at later program points that are likely to cause vulnerabilities.
+Every LAVA vulnerability is accompanied by a fuzzed input that specifically triggers it, whereas normal inputs are extremely unlikely to do so.
+Further, every LAVA bug is validated, and thus every working bug comes with both a proof-of-concept input and a known manifestation point.  
+These vulnerabilities are synthetic but, we argue, still realistic, in the sense that they are embedded deep with programs and are triggered by inputs.
+In order for an automated tool to discover them, it would have to be able to correctly and precisely reason about all the code executed up to the DUA.
+Using LAVA, we have injected tens of thousands of bugs into popular programs such as file, binutils, and wireshark.
+We believe LAVA can be the basis for an approach for generating extremely high quality ground truth vulnerability corpora, on demand.
+
+
 
 \end{abstract}
 
@@ -64,64 +52,30 @@ client.
 \label{sec:motivation}
 \input{motivation}
 
-\section{PANDA System}
-\label{sec:pandasys}
+\section{Scope}
+\label{sec:scope}
+\input{scope}
 
-In this section, we describe the four main novel aspects of PANDA: its
-record/replay facility, its plugin architecture, its ability to
-use a single analysis for multiple architectures, and its ability to emulate
-Android systems.
+\section{LAVA Overview}
+\label{sec:overview}
+\input{overview}
 
-\input{recordreplay}
-\input{plugins}
-\input{architectureneutral}
-\input{android}
+\section{Implementation}
+\label{sec:implementation}
+\input{implementation}
 
-
-\section{Plugin Details}
-\label{sec:plugins}
-
-Here we detail a few specific plugins commonly used when reverse
-engineering with PANDA.
-
-\input{tzb}
-\input{syscalls}
-\input{shadowcallstack}
-\input{scissors}
-\input{taint}
-
-
-\section{Case Studies}
-\label{sec:usecases}
-
-In this section, we present three compelling RE use cases for PANDA.
-In the first, an old PC game for which the CD key has
-been lost is rapidly made whole again by locating the key verification
-code and harnessing it to produce keys on demand.  In the second, a
-Windows Internet Explorer vulnerability is diagnosed in depth from a
-whole-system replay, indicating not merely that it is a use-after-free
-bug but pointing the finger at a precise CVE number.  In the third, an
-IM client suspected of censoring messages is quickly
-determined to be doing so via a blacklist which is also readily
-extracted.  Note that, while we end up using many of the plugins
-mentioned in Section~\ref{sec:plugins}, no attempt was made to cover
-all of them with our use cases.  Rather, we allowed the task at hand
-to drive the plugins employed.
-
-
-\input{reversesomeoldtech}
-\input{reversesomevuln}
-\input{reversesomebadsoftware}
-\input{reproduce}
+\section{Results}
+\label{sec:results}
+\input{results}
 
 \section{Related Work}
 \label{sec:relwork}
-\input{relatedwork}
+\input{relwork}
 
 
 \section{Limitations and Future Work}
 \label{sec:future}
-\input{limitations}
+\input{future}
 
 \section{Conclusion}
 \input{conclusion}
