@@ -88,26 +88,28 @@ livs = tcns
 
 INFINITY = 100000000000000
 
-def interval_check(x, interval):
-    if (x >= interval[0]) and (x < interval[1]):
+# returns true iff i[0] <= x < i[1]
+def interval_check(x, i):
+    if (i[0] <= x) and (x < i[1]):
         return True
     return False
 
 def get_interval(i, partition):
     if i==0:
-        interval = (0,partition[i])
-    elif i == (len(partition)-1):
-        interval = (partition[i], INFINITY)
-    else:
-        interval = (partition[i-1], partition[i])
-    return interval
+        return (0,partition[i])
+    elif i == len(partition):
+        return (partition[i-1], INFINITY)
+    return (partition[i-1], partition[i])
 
 table = []
-for i in range(len(tcns)):    
+for i in range(1+len(tcns)):    
     tcn_interval = get_interval(i, tcns)
     row = []
-    row.append("tcn=%d" % tcns[i])
-    for j in range(len(livs)):
+    if tcn_interval[1] == INFINITY:
+        row.append("tcn=[%d,+inf]" % tcn_interval[0])
+    else:
+        row.append("tcn=[%d,%d)" % (tcn_interval[0],tcn_interval[1]))
+    for j in range(1+len(livs)):
         liv_interval = get_interval(j, livs)
 #        print "tcn: " + (str(tcn_interval))
 #        print "liv: " + (str(liv_interval))
@@ -139,6 +141,14 @@ for i in range(len(tcns)):
     table.append(row)
 
 
-headers = ["liv=%d" % l for l in livs]
+headers = []
+for j in range(1+len(livs)):
+    liv_interval = get_interval(j, livs)
+    if liv_interval[1] == INFINITY:
+        headers.append("liv=[%d..+inf]" % liv_interval[0])
+    else:
+        headers.append("liv=[%d..%d)" % (liv_interval[0], liv_interval[1]))
+
+#headers = ["liv=[%d..%d)" % l for l in livs]
 
 print tabulate(table, headers, tablefmt="grid")
