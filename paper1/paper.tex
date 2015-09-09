@@ -33,9 +33,18 @@
 
 \begin{abstract}
 
-Work on finding bugs in programs has long been hampered by a shortage of ground-truth corpora on which to evaluate tools.
-We present LAVA, a system for automatically injecting large numbers of bugs into existing open-source programs.
-Using LAVA, we have injected tens of thousands of bugs into popular programs such as file, binutils, and wireshark at the source code level.
+Work on automating vulnerability discovery has long been hampered by a shortage of ground-truth corpora with which to evaluate tools and techniques.
+To begin to address this, we present LAVA, a system for automatically and quickly injecting large numbers of realistic bugs into program source code.  
+LAVA employs a pair of taint-based measures to identify program quantities that both depend upon specific input bytes in a simple way but also do not overly influence control flow.
+These DUAs (dead-uncomplicated and available data) are employed, via source-to-source transformation, to perturb program quantities at later program points that are likely to cause vulnerabilities.
+Every LAVA vulnerability is accompanied by a fuzzed input that specifically triggers it, whereas normal inputs are extremely unlikely to do so.
+Further, every LAVA bug is validated, and thus every working bug comes with both a proof-of-concept input and a known manifestation point.  
+These vulnerabilities are sythetic but, we argue, still realistic, in the sense that they are embedded deep with programs and are triggered by inputs.
+In order for an automated tool to discover them, it would have to be able to correctly and precisely reason about all the code executed up to the DUA.
+Using LAVA, we have injected tens of thousands of bugs into popular programs such as file, binutils, and wireshark.
+We believe LAVA can be the basis for an approach for generating extremely high quality ground truth vulnerability corpora, on demand.
+
+
 
 \end{abstract}
 
