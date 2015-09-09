@@ -69,8 +69,16 @@ num_inject=0
 # -i 15 means inject 15 bugs (default is 1)
 echo 
 progress 0 "Parsing args"
-while getopts  "qmti:k" flag
+while getopts  "aqmti:k" flag
 do
+  if [ "$flag" = "a" ]; then
+      add_queries=1
+      make=1
+      taint=1
+      inject=1
+      num_inject=1
+      progress 0 "All steps will be executed"
+  fi
   if [ "$flag" = "q" ]; then
       add_queries=1
       progress 0 "Add queries step will be executed"
@@ -216,11 +224,19 @@ if [ $taint -eq 1 ]; then
 fi
 
 
+na=1
 if [ $inject -eq 1 ]; then 
     progress 1 "Injecting step -- trying $num_inject bugs"
     for i in `seq $num_inject`
     do    
-        lf="$logs/inject-$i.log"  
+        while :
+        do 
+            lf="$logs/inject-$na.log"  
+            if [ ! -e $lf ]; then
+                break
+            fi
+            na=$((na + 1))
+        done
         progress 1 "Injecting bug $i -- logging to $lf"
         run_remote "$testinghost" "$python $scripts/inject.py -r $json >& $lf"
         grep Remaining $lf
