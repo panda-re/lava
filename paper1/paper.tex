@@ -18,13 +18,13 @@
     endorsed by the United States Government.} }
 
 \author{
-\IEEEauthorblockN{Brendan Dolan-Gavitt\IEEEauthorrefmark{1}, Josh Hodosh\IEEEauthorrefmark{2}, Patrick Hulin\IEEEauthorrefmark{2}, Tim Leek\IEEEauthorrefmark{2}, Ryan Whelan\IEEEauthorrefmark{2}}
+\IEEEauthorblockN{Brendan Dolan-Gavitt\IEEEauthorrefmark{1}, Patrick Hulin\IEEEauthorrefmark{2}, Tim Leek\IEEEauthorrefmark{2}, Ryan Whelan\IEEEauthorrefmark{2}}
 \\
 \small (Authors listed alphabetically) \\
 \\
 \IEEEauthorblockA{\IEEEauthorrefmark{1}NYU\\brendandg@nyu.edu}
 \IEEEauthorblockA{\IEEEauthorrefmark{2}MIT Lincoln Laboratory\\
-\{jpatrick.hulin,tleek,rwhelan\}@ll.mit.edu}
+\{patrick.hulin,tleek,rwhelan\}@ll.mit.edu}
 }
 
 \begin{document}
@@ -33,7 +33,10 @@
 
 \begin{abstract}
 
-We present LAVA, a system for automatically injecting large numbers of vulnerabilities into existing open-source programs.
+Work on finding bugs in programs has long been hampered by a shortage of ground-truth corpora on which to evaluate tools.
+We present LAVA, a system for automatically injecting large numbers of bugs into existing open-source programs.
+Using LAVA, we have injected tens of thousands of bugs into popular programs such as file, binutils, and wireshark at the source code level.
+
 \end{abstract}
 
 \section{Motivation}
