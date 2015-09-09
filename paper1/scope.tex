@@ -1,13 +1,9 @@
 
 We restrict our attention, with LAVA, to the injection of bugs into source code.
 This makes sense given our interest in using it to assemble large corpora for the purpose of evaluating and developing vulnerability discovery techniques and systems.
-Most vulnerability discovery work is done on source code [References?].
+Most automated vulnerability discovery systems work with source code [References?], and we can easily test binary analysis tools by simply compiling the source code with injected bugs.
 Injecting bugs into binaries or byte code may also be possible using a similar approach, but we do not consider it here.
 
-Further, we want the injected bugs to be serious ones, i.e., potentially exploitable.
+We want the injected bugs to be serious ones, i.e., potentially exploitable.
 As a convenient proxy, our current focus is on injecting code that can result in out-of-bounds reads and writes.  
-However, we do not directly attempt to exploit and of the vulnerabilities we inject in this work.
-
-
-
-
+We produce a proof-of-concept input to trigger any bug we successfully inject, although we do not attempt to produce an actual exploit.
