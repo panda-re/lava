@@ -63,6 +63,11 @@ Whenever the taint system needs to union label sets to represent computation, th
 input sets.
 TCN is an integer attached to the taint label set associated with each byte in a program.
 
+\begin{figure}
+
+tcn-example.png
+\end{figure}
+
 The other taint-based measure LAVA introduces is \emph{liveness}, which is associated with taint labels, i.e. the input bytes themselves.
 This is a straightforward accounting of how many branches a byte in the input has been used to decide.
 Thus, if a particular input byte label was never found in a taint label set associated with any byte used in a branch, it will have liveness of 0.
