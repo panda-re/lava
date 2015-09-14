@@ -1,4 +1,4 @@
-LAVA has four stages for injecting bugs.
+VITAL has four stages for injecting bugs.
 \begin{enumerate}
 \item Compile a version of the target program which has been instrumented with taint queries.
 \item Run the instrumented version against various inputs and collect the results in a database.
@@ -7,11 +7,11 @@ LAVA has four stages for injecting bugs.
 \end{enumerate}
 
 \subsection{Taint queries}
-LAVA's taint queries rely on the PANDA dynamic analysis platform [ref], which is based on the QEMU whole-system emulator.
+VITAL's taint queries rely on the PANDA dynamic analysis platform [ref], which is based on the QEMU whole-system emulator.
 PANDA has a fast and robust dynamic taint analysis which uses LLVM lifting and Clang to ensure that taint propagates through uncommon instructions.
-LAVA's Clang plugin, LAVAtool, inserts taint queries at the arguments to each function call.
+VITAL's Clang plugin, VITALtool, inserts taint queries at the arguments to each function call.
 Each taint query consists of a ``hypervisor call'' which notifies PANDA to query the taint system for a specific source-level variable and record the results.
-LAVAtool also inserts hypervisor calls to record each attack point.
+VITALtool also inserts hypervisor calls to record each attack point.
 
 \subsection{Running the program}
 Once the instrumented version has been compiled, we run it against a variety of inputs.
