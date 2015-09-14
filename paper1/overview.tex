@@ -51,7 +51,7 @@ This means taint is propagated accurately and completely, even through esoteric 
 We use the PANDA system to perform this taint analysis, with two crucial conceptual extensions in the form of taint-based measures.
 
 The \emph{taint compute number} is a measure of how complicated a function of input bytes a tainted internal program quantity is.
-TCN is illustrated in Figure~\ref{figure:taint-compute-number}; it simply tracks the depth of the tree of computation required to obtain 
+TCN is illustrated in Figure~\ref{fig:taint-compute-number}; it simply tracks the depth of the tree of computation required to obtain 
 a quantity from input bytes.
 The smaller TCN is for a program quantity, the closer it is, computationally, to the input.
 If TCN is 0, the quantity is a direct copy of input bytes.
@@ -63,10 +63,16 @@ Whenever the taint system needs to union label sets to represent computation, th
 input sets.
 TCN is an integer attached to the taint label set associated with each byte in a program.
 
-\begin{figure}
 
-tcn-example.png
+\begin{figure}
+\centering
+\includegraphics[width=3in]{tcn-example.png}
+\caption{Taint Compute Number (TCN)}
+\label{fig:taint-compute-number}
 \end{figure}
+
+%\includegraphics[natwidth=162bp,natheight=227bp]{Aston.png}
+
 
 The other taint-based measure LAVA introduces is \emph{liveness}, which is associated with taint labels, i.e. the input bytes themselves.
 This is a straightforward accounting of how many branches a byte in the input has been used to decide.
