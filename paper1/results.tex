@@ -12,15 +12,15 @@ Second, we took a random sample of 20 injected bugs for each of these programs a
 \begin{table*}[t]
 \centering
 \begin{tabular}{c|c|c|c|c|c|c|c|c} 
-Name    & Version & lines of C code~\footnote{David Wheeler's SLOCCOUNT} & NQ      &  N(DUA) & N(ATP) & Potential Bugs & \% Tested & Yield \\ \hline
+Name    & Version & lines of C code & NQ      &  N(DUA) & N(ATP) & Potential Bugs & \% Tested & Yield \\ \hline
 file    & 5.22    & 12927           & 306946  & 673     & 117    & 19261          & 100\%     & 0.369  \\
 eog     & 3.4.2   & 22997           & ?       &         & ?      & ?              & ?         &  \\
 bash    & 4.3     & 98871           & ?       &         &        &                &           &  \\
-readelf & 2.25    & 1327513         & ?       &         & ?      & ?              & ?         &  \\
+readelf & 2.25    & 1327513         & ?       &  3865   & 266    & 276719         & ?         &  \\
 tshark  & 1.8.2   & 2186252         & ?       &         & ?      & ?              & ?         &  \\
 \end{tabular}
 \caption{Injection results for open source programs of various sizes.
-For each, a single input file was used to generate a PANDA recording, for which a taint analysis was performed on the replay.
+For each, a single input file was used to perform a taint analysis with PANDA.
 NQ is the number of taint queries executed for that replay.
 The number of DUAs, Attack points, and potential bugs in the LAVA database for each program is given.
 The fraction of bugs actually tested, and the measured yield are also provided, where only runs that result in a segmentation violation are considered true bugs.
@@ -28,28 +28,26 @@ The fraction of bugs actually tested, and the measured yield are also provided, 
 \end{table*}
 
 
-Four open source programs were targeted for injecting bugs, and are listed in Table~\ref{table:open-source-targets}.
-In this table, the number of lines of C code was computed using \verb+sloccount+.  
+The open source programs targeted for bug injection and are listed in Table~\ref{table:open-source-targets}.
+In this table, the number of lines of C code was computed using David Wheeler's \verb+sloccount+.  
 For readelf and tshark, we report lines of code for the larger projects which contain them: binutils and Wireshark, as they are not easily extricable [Try to fix this?].
 A single input was used with each program to create a recording with PANDA.
 The program \verb+/bin/ls+ was the input to \verb+file+ and \verb+readelf+.
 The input to \verb+tshark+ was a single iptrace from brendan where did \verb+dualhome.iptrace+ come from? 
-The NQ column gives the number of taint queries encountered during replay of that recording, and is, thus, a stand-in for coverage. 
+The input to \verb+eog+ was ...
+The input to \verb+bash+ was ...
+The NQ column gives the number of taint queries encountered during replay of that recording, and is, thus, a stand-in for coverage [how about actually just measuring number of instructions executed for target program's cr3?]
 N(DUA) and N(ATP) are the number of DUAs and attack points in the respective tables in the LAVA database after the FIB analysis is complete.
-Note that, in order for a DUA or attack point to be counted it must have been decided to be viable for some bug (each bug is a DUA-ATP pair).
-As some targets had large numbers of potential bugs, and testing varied from ~10 sec per bug to 2-3 min per bug, not all bugs for
-all targets were instantiated.  
-For readelf, in particular, the 
+In order for a DUA or attack point to be counted, it must have been decided to be viable for some bug (each bug is a DUA-ATP pair).
+As some targets had large numbers of potential bugs, and testing varied from ~10 sec per bug to 2-3 min per bug, not all bugs for all targets were instantiated.  
+For readelf, in particular, only about 10K bugs or 2.5\%, were tested.
+
+
 
 As some 
 
 The type of bug selected was a buffer overflow, either read or write.
 This sort of bug is still difficult to avoid in C programs, and remains the basis of many important kinds of exploitation because of its dual role in ROP attacks~\footnote{a read is necessary to determine where things are in memory and a write is necessary to change control flow once}.
-
-
-
-
-
 
 
 \begin{table}
@@ -66,13 +64,3 @@ $[100,+\inf]$ & --      & --       & --         & -- \\
 
 
 
-%+----------------+---------------+----------------+-----------------+-------------------+
-%|           liv= | [0..1)        | [1..10)        | [10..100)       | [100..+inf]   |
-%+================+===============+================+=================+===================+
-%| tcn=[0,1)      | n=539 y=0.523 | n=6516 y=0.469 | n=1004 y=0.219  | n=2309 y=0.221    |
-%+----------------+---------------+----------------+-----------------+-------------------+
-%| tcn=[1,10)     | n=0     y=u   | n=833 y=0.125  | n=0     y=u     | n=0     y=u       |
-%+----------------+---------------+----------------+-----------------+-------------------+
-%| tcn=[10,100)   | n=0     y=u   | n=0     y=u    | n=74 y=0.000    | n=0     y=u       |
-%+----------------+---------------+----------------+-----------------+-------------------+
-%| tcn=[100,+inf] | n=0     y=u   | n=0     y=u    | n=0     y=u     | n=0     y=u       |
