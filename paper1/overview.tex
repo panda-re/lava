@@ -1,5 +1,5 @@
 
-At a high level, LAVA adds bugs to programs in the following manner.
+At a high level, VITAL adds bugs to programs in the following manner.
 
 \begin {enumerate}
 \item Identify source code locations where input bytes that do not determine control flow and are still close to their original form are available. 
@@ -24,7 +24,7 @@ which refer to the worked example in Figure~\ref{worked-example}.
 7 & \verb+ }+ \\
 \end{tabular}
 \caption{
-LAVA worked example.  
+VITAL worked example.  
 a, b, and c are direct copies of input bytes at the start of function foo.
 a is bytes 0..3, b is 4..7, and c is 8..11.
 The value in b at the call to memcpy has tcn=0 and liveness=0,
@@ -74,7 +74,7 @@ TCN is an integer attached to the taint label set associated with each byte in a
 %\includegraphics[natwidth=162bp,natheight=227bp]{Aston.png}
 
 
-The other taint-based measure LAVA introduces is \emph{liveness}, which is associated with taint labels, i.e. the input bytes themselves.
+The other taint-based measure VITAL introduces is \emph{liveness}, which is associated with taint labels, i.e. the input bytes themselves.
 This is a straightforward accounting of how many branches a byte in the input has been used to decide.
 Thus, if a particular input byte label was never found in a taint label set associated with any byte used in a branch, it will have liveness of 0.
 A DUA entirely consisting of bytes with 0 or very low liveness can be considered \emph{dead} in the sense that it has very little influence upon control flow for this program trace.
@@ -101,7 +101,7 @@ and any of the arguments to \verb+memcpy+.
 
 \subsection {Data-flow bug injection}
 
-The third and final step to LAVA bug injection is introducing a dataflow relationship between DUA and attack point.  
+The third and final step to VITAL bug injection is introducing a dataflow relationship between DUA and attack point.  
 If the DUA is in scope at the attack point then it can simply be used at the attack point to introduce the vulnerability.
 If it is not in scope, new code is added to copy the DUA off into a safe place (perhaps in a data structure or a global), and also retrieve it and  make use of it value at the attack point. 
 However, in order to ensure that the bug only manifest itself very occasionally, we must introduce a guard requiring that the DUA match a specific value if it is to be used to manifest the vulnerability.
