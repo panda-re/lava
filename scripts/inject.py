@@ -56,7 +56,7 @@ class Command(object):
 project = None
 # this is how much code we add to top of any file with main fn in it
 NUM_LINES_MAIN_INSTR = 5
-debugging = True
+debugging = False
 
 def get_conn():
     conn = psycopg2.connect(database=db, user=db_user, password=db_password)
@@ -488,8 +488,8 @@ if __name__ == "__main__":
     # cleanup
     print "------------\n"
     print "CLEAN UP SRC"
+    run_cmd_nto("/usr/bin/git checkout -f master", bugs_build, None)
     run_cmd_nto("/usr/bin/git checkout -f", bugs_build, None)
-
 
 
     print "------------\n"
@@ -585,6 +585,9 @@ if __name__ == "__main__":
             if next_bug_db:        
                 add_run_row(build_id, True, rv, lines, True)
             print "TESTING COMPLETE"
+
+            run(['git', 'checkout', '-b', str(bug_id)])
+            run(['git', 'commit', '-am', str(bug_id)])
             # NB: at the end of testing, the fuzzed input is still in place
             # if you want to try it 
         except:

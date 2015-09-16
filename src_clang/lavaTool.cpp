@@ -663,13 +663,13 @@ public:
             if (i == 4) break;
             o ++;
         }
-        siphon << "lava_set(" << gn << ");\n";
+        siphon << "lava_set(" << bug.id << ", " << gn << ");\n";
         if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
             siphon << "}";       
 
         inss.after_part = siphon.str();
         // this is prototype for setter 
-        inss.top_of_file = "void lava_set(unsigned int val);\n";
+        inss.top_of_file = "void lava_set(unsigned int idx, unsigned int val);\n";
         return inss;
     }
 
@@ -688,7 +688,7 @@ public:
         
         //        if (bug.atp.filename != bug.dua.filename) {
             // only needed if dua is in different file from attack point
-            inss.top_of_file = "extern unsigned int lava_get(void) ;\n";
+            inss.top_of_file = "extern unsigned int lava_get(unsigned int idx) ;\n";
             //        }
         std::string fn_name = call_expr->getDirectCallee()->getNameInfo().getName().getAsString();
         uint32_t num_args = call_expr->getNumArgs();
@@ -720,7 +720,9 @@ public:
         */
         std::stringstream new_call;
         new_call << fn_name << "(";
-        std::string gn = "(lava_get())";
+        std::stringstream gnss;
+        gnss << "(lava_get(" << bug.id << "))";
+        std::string gn(gnss.str());
         i=0;        
         for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {
             Expr *arg = dyn_cast<Expr>(*it);
