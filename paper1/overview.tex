@@ -14,21 +14,10 @@ which refer to the worked example in Figure~\ref{worked-example}.
 
 
 \begin{figure} 
-\begin{tabular}{ll}
-1 & \verb+ void foo(int a, int b, int c) {+ \\
-2 & \verb-   int d=a+b+c;- \\
-3 & \verb+   if (a == 0xdeadbeef) return;+ \\ 
-4 & \verb+   memcpy(d,s,n);+ \\
-5 & \verb_   // BUG_ \\
-6 & \verb_   // memcpy(d+(b==0x666666)*b,s,n);_ \\
-7 & \verb+ }+ \\
-\end{tabular}
+\centering
+\includegraphics[width=3in]{worked-example.pdf}
 \caption{
-VITAL worked example.  
-a, b, and c are direct copies of input bytes at the start of function foo.
-a is bytes 0..3, b is 4..7, and c is 8..11.
-The value in b at the call to memcpy has tcn=0 and liveness=0,
-so it can be used to trigger and control a vulnerability there.
+VITAL worked example
 }
 \label{fig:worked-example}
 \end{figure}
@@ -62,29 +51,32 @@ However, TCN has the advantage that it is easy to compute.
 Whenever the taint system needs to union label sets to represent computation, the TCN associated with the resulting set is one more than the max of those of the 
 input sets.
 TCN is an integer attached to the taint label set associated with each byte in a program.
-
+In the worked example, $TCN(c)=1$ after line 1, since it is computed from quantities \verb+a+ and \verb+b+ which are directly derived from input.
+Later, just before line 7 and after the loop, $TCN(c)=n+1$ because each iteration of the loop increases the depth of the tree of computation by one.  
 
 \begin{figure}
 \centering
-\includegraphics[width=3in]{tcn-example.png}
+\includegraphics[width=3in]{tcn.pdf}
 \caption{Taint Compute Number (TCN)}
 \label{fig:taint-compute-number}
 \end{figure}
-
-%\includegraphics[natwidth=162bp,natheight=227bp]{Aston.png}
-
 
 The other taint-based measure VITAL introduces is \emph{liveness}, which is associated with taint labels, i.e. the input bytes themselves.
 This is a straightforward accounting of how many branches a byte in the input has been used to decide.
 Thus, if a particular input byte label was never found in a taint label set associated with any byte used in a branch, it will have liveness of 0.
 A DUA entirely consisting of bytes with 0 or very low liveness can be considered \emph{dead} in the sense that it has very little influence upon control flow for this program trace.
 If one were to fuzz dead bytes, the program should be indifferent and execute the same trace.  
+In the worked example, $LIV(0..3)$=1 after line 3, since \verb+a+ is a direct copy of input bytes 0..3.
+After each iteration of the loop, the liveness of bytes 8..11 increase by one and so, after the loop, $LIV(8..11)=n$.
 
 The combination of uncomplicated (low TCN) and dead (low liveness) is a powerful one for vulnerability injection.
 The DUAs it identifies are internal program quantities that are often a direct copy of input bytes, and which can be set to any chosen value without sending the program along a different path.  
 These make very good triggers for vulnerabilities.
 
-In the worked example, consider the variables \verb+x+ and \verb+y+ in lines 3 and 4, respectively.
+In the worked example, bytes 0..3 and 8..11 are all somewhat live, because they have been seen to be used to decide branches.
+Bytes 4..7, conversely, are uninvolved in any branches.
+Variable \verb+a+ is therefore too live and \verb+c+, and \verb+n+ 
+
 These have TCNs of 0 and 1, respectively, and liveness 0. 
 These are tainted values that will make idea DUAs.
 
