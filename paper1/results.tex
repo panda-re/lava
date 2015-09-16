@@ -16,9 +16,9 @@ For each, a single input file was used to perform a taint analysis with PANDA.
 Various program and dynamic trace statistics are reported as well as DUA, attack point (ATP), and yield (fraction of injected bugs that result in a segmentation violation).}
 \end{table*}
 
-We evaluated LAVA in three ways.
+We evaluated VITAL in three ways.
 First, we injected large numbers of bugs into five open source programs: file, readelf (from binutils), bash, tshark (command-line verison of Wireshark), and eog (aka Eye of GNOME, an image viewer).
-For each of these, we report various statistics with respect to both the target program and also LAVA's success at injecting bugs.
+For each of these, we report various statistics with respect to both the target program and also VITAL's success at injecting bugs.
 Second, we propose and compute some measures of how realistic these bugs are.
 Third, we randomly sampled 20 injected bugs for each of these programs and used these to measure detection rates for two commercial and two open source bug finders.
 
@@ -34,7 +34,7 @@ The input to \verb+tshark+ was a single iptrace [from brendan -- where did \verb
 The input to \verb+eog+ was ...
 The input to \verb+bash+ was ...
 The number of sequential and unique basic blocks in the PANDA trace for each program are reported as N(BBs) and N(BBu).
-N(DUA) and N(ATP) are the number of DUAs and attack points collected in the LAVA database by the FIB analysis.
+N(DUA) and N(ATP) are the number of DUAs and attack points collected in the VITAL database by the FIB analysis.
 Note that, in order for a DUA or attack point to be counted, it must have been deemed viable for some bug (each bug is a DUA-ATP pair) [is this well explained elsewhere?]
 
 Exhaustive testing was not possible for all programs.  
@@ -45,7 +45,7 @@ For the larger programs like readelf and tshark, we found the build to be subtly
 Thus, we were only able to test about 1000 potential bugs for each of the two largest programs. 
 [Should we have a column for testing time by program?  ~10 sec for file.  ~9 min for readelf.  ~11 min for tshark]
 The type of bug injected was an out-of-bounds pointer use (either read or write) as described in Section X.
-As the bug is designed to be triggered only if a particular set of four bytes in the input contain the characters 'lava',
+As the bug is designed to be triggered only if a particular set of four bytes in the input contain the characters 'vital',
 we tested with both the original input and with the fuzzed one that contained the trigger. 
 We did not encounter any situation in which the original input caused a segfault [is that true?].
 
@@ -91,16 +91,16 @@ Realism is, however, not easy to assess.
 We examined three aspects of our injected bugs as measures of realism. 
 The first two are DUA and attack point position within the program trace, which are depicted in Figure~\ref{fig:dua-atp-trace}.
 That is, we determined the fraction of trace instructions executed at the point the DUA is siphoned off and at the point it is used to attack the program by corrupting a pointer.
-Histograms for these two quantities, $I(DUA)$ and $I(ATP)$, are provided in Figures~\ref{fig:dua-hist} and~\ref{fig:atp-hist}, where counts are for all potential bugs in the LAVA database for all five open source programs. 
+Histograms for these two quantities, $I(DUA)$ and $I(ATP)$, are provided in Figures~\ref{fig:dua-hist} and~\ref{fig:atp-hist}, where counts are for all potential bugs in the VITAL database for all five open source programs. 
 DUAs and attack points are clearly available at all points during the trace, although there appear to be more at the beginning and end.
 This is important, since bugs created using these DUAs have entirely realistic control and data-flow all the way up to $I(DUA)$.
 Therefore, vulnerability discovery tools will have to reason correctly about all of the program up to $I(DUA)$ in order to correctly diagnose the bug.
-The portion of the trace \emph{between} the $I(DUA)$ and $I(ATP)$ is of particular interest since, currently, LAVA makes data flow between DUA and attack point via a pair of function calls.
+The portion of the trace \emph{between} the $I(DUA)$ and $I(ATP)$ is of particular interest since, currently, VITAL makes data flow between DUA and attack point via a pair of function calls.
 Thus, it might be argued that this is an unrealistic portion of the trace in terms of data flow.
 The quantity $I(DUA)/I(ATP)$ will be close to 1 for injected bugs that minimize this source of unrealism.
 This would correspond to the worked example in Figure~\ref{fig:worked-example}; the DUA is still in scope, when, a few lines later in the same function, it can be used to corrupt a pointer.
 No abnormal data flow is required.
-The histogram in Figure~\ref{fig:rdf-hist} quantifies this effect for all potential LAVA bugs, and it is clear that a large fraction have $I(DUA)/I(ATP) \approx 1$, and are therefore highly realistic.
+The histogram in Figure~\ref{fig:rdf-hist} quantifies this effect for all potential VITAL bugs, and it is clear that a large fraction have $I(DUA)/I(ATP) \approx 1$, and are therefore highly realistic.
 
 \begin{figure}
 \centering
