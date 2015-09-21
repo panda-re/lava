@@ -1,0 +1,35 @@
+Our work focuses on
+a) dynamic (bugs on demand)
+b) real-world (not fake programs)
+c) many (100s of thousands).
+Now evaluate related work and other corpora on these axes. STONESOUP
+corpus comes closest.
+
+, a great deal of discussion
+has focused on how to gather realistic collections of bugs. Researchers
+have proposed creating bug corpora from student code~\cite{Spacco:2005},
+drawing from existing bug report databases~\cite{Lu:2005,Meftah:2005},
+and creating a public bug registry~\cite{Foster:2005}. Despite these
+proposals, public bug corpora have remained static and relatively small.
+
+The earliest work on tool evaluation via bug corpora appears to be by
+Wilander and Kamkar, who created a synthetic testbed of 44 C function
+calls~\cite{Wilander:2002} and 20 different buffer overflow
+attacks~\cite{Wilander:2003} to test the efficacy of static and dynamic
+bug detection tools, respectively. In 2004, Zitser et
+al.~\cite{Zitser:2004} evaluated static buffer overflow detectors; their
+ground truth corpus was painstakingly assembled by hand over the course
+of six months and consisted of 14 annotated buffer overflows with
+triggering and non-triggering inputs; these same 14 overflows were later
+used to evaluate dynamic overflow detectors~\cite{Zhivich:2005}. 
+
+SARD/SAMATE. Their evaluation corpora include Juliet, a collection of
+86,864 synthetic C and Java programs that exhibit 118 different CWEs, 
+
+Automated program transformation to introduce errors was also used by
+Rinard et al.~\cite{Rinard:2005}; the authors systematically modified
+the termination conditions of loops to introduce off-by-one errors in
+the Pine email client to test whether software is still usable in the
+presence of errors once sanity checks and assertions are removed.
+
+fault injection?
