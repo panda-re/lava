@@ -4,10 +4,10 @@
 \begin{table*}[t!]
 \centering
 \begin{tabular}{c|c|c|c|c|c|c|c|c|c} 
-Name    & Version & lines of C code & N(BBs)     & N(BBu)   &  N(DUA) & N(ATP) & Potential Bugs & \% Tested & Yield \\\hline
+Name    & Version & lines of C code & N(BBs)     & N(BBu)   & N(DUA)  & N(ATP) & Potential Bugs & \% Tested & Yield \\\hline
 file    & 5.22    & 12927           & 5694004    & 21141    & 673     & 117    & 19261          & 100\%     & 0.367  \\
 eog     & 3.4.2   & 22997           & ?          &          &         &        &                &           & \\
-bash    & 4.3     & 98871           & ?          &          &         &        &                &           & \\
+bash    & 4.3     & 98871           & 7953474    & 27550    &         &        &                &           & \\
 readelf & 2.25    & 1327513         & 8131559    & 21399    & 3875    & 266    & 276855         & 0.1\%     & 0.0303 \\
 tshark  & 1.8.2   & 2186252         & 304741643  & 207273   & 9765    & 1035   & 1224297        & 0.01\%    & 0.125 \\
 \end{tabular}
@@ -15,6 +15,8 @@ tshark  & 1.8.2   & 2186252         & 304741643  & 207273   & 9765    & 1035   &
 For each, a single input file was used to perform a taint analysis with PANDA.
 Various program and dynamic trace statistics are reported as well as DUA, attack point (ATP), and yield (fraction of injected bugs that result in a segmentation violation).}
 \end{table*}
+
+
 
 We evaluated VITAL in three ways.
 First, we injected large numbers of bugs into five open source programs: file, readelf (from binutils), bash, tshark (command-line verison of Wireshark), and eog (aka Eye of GNOME, an image viewer).
