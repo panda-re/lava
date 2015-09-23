@@ -15,24 +15,24 @@ import atexit
 from os.path import basename, dirname, join, abspath
 import threading
 
-import subprocess
 import signal
 
 class Command(object):
-    def __init__(self, cmd, cwd, envv):
+    def __init__(self, cmd, cwd, envv, **popen_kwargs):
         self.cmd = cmd
         self.cwd = cwd
         self.envv = envv
         self.process = None
         self.output = "no output"
+        self.popen_kwargs = popen_kwargs
 
     def run(self, timeout):
         def target():
 #            print "Thread started"
-            self.process = subprocess.Popen(self.cmd.split(), cwd=self.cwd, env=self.envv, \
+            self.process = subprocess32.Popen(self.cmd.split(), cwd=self.cwd, env=self.envv, \
                                                 stdout=subprocess32.PIPE, \
                                                 stderr=subprocess32.PIPE, \
-                                                preexec_fn=os.setsid)
+                                                preexec_fn=os.setsid, **popen_kwargs)
             self.output = self.process.communicate()
 #            print 'Thread finished'
         thread = threading.Thread(target=target)
@@ -300,7 +300,7 @@ def run_prog(install_dir, input_file, timeout):
     envv = {}
     lib_path = project['library_path'].format(install_dir=install_dir)
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
-    return run_cmd(cmd,install_dir,envv,timeout)
+    return run_cmd(cmd, install_dir, envv, timeout, shell=True)
 
 import string
 
