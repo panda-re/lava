@@ -76,6 +76,13 @@ assert 'library_path' in project
 assert 'dbhost' in project
 # namespace in db for prospective bugs
 assert 'db' in project
+# process name
+assert 'proc_name' in project
+# kernel config and group for osi_linux
+assert 'kconf_file' in project
+assert 'kconf_group' in project
+
+
 
 lavadir = dirname(dirname(abspath(sys.argv[0])))
 
@@ -175,6 +182,8 @@ shutil.rmtree(tempdir)
 progress("Starting first-pass replay...")
 qemu_args = ['-replay', isoname,
         '-panda', 'taint2:no_tp',
+        '-panda', 'osi',
+        '-panda', 'osi_linux:kconf_file=%s,kconf_group=%s' % (project['kconf_file'], project['kconf_group']),
         '-panda', 'file_taint:notaint,filename=' + input_file_guest]
 
 
@@ -196,8 +205,13 @@ print
 progress("Starting second-pass replay, tainting from {}...".format(instr))
 pandalog = 'queries-{}.plog'.format(os.path.basename(isoname))
 
+
+
 qemu_args = ['-replay', isoname,
         '-pandalog', pandalog,
+        '-panda', 'osi',
+        '-panda', 'osi_linux:kconf_file=%s,kconf_group=%s' % (project['kconf_file'], project['kconf_group']),
+        '-panda', 'coverage:process=%s' % project['proc_name'],
         '-panda', 'taint2:no_tp',
         '-panda', 'tainted_branch',
         '-panda', 'file_taint:pos,first_instr={},filename={}'.format(
