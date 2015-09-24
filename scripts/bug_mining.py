@@ -29,7 +29,9 @@ import json
 import psycopg2
 from colorama import Fore, Back, Style
 from pexpect import spawn, fdpexpect
+import pexpect
 from os.path import dirname, abspath, join
+import psutil
 
 debug = True
 
@@ -98,7 +100,7 @@ isoname = '{}-{}.iso'.format(sourcedir, input_file_base)
 progress("Creaing ISO {}...".format(isoname))
 installdir = join(sourcedir, 'lava-install')
 shutil.copy(input_file, join(installdir, input_file_base))
-subprocess32.check_call(['genisoimage', '-R', '-J',
+subprocess32.check_call(['genisoimage', '-RJ', '-max-iso9660-filenames',
     '-o', isoname, installdir])
 try: os.mkdir('inputs')
 except: pass
@@ -107,12 +109,25 @@ os.unlink(join(installdir, input_file_base))
 
 tempdir = tempfile.mkdtemp()
 
+# Find open VNC port.
+connections = psutil.net_connections(kind='tcp')
+vnc_ports = filter(lambda x : x >= 5900 and x < 6000, [c.laddr[1] for c in connections])
+vnc_displays = set([p - 5900 for p in vnc_ports])
+new_vnc_display = None
+for i in range(10, 100):
+    if i not in vnc_displays:
+        new_vnc_display = i
+        break
+if new_vnc_display == None:
+    progress("Couldn't find VNC display!")
+    sys.exit(1)
+
 monitor_path = os.path.join(tempdir, 'monitor')
 serial_path = os.path.join(tempdir, 'serial')
 qemu_args = [project['qcow'], '-loadvm', project['snapshot'],
         '-monitor', 'unix:' + monitor_path + ',server,nowait',
         '-serial', 'unix:' + serial_path + ',server,nowait',
-        '-display', 'none'] 
+        '-vnc', ':' + str(new_vnc_display)]
 
 print
 progress("Running qemu with args:")
@@ -137,16 +152,18 @@ def run_monitor(cmd):
     monitor.expect_exact("(qemu)")
     print monitor.before.partition("\r\n")[2]
 
-def run_console(cmd):
+def run_console(cmd, expectation="root@debian-i386:~"):
     if debug:
         print "console cmd: [%s]" % cmd
     cmd += " > /dev/null"
     print Style.BRIGHT + "root@debian-i386:~#" + Style.RESET_ALL,
     console.sendline(cmd)
-    if 'expect' in project:
-        console.expect_exact(project['expect'])
-    else:
-        console.expect_exact("root@debian-i386:~#", timeout=1000)
+    try:
+        console.expect_exact(expectation)
+    except pexpect.TIMEOUT:
+        print console.before
+        raise
+
     print console.before.partition("\n")[2]
 
 # Make sure monitor/console are in right state.
@@ -156,20 +173,26 @@ console.expect_exact("root@debian-i386:~#")
 
 progress("Inserting CD...")
 run_monitor("change ide1-cd0 {}".format(isoname))
-run_console("mkdir -p /mnt/cdrom")
-run_console("mount /dev/cdrom /mnt/cdrom")
+
+run_console("mkdir -p {}".format(installdir))
+# Make sure cdrom didn't automount
+run_console("umount /dev/cdrom")
+# Make sure guest path mirrors host path
+run_console("mount /dev/cdrom {}".format(installdir))
 
 # Use the ISO name as the replay name.
 progress("Beginning recording queries...")
 run_monitor("begin_record {}".format(isoname))
 
 progress("Running command inside guest...")
-input_file_guest = join('/mnt/cdrom', input_file_base)
+input_file_guest = join(installdir, input_file_base)
+expectation = project['expect'] if 'expect' in project else "root@debian-i386:~"
 run_console("LD_LIBRARY_PATH={} {}".format(
-    project['library_path'].format(install_dir='/mnt/cdrom'),
+    project['library_path'].format(install_dir=installdir),
     project['command'].format(
-        install_dir='/mnt/cdrom',
-        input_file=input_file_guest)))
+        install_dir=installdir,
+        input_file=input_file_guest)), expectation)
+
 
 progress("Ending recording...")
 run_monitor("end_record")

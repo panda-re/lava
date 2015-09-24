@@ -59,7 +59,7 @@ std::string src_pfx;
 int inputfile_id;
 std::map<uint32_t,std::string> ind2str;
 
-bool debug = false;
+bool debug = true;
 
 std::pair<float, float> update_range(float val, std::pair<float, float> range) {
     if (val < range.first) {
@@ -462,7 +462,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
     // entry 1 is source info
     Panda__SrcInfo *si = tqh->src_info;
     assert (si != NULL);
-    bool ddebug = false;
+    bool ddebug = true;
     
     // entry 2 is callstack -- ignore
     Panda__CallStack *cs = tqh->call_stack;

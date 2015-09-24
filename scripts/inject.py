@@ -13,6 +13,45 @@ import lockfile
 import signal
 import atexit
 from os.path import basename, dirname, join, abspath
+import threading
+
+import subprocess
+import signal
+
+class Command(object):
+    def __init__(self, cmd, cwd, envv):
+        self.cmd = cmd
+        self.cwd = cwd
+        self.envv = envv
+        self.process = None
+        self.output = "no output"
+
+    def run(self, timeout):
+        def target():
+#            print "Thread started"
+            self.process = subprocess.Popen(self.cmd.split(), cwd=self.cwd, env=self.envv, \
+                                                stdout=subprocess32.PIPE, \
+                                                stderr=subprocess32.PIPE, \
+                                                preexec_fn=os.setsid)
+            self.output = self.process.communicate()
+#            print 'Thread finished'
+        thread = threading.Thread(target=target)
+        thread.start()
+        thread.join(timeout)
+        if thread.is_alive():
+            if debugging:
+                print 'Terminating process cmd=[%s] due to timeout' % self.cmd
+            self.process.terminate()
+            os.killpg(self.process.pid, signal.SIGTERM) 
+            self.process.kill()
+            print "terminated"
+            thread.join(1)
+            self.returncode = -9
+        else:
+            self.returncode = self.process.returncode
+        
+
+
 
 project = None
 # this is how much code we add to top of any file with main fn in it
@@ -170,9 +209,11 @@ def filename_suff(p, fn):
         suff = suff[1:]
     return suff
 
-def run_cmd(cmd, cw_dir,envv):
-    p = subprocess32.Popen(cmd.split(), cwd=cw_dir, env=envv, stdout=subprocess32.PIPE, stderr=subprocess32.PIPE)
-    output = p.communicate()
+def run_cmd(cmd, cw_dir, envv, timeout):
+    p = Command(cmd, cw_dir, envv)
+    p.run(timeout)
+#    p = subprocess32.Popen(cmd.split(), cwd=cw_dir, env=envv, stdout=subprocess32.PIPE, stderr=subprocess32.PIPE)
+    output = p.output  
     exitcode = p.returncode
     if debugging:
         print "run_cmd(" + cmd + ")"
@@ -180,6 +221,9 @@ def run_cmd(cmd, cw_dir,envv):
         for line in output:
             print "output = [" + line + "]"
     return (exitcode, output)
+
+def run_cmd_nto(cmd, cw_dir, envv):
+    return run_cmd(cmd, cw_dir, envv, 1000000)
 
 def make_safe_copy(fn):
     shutil.copyfile(fn, fn + ".sav")
@@ -200,7 +244,7 @@ def inject_bug_part_into_src(bug_id, suff, offset):
         + ' -main_instr_correction=' + (str(offset)) \
         + ' ' + filename_bug_part \
         + ' ' + '-project-file=' + project_file
-    run_cmd(cmd, None, None)
+    run_cmd_nto(cmd, None, None)
 
 def instrument_main(suff):
     global query_build
@@ -212,7 +256,7 @@ def instrument_main(suff):
         + ' -lava-db=' + lavadb + ' -p ' + bugs_build \
         + ' ' + filename_bug_part \
         + ' ' + '-project-file=' + project_file
-    run_cmd(cmd, None, None)
+    run_cmd_nto(cmd, None, None)
 
 def add_build_row(bugs, compile_succ):
     conn = get_conn()
@@ -245,17 +289,18 @@ def mutfile(filename, lval_taint, new_filename):
 
     # change first 4 bytes to "lava"
     for (i, offset) in zip(range(4), fuzz_offsets):
+        print "i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes))
         file_bytes[offset] = "lava"[i]
     open(new_filename, "w").write(file_bytes)
 
 # here's how to run the built program
-def run_prog(install_dir, input_file):
+def run_prog(install_dir, input_file, timeout):
     cmd = project['command'].format(install_dir=install_dir,input_file=input_file)
     print cmd
     envv = {}
     lib_path = project['library_path'].format(install_dir=install_dir)
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
-    return run_cmd(cmd,install_dir,envv)
+    return run_cmd(cmd,install_dir,envv,timeout)
 
 import string
 
@@ -302,6 +347,8 @@ if __name__ == "__main__":
     db = project['db']
     db_user = "postgres"
     db_password = "postgrespostgres"
+
+    timeout = project['timeout']
 
     sourcefile = {}
     inputfile = {}
@@ -355,6 +402,9 @@ if __name__ == "__main__":
     bugs_install = join(bugs_build, 'lava-install')
     # Make sure directories and btrace is ready for bug injection.
     def run(args, **kwargs):
+        print "run(",
+        print args,
+        print ")"
         subprocess32.check_call(args, cwd=bugs_build,
                 stdout=sys.stdout, stderr=sys.stderr, **kwargs)
     if not os.path.exists(bugs_build):
@@ -383,8 +433,12 @@ if __name__ == "__main__":
             run(['git', 'add', f])
         run(['git', 'add', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json and instrument main.'])
+        run(shlex.split(project['make']))
+        run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \;"))
+        run(['git', 'commit', '-m', 'Add compile_commands.json and instrument main.'])
     if not os.path.exists(bugs_install):
         run(project['install'], shell=True)
+
 
     # Now start picking the bug and injecting
     if args.bugid != -1:
@@ -421,15 +475,18 @@ if __name__ == "__main__":
     print "ATP:"
     print "   " + str(atp)
 
+
+    print "max_tcn=%d  max_liveness=%d" % (dua.max_liveness, dua.max_tcn)
+
     # cleanup
     print "------------\n"
     print "CLEAN UP SRC"
-    run_cmd("/usr/bin/git checkout -f", bugs_build, None)
+    run_cmd_nto("/usr/bin/git checkout -f", bugs_build, None)
     # ugh -- with tshark if you *dont* do this, your bug-inj source may not build, sadly
     # it looks like their makefile doesn't understand its own dependencies, in fact
     if ('makeclean' in project) and (project['makeclean']):
-        run_cmd("make clean", bugs_build, None)
-        (rv, outp) = run_cmd(project['make'] + " -j12", bugs_build, None)
+        run_cmd_nto("make clean", bugs_build, None)
+#        (rv, outp) = run_cmd_nto(project['make'] + " -j25", bugs_build, None)
 
 
     print "------------\n"
@@ -453,7 +510,7 @@ if __name__ == "__main__":
     print "------------\n"
     print "ATTEMPTING BUILD OF INJECTED BUG"
     print "build_dir = " + bugs_build
-    (rv, outp) = run_cmd(project['make'] + " -j12", bugs_build, None)
+    (rv, outp) = run_cmd_nto(project['make'] + " -j25", bugs_build, None)
     build = False
     if rv!=0:
         # build failed
@@ -463,7 +520,7 @@ if __name__ == "__main__":
         # build success
         build = True
         print "build succeeded"
-        (rv, outp) = run_cmd("make install", bugs_build, None)
+        (rv, outp) = run_cmd_nto("make install", bugs_build, None)
         # really how can this fail if build succeeds?
         assert (rv == 0)
         print "make install succeeded"
@@ -480,7 +537,7 @@ if __name__ == "__main__":
             print "TESTING -- ORIG INPUT"
             orig_input = join(top_dir, 'inputs', dua.inputfile)
             print orig_input
-            (rv, outp) = run_prog(bugs_install, orig_input)
+            (rv, outp) = run_prog(bugs_install, orig_input, timeout)
             print "retval = %d" % rv
             print "output:"
             lines = outp[0] + " ; " + outp[1]
@@ -495,11 +552,11 @@ if __name__ == "__main__":
             fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug_id, suff)
             print "fuzzed = [%s]" % fuzzed_input
             mutfile(orig_input, dua.lval_taint, fuzzed_input)
-            (rv, outp) = run_prog(bugs_install, fuzzed_input)
+            (rv, outp) = run_prog(bugs_install, fuzzed_input, timeout)
             print "retval = %d" % rv
-            print "output:"
-            lines = outp[0] + " ; " + outp[1]
-            print lines
+#            print "output:"
+#            lines = outp[0] + " ; " + outp[1]
+#            print lines
             if next_bug_db:        
                 add_run_row(build_id, True, rv, lines, True)
             print "TESTING COMPLETE"

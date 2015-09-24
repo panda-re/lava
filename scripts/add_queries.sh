@@ -96,6 +96,7 @@ done
 
 progress "Inserting queries..."
 for i in $c_files; do
+  echo "running lavaTool on $i"
   $lava/src_clang/build/lavaTool -action=query \
     -lava-db="$directory/$name/lavadb" \
     -p="$source/compile_commands.json" \
