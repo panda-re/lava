@@ -27,7 +27,7 @@ def processCompileCommands(srcPath):
             newCompileCommands.remove(i)
             i['command'] = i['command'].replace('-Werror ', '')
             newCompileCommands.append(i)
-        f = os.path.join(i['directory'], i['file'])
+        f = os.path.realpath(os.path.join(i['directory'], i['file']))
         if f in cFiles:
             modificationNeeded = True
             newCompileCommands.remove(i)

@@ -496,7 +496,7 @@ public:
                 if ( ! (pt->isVoidType() ) ) 
                     return true;
             }
-            if (t->isIntegerType() || t->isCharType()) 
+            if ((t->isIntegerType() || t->isCharType()) && (!t->isEnumeralType()))
                 return true;
         }
         return false;
@@ -601,7 +601,7 @@ public:
        lava_1 |=  (((unsigned char *) &dua))[o] << (i*8) ;
     */
     Insertions ComposeDuaSiphoning(Llval &llval, Bug &bug) {
-        //        errs() << "ComposeDuaSiphoning\n";
+        errs() << "ComposeDuaSiphoning\n";
         Insertions inss;
         std::stringstream siphon;
         if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
@@ -655,6 +655,7 @@ public:
     */
     Insertions ComposeAtpGlobalUse(CallExpr *call_expr, Bug &bug) {
         Insertions inss;        
+        errs() << "in ComposeAtpGlobalUse\n";
         if (bug.atp.filename != bug.dua.filename) {
             // only needed if dua is in different file from attack point
             inss.top_of_file = "extern unsigned int lava_get(void) ;\n";
@@ -665,10 +666,14 @@ public:
         uint32_t i=0;
         // collect inds of attackable args
         for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {            
-            if (IsArgAttackable(dyn_cast<Expr>(*it))) 
+            if (IsArgAttackable(dyn_cast<Expr>(*it)))  {
+                errs() << "arg " << i << " is attackable\n";
                 attackable_args.push_back(i);
+            }
             i ++;
         }
+        errs() << (attackable_args.size()) << "battackable args\n";
+
         // choose arg at random to attack
         std::default_random_engine generator;
         std::uniform_int_distribution<int> distribution(0,attackable_args.size()-1);
@@ -688,12 +693,15 @@ public:
                 // for malloc, we want the lava switch to undersize the malloc to a few bytes
                 // and hope for an overflow
                 if (fn_name.find("malloc") != std::string::npos) {
-                    new_call << "(0x6c617661 == " + gn + " || 0x6176616c == " + gn + ") ? 1 : " << (ExprStr(arg));           
+                    new_call << "(0x6c617661 == " + gn + " || 0x6176616c == " + gn + ") ? 1 : " << (ExprStr(arg));
                 }
                 else {
                     // for everything else we add lava_get() to the arg an hope to break things
-                    // not that the arg, if attackable, is a pointer *or* some kind of integer
-                    new_call << "((char *) (" + (ExprStr(arg)) + ")) + " +  gn + " * (0x6c617661 == " + gn + " || 0x6176616c == " + gn + ")";           
+                    // ... if arg is an lval we'll += instead
+                    std::string plus_op = "+";
+                    if (arg->isLValue()) plus_op = "+=";
+                    errs() << "using plus_op " << plus_op << "\n";
+                    new_call << "((char *) (" + (ExprStr(arg)) + "))" + plus_op + " " +  gn + " * (0x6c617661 == " + gn + " || 0x6176616c == " + gn + ")";
                 }
             }
             else {
@@ -721,7 +729,9 @@ public:
     */
     bool AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint, 
                uint32_t insertion_point, Bug *the_bug ) {
-        for ( auto bug : bugs ) {
+        errs() << "atbug : atAttackPoint " << atAttackPoint << " : " << filename << " : " << line << " : " << insertion_point << "\n";
+        for ( auto bug : bugs ) { 
+            errs() << bug.str() << "\n";
             bool atbug = false;
             if (atAttackPoint) {
                 // this is where we'll use the dua.  only need to match the file and line
@@ -735,7 +745,7 @@ public:
                          && insertion_point == bug.dua.insertionpoint);
             }
             if (atbug) {
-                //                errs() << "Injecting bug @ line " << line << "\n";
+                errs() << "Injecting bug @ line " << line << "\n";
                 *the_bug = bug;
                 return true;
             }
@@ -804,7 +814,7 @@ public:
         else if (LavaAction == LavaInjectBugs) {
             Bug bug;
             if (AtBug("", filename, line, /*atAttackPoint=*/true, /*insertion_point=*/-1, &bug)) {
-                //                errs() << "at bug in ComposeAtpNewSrc\n";
+                                errs() << "at bug in ComposeAtpNewSrc\n";
                 // NB: No insertion -- we insert things into the call 
                 inss = ComposeAtpGlobalUse(call_expr, bug);
             }

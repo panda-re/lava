@@ -59,7 +59,7 @@ std::string src_pfx;
 int inputfile_id;
 std::map<uint32_t,std::string> ind2str;
 
-bool debug = false;
+bool debug = true;
 
 std::pair<float, float> update_range(float val, std::pair<float, float> range) {
     if (val < range.first) {
@@ -462,7 +462,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
     // entry 1 is source info
     Panda__SrcInfo *si = tqh->src_info;
     assert (si != NULL);
-    bool ddebug = false;
+    bool ddebug = true;
     
     // entry 2 is callstack -- ignore
     Panda__CallStack *cs = tqh->call_stack;
@@ -513,6 +513,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
         viable_byte[offset] = 0;
         // flag for tracking *why* we discarded a byte
         uint32_t current_byte_not_ok;
+        // check tcn and cardinality of taint set first
         current_byte_not_ok = (((tq->tcn > max_tcn) << CBNO_TCN_BIT)
                                | ((ptr_to_set[tq->ptr].size() > max_card) << CBNO_CRD_BIT));
         float current_byte_max_liveness = 0.0;
@@ -520,8 +521,6 @@ void taint_query_hypercall(Panda__LogEntry *ple,
             if (ddebug) printf ("tcn and card ok.  checking liveness\n");
             // check for too-live taint label associated with this byte
             Ptr p = tq->ptr;
-            assert (ptr_to_set.count(p) != 0);
-            assert (ptr_to_set[p].size() != 0);
             for ( uint32_t l : ptr_to_set[p] ) {
                 current_byte_not_ok |= ((liveness[l] > max_liveness) << CBNO_LVN_BIT);
                 current_byte_max_liveness = std::max(liveness[l], current_byte_max_liveness);
@@ -560,7 +559,6 @@ void taint_query_hypercall(Panda__LogEntry *ple,
             viable_byte[offset] = tq->ptr;
         }
         // we can stop examining query when we have enough viable bytes
-        //        printf ("in loop -- %d viable bytes\n", count_viable_bytes(viable_byte));
         if (count_viable_bytes(viable_byte) >= LAVA_MAGIC_VALUE_SIZE) break;
     }
     uint32_t num_viable = count_viable_bytes(viable_byte);
@@ -571,7 +569,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
     // we need # of unique labels to be at least 4 since
     // that's how big our 'lava' key is
     //    printf ("num_viable = %d\n", num_viable);
-    if ((num_viable >= LAVA_MAGIC_VALUE_SIZE) && (labels.size() >= LAVA_MAGIC_VALUE_SIZE)) {
+    if ((num_viable == LAVA_MAGIC_VALUE_SIZE) && (labels.size() == LAVA_MAGIC_VALUE_SIZE)) {
         assert (c_max_liveness <= max_liveness);
         // tainted lval we just considered was deemed viable
         std::vector<Ptr> viable_byte_vec;
@@ -687,33 +685,40 @@ bool is_dua_viable (Dua &dua, std::map <uint32_t,float> &liveness,
     // NB: we have already checked dua for viability wrt tcn & card at induction
     // these do not need re-checking as they are to be captured at dua siphon point
     // Note, also, that we are only checking the 4 or so bytes that were previously deemed viable
+    uint32_t num_viable = 0;
     for (uint32_t off=0; off<dua.lval_taint.size(); off++) {
         Ptr ts = dua.lval_taint[off];
-        // determine if liveness for this offset is still low enough
         bool viable = true;
-        for (auto l : ptr_to_set[ts]) {
-            if (liveness[l] > max_liveness) {
-                if (debug)
-                    printf ("byte offset=%d is nonviable b/c label %d has liveness %.3f\n",
-                            off, l, liveness[l]);
-                viable = false;
-                break;
+        if (ts == 0) viable = false;
+        if (viable) {
+            // determine if liveness for this offset is still low enough
+            for (auto l : ptr_to_set[ts]) {
+                if (liveness[l] > max_liveness) {
+                    if (debug)
+                        printf ("byte offset=%d is nonviable b/c label %d has liveness %.3f\n",
+                                off, l, liveness[l]);
+                    viable = false;
+                    break;
+                }
             }
         }
         // NB: 0 indicates untainted & nonviable
-        if (viable)
+        if (viable) {
             new_viable_byte.push_back(ts);
+            num_viable ++;
+        }
         else
             new_viable_byte.push_back(0);
+        if (num_viable == LAVA_MAGIC_VALUE_SIZE) 
+            break;
     }
-    dua.lval_taint = new_viable_byte;
-    uint32_t num_viable = count_viable_bytes2(new_viable_byte);
+    dua.lval_taint = new_viable_byte;    
     if (debug) {
         std::cout << dua.str() << "\n";
         printf ("dua has %d viable bytes\n", num_viable);
     }
     // dua is viable iff it has more than one viable byte
-    return (num_viable >= LAVA_MAGIC_VALUE_SIZE);
+    return (num_viable == LAVA_MAGIC_VALUE_SIZE);
 }
 
 

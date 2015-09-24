@@ -83,7 +83,8 @@ max_tcns = {}
 max_lvns = {}
 max_crds = {}
 
-tcns = [1,4,16,64,256,1024,4096]
+tcns = [1,10,100]
+#tcns = [1,4,16,64,256,1024,4096]
 livs = tcns
 
 INFINITY = 100000000000000
@@ -100,6 +101,29 @@ def get_interval(i, partition):
     elif i == len(partition):
         return (partition[i-1], INFINITY)
     return (partition[i-1], partition[i])
+
+
+fs = open("ls", "w")
+ff = open("lf", "w")
+for run_id in runs.keys():
+    (build_id, fuzz, exitcode, output_lines, success) = runs[run_id]
+    if fuzz:
+        (buglist, binpath, compiles) = builds[build_id]
+        bug_id = buglist[0]
+        (dua_id, atp_id, inj) = bugs[bug_id]
+        (filename_id, line, lval_id, insertionpoint, file_offset, lval_taint, inputfile_id, \
+             max_tcn, max_card, max_liveness, dua_icount, dua_scount, instr) = duas[dua_id]
+        if (exitcode == -11):
+            fs.write("%d %d\n" % (max_liveness, max_tcn))
+            if max_liveness > 100:
+                print "run=%d bug=%d  dua=%d is weird" % (run_id, bug_id,dua_id)
+        else:
+            ff.write("%d %d\n" % (max_liveness, max_tcn))
+fs.close()
+ff.close()
+
+
+
 
 table = []
 for i in range(1+len(tcns)):    

@@ -198,7 +198,7 @@ pandalog = 'queries-{}.plog'.format(os.path.basename(isoname))
 
 qemu_args = ['-replay', isoname,
         '-pandalog', pandalog,
-        '-panda', 'taint2:no_tp',
+        '-panda', 'taint2',
         '-panda', 'tainted_branch',
         '-panda', 'file_taint:pos,first_instr={},filename={}'.format(
             instr, input_file_guest)]
