@@ -154,7 +154,7 @@ pandahost="$(jq -r .pandahost $json)"
 dbhost="$(jq -r .dbhost $json)"
 testinghost="$(jq -r .testinghost $json)"
 fixupscript="$(jq -r .fixupscript $json)"
-
+makecmd="$(jq -r .make $json)"
 
 scripts="$lava/scripts"
 python="/usr/bin/python"
@@ -205,7 +205,7 @@ fi
 if [ $make -eq 1 ]; then 
     progress 1 "Make step -- making 32-bit version with queries"
     lf="$logs/make.log"    
-    run_remote "$buildhost" "cd $sourcedir && make -j `nproc`  >& $lf"
+    run_remote "$buildhost" "cd $sourcedir && $makecmd  >& $lf"
     run_remote "$buildhost" "cd $sourcedir && make install   &>> $lf"
 fi
 
