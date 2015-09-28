@@ -729,9 +729,9 @@ public:
     */
     bool AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint, 
                uint32_t insertion_point, Bug *the_bug ) {
-        errs() << "atbug : atAttackPoint " << atAttackPoint << " : " << filename << " : " << line << " : " << insertion_point << "\n";
+        //        errs() << "atbug : atAttackPoint " << atAttackPoint << " : " << filename << " : " << line << " : " << insertion_point << "\n";
         for ( auto bug : bugs ) { 
-            errs() << bug.str() << "\n";
+            //            errs() << bug.str() << "\n";
             bool atbug = false;
             if (atAttackPoint) {
                 // this is where we'll use the dua.  only need to match the file and line
