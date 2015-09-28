@@ -1,3 +1,4 @@
+import os
 import sys
 import json
 import psycopg2
@@ -5,13 +6,17 @@ import numpy
 from tabulate import tabulate
 
 
-def get_conn():
-    conn = psycopg2.connect(host=db_host, database=db, user=db_user, password=db_password)
+db_user = "postgres"
+db_password = "postgrespostgres"
+
+
+def get_conn(project):
+    conn = psycopg2.connect(host=project['dbhost'], database=project['db'], user=db_user, password=db_password)
     return conn;
 
 
-def get_runs():
-    conn = get_conn()
+def get_runs(project):
+    conn = get_conn(project)
     cur = conn.cursor()
     cur.execute("SELECT * FROM run where fuzz=true;")
     run = {}
@@ -23,8 +28,8 @@ def get_runs():
         run[run_id] = (build_id, fuzz, exitcode, output_lines, success)
     return run
 
-def get_builds():
-    conn = get_conn()
+def get_builds(project):
+    conn = get_conn(project)
     cur = conn.cursor()
     cur.execute("SELECT * FROM build;")
     build = {}
@@ -37,8 +42,8 @@ def get_builds():
     return build;
 
 
-def get_bugs():
-    conn = get_conn()
+def get_bugs(project):
+    conn = get_conn(project)
     cur = conn.cursor()
     cur.execute("SELECT * FROM bug;")
     bug = {}
@@ -50,8 +55,8 @@ def get_bugs():
         bug[bug_id] = (dua_id, atp_id, inj)
     return bug;
 
-def get_duas():
-    conn = get_conn()
+def get_duas(project):
+    conn = get_conn(project)
     cur = conn.cursor()
     cur.execute("SELECT * FROM dua;")
     dua = {}
@@ -64,24 +69,8 @@ def get_duas():
     return dua
 
 
-project = json.load(open(sys.argv[1]))
-        
-
-db_host = project['dbhost']
-db = project['db']
-db_user = "postgres"
-db_password = "postgrespostgres"
 
 
-
-runs = get_runs()
-builds = get_builds()
-bugs = get_bugs()
-duas = get_duas()
-
-max_tcns = {}
-max_lvns = {}
-max_crds = {}
 
 tcns = [1,10,100]
 #tcns = [1,4,16,64,256,1024,4096]
@@ -103,29 +92,85 @@ def get_interval(i, partition):
     return (partition[i-1], partition[i])
 
 
-fs = open("ls", "w")
-ff = open("lf", "w")
-for run_id in runs.keys():
-    (build_id, fuzz, exitcode, output_lines, success) = runs[run_id]
-    if fuzz:
-        (buglist, binpath, compiles) = builds[build_id]
-        bug_id = buglist[0]
-        (dua_id, atp_id, inj) = bugs[bug_id]
-        (filename_id, line, lval_id, insertionpoint, file_offset, lval_taint, inputfile_id, \
-             max_tcn, max_card, max_liveness, dua_icount, dua_scount, instr) = duas[dua_id]
-        if (exitcode == -11):
-            fs.write("%d %d\n" % (max_liveness, max_tcn))
-            if max_liveness > 100:
-                print "run=%d bug=%d  dua=%d is weird" % (run_id, bug_id,dua_id)
-        else:
-            ff.write("%d %d\n" % (max_liveness, max_tcn))
-fs.close()
-ff.close()
+def spelunk(json_filename, counts, totals):
+    project = json.load(open(json_filename))
+    db_host = project['dbhost']
+    db = project['db']
+    runs = get_runs(project)
+    builds = get_builds(project)
+    bugs = get_bugs(project)
+    duas = get_duas(project)
+    # result #1: 
+    # write max_liveness & max_tcn to two different files,
+    # one for when we succeed instantiating a segfault ("-sf") 
+    # and one for when we don't succeed ("-nf")
+    (head,tail) = os.path.split(json_filename)
+    fs = open("%s/%s-res-sf" % (project['directory'], tail), "w")
+    ff = open("%s/%s-res-nf" % (project['directory'], tail), "w")
+    for run_id in runs.keys():
+        (build_id, fuzz, exitcode, output_lines, success) = runs[run_id]
+        if fuzz:
+            (buglist, binpath, compiles) = builds[build_id]
+            bug_id = buglist[0]
+            (dua_id, atp_id, inj) = bugs[bug_id]
+            (filename_id, line, lval_id, insertionpoint, file_offset, lval_taint, inputfile_id, \
+                 max_tcn, max_card, max_liveness, dua_icount, dua_scount, instr) = duas[dua_id]
+            if (exitcode == -11):
+                fs.write("%d %d\n" % (max_liveness, max_tcn))
+                # high liveness yet we were able to trigger a segfault?  Weird
+#                if max_liveness > 100:
+#                    print "run=%d bug=%d  dua=%d is weird" % (run_id, bug_id,dua_id)
+            else:
+                ff.write("%d %d\n" % (max_liveness, max_tcn))
+    fs.close()
+    ff.close()
+    max_tcns = {}
+    max_lvns = {}
+    max_crds = {}
+    for i in range(1+len(tcns)):    
+        if not (i in counts):
+            counts[i] = {}
+            totals[i] = {}
+        tcn_interval = get_interval(i, tcns)
+        for j in range(1+len(livs)):
+            # for all runs with max_liveness in liv_interval and max_tcn in tcn_interval
+            # collect counts by exit code
+            if not (j in counts[i]):
+                counts[i][j] = {}
+                totals[i][j] = 0
+            # for all runs with max_liveness in liv_interval and max_tcn in tcn_interval
+            # collect counts by exit code
+            liv_interval = get_interval(j, livs)
+            n=0
+            for run_id in runs.keys():
+                (build_id, fuzz, exitcode, output_lines, success) = runs[run_id]
+                (buglist, binpath, compiles) = builds[build_id]
+                # NB: assuming just one bug inserted per run! 
+                assert (len(buglist) == 1)
+                bug_id = buglist[0]
+                (dua_id, atp_id, inj) = bugs[bug_id]
+                (filename_id, line, lval_id, insertionpoint, file_offset, lval_taint, inputfile_id, \
+                     max_tcn, max_card, max_liveness, dua_icount, dua_scount, instr) = duas[dua_id]
+                if fuzz:
+                    if (interval_check(max_liveness, liv_interval)) and (interval_check(max_tcn, tcn_interval)):
+                        if not (exitcode in counts[i][j]):
+                            counts[i][j][exitcode] = 1
+                        else:
+                            counts[i][j][exitcode] += 1
+                        totals[i][j] += 1
 
 
+
+
+counts = {}
+totals = {}
+for json_filename in (sys.argv[1:]):
+    print "\nspelunk [%s]\n" % json_filename
+    spelunk(json_filename, counts, totals)
 
 
 table = []
+
 for i in range(1+len(tcns)):    
     tcn_interval = get_interval(i, tcns)
     row = []
@@ -135,32 +180,14 @@ for i in range(1+len(tcns)):
         row.append("tcn=[%d,%d)" % (tcn_interval[0],tcn_interval[1]))
     for j in range(1+len(livs)):
         liv_interval = get_interval(j, livs)
-#        print "tcn: " + (str(tcn_interval))
-#        print "liv: " + (str(liv_interval))
-        c_exit = {}
-        n=0
-        for run_id in runs.keys():
-            (build_id, fuzz, exitcode, output_lines, success) = runs[run_id]
-            (buglist, binpath, compiles) = builds[build_id]
-            bug_id = buglist[0]
-            (dua_id, atp_id, inj) = bugs[bug_id]
-            (filename_id, line, lval_id, insertionpoint, file_offset, lval_taint, inputfile_id, \
-                 max_tcn, max_card, max_liveness, dua_icount, dua_scount, instr) = duas[dua_id]
-            if fuzz:
-                if (interval_check(max_liveness, liv_interval)) and (interval_check(max_tcn, tcn_interval)):
-                    if not (exitcode in c_exit):
-                        c_exit[exitcode] = 1
-                    else:
-                        c_exit[exitcode] += 1
-                    n += 1
         ys = "y=u"
-        if (n > 0):
+        if (totals[i][j] > 0):
             nsf = 0
-            if -11 in c_exit:
-                nsf = c_exit[-11]
-            y = (float(nsf)) / n
+            if -11 in counts[i][j]:
+                nsf = counts[i][j][-11]
+            y = (float(nsf)) / totals[i][j]
             ys = "y=%.3f" % y
-        cell = "n=%d %7s" % (n,ys)
+        cell = "n=%d %7s" % (totals[i][j],ys)
         row.append(cell)
     table.append(row)
 
