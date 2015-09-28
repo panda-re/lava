@@ -484,8 +484,8 @@ if __name__ == "__main__":
     run_cmd_nto("/usr/bin/git checkout -f", bugs_build, None)
     # ugh -- with tshark if you *dont* do this, your bug-inj source may not build, sadly
     # it looks like their makefile doesn't understand its own dependencies, in fact
-    if ('makeclean' in project) and (project['makeclean']):
-        run_cmd_nto("make clean", bugs_build, None)
+#    if ('makeclean' in project) and (project['makeclean']):
+#        run_cmd_nto("make clean", bugs_build, None)
 #        (rv, outp) = run_cmd_nto(project['make'] + " -j25", bugs_build, None)
 
 
