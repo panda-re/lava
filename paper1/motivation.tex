@@ -25,19 +25,16 @@ Bugs must be
 \item Come with an input that serves as an existence proof 
 \item Manifest for a very small fraction of possible inputs
 \end {enumerate}
-The first requirement, if we can meet it, is highly desirable since it enables hill climbing and continued evaluation.
+The first requirement, if we can meet it, is highly desirable since it enables hill climbing and frequent evaluation.
 Corpora are more valuable if they are essentially disposable. 
-The second and third of these requirements are versions of ``the bugs must be realistic''.
+The second and third of these requirements stipulate that bugs must be realistic.
 The fourth means the bug is real and serious, and is a precondition for determining exploitability. 
 The fifth is crucial.
-Consider the converse: if a bug manifests for all or a large fraction of inputs it is trivially discoverable, and therefore it is unlikely to exist in programs that are used in the real world.
+Consider the converse: if a bug manifests for all or a large fraction of inputs it is trivially discoverable, and therefore it is unlikely to exist in programs that have ever actually been run.
 
 The approach we propose is to create a synthetic vulnerability via a few judicious and automated edits to the source code of a real program.
 We will detail and give results for an implementation of this approach that satisfies all of the above requirements.
-We call this implementation VITAL for Lincoln Automated Vulnerability Application.
-A serious bug such as a buffer overflow can be injected by VITAL into a program of X LOC in about a minute, and for programs of this size VITAL can inject  Y thousand such bugs.
+We call this implementation VITAL for Vulnerability Injection via Taint AnaLysis, as the system relies upon a powerful and precise dynamic taint analysis.  
+A serious bug such as a buffer overflow can be injected by VITAL into a program like emph{file}, which is 13K LOC, in about a 15 seconds, and can be injected into this target.
 VITAL bugs manifest all along the execution trace, in all parts of the program, shallow and deep, and make use of mostly completely normal data flow.
 By construction, a VITAL bug comes with an input that triggers it, and no other input can have this effect upon the program.
-
-This paper is organized as follows. 
-[Do we want to do this?]
