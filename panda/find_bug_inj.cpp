@@ -461,9 +461,14 @@ void taint_query_hypercall(Panda__LogEntry *ple,
     uint32_t num_tainted = tqh->num_tainted;
     // entry 1 is source info
     Panda__SrcInfo *si = tqh->src_info;
+    // make sure we are not a header file
+    std::string the_filename = ind2str[si->filename];
+    uint32_t l = the_filename.length();
+    printf ("the_filename[l] = %c\n", the_filename[l-1]);
+    if (the_filename[l-1] != 'c')
+        return;
     assert (si != NULL);
-    bool ddebug = true;
-    
+    bool ddebug = true;    
     // entry 2 is callstack -- ignore
     Panda__CallStack *cs = tqh->call_stack;
     assert (cs != NULL);
