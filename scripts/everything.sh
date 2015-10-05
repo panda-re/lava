@@ -239,8 +239,8 @@ if [ $inject -eq 1 ]; then
         nlf="$logs/inject-$bn.log"
         echo move $lf $nlf
         /bin/mv $lf $nlf
-        a=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode != -11" | head -3  | tail -1 `
-        b=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode = -11" | head -3  | tail -1 `
+        a=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode != -11 and exitcode != -6" | head -3  | tail -1 `
+        b=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and (exitcode = -11 or exitcode = -6)" | head -3  | tail -1 `
         y=`bc <<< "scale=3; $b/($a+$b)"`
         t=`bc <<< "$a + $b"`
         echo "Runs: $t  Yield: $y"
