@@ -39,9 +39,9 @@ VITAL employs a pair of taint-based measures to identify program quantities that
 These DUAs (dead-uncomplicated and available data) are employed, via source-to-source transformation, to perturb program quantities at later program points that are likely to cause vulnerabilities.
 Every VITAL vulnerability is accompanied by a fuzzed input that triggers it, whereas normal inputs are extremely unlikely to do so.
 Further, every VITAL bug is validated, and thus every working bug comes with both a proof-of-concept input and a known manifestation point.  
-These vulnerabilities are synthetic but, we argue, still realistic, in the sense that they are embedded deep with programs and are triggered by inputs.
+These vulnerabilities are synthetic but, we argue, still realistic, in the sense that they are embedded deep with programs and are triggered by real inputs.
 In order for an automated tool to discover them, it would have to be able to reason correctly and precisely about all the code executed up to the DUA.
-Using VITAL, we have injected tens of thousands of bugs into popular programs such as file, strings, readelf, tshark, and eog.
+Using VITAL, we have injected tens of thousands of bugs into popular programs such as file, readelf, bash, tshark, and eog.
 We believe VITAL can form the basis of an approach for generating extremely high quality ground truth vulnerability corpora, on demand.
 
 

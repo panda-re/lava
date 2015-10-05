@@ -3,20 +3,22 @@ At a high level, VITAL adds bugs to programs in the following manner.
 
 \begin {enumerate}
 \item Identify source code locations where input bytes that do not determine control flow and are still close to their original form are available. 
-We call these quantities DUAs, for dead, uncomplicated and available. 
+We call these quantities DUAs, for \underline{D}ead, \underline{U}ncomplicated and \underline{A}vailable data. 
 \item Find potential attack points that are temporally after a DUA in the program trace.
 Attack points are source code locations where a DUA might be used, if only it were available there as well, to make a program vulnerable. 
-\item Add code to the program to make the DUA value available at the attack point and use it to create the vulnerability. 
+\item Add code to the program to make the DUA value available at the attack point and use it to trigger the vulnerability. 
 \end{enumerate}
 
-These three steps will be discussed in the following three sections, which refer to the worked example in Figure~\ref{fig:worked-example}.
+These three steps will be discussed in the following three sections, which refer to the running example in Figure~\ref{fig:worked-example}.
 
 
 \begin{figure} 
 \centering
-\includegraphics[width=3.3in]{worked-example.pdf}
+\includegraphics[width=3.3in]{worked-example2.pdf}
 \caption{
-VITAL worked example
+VITAL running example.  
+Entering the funtion foo, a is bytes 0..3 of input, b is 4..7, and n is 8..11.
+The pointers s and d, and the buffers pointed to by them are untainted.  
 }
 \label{fig:worked-example}
 \end{figure}
@@ -34,21 +36,21 @@ That taint analysis has a few important features.
 Thus, if an internal program quantity is tainted and a direct copy of input bytes, then we can map that quantity back to a specific part of the input.  
 \item The taint analysis operates, effectively, upon an LLVM version of the machine code for a program, including its libraries.
 This means taint is propagated accurately and completely, even through esoteric x86 machine instructions like MMX and XMM.
-\item The taint analysis keeps track of a \emph{set} of labels per input byte, meaning that it can represent computation that mixes input bytes.
+\item The taint analysis keeps track of a \emph{set} of labels per byte of program data, meaning that it can represent computation that mixes input bytes.
 \end{itemize}
 We use the PANDA system to perform this taint analysis, with two crucial conceptual extensions in the form of taint-based measures.
 
 
 \begin{figure}
 \centering
-\includegraphics[width=2in]{tcn.pdf}
-\caption{Taint Compute Number examples from the worked example.  
+\includegraphics[width=3in]{tcn.pdf}
+\caption{Taint Compute Number examples from the running example.  
 TCN is simply the depth of the tree of computation that produces the value from tainted inputs.
-TCN(c) at lines 2 and 6 are 1 and n+1, respectively.}
+TCN(c) after line 2 is 1, and after line 6 (upon exiting the loop), it is n+1.}
 \label{fig:taint-compute-number}
 \end{figure}
 
-The \emph{taint compute number} is a measure of how complicated a function of input bytes a tainted internal program quantity is.
+The \underline{T}aint \underline{C}ompute \underline{N}umber is a measure of how complicated a function of input bytes a tainted internal program quantity is.
 TCN simply tracks the depth of the tree of computation required to obtain a quantity from input bytes.
 %TCN is illustrated in Figure~\ref{fig:taint-compute-number}; it simply tracks the depth of the tree of computation required to obtain 
 %a quantity from input bytes.
@@ -58,26 +60,25 @@ The intuition behind this measure is that we need DUAs that are computationally 
 Note that TCN is not an ideal measure.
 There are obviously situations in which the tree of computation is deep but the resulting value is both completely predictable and has as much entropy as the original value.
 However, TCN has the advantage that it is easy to compute.
-Whenever the taint system needs to union label sets to represent computation, the TCN associated with the resulting set is one more than the max of those of the 
+Whenever PANDA needs to union label sets to represent computation, the TCN associated with the resulting set is one more than the max of those of the 
 input sets.
-In the worked example, and illustrated in Figure~\ref{fig:taint-compute-number}, $TCN(c)=1$ after line 1, since it is computed from quantities \verb+a+ and \verb+b+ which are directly derived from input.
+In the running example, and illustrated in Figure~\ref{fig:taint-compute-number}, $TCN(c)=1$ after line 1, since it is computed from quantities \verb+a+ and \verb+b+ which are directly derived from input.
 Later, just before line 7 and after the loop, $TCN(c)=n+1$ because each iteration of the loop increases the depth of the tree of computation by one.  
 
-The other taint-based measure VITAL introduces is \emph{liveness}, which is associated with taint labels, i.e. the input bytes themselves.
+The other taint-based measure VITAL introduces is \emph{Liveness}, which is associated with taint labels, i.e., the input bytes themselves.
 This is a straightforward accounting of how many branches a byte in the input has been used to decide.
-Thus, if a particular input byte label was never found in a taint label set associated with any byte used in a branch, it will have liveness of 0.
+Thus, if a particular input byte label was never found in a taint label set associated with any byte used to decide a branch, it will have liveness of 0.
 A DUA entirely consisting of bytes with 0 or very low liveness can be considered \emph{dead} in the sense that it has very little influence upon control flow for this program trace.
 If one were to fuzz dead bytes, the program should be indifferent and execute the same trace.  
-In the worked example, $LIV(0..3)=1$ after line 3, since \verb+a+ is a direct copy of input bytes 0..3.
+In the running example, $LIV(0..3)=1$ after line 3, since \verb+a+ is a direct copy of input bytes 0..3.
 After each iteration of the loop, the liveness of bytes 8..11, the loop bound, increase by one and so, after the loop, $LIV(8..11)=n$.
 
-The combination of uncomplicated (low TCN) and dead (low liveness) is a powerful one for vulnerability injection.
+The combination of uncomplicated (low TCN) and dead (low liveness) program data is a powerful one for vulnerability injection.
 The DUAs it identifies are internal program quantities that are often a direct copy of input bytes, and which can be set to any chosen value without sending the program along a different path.  
 These make very good triggers for vulnerabilities.
-
-In the worked example, bytes 0..3 and 8..11 are all somewhat live, because they have been seen to be used to decide branches.
-Variables \verb+a+ and \verb+n+ are therefore too live to be useful in injecting a vulnerability.
-Variable \verb+b+, on the other hand, has a TCN of 0 and the bytes from which it derives, 4..7 are completely dead, 
+In the running example, bytes 0..3 and 8..11 are all somewhat live, because they have been seen to be used to decide branches.
+Arguments \verb+a+ and \verb+n+ are therefore too live to be useful in injecting a vulnerability.
+Argument \verb+b+, on the other hand, has a TCN of 0 and the bytes from which it derives, 4..7 are completely dead, 
 making it an ideal trigger to control a vulnerability. 
 
 \subsection {The attack point}
@@ -88,16 +89,18 @@ If the goal is to inject divide-by-zero, then arithmetic operations involving di
 Alternately, the goal might be to control one or more arguments to a library function.
 The only requirement is that the attack point be parameterized in order that it be attackable when the DUA is made available there. 
 Further, attack points must be be encountered \emph{temporally after} a DUA in the trace to be of use. 
-For instance, in the worked example, on line 7, the call to \verb+memcpy+ can be attacked if it is observed in the trace after a useable DUA.
+For instance, in the running example, on line 7, the call to \verb+memcpy+ can be attacked since it is observed in the trace after a useable DUA, the argument \emph{b}.
 
 
 \subsection {Data-flow bug injection}
 
 The third and final step to VITAL bug injection is introducing a dataflow relationship between DUA and attack point.  
 If the DUA is in scope at the attack point then it can simply be used at the attack point to introduce the vulnerability.
-If it is not in scope, new code is added to siphon the DUA off into a safe place (perhaps in a data structure or a global), and also retrieve and make use of it at the attack point. 
+If it is not in scope, new code is added to siphon the DUA off into a safe place (perhaps in a static or global data structure), and also retrieve and make use of it at the attack point. 
 However, in order to ensure that the bug only manifest itself very occasionally (one of our requirements from Section~\ref{sec:motivation}), we introduce a guard requiring that the DUA match a specific value if it is to be used to manifest the vulnerability.
-In the worked example, the DUA \verb+b+ is still in scope at the \verb+memcpy+ attack point and the only source code modification necessary is to make use of it to introduce the vulnerability if it matches a particular value.  
+In the running example, the DUA \verb+b+ is still in scope at the \verb+memcpy+ attack point and the only source code modification necessary is to make use of it to introduce the vulnerability if it matches a particular value.  
+If we replace the first argument to the call to \verb+memcpy+, \verb+d+, with \verb-d+(b==0x6c617661)*b- then there will be an out of bounds write only when bytes 4..7 of the input exactly match 0x6c617661. 
+
 
 
 

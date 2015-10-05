@@ -15,24 +15,24 @@ import atexit
 from os.path import basename, dirname, join, abspath
 import threading
 
-import subprocess
 import signal
 
 class Command(object):
-    def __init__(self, cmd, cwd, envv):
+    def __init__(self, cmd, cwd, envv, **popen_kwargs):
         self.cmd = cmd
         self.cwd = cwd
         self.envv = envv
         self.process = None
         self.output = "no output"
+        self.popen_kwargs = popen_kwargs
 
     def run(self, timeout):
         def target():
 #            print "Thread started"
-            self.process = subprocess.Popen(self.cmd.split(), cwd=self.cwd, env=self.envv, \
+            self.process = subprocess32.Popen(self.cmd.split(), cwd=self.cwd, env=self.envv, \
                                                 stdout=subprocess32.PIPE, \
                                                 stderr=subprocess32.PIPE, \
-                                                preexec_fn=os.setsid)
+                                                preexec_fn=os.setsid, **popen_kwargs)
             self.output = self.process.communicate()
 #            print 'Thread finished'
         thread = threading.Thread(target=target)
@@ -244,7 +244,7 @@ def inject_bug_part_into_src(bug_id, suff, offset):
         + ' -main_instr_correction=' + (str(offset)) \
         + ' ' + filename_bug_part \
         + ' ' + '-project-file=' + project_file
-    run_cmd_nto(cmd, None, None)
+    return run_cmd_nto(cmd, None, None)
 
 def instrument_main(suff):
     global query_build
@@ -300,7 +300,7 @@ def run_prog(install_dir, input_file, timeout):
     envv = {}
     lib_path = project['library_path'].format(install_dir=install_dir)
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
-    return run_cmd(cmd,install_dir,envv,timeout)
+    return run_cmd(cmd, install_dir, envv, timeout, shell=True)
 
 import string
 
@@ -436,8 +436,15 @@ if __name__ == "__main__":
         run(shlex.split(project['make']))
         run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \;"))
         run(['git', 'commit', '-m', 'Add compile_commands.json and instrument main.'])
-    if not os.path.exists(bugs_install):
-        run(project['install'], shell=True)
+        if not os.path.exists(bugs_install):
+            run(project['install'], shell=True)
+
+        # ugh binutils readelf.c will not be lavaTool-able without
+        # bfd.h which gets created by make. 
+        run_cmd_nto(project["make"], bugs_build, None)
+        run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \;"))
+        run(['git', 'commit', '-m', 'Adding any make-generated source files'])
+            
 
 
     # Now start picking the bug and injecting
@@ -482,40 +489,58 @@ if __name__ == "__main__":
     print "------------\n"
     print "CLEAN UP SRC"
     run_cmd_nto("/usr/bin/git checkout -f", bugs_build, None)
-    # ugh -- with tshark if you *dont* do this, your bug-inj source may not build, sadly
-    # it looks like their makefile doesn't understand its own dependencies, in fact
-#    if ('makeclean' in project) and (project['makeclean']):
-#        run_cmd_nto("make clean", bugs_build, None)
-#        (rv, outp) = run_cmd_nto(project['make'] + " -j25", bugs_build, None)
+
 
 
     print "------------\n"
     print "INJECTING BUGS INTO SOURCE"
-    inject_files = [dua.filename, atp.filename]
-#    inject_files.extend(project['main_file'])
-    inject_files = set(inject_files)
-    print "Running lavatool on %d files\n" % (len(inject_files))
-    # modify src @ the dua to siphon off tainted bytes into global
-    # modify src the atp to use that global
-    # modify main to include lava_set
-    # only if they are in different files
-    for f in inject_files:
-        print "injecting code into [%s]" % f
+    print "inserting code into dua file %s" % dua.filename
+    offset = 0
+    if dua.filename in main_files:
+        offset = NUM_LINES_MAIN_INSTR
+    (exitcode, output) = inject_bug_part_into_src(bug_id, dua.filename, offset)
+    if (exitcode & 0x4):
+        print "... successfully inserted dua siphon"
+    else:
+        print "... FAIL"
+        assert (exitcode & 0x4)
+    if dua.filename == atp.filename:
+        print "atp is in dua file..."
+        if (exitcode & 0x8):
+            print "... atp successfully inserted as well"
+        else:
+            assert (exitcode & 0x8)
+    else:
+        print "inserting atp dua use into %s" % atp.filename
         offset = 0
-        if f in main_files:
+        if atp.filename in main_files:
             offset = NUM_LINES_MAIN_INSTR
-        inject_bug_part_into_src(bug_id, f, offset)
+        (exitcode, output) = inject_bug_part_into_src(bug_id, atp.filename, offset)
+        if (exitcode & 0x8):
+            print "... success"
+        else:
+            print "... FAIL"
+            assert (exitcode & 0x8)
 
+
+    # ugh -- with tshark if you *dont* do this, your bug-inj source may not build, sadly
+    # it looks like their makefile doesn't understand its own dependencies, in fact
+    if ('makeclean' in project) and (project['makeclean']):
+        run_cmd_nto("make clean", bugs_build, None)
+#        (rv, outp) = run_cmd_nto(project['make'] , bugs_build, None)
+
+        
     # compile
     print "------------\n"
     print "ATTEMPTING BUILD OF INJECTED BUG"
     print "build_dir = " + bugs_build
-    (rv, outp) = run_cmd_nto(project['make'] + " -j25", bugs_build, None)
+    (rv, outp) = run_cmd_nto(project['make'], bugs_build, None)
     build = False
     if rv!=0:
         # build failed
         print outp
         print "build failed"    
+        sys.exit(1)
     else:
         # build success
         build = True

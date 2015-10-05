@@ -12,6 +12,9 @@ extern "C" {
 
 #include "../include/lava_bugs.h"
 
+#define RV_PFX "kbcieiubweuhc"
+#define RV_PFX_LEN 13
+
 
 std::string BuildPath; 
 char resolved_path[512];
@@ -58,6 +61,12 @@ static cl::opt<std::string> SMainInstrCorrection("main_instr_correction",
                     
          
 uint32_t MainInstrCorrection;
+
+#define INSERTED_DUA_SIPHON 0x4
+#define INSERTED_DUA_USE    0x8
+#define INSERTED_MAIN_STUFF 0x16
+ 
+uint32_t returnCode=0;
 
 /*
 static cl::opt<std::string> LavaBugBuildDir("bug-build-dir",
@@ -446,9 +455,10 @@ public:
         }
     }
 
+
     std::string RandVarName() {
         std::stringstream rvs;
-        rvs << "kbcieiubweuhc";
+        rvs << RV_PFX;
         rvs << rand();
         return rvs.str();
     }
@@ -488,17 +498,29 @@ public:
     }
 
     bool IsArgAttackable(Expr *arg) {
+        //        errs() << "IsArgAttackable \n";
+        //        arg->dump();
         const Type *t = arg->getType().getTypePtr();
+        if (t->isStructureType() || t->isEnumeralType() || t->isIncompleteType()) {
+            return false;
+        }
         if (QueriableType(t)) {
+            //            errs() << "is of queriable type\n";
             if (t->isPointerType()) {
+                //                errs() << "is a pointer type\n";
                 const Type *pt = t->getPointeeType().getTypePtr();
                 // its a pointer to a non-void 
-                if ( ! (pt->isVoidType() ) ) 
+                if ( ! (pt->isVoidType() ) ) {
+                    //                    errs() << "is not a void type -- ATTACKABLE\n";
                     return true;
+                }
             }
-            if ((t->isIntegerType() || t->isCharType()) && (!t->isEnumeralType()))
+            if ((t->isIntegerType() || t->isCharType()) && (!t->isEnumeralType())) {
+                //                errs() << "is integer or char and not enum -- ATTACKABLE\n";
                 return true;
+            }
         }
+        //        errs() << "not ATTACKABLE\n";
         return false;
     }
 
@@ -601,8 +623,12 @@ public:
        lava_1 |=  (((unsigned char *) &dua))[o] << (i*8) ;
     */
     Insertions ComposeDuaSiphoning(Llval &llval, Bug &bug) {
-        errs() << "ComposeDuaSiphoning\n";
         Insertions inss;
+        // only insert one dua siphon
+        if (returnCode & INSERTED_DUA_SIPHON) return inss;
+        returnCode |= INSERTED_DUA_SIPHON;
+        std::string lval_name = llval.name;
+        //        errs() << "ComposeDuaSiphoning\n";
         std::stringstream siphon;
         if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
             siphon << "if (";
@@ -654,31 +680,44 @@ public:
       of the arg perturbed by global.  :)
     */
     Insertions ComposeAtpGlobalUse(CallExpr *call_expr, Bug &bug) {
-        Insertions inss;        
         errs() << "in ComposeAtpGlobalUse\n";
-        if (bug.atp.filename != bug.dua.filename) {
+        Insertions inss;        
+        // only insert one dua use
+        if (returnCode & INSERTED_DUA_USE) return inss;
+        returnCode |= INSERTED_DUA_USE;
+        
+        //        if (bug.atp.filename != bug.dua.filename) {
             // only needed if dua is in different file from attack point
             inss.top_of_file = "extern unsigned int lava_get(void) ;\n";
-        }
+            //        }
         std::string fn_name = call_expr->getDirectCallee()->getNameInfo().getName().getAsString();
         uint32_t num_args = call_expr->getNumArgs();
         std::vector<uint32_t> attackable_args;        
         uint32_t i=0;
         // collect inds of attackable args
         for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {            
+            //            errs() << " \n";
             if (IsArgAttackable(dyn_cast<Expr>(*it)))  {
-                errs() << "arg " << i << " is attackable\n";
+                //                errs() << "arg " << i << " is attackable\n\n";
                 attackable_args.push_back(i);
+            }
+            else {
+                //                errs() << "arg " << i << " is NOT attackable\n\n";
             }
             i ++;
         }
-        errs() << (attackable_args.size()) << "battackable args\n";
-
+        //        errs() << (attackable_args.size()) << " attackable args\n";
+        //        for ( auto ind : attackable_args ) {
+        //            errs() << "arg " << ind << " is attackable\n";
+        //        }
+        uint32_t arg_to_attack = attackable_args[0];
+        /*
         // choose arg at random to attack
         std::default_random_engine generator;
         std::uniform_int_distribution<int> distribution(0,attackable_args.size()-1);
         int arg_to_attack = distribution(generator);
         Expr *arg = call_expr->getArgs()[arg_to_attack];            
+        */
         std::stringstream new_call;
         new_call << fn_name << "(";
         std::string gn = "(lava_get())";
@@ -688,6 +727,7 @@ public:
             // really, this cast can't fail, right?
             assert(arg); 
             if (i == arg_to_attack) {
+                errs() << "attacking arg " << i << "\n";
                 // attack this arg.
                 // nasty heuristic.
                 // for malloc, we want the lava switch to undersize the malloc to a few bytes
@@ -700,8 +740,8 @@ public:
                     // ... if arg is an lval we'll += instead
                     std::string plus_op = "+";
                     if (arg->isLValue()) plus_op = "+=";
-                    errs() << "using plus_op " << plus_op << "\n";
-                    new_call << "((char *) (" + (ExprStr(arg)) + "))" + plus_op + " " +  gn + " * (0x6c617661 == " + gn + " || 0x6176616c == " + gn + ")";
+                    //                    errs() << "using plus_op " << plus_op << "\n";
+                    new_call << "( (" + (ExprStr(arg)) + "))" + plus_op + " " +  gn + " * (0x6c617661 == " + gn + " || 0x6176616c == " + gn + ")";
                 }
             }
             else {
@@ -728,20 +768,22 @@ public:
       returns Bug 
     */
     bool AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint, 
-               uint32_t insertion_point, Bug *the_bug ) {
-        //        errs() << "atbug : atAttackPoint " << atAttackPoint << " : " << filename << " : " << line << " : " << insertion_point << "\n";
+               uint32_t insertion_point, Bug *the_bug, bool is_retval ) {
+        //        errs() << "atbug : lvalname=" << lvalname << " filename=" << filename << " line=" << line << " atAttackPoint=" << atAttackPoint << " insertion_point=" << insertion_point<< " \n";
         for ( auto bug : bugs ) { 
             //            errs() << bug.str() << "\n";
             bool atbug = false;
             if (atAttackPoint) {
                 // this is where we'll use the dua.  only need to match the file and line
                 assert (insertion_point == -1);
-                atbug = (filename == bug.atp.filename && line == bug.atp.line );
+                atbug = (filename == bug.atp.filename && line == bug.atp.line + MainInstrCorrection);
             }
             else {
                 // this is the dua siphon -- need to match most every part of dua
+                // if dua is a retval, the one in the db wont match this one but verify prefix
                 atbug = (filename == bug.dua.filename && line == (bug.dua.line + MainInstrCorrection)
-                         && lvalname == bug.dua.lvalname
+                         && ((is_retval && (0 == strncmp(lvalname.c_str(), bug.dua.lvalname.c_str(), RV_PFX_LEN)))
+                             || (lvalname == bug.dua.lvalname)) 
                          && insertion_point == bug.dua.insertionpoint);
             }
             if (atbug) {
@@ -750,6 +792,7 @@ public:
                 return true;
             }
         }
+        //        errs() << "Not at bug\n";
         return false;
     }
         
@@ -767,18 +810,19 @@ public:
       1 = query was before call
       2 = query was after call
     */
-    Insertions ComposeDuaNewSrc(Llval &llval, std::string filename, uint32_t line,
-                                uint32_t insertion_point) {
+    Insertions ComposeDuaNewSrc(Llval &llval, std::string filename, 
+                                uint32_t line, uint32_t insertion_point, bool is_retval) {
         Insertions inss;
+        //        errs() << "ComposeDuaNewSrc\n";
         if (LavaAction == LavaQueries) {
+            // yes, always pack this into after_part
             inss.after_part = ComposeDuaTaintQuery(llval, GetStringID(filename), 
                                                    line, insertion_point);
         }
         else if (LavaAction == LavaInjectBugs) {
             Bug bug;
             if (AtBug(llval.name, filename, line, /*atAttackPoint=*/false,
-                      insertion_point, &bug)) {
-                //                errs() << "at bug in ComposeDuaNewSrc\n";
+                      insertion_point, &bug, is_retval)) {
                 inss = ComposeDuaSiphoning(llval, bug);
             }
         }
@@ -788,16 +832,6 @@ public:
         else {
             assert (1==0);
         }
-
-        /*
-        errs() << "ComposeDuaNewSrc start\n";
-        errs() << "llval:\n";
-        SpitLlval(llval);
-        errs() << "inss:\n";
-        SpitInsertions(inss);
-        errs() << "ComposeDuaNewSrc end\n";
-        */
-
         return inss;
     }
     
@@ -808,17 +842,18 @@ public:
     */
     Insertions ComposeAtpNewSrc( CallExpr *call_expr, std::string filename, uint32_t line) {
         Insertions inss;
+        //        errs() << "ComposeAtpNewSrc\n";
         if (LavaAction == LavaQueries) {            
             inss = ComposeAtpQuery(call_expr, filename, line);
         }
         else if (LavaAction == LavaInjectBugs) {
             Bug bug;
-            if (AtBug("", filename, line, /*atAttackPoint=*/true, /*insertion_point=*/-1, &bug)) {
+            if (AtBug("", filename, line, /*atAttackPoint=*/true, /*insertion_point=*/-1, &bug, false)) {
                                 errs() << "at bug in ComposeAtpNewSrc\n";
                 // NB: No insertion -- we insert things into the call 
                 inss = ComposeAtpGlobalUse(call_expr, bug);
-            }
-        }
+            } 
+       }
         else if (LavaAction == LavaInstrumentMain) {
             // do nothing
         }
@@ -907,10 +942,6 @@ public:
                 }
                 rv_before = (rqt.getAsString()) + " " + retvalname + " = ";
                 rv_after = retvalname + ";";
-                /*
-                errs() << "rv_before: [" << rv_before << "]\n";
-                errs() << "rv_after: [" << rv_after << "]\n";
-                */
             }
             int i = 0;
             for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
@@ -956,12 +987,10 @@ public:
                 // for taint queries, we want to insert *both* before and after call, potentially
                 // for dua siphoning, we want to insert *either* before or after.
                 // based on the bug
-                inss_before = ComposeDuaNewSrc(
-                    llval, src_filename, src_line,
-                    INSERTION_POINT_BEFORE_CALL);
-                inss_after = ComposeDuaNewSrc(
-                    llval, src_filename, src_line,
-                    INSERTION_POINT_AFTER_CALL);
+                inss_before = ComposeDuaNewSrc(llval, src_filename, src_line,
+                                               INSERTION_POINT_BEFORE_CALL, /*is_retval=*/ false);
+                inss_after = ComposeDuaNewSrc(llval, src_filename, src_line,
+                                              INSERTION_POINT_AFTER_CALL, /*is_retval=*/ false);
                 inssDua.top_of_file += inss_before.top_of_file;
                 inssDua.top_of_file += inss_after.top_of_file;
                 // NB: yes, this is correct
@@ -969,26 +998,37 @@ public:
                 dua_src_after << inss_after.after_part;
             }
             any_dua_insertions = !((dua_src_before.str() == "") && (dua_src_after.str() == ""));
-            if (any_dua_insertions) {
-                inssDua.before_part = "({" + dua_src_before.str() + rv_before;
-                inssDua.after_part = ";" + dua_src_after.str();
-                if (has_retval) {
-                    /*
-                    errs() << "2 has retval\n";
-                    errs() << "2 rv_llval.length() = " << (rv_llval.name.length()) << "\n";
-                    errs() << "rv_before: [" << rv_before << "]\n";
-                    errs() << "rv_after: [" << rv_after << "]\n";
-                    */
-                    if (queriable_retval) {
-                        assert (rv_llval.name.length() > 0);
-                        // for both query & dua siphon, only makes sense to insert *after* return value is set.
-                        Insertions inss = ComposeDuaNewSrc(rv_llval, src_filename, src_line, 
-                                                           INSERTION_POINT_AFTER_CALL);
-                        inssDua.top_of_file += inss.top_of_file ;
-                        inssDua.after_part +=  inss.after_part ;
+            // check the retval for insertions
+            // for both query & dua siphon, only makes sense to insert *after* return value is set.
+            Insertions rv_inss;
+            if (has_retval && queriable_retval) { 
+                rv_inss = ComposeDuaNewSrc(rv_llval, src_filename, src_line, 
+                                           INSERTION_POINT_AFTER_CALL, /* is_retval=*/ true);            
+            }
+            // if injecting, should not have both an arg dua insertion and a retval insertion
+            if (LavaAction == LavaInjectBugs) {
+                if (any_dua_insertions) {
+                    if (!EmptyInsertions(rv_inss)) {
+                        errs() << "We have both dua insertions due to args and dua insertions due to rv?\n";
+                        errs() << "due to args:\n";
+                        errs() << "before: " << dua_src_before.str() << "\n";
+                        errs() << "after: " << dua_src_after.str() << "\n";
+                        errs() << "due to rv\n";
+                        SpitInsertions(rv_inss);
                     }
+                    assert (EmptyInsertions(rv_inss));
                 }
-                inssDua.after_part +=  rv_after + "})";
+            }
+            any_dua_insertions |= (!EmptyInsertions(rv_inss));
+            if (any_dua_insertions) {
+                // some kind of insertion to either query taint on arg or retval or siphon dua for arg or retval.
+                // compose it but also do that retval stuff.
+                // Note: rv_before is 'rvtype rvname ='
+                inssDua.before_part = "({" + dua_src_before.str() + rv_before;
+                // the original call will go here
+                // Note:  rv_after is just 'rvname ;'
+                inssDua.after_part = ";" + dua_src_after.str() + rv_inss.after_part + rv_after + "})";
+                inssDua.top_of_file += rv_inss.top_of_file;
             }
         }
         //        errs() << "inssDua\n";
@@ -1026,6 +1066,7 @@ public:
             printf("Inserting stufff from %s:\n", lava_funcs_path.c_str());
             printf("%s", temp.str().c_str());
             new_start_of_file_src << temp.str();
+            returnCode |= INSERTED_MAIN_STUFF;
         }
         return true;
     }
@@ -1128,7 +1169,6 @@ int main(int argc, const char **argv) {
 
     printf ("main instr correction = %d\n", MainInstrCorrection);
 
-
     for (int i=0; i<argc; i++) {
         if (0 == strcmp(argv[i], "-p")) {
             BuildPath = std::string(argv[i+1]);
@@ -1139,7 +1179,6 @@ int main(int argc, const char **argv) {
     std::ifstream json_file(ProjectFile);
     Json::Value root;
     json_file >> root;
-
 
     if (LavaAction == LavaInjectBugs) {
         std::string dbhost(root["dbhost"].asString());
@@ -1157,5 +1196,9 @@ int main(int argc, const char **argv) {
             errs() << bug.str() << "\n";
         }
     } 
-    return Tool.run(newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
+    errs() << "about to call Tool.run \n";
+    int r = Tool.run(newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
+    errs() << "back from calling Tool.run \n";
+    return (r | returnCode);
+
 }

@@ -118,10 +118,17 @@ def spelunk(json_filename, counts, totals):
             if (exitcode == -11):
                 fs.write("%d %d\n" % (max_liveness, max_tcn))
                 # high liveness yet we were able to trigger a segfault?  Weird
-#                if max_liveness > 100:
-#                    print "run=%d bug=%d  dua=%d is weird" % (run_id, bug_id,dua_id)
+                if max_liveness > 100 or max_tcn > 100:
+                    print "run=%d bug=%d dua=%d is weird -- max_tcn=%d max_liveness=%d" % (run_id, bug_id, dua_id, max_tcn, max_liveness)
             else:
                 ff.write("%d %d\n" % (max_liveness, max_tcn))
+
+            # check that exitcode == 0 for un-fuzzed frun
+            # n^2 oops!
+            for run_id2 in runs.keys():
+                (build_id2, fuzz2, exitcode2, output_lines2, success2) = runs[run_id]
+                if build_id2 == build_id and fuzz2 == False:
+                    assert (exitcode2 == 0)
     fs.close()
     ff.close()
     max_tcns = {}
