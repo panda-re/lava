@@ -444,6 +444,11 @@ uint32_t count_viable_bytes2(std::vector<Ptr> viable_byte) {
     return num_viable;
 }
 
+bool is_header_file(std::string filename) {
+    uint32_t l = filename.length();
+    return (filename[l-1] == 'h');
+}
+
 void taint_query_hypercall(Panda__LogEntry *ple,
                            std::map<Ptr,std::set<uint32_t>> &ptr_to_set,
                            std::map <uint32_t, float> &liveness,
@@ -461,12 +466,8 @@ void taint_query_hypercall(Panda__LogEntry *ple,
     uint32_t num_tainted = tqh->num_tainted;
     // entry 1 is source info
     Panda__SrcInfo *si = tqh->src_info;
-    // make sure we are not a header file
-    std::string the_filename = ind2str[si->filename];
-    uint32_t l = the_filename.length();
-    printf ("the_filename[l] = %c\n", the_filename[l-1]);
-    if (the_filename[l-1] != 'c')
-        return;
+    // ignore duas in header files
+    if (is_header_file(ind2str[si->filename])) return;
     assert (si != NULL);
     bool ddebug = true;    
     // entry 2 is callstack -- ignore
@@ -753,6 +754,8 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
     Panda__AttackPoint *pleatp = ple->attack_point;
     assert (pleatp != NULL);
     Panda__SrcInfo *si = pleatp->src_info;
+    // ignore duas in header files
+    if (is_header_file(ind2str[si->filename])) return;
     assert (si != NULL);
     if (debug) printf ("ATTACK POINT\n");
     if (duas.size() == 0) {
