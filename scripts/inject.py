@@ -300,7 +300,7 @@ def run_prog(install_dir, input_file, timeout):
     envv = {}
     lib_path = project['library_path'].format(install_dir=install_dir)
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
-    return run_cmd(cmd, install_dir, envv, timeout, shell=True)
+    return run_cmd(cmd, install_dir, envv, timeout) # shell=True)
 
 import string
 
