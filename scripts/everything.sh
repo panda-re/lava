@@ -1,4 +1,3 @@
-
 #
 # A script to run all of lava.
 # 
@@ -229,19 +228,17 @@ if [ $inject -eq 1 ]; then
     progress 1 "Injecting step -- trying $num_inject bugs"
     for i in `seq $num_inject`
     do    
-        while :
-        do 
-            lf="$logs/inject-$na.log"  
-            if [ ! -e $lf ]; then
-                break
-            fi
-            na=$((na + 1))
-        done
+        lf=`/bin/mktemp`
         progress 1 "Injecting bug $i -- logging to $lf"
         run_remote "$testinghost" "$python $scripts/inject.py -r $json >& $lf"
         grep Remaining $lf
         grep SELECTED $lf
         grep retval "$lf"
+        bn=`grep SELECTED $lf | awk '{print $3}'`
+#        echo bug number $bn
+        nlf="$logs/inject-$bn.log"
+        echo move $lf $nlf
+        /bin/mv $lf $nlf
         a=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode != -11" | head -3  | tail -1 `
         b=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode = -11" | head -3  | tail -1 `
         y=`bc <<< "scale=3; $b/($a+$b)"`
