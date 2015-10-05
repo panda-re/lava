@@ -18,13 +18,13 @@ import threading
 import signal
 
 class Command(object):
-    def __init__(self, cmd, cwd, envv, **popen_kwargs):
+    def __init__(self, cmd, cwd, envv): #  **popen_kwargs):
         self.cmd = cmd
         self.cwd = cwd
         self.envv = envv
         self.process = None
         self.output = "no output"
-        self.popen_kwargs = popen_kwargs
+#        self.popen_kwargs = popen_kwargs
 
     def run(self, timeout):
         def target():
@@ -32,7 +32,7 @@ class Command(object):
             self.process = subprocess32.Popen(self.cmd.split(), cwd=self.cwd, env=self.envv, \
                                                 stdout=subprocess32.PIPE, \
                                                 stderr=subprocess32.PIPE, \
-                                                preexec_fn=os.setsid, **popen_kwargs)
+                                                preexec_fn=os.setsid) # , **popen_kwargs)
             self.output = self.process.communicate()
 #            print 'Thread finished'
         thread = threading.Thread(target=target)
