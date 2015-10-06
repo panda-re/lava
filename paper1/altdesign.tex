@@ -1,0 +1,39 @@
+Given the goal of adding bugs to real-world programs in an automated
+way, there are a large number of system designs and approaches that
+appear plausible. In order to clarify our design for LAVA, in this
+section we will briefly examine alternative designs and discuss why they
+proved unsuitable for our use case.
+
+First, one might consider compiling a list of straightforward, local
+program transformations that reduce the security of the program. For
+example, we could take all instances of the \texttt{strlcpy} and
+\texttt{strncpy} functions and replace them with the less secure
+\texttt{strcpy}, or look for calls to \texttt{malloc} and reduce the
+number of bytes allocated. This approach is appealing because it is very
+simple to implement (for example, as an LLVM pass), but it is not a
+reliable source of bugs. There is no reliable way to tell what input (if
+any) causes the newly buggy code to be reached; and on the other hand,
+many such transformations will harm the correctness of the program so
+substantially that it crashes on \emph{every} input. In our initial
+testing, transforming instances of \texttt{strncpy} with \texttt{strcpy}
+in \texttt{bash} just caused it to crash immediately.
+
+A more sophisticated approach is suggested by Keromytis~\cite{}:
+targeted symbolic execution could be used to find program paths that are
+potentially dangerous but currently safe; the symbolic path constraints
+could then be analyzed and used to remove whatever input checks
+currently prevent a bug. This approach is intuitively promising: it
+involves minimal changes to a program, and the bugs created would be
+realistic in the sense that one could imagine them resulting from a
+programmer forgetting to correctly guard some code. However, each bug
+created this way would come at a high computational cost (for symbolic
+execution and constraint solving), and would therefore be limited in how
+deep into the program it could reach. This would limit the number of
+bugs that could be added to a program.
+
+By contrast, the approach taken by LAVA is computationally cheap---its
+most expensive step is a dynamic taint analysis, which only needs to be
+done once per input file. Each bug is guaranteed to come with a
+triggering input. And in our experiments, we demonstrate that even a
+single input file can yield thousands of bugs spread throughout a
+moderately complex program such as \texttt{tshark}.
