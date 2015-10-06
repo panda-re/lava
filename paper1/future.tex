@@ -1,0 +1,6 @@
+%Limitations:
+%- C code only
+%- Dataflow is... manufactured, maybe not reflective
+%- Limited class of bugs (pointer corruptions)
+
+Future work for VITAL largely involves making the generated corpora look more like the bugs that are found in real programs. The most obvious limitation is that it only works on C source code. In principle, our approach would work for any source language with a usable source-to-source rewriting framework. In addition, VITAL currently injects only pointer corruption bugs. But our taint-based analysis overcomes the crucial first hurdle to injecting any kind of bug: making sure that attacker-controlled data can be used in the bug's potential exploitation. As a result, the addition of other classes of bugs, such as temporal safety bugs (use-after-free) and meta-character bugs (e.g. format string) should also be injectable using our approach. Finally, there is work to be done in making VITAL's data flow more realistic, although even in its current state, the vast majority of the execution of the modified program is realistic. This execution includes the dataflow that leads up to the capture of the DUA, which can often be nontrivial.
