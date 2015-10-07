@@ -11,21 +11,14 @@ Attack points are source code locations where a DUA might be used, if only it we
 
 These three steps will be discussed in the following three sections, which refer to the running example in Figure~\ref{fig:worked-example}.
 
-
-
 \begin{figure}
 \lstinputlisting[language=C,numbers=left, numberstyle=\tiny, stepnumber=2, numbersep=5pt,
         basicstyle=\ttfamily\footnotesize]{worked_example.c}
-%\includegraphics[width=3.3in]{worked-example2.pdf}
-\caption{
-LAVA running example.  
+\caption{LAVA running example.  
 Entering the function \texttt{foo}, \texttt{a} is bytes 0..3 of input, \texttt{b} is 4..7, and \texttt{n} is 8..11.
-The pointers \texttt{s} and \texttt{d}, and the buffers pointed to by them are untainted.  
-}
+The pointers \texttt{s} and \texttt{d}, and the buffers pointed to by them are untainted.}
 \label{fig:worked-example}
 \end{figure}
-
-
 
 \subsection {The DUA}
 
