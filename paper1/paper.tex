@@ -11,13 +11,10 @@
 %\usepackage{algorithm}
 \usepackage{listings}
 
-\lstset{language=Python,
-        numbers=left, numberstyle=\tiny, stepnumber=2, numbersep=5pt,
-        basicstyle=\ttfamily\footnotesize}
 
 
 %opening
-\title{VITAL: Vulnerability Injection via Taint AnaLysis
+\title{LAVA: Lincoln Application Vulnerability Assessment
   \thanks{This work is sponsored by the Assistant Secretary of Defense
     for Research \& Engineering under Air Force Contract
     \#FA8721-05-C-0002.  Opinions, interpretations, conclusions and
@@ -25,7 +22,7 @@
     endorsed by the United States Government.} }
 
 \author{
-\IEEEauthorblockN{Brendan Dolan-Gavitt\IEEEauthorrefmark{1}, Patrick Hulin\IEEEauthorrefmark{2}, Tim Leek\IEEEauthorrefmark{2}, Ryan Whelan\IEEEauthorrefmark{2}, Fredrich Ulrich\IEEEauthorrefmark{2}, Various NEU peeple}
+\IEEEauthorblockN{Brendan Dolan-Gavitt\IEEEauthorrefmark{1}, Patrick Hulin\IEEEauthorrefmark{2}, Tim Leek\IEEEauthorrefmark{2}, Ryan Whelan\IEEEauthorrefmark{2}, Fredrich Ulrich\IEEEauthorrefmark{2}}
 \\
 \small (Authors listed alphabetically) \\
 \\
@@ -41,15 +38,15 @@
 \begin{abstract}
 
 Work on automating vulnerability discovery has long been hampered by a shortage of ground-truth corpora with which to evaluate tools and techniques.
-To begin to address this, we present VITAL, a system for automatically and quickly injecting large numbers of realistic bugs into program source code.  
-VITAL employs a pair of taint-based measures to identify program quantities that both depend upon specific input bytes in a simple way yet do not overly influence control flow.
+To begin to address this, we present LAVA, a system for automatically and quickly injecting large numbers of realistic bugs into program source code.  
+LAVA employs a pair of taint-based measures to identify program quantities that both depend upon specific input bytes in a simple way yet do not overly influence control flow.
 These DUAs (dead-uncomplicated and available data) are employed, via source-to-source transformation, to perturb program quantities at later program points that are likely to cause vulnerabilities.
-Every VITAL vulnerability is accompanied by a fuzzed input that triggers it, whereas normal inputs are extremely unlikely to do so.
-Further, every VITAL bug is validated, and thus every working bug comes with both a proof-of-concept input and a known manifestation point.  
-These vulnerabilities are synthetic but, we argue, still realistic, in the sense that they are embedded deep with programs and are triggered by real inputs.
+Every LAVA vulnerability is accompanied by a fuzzed input that triggers it, whereas normal inputs are extremely unlikely to do so.
+Further, every LAVA bug is validated, and thus every working bug comes with both a proof-of-concept input and a known manifestation point.  
+These vulnerabilities are synthetic but, we argue, still realistic, in the sense that they are embedded deep within programs and are triggered by real inputs.
 In order for an automated tool to discover them, it would have to be able to reason correctly and precisely about all the code executed up to the DUA.
-Using VITAL, we have injected tens of thousands of bugs into popular programs such as file, readelf, bash, tshark, and eog.
-We believe VITAL can form the basis of an approach for generating extremely high quality ground truth vulnerability corpora, on demand.
+Using LAVA, we have injected tens of thousands of bugs into popular programs such as file, readelf, bash, tshark, and eog.
+We believe LAVA can form the basis of an approach for generating extremely high quality ground truth vulnerability corpora on demand.
 
 
 
@@ -63,7 +60,7 @@ We believe VITAL can form the basis of an approach for generating extremely high
 \label{sec:scope}
 \input{scope}
 
-\section{VITAL Overview}
+\section{LAVA Overview}
 \label{sec:overview}
 \input{overview}
 

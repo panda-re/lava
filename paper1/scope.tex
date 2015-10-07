@@ -1,9 +1,9 @@
 
-We restrict our attention, with VITAL, to the injection of bugs into source code.
+We restrict our attention, with LAVA, to the injection of bugs into source code.
 This makes sense given our interest in using it to assemble large corpora for the purpose of evaluating and developing vulnerability discovery techniques and systems.
 Most automated vulnerability discovery systems work with source code [References?], and we can easily test binary analysis tools by simply compiling the source code with injected bugs.
 Injecting bugs into binaries or byte code may also be possible using an approach similar to ours, but we do not consider that problem here.
-With no loss of generality, we further narrow our focus to C programs for open-source software on Linux, as it is easy to obtain source for these targets.
+With no loss of generality, we further narrow our focus to C programs for open-source software on Linux. 
 
 We want the injected bugs to be serious ones, i.e., potentially exploitable.
 As a convenient proxy, our current focus is on injecting code that can result in out-of-bounds reads and writes.  
