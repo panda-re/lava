@@ -77,7 +77,8 @@ The hope is that changing this value by a large amount may trigger a buffer over
 \begin{figure}
 \lstinputlisting[language=C,numbers=left, numberstyle=\tiny, stepnumber=2, numbersep=5pt,
         basicstyle=\ttfamily\footnotesize]{inj-example-dua-siphon.c}
-\caption{Code injected into file's \texttt{src/encodings.c} to copy DUA value off for later use in creating a vulnerability}
+\caption{PANDA taint analysis and the \texttt{FIB} algorithm determines that the first four bytes of \texttt{buf} are suitable for use in creating a bug.
+This is the code injected by Clang into file's \texttt{src/encodings.c} to copy DUA value off for later use.}
 \label{src:dua-siphon}
 \end{figure}
 
@@ -94,8 +95,5 @@ At the source line and for the variable in the DUA, we inject code to copy its v
 At the attack point, an argument to a function call, we insert code that retrieves the DUA value, determines if it matches a magic value, and if so adds it to one of the argument.
 The final step in LAVA is simply compiling and testing the modified program on a proof-of-concept input file, in which the input file bytes indicated as tainting the DUA have been set to the correct value.
 An example of the pair of source code insertions plus the file modifiction in order to inject a bug into the program \verb+file+ can be seen in Figures~\ref{src:dua-siphon}, and~\ref{src:dua-use}.
+The original input to \verb+file+ was the binary \verb+/bin/ls+, and the required modification to that file is to simply set its first four bytes to the string 'lava' to trigger the bug. 
 
-
-
-
-the original changed to include the magic value at the right place).

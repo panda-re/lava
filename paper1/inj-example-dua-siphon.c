@@ -9,7 +9,7 @@ file_encoding(struct magic_set *ms, ..., const char **type) {
          lava |= ((unsigned char *) (buf))[1] << (1*8);
          lava |= ((unsigned char *) (buf))[2] << (2*8);
          lava |= ((unsigned char *) (buf))[3] << (3*8);
-         lava_set(lava_268);
+         lava_set(lava);
        }; rv;})) {
 ...
 
