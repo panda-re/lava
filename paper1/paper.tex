@@ -41,7 +41,7 @@ Work on automating vulnerability discovery has long been hampered by a shortage 
 To begin to address this, we present LAVA, a system for automatically and quickly injecting large numbers of realistic bugs into program source code.  
 LAVA employs a pair of taint-based measures to identify program quantities that both depend upon specific input bytes in a simple way yet do not overly influence control flow.
 These DUAs (dead-uncomplicated and available data) are employed, via source-to-source transformation, to perturb program quantities at later program points that are likely to cause vulnerabilities.
-Every LAVA vulnerability is accompanied by a fuzzed input that triggers it, whereas normal inputs are extremely unlikely to do so.
+Every LAVA vulnerability is accompanied by a input that triggers it, whereas normal inputs are extremely unlikely to do so.
 Further, every LAVA bug is validated, and thus every working bug comes with both a proof-of-concept input and a known manifestation point.  
 These vulnerabilities are synthetic but, we argue, still realistic, in the sense that they are embedded deep within programs and are triggered by real inputs.
 In order for an automated tool to discover them, it would have to be able to reason correctly and precisely about all the code executed up to the DUA.
