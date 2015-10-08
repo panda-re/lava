@@ -1,27 +1,28 @@
-
 \label{section:results}
 
 \begin{table*}[t!]
 \centering
 \begin{tabular}{c|c|c|c|c|c|c|c|c|c} 
-Name    & Version & lines of C code & N(BBs)     & N(BBu)   & N(DUA)  & N(ATP) & Potential Bugs & \% Tested & Yield \\\hline
-file    & 5.22    & 12927           & 7679934    & 24086    & 631     & 114    & 17518          & 11.4\%    & 38.7\%  \\
-eog     & 3.4.2   & 22997           &            &          &         &        &                &           & \\ 
-bash    & 4.3     & 98871           & 8197701    & 28612    & 3832    & 604    & 447645         & 0.45\%    & 9.6\% \\
-readelf & 2.25    & 1327513         & 9681871    & 21640    & 3849    & 266    & 276367         & 0.72\%    & 53.2 \% \\
-tshark  & 1.8.2   & 2186252         & 470083368  & 225587   & 9853    & 1037   & 1240777        & 0.01\%    & 17.7\% \\
-\end{tabular}
+        &         & Lines    &        &        & Potential & Validated  &         & Inj Time \\
+Name    & Version & C code   & N(DUA) & N(ATP) & Bugs      & Bugs       & Yield   & (sec)  \\\hline
+file    & 5.22    & 12927    & 631    & 114    & 17518     & 774        & 38.7\%  & 14         \\
+%eog    & 3.4.2   & 22997    &        &        &           &            &         &         \\ 
+bash    & 4.3     & 98871    & 3832   & 604    & 447645    & 192        & 9.6\%   & 281     \\
+readelf & 2.25    & 1327513  & 3849   & 266    & 276367    & 1064       & 53.2 \% & 344     \\
+tshark  & 1.8.2   & 2186252  & 9853   & 1037   & 1240777   & 354        & 17.7\%  & 542     \\
+\end{tabular} 
 \caption{LAVA Injection results for open source programs of various sizes.
 For each, a single input file was used to perform a taint analysis with PANDA.
 Various program and dynamic trace statistics are reported as well as DUA, attack point (ATP), and yield (fraction of injected bugs that result in a segmentation violation).}
 \label{table:insertion-results}
 \end{table*}
 
-We evaluated LAVA in three ways.
-First, we injected large numbers of bugs into five open source programs: file, readelf (from binutils), bash, tshark (command-line verison of Wireshark), and eog (aka Eye of GNOME, an image viewer).
+%We evaluated LAVA in three ways.
+We evaluated LAVA in two ways.
+First, we injected large numbers of bugs into five open source programs: file, readelf (from binutils), bash, and tshark (command-line verison of Wireshark). %, and eog (aka Eye of GNOME, an image viewer).
 For each of these, we report various statistics with respect to both the target program and also LAVA's success at injecting bugs.
-Second, we propose and compute some measures of how realistic these bugs are.
-Third, we randomly sampled 20 injected bugs for each of these programs and used these to measure detection rates for two commercial and two open source bug finders.
+Second, we evaluated the realism of LAVA's bugs by proposing and computing some measures.
+%Third, we randomly sampled 20 injected bugs for each of these programs and used these to measure detection rates for two commercial and two open source bug finders.
 
 \subsection{Injection Experiments}
 
@@ -29,47 +30,49 @@ The results of injecting bugs into open source programs are summarized in Table~
 In this table, programs are ordered by size, in lines of C code, as measured by David Wheeler's \verb+sloccount+. 
 A single input was used with each program to measure taint and find injectable bugs.
 The input to \verb+file+ and \verb+readelf+ was the program \verb+ls+.
-The input to \verb+tshark+ was a single 16K file from a site hosting a number of ethereal captures. % [ http://www.stearns.org/toolscd/current/pcapfile/README.ethereal-pcap.html ]
-The input to \verb+eog+ was ... 
-The input to \verb+bash+ was a 124-line shell script.
-The number of sequential and unique basic blocks in the PANDA trace for each program are reported as N(BBs) and N(BBu).
-N(DUA) and N(ATP) are the number of DUAs and attack points collected in the LAVA database by the FIB analysis.
+The input to \verb+tshark+ was a 16K packet capture file from a site hosting a number of such examples.  % [ http://www.stearns.org/toolscd/current/pcapfile/README.ethereal-pcap.html ]
+%The input to \verb+eog+ was ... 
+The input to \verb+bash+ was a 124-line shell script written by the authors.
+% TRL -- removed this since table was too big and I wanted to add bug inj time
+%The number of sequential and unique basic blocks in the PANDA trace for each program are reported as N(BBs) and N(BBu).
+$N(DUA)$ and $N(ATP)$ are the number of DUAs and attack points collected in the LAVA database by the FIB analysis.
 Note that, in order for a DUA or attack point to be counted, it must have been deemed viable for some bug, as described in Section~\ref{sec:mining}.
-The column \emph{Potential Bugs} gives the number of viable DUA plus attack point pairs inserted in the database.
+The columns \emph{Potential Bugs} and \emph{Validated Bugs} in Table~\ref{table:insertion-results} give the numbers of both potential bugs found by FIB, but also those verified to actually return exitcodes indicating a buffer overflow (-11 for segfault or -6 for heap corruption) when run against the modified input.
+The penultimate column in the table is \emph{Yield} which is the fraction of potential bugs what were validated to be actual buffer overflows.   
+The last column gives the time required to test a single potential bug injection for the target.
 
-Exhaustive testing was not possible for all programs.  
-Larger targets had larger numbers of potential bugs: over a million for \verb+tshark+.
-Further, larger targets take longer to test: about 6 minutes for \verb+tshark+.
+
+Exhaustive testing was not possible; for each of the target programs, we attempted to validate 2000 potential bugs. 
+Note that larger targets had larger numbers of potential bugs: \verb+tshark+ has over a million.
+Larger targets also take longer to test: almost 10 minutes for \verb+tshark+.
 This is because testing requires not only injecting a small amount of code to add the bug, but also recompiling and running the resulting program.
-For larger programs like readelf and tshark, we found the build to be subtly broken so that a \verb+make clean+ was necessary to pick up the bug injection reliably.
-We tested only 5000 bugs for each of the five targets, with testing rates of between 
-Thus, we were only able to test about 1000 potential bugs for each of the two largest programs. 
-As the bug is designed to be triggered only if a particular set of four bytes in the input is set to a magic value, we tested with both the original input and with the modified one that contained the trigger. 
-% We did not encounter any situation in which the original input caused a segfault.
-% This is, unfortunately untrue!!!
+For many targets, we found the build to be subtly broken so that a \verb+make clean+ was necessary to pick up the bug injection reliably, which further increased testing time.
 
-The final column in Table~\ref{table:insertion-results} reports yield, which is the fraction of potential bugs that were tested and found to actually segfault.
-This number varies considerably from a 3 to over 35\%.
+As the injected bug is designed to be triggered only if a particular set of four bytes in the input is set to a magic value, we tested with both the original input and with the modified one that contained the trigger. 
+We did not encounter any situation in which the original input caused an overflow.
+
+
+Yield varies considerably from a 9.6\% to over 50\%.
 To understand this better, we investigated the relationship between our two taint-based measures and yield.
 For each DUA used to inject a bug, we determined $mTCN$, the maximum TCN for any of its bytes and $mLIV$, the maximum liveness for any label in any taint set associated with one of its bytes.  
-More informally, $mTCN$, represents how complicated a function of the input bytes a DUA is, and $mLIV$ is a measure of how much the control flow of a program is influenced by the input bytes that determine a DUA.
+More informally, $mTCN$ represents how complicated a function of the input bytes a DUA is, and $mLIV$ is a measure of how much the control flow of a program is influenced by the input bytes that determine a DUA.
 Table~\ref{table:yield-breakdown} is a two-dimensional histogram with the bins for $mTCN$ intervals along the vertical axis and bins for $mLIV$ along the horizontal axis.
-The top-left cell of this table represents all bug injections for which $mTCN=mLIV=0$, and the bottom-right cell is all those for which $mTCN>=100$ and $mLIV>=100$.
-When $mTCN=mLIV=0$, the DUA is a direct copy of input bytes and none of those input bytes are used to decide any program branches, and yield is 0.526.
+The top-left cell of this table represents all bug injections for which $mTCN<10$ and $mLIV<10$, and the bottom-right cell is all those for which $mTCN>=1000$ and $mLIV>=1000$.
+Recall that, when  $mTCN=mLIV=0$, the DUA is not only a direct copy of input bytes, but also, those input bytes have not been observed to be used in deciding any program branches. 
 As either $mTCN$ or $mLIV$ increase, yield deteriorates.  
 
 \begin{table}
 \centering
 \begin{tabular}{l|l|l|l|l} 
- & \multicolumn{3}{c}{$mLIV$} &  \\  
-$mTCN$ &         $[0,1)$ & $[1,10)$ & $[10,100)$ & $[100,+\inf]$ \\  \hline 
-$[0,1)$ &       0.526   & 0.466    & 0.208      & 0.218 \\
-$[1,10)$ &      --      & 0.119    & --         & --    \\
-$[10,100)$ &    --      & --       & 0.000      & --    \\
-$[100,+\inf]$ & --      & --       & --         & -- \\ 
+       & \multicolumn{3}{c}{$mLIV$} &  \\  
+$mTCN$ &         $[0,10)$ & $[10,100)$ & $[100,1000)$ & $[1000,+\inf]$ \\  \hline 
+$[0,10)$ &       0.519    & 0.229      & 0.174        & 0.119          \\
+$[10,100)$ &     --       & 0          & 0            & 0     \\
+$[100,+\inf]$ &  --       & --         & --           & 0     \\ 
 \end{tabular}
 \caption{Yield as a function of both $mLIV$ and $mTCN$.  
-Yield is highest for DUAs that are an uncomplicated function of input bytes and that do not derive from input bytes that are used to decide program control flow.}
+Yield is highest for DUAs with low values for both of these measures, i.e., that are both an uncomplicated function of input bytes and also that do not derive from input bytes that are used to decide program control flow.
+Cells for which there were no samples are indicated with the contents '--'.}
 \label{table:yield-breakdown}
 \end{table}
 
@@ -78,13 +81,13 @@ Yield is highest for DUAs that are an uncomplicated function of input bytes and 
 \begin{figure}
 \centering
 \includegraphics[width=3in]{trace-dua-atp.png}
-\caption{A cartoon representing an entire program trace, annotated with instructions at which DUA is siphoned off to be used, I(DUA), attack point where it is used, I(ATP), and total number of instructions in trace, I(TOT).}
+\caption{A cartoon representing an entire program trace, annotated with instruction count at which DUA is siphoned off to be used, $I(DUA)$, attack point where it is used, $I(ATP$), and total number of instructions in trace, $I(TOT)$.}
 \label{fig:dua-atp-trace}
 \end{figure}
 
 The intended use of the bugs created by this system is as ground truth for development and evaluation of vulnerability discovery tools and techniques. 
 Thus, it is crucial that they be realistic in some sense.  
-Realism is, however, not easy to assess.
+Realism is, however, difficult to assess.
 We examined three aspects of our injected bugs as measures of realism. 
 The first two are DUA and attack point position within the program trace, which are depicted in Figure~\ref{fig:dua-atp-trace}.
 That is, we determined the fraction of trace instructions executed at the point the DUA is siphoned off and at the point it is used to attack the program by corrupting a pointer.
