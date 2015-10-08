@@ -4,6 +4,6 @@ void foo(int a, int b, char *s, char *d, int n) {
         return;  
     for (int i=0; i<n; i++) 
         c+=s[i];
-    memcpy(d,s,n+c);
-    // BUG: memcpy(d+(b==0x76697461)*b,s,n);
+    memcpy(d,s,n+c); // Original source
+    // BUG: memcpy(d+(b==0x76697461)*b,s,n+c);
 }  

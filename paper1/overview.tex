@@ -31,7 +31,7 @@ That taint analysis has a few important features.
 \item Each byte in the input is given its own label.
 Thus, if an internal program quantity is tainted and a direct copy of input bytes, then we can map that quantity back to a specific part of the input.  
 \item The taint analysis operates, effectively, upon an LLVM-lifted version of the machine code for a program, including its libraries.
-This means taint is propagated accurately and completely, even through esoteric x86 machine instructions like MMX and XMM.
+This means taint is propagated accurately and completely, even through esoteric x86 instruction set extensions like MMX and SSE.
 \item The taint analysis keeps track of a \emph{set} of labels per byte of program data, meaning that it can represent computation that mixes input bytes.
 \end{itemize}
 % We use the PANDA system to perform this taint analysis, with two crucial conceptual extensions in the form of taint-based measures.
@@ -46,7 +46,8 @@ TCN(c) after line 2 is 1, and after line 6 (upon exiting the loop), it is n+1.}
 \label{fig:taint-compute-number}
 \end{figure}
 
-The \underline{T}aint \underline{C}ompute \underline{N}umber is a measure of how complicated a function of input bytes a tainted internal program quantity is.
+Every tainted variable is some function of the input bytes.
+We estimate how complicated this function is via a new measure, the Taint Compute Number (TCN).
 TCN simply tracks the depth of the tree of computation required to obtain a quantity from input bytes.
 %TCN is illustrated in Figure~\ref{fig:taint-compute-number}; it simply tracks the depth of the tree of computation required to obtain 
 %a quantity from input bytes.
@@ -55,8 +56,8 @@ If TCN is 0, the quantity is a direct copy of input bytes.
 The intuition behind this measure is that we need DUAs that are computationally close to the input in order to be able to use them with predictable results.
 Note that TCN is not an ideal measure.
 There are obviously situations in which the tree of computation is deep but the resulting value is both completely predictable and has as much entropy as the original value.
-However, TCN has the advantage that it is easy to compute locally, for each instruction.
-Whenever the taint system needs to union label sets to represent computation, the TCN associated with the resulting set is one more than the max of those of the 
+However, TCN has the advantage that it is easy to compute on an instruction-by-instruction basis.
+Whenever the taint system needs to union sets of taint labels to represent computation, the TCN associated with the resulting set is one more than the max of those of the 
 input sets.
 In the running example, and illustrated in Figure~\ref{fig:taint-compute-number}, $TCN(c)=1$ after line 1, since it is computed from quantities \verb+a+ and \verb+b+ which are directly derived from input.
 Later, just before line 7 and after the loop, $TCN(c)=n+1$ because each iteration of the loop increases the depth of the tree of computation by one.  
