@@ -22,7 +22,11 @@ ground truth corpus was painstakingly assembled by hand over the course
 of six months and consisted of 14 annotated buffer overflows with
 triggering and non-triggering inputs; these same 14 overflows were later
 used to evaluate dynamic overflow detectors~\cite{Zhivich:2005}.
-Although these are real bugs from actual software, 
+Although these are real bugs from actual software, the corpus is small
+both in terms of the number of bugs (14) but also in terms of program size.
+even modest sized programs like \verb+sendmail+ were too big for some of
+the static analyzers and so much smaller models capturing the essense of 
+each bug were constructed that are a few hundred lines of code.  
 
 The most extensive effort to assemble a public bug corpus comes from the
 NIST Software Assurance Metrics And Tool Evaluation (SAMATE)
