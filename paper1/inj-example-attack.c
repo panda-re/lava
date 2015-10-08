@@ -1,6 +1,7 @@
 ...
 protected int
-file_trycdf(struct magic_set *ms, ..., size_t nbytes) {
+file_trycdf(struct magic_set *ms, 
+            ..., size_t nbytes) {
   ...
   if (cdf_read_header
       (( (&info)) + (lava_get()) 

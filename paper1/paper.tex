@@ -14,7 +14,7 @@
 
 
 %opening
-\title{LAVA: Lincoln Application Vulnerability Assessment
+\title{LAVA: Lincoln Application Vulnerability Automation
   \thanks{This work is sponsored by the Assistant Secretary of Defense
     for Research \& Engineering under Air Force Contract
     \#FA8721-05-C-0002.  Opinions, interpretations, conclusions and
@@ -22,7 +22,7 @@
     endorsed by the United States Government.} }
 
 \author{
-\IEEEauthorblockN{Brendan Dolan-Gavitt\IEEEauthorrefmark{1}, Patrick Hulin\IEEEauthorrefmark{2}, Tim Leek\IEEEauthorrefmark{2}, Ryan Whelan\IEEEauthorrefmark{2}, Fredrich Ulrich\IEEEauthorrefmark{2}}
+\IEEEauthorblockN{Brendan Dolan-Gavitt\IEEEauthorrefmark{1}, Patrick Hulin\IEEEauthorrefmark{2}, Tim Leek\IEEEauthorrefmark{2}, Fredrich Ulrich\IEEEauthorrefmark{2}, Ryan Whelan\IEEEauthorrefmark{2}}
 \\
 \small (Authors listed alphabetically) \\
 \\
@@ -45,7 +45,7 @@ Every LAVA vulnerability is accompanied by a fuzzed input that triggers it, wher
 Further, every LAVA bug is validated, and thus every working bug comes with both a proof-of-concept input and a known manifestation point.  
 These vulnerabilities are synthetic but, we argue, still realistic, in the sense that they are embedded deep within programs and are triggered by real inputs.
 In order for an automated tool to discover them, it would have to be able to reason correctly and precisely about all the code executed up to the DUA.
-Using LAVA, we have injected tens of thousands of bugs into popular programs such as file, readelf, bash, tshark, and eog.
+Using LAVA, we have injected thousands of bugs into popular programs such as file, readelf, bash, tshark, and eog.
 We believe LAVA can form the basis of an approach for generating extremely high quality ground truth vulnerability corpora on demand.
 
 

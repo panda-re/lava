@@ -1,5 +1,6 @@
 protected int
-file_encoding(struct magic_set *ms, ..., const char **type) {
+file_encoding(struct magic_set *ms, 
+              ..., const char **type) {
 ...
    else if
      (({int rv = looks_extended(buf, nbytes, *ubuf, ulen);
