@@ -21,7 +21,7 @@ The LAVA implementation operates in four stages to inject and validate buffer ov
 These stages are also depicted in Figure~\ref{fig:lava-impl}
 
 \subsection{Taint queries}
-LAVA's taint queries rely on the PANDA dynamic analysis platform~\cite{panda}, which is based on the QEMU whole-system emulator.
+LAVA's taint queries rely on the PANDA dynamic analysis platform~\cite{PANDA}, which is based on the QEMU whole-system emulator.
 PANDA augments Qemu in three important ways.
 First, it introduces deterministic record and replay, which can be used for iterated and expensive analyses that cannot be performed online.
 Second, it has a simple but powerful plugin architecture that allows for powerful analyses to be built and even built upon one another.
