@@ -9,7 +9,19 @@ As a result, the addition of other classes of bugs, such as temporal safety bugs
 There also remains work to be done in making LAVA's data flow more realistic, although even in its current state, the vast majority of the execution of the modified program is realistic. 
 This execution includes the dataflow that leads up to the capture of the DUA, which is often nontrivial.
 
-The last limitation is that LAVA only works on C source code. 
+LAVA is limited to only work on C source code, but there is no fundamental reason for this.
 In principle, our approach would work for any source language with a usable source-to-source rewriting framework. 
 In Python, for example, one could easily implement our taint queries in a CPython plugin that executed the hypervisor call against the address of a variable in memory. 
 Since our approach records the correspondence between source lines and program basic block execution, it would be just as easy to figure out where to edit the Python code as it is in C.
+We have no immediate plans to extend LAVA in these directions.
+
+We are planning some additional evaluatory work.
+In particular, we want to determine if the bugs that LAVA injects can be found by current vulnerability discovery tools, both open source and commercial.
+It should be possible to measure both miss and false alarm rates for these tools. 
+Miss rate is straightforward as we can merely compute the fraction of injected, validated bugs that a tool finds.
+False alarm rate will be trickier to estimate, as it requires determining with certainty if a bug claimed by a tool is real or not. 
+If we do this, the cost for evaluation will be high.
+Alternately, we may choose to run the tools on the targets and investigate all vulnerability claims.
+All such claims are very likely false alarms and should persist even when LAVA injects bugs.  
+These can be used to estimate false alarm rates.  
+

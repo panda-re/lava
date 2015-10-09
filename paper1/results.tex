@@ -67,11 +67,7 @@ Cells for which there were no samples are indicated with the contents '--'.}
 \label{table:yield-breakdown}
 \end{table}
 
-<<<<<<< HEAD
 Yield varies considerably from less than 10\% to over 50\%.
-=======
-Yield varies considerably from 9.6\% to over 50\%.
->>>>>>> Fix some typos.
 To understand this better, we investigated the relationship between our two taint-based measures and yield.
 For each DUA used to inject a bug, we determined $mTCN$, the maximum TCN for any of its bytes and $mLIV$, the maximum liveness for any label in any taint label set associated with one of its bytes.  
 More informally, $mTCN$ represents how complicated a function of the input bytes a DUA is, and $mLIV$ is a measure of how much the control flow of a program is influenced by the input bytes that determine a DUA.
@@ -95,7 +91,7 @@ If we extrapolate from yield numbers in Table~\ref{table:insertion-results}, we 
 But how well distributed is this set of bugs? 
 For programs like \verb+file+ and \verb+bash+, between 11 and 44 source files  are involved in a potential bug.
 In this case, the bugs appear to be fairly well distributed, as those numbers represent 58\% and 31\% of the total for each, respectively.
-On the other hand, \verb+readelf+ and \verb+tshark+ fare worse, with only 2 and 122 source files found to involve a potential bug for each (16.7\% and 8.2\% of source files).
+On the other hand, \verb+readelf+ and \verb+tshark+ fare worse, with only 2 and 122 source files found to involve a potential bug for each (16.7\% and 9.6\% of source files).
 For \verb+tshark+, much of the code for which is devoted to parsing esoteric network protocols, coverage is probably the issue since we use only a single input.
 Similiary, we only use a single hand-written script with \verb+bash+, with little attempt to cover a majority of language features.
 We are unsure why so few of the source files in \verb+readelf+ involve a potential bug.

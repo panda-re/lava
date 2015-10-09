@@ -81,14 +81,16 @@ The hope is that changing this value by a large amount may trigger a buffer over
 \lstinputlisting[language=C,numbers=left, numberstyle=\tiny, stepnumber=2, numbersep=5pt,
         basicstyle=\ttfamily\footnotesize]{inj-example-dua-siphon.c}
 \caption{PANDA taint analysis and the \texttt{FIB} algorithm determines that the first four bytes of \texttt{buf} are suitable for use in creating a bug.
-This is the code injected by Clang into file's \texttt{src/encodings.c} to copy DUA value off for later use.}
+This is the code injected by Clang into file's \texttt{src/encodings.c} to copy DUA value off for later use.
+The function \texttt{lava\_set} saves the DUA value in a static variable.}
 \label{src:dua-siphon}
 \end{figure}
 
 \begin{figure}
 \lstinputlisting[language=C,numbers=left, numberstyle=\tiny, stepnumber=2, numbersep=5pt,
         basicstyle=\ttfamily\footnotesize]{inj-example-attack.c}
-\caption{Code injected into file's \texttt{src/readcdf.c} to use DUA value to create a vulnerability}
+\caption{Code injected into file's \texttt{src/readcdf.c} to use DUA value to create a vulnerability.
+The function \texttt{lava\_get} retrieves the value last stored by a call to  \texttt{lava\_set}.}
 \label{src:dua-use}
 \end{figure}
 
