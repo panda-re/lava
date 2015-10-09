@@ -14,7 +14,7 @@
 
 
 %opening
-\title{LAVA: Lincoln Application Vulnerability Automation
+\title{LAVA: Large-scale Automated Vulnerability Addition
   \thanks{This work is sponsored by the Assistant Secretary of Defense
     for Research \& Engineering under Air Force Contract
     \#FA8721-05-C-0002.  Opinions, interpretations, conclusions and
@@ -42,10 +42,10 @@ To begin to address this, we present LAVA, a system for automatically and quickl
 LAVA employs a pair of taint-based measures to identify program quantities that both depend upon specific input bytes in a simple way yet do not overly influence control flow.
 These DUAs (dead-uncomplicated and available data) are employed, via source-to-source transformation, to perturb program quantities at later program points that are likely to cause vulnerabilities.
 Every LAVA vulnerability is accompanied by a input that triggers it, whereas normal inputs are extremely unlikely to do so.
-Further, every LAVA bug is validated, and thus every working bug comes with both a proof-of-concept input and a known manifestation point.  
+Further, every injected bug is validated, and thus every working bug comes with both a proof-of-concept input and a known manifestation point.  
 These vulnerabilities are synthetic but, we argue, still realistic, in the sense that they are embedded deep within programs and are triggered by real inputs.
 In order for an automated tool to discover them, it would have to be able to reason correctly and precisely about all the code executed up to the DUA.
-Using LAVA, we have injected thousands of bugs into popular programs such as file, readelf, bash, tshark, and eog.
+Using LAVA, we have injected thousands of bugs into popular programs such as file, readelf, bash, and tshark.
 We believe LAVA can form the basis of an approach for generating extremely high quality ground truth vulnerability corpora on demand.
 
 
