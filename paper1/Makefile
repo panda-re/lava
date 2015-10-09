@@ -45,7 +45,7 @@ $(filter-out $(MAIN:.tex=.pdf),$(ALLPDF)): die_unsupported
 %.aux: %.tex
 	$(LATEX) $<
 
-%.bbl: %.tex
+%.bbl: %.tex biblio.bib
 	bibtex $(<:.tex=)
 	$(LATEX) $<
 
