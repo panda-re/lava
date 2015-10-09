@@ -2,7 +2,7 @@
 
 \begin{table*}[t!]
 \centering
-\begin{tabular}{c|c|c|c|c|c|c|c|c|c|c} 
+\begin{tabular}{c|c|c|c|c|c|c|c|c|c|c}
         &         & Num       & Lines     &        &        & Potential & Validated  &         & Inj Time \\
 Name    & Version & Src Files & C code    & N(DUA) & N(ATP) & Bugs      & Bugs       & Yield   & (sec)  \\\hline
 file    & 5.22    & 19        & 10809     & 631    & 114    & 17518     & 774        & 39.0\%  & 16         \\  %    files verified.  sloc recomputed
@@ -27,7 +27,7 @@ Second, we evaluated the distribution and realism of LAVA's bugs by proposing an
 \subsection{Injection Experiments}
 
 The results of injecting bugs into open source programs are summarized in Table~\ref{table:insertion-results}.
-In this table, programs are ordered by size, in lines of C code, as measured by David Wheeler's \verb+sloccount+. 
+In this table, programs are ordered by size, in lines of C code, as measured by David Wheeler's \verb+sloccount+.
 A single input was used with each program to measure taint and find injectable bugs.
 The input to \verb+file+ and \verb+readelf+ was the program \verb+ls+.
 The input to \verb+tshark+ was a 16K packet capture file from a site hosting a number of such examples.  % [ http://www.stearns.org/toolscd/current/pcapfile/README.ethereal-pcap.html ]
@@ -38,7 +38,7 @@ The input to \verb+bash+ was a 124-line shell script written by the authors.
 $N(DUA)$ and $N(ATP)$ are the number of DUAs and attack points collected by the FIB analysis.
 Note that, in order for a DUA or attack point to be counted, it must have been deemed viable for some bug, as described in Section~\ref{sec:mining}.
 The columns \emph{Potential Bugs} and \emph{Validated Bugs} in Table~\ref{table:insertion-results} give the numbers of both potential bugs found by FIB, but also those verified to actually return exitcodes indicating a buffer overflow (-11 for segfault or -6 for heap corruption) when run against the modified input.
-The penultimate column in the table is \emph{Yield} which is the fraction of potential bugs what were tested and determined to be actual buffer overflows.   
+The penultimate column in the table is \emph{Yield} which is the fraction of potential bugs what were tested and determined to be actual buffer overflows.
 The last column gives the time required to test a single potential bug injection for the target.
 
 
@@ -67,7 +67,11 @@ Cells for which there were no samples are indicated with the contents '--'.}
 \label{table:yield-breakdown}
 \end{table}
 
+<<<<<<< HEAD
 Yield varies considerably from less than 10\% to over 50\%.
+=======
+Yield varies considerably from 9.6\% to over 50\%.
+>>>>>>> Fix some typos.
 To understand this better, we investigated the relationship between our two taint-based measures and yield.
 For each DUA used to inject a bug, we determined $mTCN$, the maximum TCN for any of its bytes and $mLIV$, the maximum liveness for any label in any taint label set associated with one of its bytes.  
 More informally, $mTCN$ represents how complicated a function of the input bytes a DUA is, and $mLIV$ is a measure of how much the control flow of a program is influenced by the input bytes that determine a DUA.
@@ -102,7 +106,7 @@ We are unsure why so few of the source files in \verb+readelf+ involve a potenti
 \begin{figure}
 \centering
 \includegraphics[width=3in]{trace-dua-atp.png}
-\caption{A cartoon representing an entire program trace, annotated with instruction count at which DUA is siphoned off to be used, $I(DUA)$, attack point where it is used, $I(ATP$), and total number of instructions in trace, $I(TOT)$.}
+\caption{A cartoon representing an entire program trace, annotated with instruction count at which DUA is siphoned off to be used, $I(DUA)$, attack point where it is used, $I(ATP)$, and total number of instructions in trace, $I(TOT)$.}
 \label{fig:dua-atp-trace}
 \end{figure}
 
