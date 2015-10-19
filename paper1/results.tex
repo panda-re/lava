@@ -24,6 +24,12 @@ For each of these, we report various statistics with respect to both the target 
 Second, we evaluated the distribution and realism of LAVA's bugs by proposing and computing various measures.
 %Third, we randomly sampled 20 injected bugs for each of these programs and used these to measure detection rates for two commercial and two open source bug finders.
 
+\subsection*{Counting Bugs}
+
+Before we delve into the results, we must specify what it is we mean by an injected bug, and what makes two injected bugs distinct. Although there are many possible ways to define a bug, we choose a definition that best fits our target use case: two bugs should be considered different if an automated tool would have to reasonabout them differently. For our purposes, we define a bug as a unique pair $(DUA, attack point)$. Expanding this out, that means that the source file, line number, and variable name of the DUA, and the source file and line number of the attack point must be unique.
+
+Some might object that this artificially inflates the count of bugs injected into the program, for example because it would consider two bugs distinct if they differ in where the file input becomes available to the program, even if the same file input bytes are used in both cases. But in fact these should be counted as different bugs: the data and control flow leading up to the point where the DUA occurs will be very different, and vulnerability discovery tools will have to reason differently about the two cases.
+
 \subsection{Injection Experiments}
 
 The results of injecting bugs into open source programs are summarized in Table~\ref{table:insertion-results}.
