@@ -38,14 +38,14 @@
 \begin{abstract}
 
 Work on automating vulnerability discovery has long been hampered by a shortage of ground-truth corpora with which to evaluate tools and techniques.
-To begin to address this, we present LAVA, a system for automatically and quickly injecting large numbers of realistic bugs into program source code.  
-LAVA employs a pair of taint-based measures to identify program quantities that both depend upon specific input bytes in a simple way, yet do not overly influence control flow.
-Every LAVA vulnerability is accompanied by an input that triggers it, whereas normal inputs are extremely unlikely to do so.
-Further, every injected bug is validated, and thus every working bug comes with both a proof-of-concept input and a known manifestation point.  
+To begin to address this, we present LAVA, a dynamic taint analysis-based system for automatically and quickly injecting large numbers of realistic bugs into program source code.  
+Every LAVA vulnerability is accompanied by an input that triggers it, and guarantees that normal inputs are extremely unlikely to do so.
+Further, every injected bug is validated, and thus every working bug comes with both a proof-of-concept input and a known manifestation point.
 These vulnerabilities are synthetic but, we argue, still realistic, in the sense that they are embedded deep within programs and are triggered by real inputs.
 Using LAVA, we have injected thousands of bugs into popular programs such as file, readelf, bash, and tshark.
 We believe LAVA can form the basis of an approach for generating extremely high quality ground truth vulnerability corpora on demand.
 
+XXX TODO - We should put some concrete results (preferably any quantitative ones if we have them) at the end of the results section so we can support the assertion that LAVA is useful.
 
 
 \end{abstract}
