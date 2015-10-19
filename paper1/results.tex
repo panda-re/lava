@@ -31,6 +31,7 @@ Before we delve into the results, we must specify what it is we mean by an injec
 Some might object that this artificially inflates the count of bugs injected into the program, for example because it would consider two bugs distinct if they differ in where the file input becomes available to the program, even if the same file input bytes are used in both cases. But in fact these should be counted as different bugs: the data and control flow leading up to the point where the DUA occurs will be very different, and vulnerability discovery tools will have to reason differently about the two cases.
 
 \subsection{Injection Experiments}
+\label{sec:results:subsec:injection}
 
 The results of injecting bugs into open source programs are summarized in Table~\ref{table:insertion-results}.
 In this table, programs are ordered by size, in lines of C code, as measured by David Wheeler's \verb+sloccount+.
@@ -88,11 +89,6 @@ However, we were surprised to observe that $mLIV$ values of over 1000 still gave
 It would appear as though LAVA can inject a very large number of bugs.  
 If we extrapolate from yield numbers in Table~\ref{table:insertion-results}, we estimate there would be almost 400,000 real bugs if all were tested.
 
-\vspace{.1in}
-  $ 0.390 \times 17518 + 0.095 \times 447645 + 0.534 \times 276367 \\
-   + 0.153 \times 1240777 \approx 386777 $ 
-\vspace{0.1in}
-
 \noindent
 But how well distributed is this set of bugs? 
 For programs like \verb+file+ and \verb+bash+, between 11 and 44 source files  are involved in a potential bug.
@@ -115,6 +111,7 @@ We are unsure why so few of the source files in \verb+readelf+ involve a potenti
 The intended use of the bugs created by this system is as ground truth for development and evaluation of vulnerability discovery tools and techniques. 
 Thus, it is crucial that they be realistic in some sense.  
 Realism is, however, difficult to assess.
+
 We examined three aspects of our injected bugs as measures of realism. 
 The first two are DUA and attack point position within the program trace, which are depicted in Figure~\ref{fig:dua-atp-trace}.
 That is, we determined the fraction of trace instructions executed at the point the DUA is siphoned off and at the point it is used to attack the program by corrupting an internal program value.
@@ -122,12 +119,15 @@ Histograms for these two quantities, $I(DUA)$ and $I(ATP)$, are provided in Figu
 DUAs and attack points are clearly available at all points during the trace, although there appear to be more at the beginning and end.
 This is important, since bugs created using these DUAs have entirely realistic control and data-flow all the way up to $I(DUA)$.
 Therefore, vulnerability discovery tools will have to reason correctly about all of the program up to $I(DUA)$ in order to correctly diagnose the bug.
-The portion of the trace \emph{between} the $I(DUA)$ and $I(ATP)$ is of particular interest since, currently, LAVA makes data flow between DUA and attack point via a pair of function calls.
+
+The portion of the trace \emph{between} the $I(DUA)$ and $I(ATP)$ is of particular interest since LAVA currently makes data flow between DUA and attack point via a pair of function calls.
 Thus, it might be argued that this is an unrealistic portion of the trace in terms of data flow.
 The quantity $I(DUA)/I(ATP)$ will be close to 1 for injected bugs that minimize this source of unrealism.
-This would correspond to the worked example in Figure~\ref{fig:worked-example}; the DUA is still in scope, when, a few lines later in the same function, it can be used to corrupt a pointer.
+This would correspond to the worked example in Figure~\ref{fig:worked-example}; the DUA is still in scope when, a few lines later in the same function, it can be used to corrupt a pointer.
 No abnormal data flow is required.
 The histogram in Figure~\ref{fig:rdf-hist} quantifies this effect for all potential LAVA bugs, and it is clear that a large fraction have $I(DUA)/I(ATP) \approx 1$, and are therefore highly realistic.
+
+% Should we include some reasonable measure here where we don't turn out so well? Right now the evaluation feels kind of cooked -- we invent some measures and hey, LAVA looks really good under them! So we should a) acknowledge that it's not ideal that we're inventing our own metric for success, and b) we should maybe include something that seems like it would be a nice property, but that LAVA doesn't happen to have -- one that comes to mind is some measure of data flow complexity (rather than favoring flows that are "short" temporally)
 
 \begin{figure}
 \centering

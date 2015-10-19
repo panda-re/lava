@@ -9,9 +9,9 @@ def collect_duas(taint_query):
   retained_bytes = []
   for tainted_byte in taint_query:
     if tainted_byte.tcn <= max_tcn
-    && 
+    and
     len(tainted_byte.file_offsets) <= max_card
-    && 
+    and
     check_liveness(tainted_byte.file_offsets)):
       retained_bytes += tainted_byte.file_offsets
   duakey = (taint_query.source_loc, 

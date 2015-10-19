@@ -1,5 +1,5 @@
 
-At a high level, LAVA adds bugs to programs in the following manner.
+At a high level, LAVA adds bugs to programs in the following manner. For some specific input, we:
 
 \begin {enumerate}
 \item Identify execution trace locations where input bytes are available that do not determine control flow and have not been modified much. 
@@ -33,7 +33,7 @@ That taint analysis has a few important features.
 Thus, if an internal program quantity is tainted and is a direct copy of input bytes, then we can map that quantity back to a specific part of the input.
 \item The taint analysis is as complete and correct as possible.  
 All program code including library and kernel is subject to taint analysis.
-Multiple threads and processes are also handled correctly, so that taint is flows are not lost..
+Multiple threads and processes are also handled correctly, so that taint flows are not lost.
 % operates, effectively, upon an LLVM-lifted version of the machine code for a program, including its libraries.
 %This means taint is propagated accurately and completely, even through esoteric x86 instruction set extensions like MMX and SSE.
 \item The taint analysis keeps track of a \emph{set} of labels per byte of program data, meaning that it can represent computation that mixes input bytes.
@@ -83,6 +83,8 @@ Arguments \verb+a+ and \verb+n+ are therefore too live to be useful in injecting
 Argument \verb+b+, on the other hand, has a TCN of 0 and the bytes from which it derives, 4..7 are completely dead, 
 making it an ideal trigger to control a vulnerability. 
 
+Precisely which DUAs should be included, based on their liveness and TCN, is a configurable threshold. We explore the impact (in terms of whether the bug can be successfully injected and verified) of various thresholds in Section~\ref{sec:results:subsec:injection}.
+
 \subsection {The attack point}
 
 Attack point selection is a function of the type of vulnerability to be injected.
@@ -99,6 +101,6 @@ For instance, in the running example, on line 7, the call to \verb+memcpy+ can b
 The third and final step to LAVA bug injection is introducing a dataflow relationship between DUA and attack point.  
 If the DUA is in scope at the attack point then it can simply be used at the attack point to cause the vulnerability.
 If it is not in scope, new code is added to siphon the DUA off into a safe place (perhaps in a static or global data structure), and later retrieve and make use of it at the attack point. 
-However, in order to ensure that the bug only manifest itself very occasionally (one of our requirements from Section~\ref{sec:motivation}), we  add a guard requiring that the DUA match a specific value if it is to be used to manifest the vulnerability.
+However, in order to ensure that the bug only manifests itself very occasionally (one of our requirements from Section~\ref{sec:motivation}), we add a guard requiring that the DUA match a specific value if it is to be used to manifest the vulnerability.
 In the running example, the DUA \verb+b+ is still in scope at the \verb+memcpy+ attack point and the only source code modification necessary is to make use of it to introduce the vulnerability if it matches a particular value.  
 If we replace the first argument to the call to \verb+memcpy+, \verb+d+, with \verb-d+(b==0x6c617661)*b- then there will be an out of bounds write only when bytes 4..7 of the input exactly match 0x6c617661. 
