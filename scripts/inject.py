@@ -434,7 +434,10 @@ if __name__ == "__main__":
         run(['git', 'add', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json and instrument main.'])
         run(shlex.split(project['make']))
-        run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \;"))
+        try:
+            run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \\;"))
+        except subprocess32.CalledProcessError:
+            pass
         run(['git', 'commit', '-m', 'Add compile_commands.json and instrument main.'])
         if not os.path.exists(bugs_install):
             run(project['install'], shell=True)
@@ -442,9 +445,11 @@ if __name__ == "__main__":
         # ugh binutils readelf.c will not be lavaTool-able without
         # bfd.h which gets created by make. 
         run_cmd_nto(project["make"], bugs_build, None)
-        run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \;"))
-        run(['git', 'commit', '-m', 'Adding any make-generated source files'])
-            
+        run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \\;"))
+        try:
+            run(['git', 'commit', '-m', 'Adding any make-generated source files'])
+        except subprocess32.CalledProcessError:
+            pass
 
 
     # Now start picking the bug and injecting
