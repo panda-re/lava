@@ -243,7 +243,7 @@ if [ $inject -eq 1 ]; then
         b=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and (exitcode = -11 or exitcode = -6)" | head -3  | tail -1 `
         y=`bc <<< "scale=3; $b/($a+$b)"`
         t=`bc <<< "$a + $b"`
-        echo "Runs: $t  Yield: $y"
+        echo "Runs: $t  a=$a b=$b  Yield: $y"
     done
 fi
 
