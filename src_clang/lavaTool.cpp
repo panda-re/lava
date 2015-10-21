@@ -680,7 +680,7 @@ public:
       of the arg perturbed by global.  :)
     */
     Insertions ComposeAtpGlobalUse(CallExpr *call_expr, Bug &bug) {
-        errs() << "in ComposeAtpGlobalUse\n";
+        //        errs() << "in ComposeAtpGlobalUse\n";
         Insertions inss;        
         // only insert one dua use
         if (returnCode & INSERTED_DUA_USE) return inss;
@@ -740,7 +740,7 @@ public:
                     // ... if arg is an lval we'll += instead
                     std::string plus_op = "+";
                     if (arg->isLValue()) plus_op = "+=";
-                    //                    errs() << "using plus_op " << plus_op << "\n";
+                    errs() << "using plus_op " << plus_op << "\n";
                     new_call << "( (" + (ExprStr(arg)) + "))" + plus_op + " " +  gn + " * (0x6c617661 == " + gn + " || 0x6176616c == " + gn + ")";
                 }
             }
@@ -769,9 +769,9 @@ public:
     */
     bool AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint, 
                uint32_t insertion_point, Bug *the_bug, bool is_retval ) {
-        //        errs() << "atbug : lvalname=" << lvalname << " filename=" << filename << " line=" << line << " atAttackPoint=" << atAttackPoint << " insertion_point=" << insertion_point<< " \n";
+        //                errs() << "atbug : lvalname=" << lvalname << " filename=" << filename << " line=" << line << " atAttackPoint=" << atAttackPoint << " insertion_point=" << insertion_point<< " \n";
         for ( auto bug : bugs ) { 
-            //            errs() << bug.str() << "\n";
+            //                        errs() << bug.str() << "\n";
             bool atbug = false;
             if (atAttackPoint) {
                 // this is where we'll use the dua.  only need to match the file and line
@@ -792,7 +792,7 @@ public:
                 return true;
             }
         }
-        //        errs() << "Not at bug\n";
+        //                errs() << "Not at bug\n";
         return false;
     }
         
@@ -813,7 +813,7 @@ public:
     Insertions ComposeDuaNewSrc(Llval &llval, std::string filename, 
                                 uint32_t line, uint32_t insertion_point, bool is_retval) {
         Insertions inss;
-        //        errs() << "ComposeDuaNewSrc\n";
+        //                errs() << "ComposeDuaNewSrc\n";
         if (LavaAction == LavaQueries) {
             // yes, always pack this into after_part
             inss.after_part = ComposeDuaTaintQuery(llval, GetStringID(filename), 
@@ -842,14 +842,14 @@ public:
     */
     Insertions ComposeAtpNewSrc( CallExpr *call_expr, std::string filename, uint32_t line) {
         Insertions inss;
-        //        errs() << "ComposeAtpNewSrc\n";
+        //                errs() << "ComposeAtpNewSrc\n";
         if (LavaAction == LavaQueries) {            
             inss = ComposeAtpQuery(call_expr, filename, line);
         }
         else if (LavaAction == LavaInjectBugs) {
             Bug bug;
             if (AtBug("", filename, line, /*atAttackPoint=*/true, /*insertion_point=*/-1, &bug, false)) {
-                                errs() << "at bug in ComposeAtpNewSrc\n";
+                //                                errs() << "at bug in ComposeAtpNewSrc\n";
                 // NB: No insertion -- we insert things into the call 
                 inss = ComposeAtpGlobalUse(call_expr, bug);
             } 
@@ -1054,23 +1054,6 @@ public:
     */
     }
 
-    bool VisitFunctionDecl(FunctionDecl *FD) {
-        //printf("FunctionDecl %s!\n", FD->getName().str().c_str());
-        if (LavaAction == LavaInstrumentMain && FD->getName() == "main"
-            && FD->doesThisDeclarationHaveABody()) {
-            // This is the file with main! insert lava_[gs]et and whatever.
-            std::string lava_funcs_path(LavaPath + "/src_clang/lava_set.c");
-            std::ifstream lava_funcs_file(lava_funcs_path);
-            std::stringbuf temp;
-            lava_funcs_file.get(temp, '\0');
-            printf("Inserting stufff from %s:\n", lava_funcs_path.c_str());
-            printf("%s", temp.str().c_str());
-            new_start_of_file_src << temp.str();
-            returnCode |= INSERTED_MAIN_STUFF;
-        }
-        return true;
-    }
-
 private:
 
     std::map<std::string,uint32_t> &StringIDs;
@@ -1135,6 +1118,20 @@ public:
         if (LavaAction == LavaQueries) {
             new_start_of_file_src << "#include \"pirate_mark_lava.h\"\n";
         }
+
+        // add lava_get lava_set defs if this is a file with main () in it
+        if (LavaAction == LavaInstrumentMain) {           
+            // This is the file with main! insert lava_[gs]et and whatever.
+            std::string lava_funcs_path(LavaPath + "/src_clang/lava_set.c");
+            std::ifstream lava_funcs_file(lava_funcs_path);
+            std::stringbuf temp;
+            lava_funcs_file.get(temp, '\0');
+            printf("Inserting stufff from %s:\n", lava_funcs_path.c_str());
+            printf("%s", temp.str().c_str());
+            new_start_of_file_src << temp.str();
+            returnCode |= INSERTED_MAIN_STUFF;
+        }
+
         rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
                             new_start_of_file_src.str(),
                             true, true);
