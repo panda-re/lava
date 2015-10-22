@@ -624,8 +624,9 @@ public:
     */
     Insertions ComposeDuaSiphoning(Llval &llval, Bug &bug) {
         Insertions inss;
-        // only insert one dua siphon
-        if (returnCode & INSERTED_DUA_SIPHON) return inss;
+        // only insert one dua siphon if single bug
+        if (bugs.size() == 1 && (returnCode & INSERTED_DUA_SIPHON)) return inss;
+        // if > 1 bug we are living dangerously. 
         returnCode |= INSERTED_DUA_SIPHON;
         std::string lval_name = llval.name;
         //        errs() << "ComposeDuaSiphoning\n";
@@ -663,13 +664,13 @@ public:
             if (i == 4) break;
             o ++;
         }
-        siphon << "lava_set(" << gn << ");\n";
+        siphon << "lava_set(" << (std::to_string(bug.id)) << "," << gn << ");\n";
         if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
             siphon << "}";       
 
         inss.after_part = siphon.str();
         // this is prototype for setter 
-        inss.top_of_file = "void lava_set(unsigned int val);\n";
+        inss.top_of_file = "void lava_set(unsigned int bn, unsigned int val);\n";
         return inss;
     }
 
@@ -682,13 +683,14 @@ public:
     Insertions ComposeAtpGlobalUse(CallExpr *call_expr, Bug &bug) {
         //        errs() << "in ComposeAtpGlobalUse\n";
         Insertions inss;        
-        // only insert one dua use
-        if (returnCode & INSERTED_DUA_USE) return inss;
+        // only insert one dua use if single bug
+        if (bugs.size() ==1 && (returnCode & INSERTED_DUA_USE)) return inss;
+        // if > 1 bug we live dangerously and may have multiple attack points
         returnCode |= INSERTED_DUA_USE;
         
         //        if (bug.atp.filename != bug.dua.filename) {
             // only needed if dua is in different file from attack point
-            inss.top_of_file = "extern unsigned int lava_get(void) ;\n";
+            inss.top_of_file = "extern unsigned int lava_get(unsigned int) ;\n";
             //        }
         std::string fn_name = call_expr->getDirectCallee()->getNameInfo().getName().getAsString();
         uint32_t num_args = call_expr->getNumArgs();
@@ -720,7 +722,7 @@ public:
         */
         std::stringstream new_call;
         new_call << fn_name << "(";
-        std::string gn = "(lava_get())";
+        std::string gn = "(lava_get(" + (std::to_string(bug.id)) + "))";
         i=0;        
         for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {
             Expr *arg = dyn_cast<Expr>(*it);
@@ -760,13 +762,7 @@ public:
     }        
 
 
-    /*
-      NOTE: this is a little borked.
-      actually, there can be more than one Bug for a lvalname/filename/line.
-      only in the dua when it is in a loop.  lval will be same but it will be tainted
-      by different parts of the input
-      returns Bug 
-    */
+    // is this lvalname / line / filename, etc a bug inj point?  
     bool AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint, 
                uint32_t insertion_point, Bug *the_bug, bool is_retval ) {
         //                errs() << "atbug : lvalname=" << lvalname << " filename=" << filename << " line=" << line << " atAttackPoint=" << atAttackPoint << " insertion_point=" << insertion_point<< " \n";
