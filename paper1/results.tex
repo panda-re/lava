@@ -153,8 +153,27 @@ The histogram in Figure~\ref{fig:rdf-hist} quantifies this effect for all potent
 
 
 
-%\subsection{Vulnerability Discovery Tool Evaluation}
-
+\subsection{Vulnerability Discovery Tool Evaluation}
+We ran three vulnerability discovery tools on our corpora of bugs.
+We chose an open source fuzzer, a Commericial Static Analyzer (CSE), and a Symbolic Execution and SAT Solver (SES) because they represented three unique approaches to vulnerability discovery.
+Our corpora was a collection of 69 modifications of the program \verb+file+.
+Each modification represented one of six different bug types and a randomly selected $Bug ID$.
+All the tools were run on the same system, a x64 Debian 7 server with 16 cores at 3.50 GHz and 365 gB of \uppercase{ram}.
+The tools were run to completion except in the case of the fuzzer where a wall time of 1 hour was given.
+The evaluation results are summarized in Table~\ref{table:tool-eval-results}. 
+\begin{table}[h]
+\centering
+\begin{tabular}{l|l|l|l|l|l|l} 
+$Tool Type$ &                     \multicolumn{6}{|c}{$Bug Type$}                           \\  \hline  
+            &                     \multicolumn{5}{|c|}{$Range Bug$}               & $KT$    \\   
+            &    1       & $2^7$       & $2^{14}$     & $2^{21}$   & $2^{28}$     & 1   \\  \hline 
+$Fuzzer$    &    0       & 0           & 0            & 7\%        & 58\%         & 0         \\
+$CSA$       &    0       & 0           & 0            & 0          & 0            & 0         \\
+$SES$       &    0       & 0           & 0            & 0          & 0            & 0         \\
+\end{tabular}
+\caption{Percentage of bugs found as a function of $Bug Type$ and $Tool Type$.  The most vulnerability finding tool proved to be the open source fuzzer.  However, it was only able to find bugs that had an enormous range of possible inputs to trigger the bug.}
+\label{table:tool-eval-results}
+\end{table}
 %And something needs to go here when we get it from NEU who is doing the eval.
 
 
