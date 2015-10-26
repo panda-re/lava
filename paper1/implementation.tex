@@ -33,7 +33,7 @@ This LLVM version includes emulated versions of every x86 instruction that QEMU 
 QEMU often implements tricky processor instructions (e.g. MMX and XMM on x86) in C code.
 These are compiled to LLVM bitcode using Clang, and, thereby made available for taint analysis by PANDA.
 
-LAVA employes a simple PANDA plugin named \verb+file_taint+ that is able to apply taint labels to bytes read from files in Linux.
+LAVA employs a simple PANDA plugin named \verb+file_taint+ that is able to apply taint labels to bytes read from files in Linux.
 The plugin, in turn, leverages operating system introspection and system call plugins in PANDA to determine the start file offset of the read as well as the number of bytes actually read.
 This allows LAVA to make use of taint information that maps internal program quantities back to file offsets.
 

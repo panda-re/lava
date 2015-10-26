@@ -40,6 +40,6 @@ Consider the converse: if a bug manifests for all or a large fraction of inputs 
 The approach we propose is to create a synthetic vulnerability via a few judicious and automated edits to the source code of a real program.
 We will detail and give results for an implementation of this approach that satisfies all of the above requirements.
 We call this implementation LAVA for Large-scale Automated Vulnerability Addition.    
-A serious bug such as a buffer overflow can be injected by LAVA into a program like \verb+file+, which is 13K LOC, in about a 15 seconds.
+A serious bug such as a buffer overflow can be injected by LAVA into a program like \verb+file+, which is 13K LOC, in about 15 seconds.
 LAVA bugs manifest all along the execution trace, in all parts of the program, shallow and deep, and make use of mostly completely normal data flow.
 By construction, a LAVA bug comes with an input that triggers it, and no other input can have this effect upon the program.
