@@ -1178,11 +1178,11 @@ int main(int argc, const char **argv) {
         }
     }
 
-    std::ifstream json_file(ProjectFile);
-    Json::Value root;
-    json_file >> root;
-
     if (LavaAction == LavaInjectBugs) {
+        std::ifstream json_file(ProjectFile);
+        Json::Value root;
+        json_file >> root;
+
         std::string dbhost(root["dbhost"].asString());
         std::string dbname(root["db"].asString());
 
