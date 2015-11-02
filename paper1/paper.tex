@@ -10,8 +10,9 @@
 \usepackage{times}
 %\usepackage{algorithm}
 \usepackage{listings}
-
-
+\usepackage[colorinlistoftodos,prependcaption,textsize=tiny]{todonotes}
+%to disable todonotes without removing them manually, replace todonote package in include line above with
+%\usepackage[disable]{todonotes}
 
 %opening
 \title{LAVA: Large-scale Automated Vulnerability Addition
@@ -48,8 +49,7 @@ Further, every injected bug is validated, and thus every working bug comes with 
 These vulnerabilities are synthetic but, we argue, still realistic, in the sense that they are embedded deep within programs and are triggered by real inputs.
 Using LAVA, we have injected thousands of bugs into popular programs such as file, readelf, bash, and tshark.
 We believe LAVA can form the basis of an approach for generating extremely high quality ground truth vulnerability corpora on demand.
-
-XXX TODO - We should put some concrete results (preferably any quantitative ones if we have them) at the end of the results section so we can support the assertion that LAVA is useful.
+\todo[inline]{TODO - We should put some concrete results (preferably any quantitative ones if we have them) at the end of the results section so we can support the assertion that LAVA is useful}
 
 
 \end{abstract}
@@ -93,4 +93,5 @@ XXX TODO - We should put some concrete results (preferably any quantitative ones
 \bibliographystyle{plain}
 \bibliography{biblio}
 
+\listoftodos
 \end{document}

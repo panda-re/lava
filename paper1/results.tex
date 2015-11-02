@@ -101,6 +101,8 @@ We are unsure why so few of the source files in \verb+readelf+ involve a potenti
 
 \subsection{Bug Realism}
 
+\todo[inline]{Ricky: I think it would be particularly convincing to have a "case study" of an actual CVE that exhibits data flow properties similar to the kind of bug LAVA injects.  Or maybe a bug that adds unchecked tainted data to a pointer.} 
+
 \begin{figure}
 \centering
 \includegraphics[width=3in]{trace-dua-atp.png}
@@ -115,6 +117,8 @@ Realism is, however, difficult to assess.
 We examined three aspects of our injected bugs as measures of realism. 
 The first two are DUA and attack point position within the program trace, which are depicted in Figure~\ref{fig:dua-atp-trace}.
 That is, we determined the fraction of trace instructions executed at the point the DUA is siphoned off and at the point it is used to attack the program by corrupting an internal program value.
+\todo[inline]{Ricky: what is the other "measures of realism?"  The "portion of hte trace between I(DUA) and I(ATP)? I(DUA)/I(ATP)? I(TOT)?} 
+
 Histograms for these two quantities, $I(DUA)$ and $I(ATP)$, are provided in Figures~\ref{fig:dua-hist} and~\ref{fig:atp-hist}, where counts are for all potential bugs in the LAVA database for all five open source programs. 
 DUAs and attack points are clearly available at all points during the trace, although there appear to be more at the beginning and end.
 This is important, since bugs created using these DUAs have entirely realistic control and data-flow all the way up to $I(DUA)$.
