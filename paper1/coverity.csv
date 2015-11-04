@@ -1,0 +1,20 @@
+cov_id,src,line,lava_id,notes
+29327,who.c,200,2596,"Out-of-bounds access (ARRAY_VS_SINGLETON) Using &now as an array. This might corrupt or misinterpret adjacent memory locations. Condition 1818324029 == lava_get(2596), taking true branch"
+29328,who.c,233,1231,"Out-of-bounds access (ARRAY_VS_SINGLETON) Using &t as an array. This might corrupt or misinterpret adjacent memory locations."
+29329,who.c,410,2452,"Out-of-bounds access (ARRAY_VS_SINGLETON) Using &stats as an array. This might corrupt or misinterpret adjacent memory locations. Condition 1818324173 == lava_get(2452), taking true branch"
+
+dubious
+29443,readutmp.c,146,186,"Read from pointer after free (USE_AFTER_FREE) deref_after_free: Dereferencing freed pointer utmp. (lava_set)"
+29405,who.c,390,4033,"Dereference before null check (REVERSE_INULL) Null-checking utmp_ent suggests that it may be null, but it has already been dereferenced on all paths leading to the check. (lava_set)"
+29404,who.c,392,301,"Dereference before null check (REVERSE_INULL) check_after_deref: Null-checking p suggests that it may be null, but it has already been dereferenced on all paths leading to the check. (lava_get)"
+29403,who.c,486,3454,"Dereference before null check (REVERSE_INULL) Null-checking host suggests that it may be null, but it has already been dereferenced on all paths leading to the check. (lava_get)"
+20402,who.c,327,1695,"Dereference before null check (REVERSE_INULL) check_after_deref: Null-checking buf suggests that it may be null, but it has already been dereferenced on all paths leading to the check. (lava_get)"
+29376,who.c,787,134,"Dereference after null check (FORWARD_NULL) Passing null pointer utmp_buf + lava_get(134U) * (1818326491U == lava_get(134U) || 3681902956U == lava_get(134U)) to scan_entries, which dereferences it. 11. Condition 1818326499 == lava_get(126), taking true branch 12. Condition 1818326491 == lava_get(134), taking true branch"
+29373,who.c,327,1695,"Dereference after null check (FORWARD_NULL) Passing null pointer buf + lava_get(1695U) * (1818324930U == lava_get(1695U) || 3262079340U == lava_get(1695U)) + lava_get(1750U) * (1818324875U == lava_get(1750U) || 2339332460U == lava_get(1750U)) + lava_get(1782U) * (1818324843U == lava_get(1782U) || 1802461548U == lava_get(1782U)) to strlen, which dereferences it."
+
+29347,who.c,392,3279,"CID 29347 (#1 of 2): Same on both sides (CONSTANT_EXPRESSION_RESULT) pointless_expression: The expression p && p does not accomplish anything because it evaluates to either of its identical operands, p. (lava_set). BDG: Can't tell if this is actually our code, or what the lava_id actually is, since there are several LAVA ids on the same line."
+29346,who.c,490,3881,"Same on both sides (CONSTANT_EXPRESSION_RESULT) pointless_expression: The expression host && host does not accomplish anything because it evaluates to either of its identical operands, host. (lava_set)"
+29345,who.c,474,3569,"Same on both sides (CONSTANT_EXPRESSION_RESULT) pointless_expression: The expression display && display does not accomplish anything because it evaluates to either of its identical operands, display. (lava_set)"
+29344,who.c,233,3807,"Same on both sides (CONSTANT_EXPRESSION_RESULT) pointless_expression: The expression kbcieiubweuhc846930886 && kbcieiubweuhc846930886 does not accomplish anything because it evaluates to either of its identical operands, kbcieiubweuhc846930886. (lava_set)"
+29343,who.c,335,3304,"Same on both sides (CONSTANT_EXPRESSION_RESULT) pointless_expression: The expression buf && buf does not accomplish anything because it evaluates to either of its identical operands, buf. (lava_set)"
+
