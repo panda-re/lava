@@ -137,6 +137,7 @@ print
 os.mkfifo(monitor_path)
 os.mkfifo(serial_path)
 qemu = spawn(project['qemu'], qemu_args)
+qemu.logfile = sys.stdout
 time.sleep(1)
 
 monitor = spawn("socat", ["stdin", "unix-connect:" + monitor_path])
@@ -172,6 +173,7 @@ console.expect_exact("root@debian-i386:~#")
 
 progress("Inserting CD...")
 run_monitor("change ide1-cd0 {}".format(isoname))
+time.sleep(5)
 
 run_console("mkdir -p {}".format(installdir))
 # Make sure cdrom didn't automount
@@ -186,12 +188,12 @@ run_monitor("begin_record {}".format(isoname))
 progress("Running command inside guest...")
 input_file_guest = join(installdir, input_file_base)
 expectation = project['expect'] if 'expect' in project else "root@debian-i386:~"
-run_console("LD_LIBRARY_PATH={} {}".format(
-    project['library_path'].format(install_dir=installdir),
-    project['command'].format(
-        install_dir=installdir,
-        input_file=input_file_guest)), expectation)
-
+env = project['env'] if 'env' in project else {}
+env['LD_LIBRARY_PATH'] = project['library_path'].format(install_dir=installdir)
+env_string = " ".join(["{}={}".format(pipes.quote(k), pipes.quote(env[k])) for k in env])
+run_console(env_string + " " + project['command'].format(
+    install_dir=installdir,
+    input_file=input_file_guest), expectation)
 
 progress("Ending recording...")
 run_monitor("end_record")

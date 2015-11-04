@@ -1,47 +1,22 @@
-The design of LAVA is driven by the need for bug corpora that are a)
-dynamic (can produce new bugs on demand), b) realistic (the bugs occur
-in real programs and are triggered by the program's normal input), and
-c) large (consist of hundreds of thousands of bugs). In this section we
-survey existing bug corpora and compare them to the bugs produced by
-LAVA.
+The design of LAVA is driven by the need for bug corpora that are a) dynamic (can produce new bugs on demand), b) realistic (the bugs occur in real programs and are triggered by the program's normal input), and c) large (consist of hundreds of thousands of bugs). 
+In this section we survey existing bug corpora and compare them to the bugs produced by LAVA.
 
-The need for realistic corpora is well-recognized. Researchers have
-proposed creating bug corpora from student code~\cite{Spacco:2005},
-drawing from existing bug report databases~\cite{Lu:2005,Meftah:2005},
-and creating a public bug registry~\cite{Foster:2005}. Despite these
-proposals, public bug corpora have remained static and relatively small.
+The need for realistic corpora is well-recognized. 
+Researchers have proposed creating bug corpora from student code~\cite{Spacco:2005}, drawing from existing bug report databases~\cite{Lu:2005,Meftah:2005},
+and creating a public bug registry~\cite{Foster:2005}. 
+Despite these proposals, public bug corpora have remained static and relatively small.
 
-The earliest work on tool evaluation via bug corpora appears to be by
-Wilander and Kamkar, who created a synthetic testbed of 44 C function
-calls~\cite{Wilander:2002} and 20 different buffer overflow
-attacks~\cite{Wilander:2003} to test the efficacy of static and dynamic
-bug detection tools, respectively. These are synthetic test cases,
-however, and may not reflect real-world bugs. In 2004, Zitser et
-al.~\cite{Zitser:2004} evaluated static buffer overflow detectors; their
-ground truth corpus was painstakingly assembled by hand over the course
-of six months and consisted of 14 annotated buffer overflows with
-triggering and non-triggering inputs; these same 14 overflows were later
-used to evaluate dynamic overflow detectors~\cite{Zhivich:2005}.
-Although these are real bugs from actual software, 
+The earliest work on tool evaluation via bug corpora appears to be by Wilander and Kamkar, who created a synthetic testbed of 44 C function calls~\cite{Wilander:2002} and 20 different buffer overflow attacks~\cite{Wilander:2003} to test the efficacy of static and dynamic bug detection tools, respectively. 
+These are synthetic test cases, however, and may not reflect real-world bugs. 
+In 2004, Zitser et al.~\cite{Zitser:2004} evaluated static buffer overflow detectors; their ground truth corpus was painstakingly assembled by hand over the course of six months and consisted of 14 annotated buffer overflows with triggering and non-triggering inputs as well as buggy and patched versions of programs; these same 14 overflows were later used to evaluate dynamic overflow detectors~\cite{Zhivich:2005}.
+Although these are real bugs from actual software, the corpus is small both in terms of the number of bugs (14) but also in terms of program size.
+Even modest sized programs like \verb+sendmail+ were too big for some of the static analyzers and so much smaller models capturing the essense of  each bug were constructed in a few hundred lines of excerpted code.  
 
-The most extensive effort to assemble a public bug corpus comes from the
-NIST Software Assurance Metrics And Tool Evaluation (SAMATE)
-project~\cite{Kass:2005}. Their evaluation corpus inclues
-Juliet~\cite{Juliet:2012}, a collection of 86,864 synthetic C and Java
-programs that exhibit 118 different CWEs; each program, however, is
-relatively short and has uncomplicated control \& data flow. The corpus
-also includes the IARPA STONESOUP data set~\cite{SAMATE:2014}, which was
-developed in support of the STONESOUP vulnerability mitigation project.
-The test cases in this corpus consist of 164 small snippets of C and
-Java code, which are then spliced into program to inject a bug. The bugs
-injected in this way, however, do not use the original input to the
-program (they come instead from extra files and environment variables
-added to the program), and the data flow between the input and the bug
-is quite short.
+The most extensive effort to assemble a public bug corpus comes from the NIST Software Assurance Metrics And Tool Evaluation (SAMATE)
+project~\cite{Kass:2005}. 
+Their evaluation corpus inclues Juliet~\cite{Juliet:2012}, a collection of 86,864 synthetic C and Java programs that exhibit 118 different CWEs; each program, however, is relatively short and has uncomplicated control \& data flow. 
+The corpus also includes the IARPA STONESOUP data set~\cite{SAMATE:2014}, which was developed in support of the STONESOUP vulnerability mitigation project.
+The test cases in this corpus consist of 164 small snippets of C and Java code, which are then spliced into program to inject a bug. 
+The bugs injected in this way, however, do not use the original input to the program (they come instead from extra files and environment variables added to the program), and the data flow between the input and the bug is quite short.
 
-Finally, the general approach of automatic program transformation to
-introduce errors was also used by Rinard et al.~\cite{Rinard:2005}; the
-authors systematically modified the termination conditions of loops to
-introduce off-by-one errors in the Pine email client to test whether
-software is still usable in the presence of errors once sanity checks
-and assertions are removed.
+Finally, the general approach of automatic program transformation to introduce errors was also used by Rinard et al.~\cite{Rinard:2005}; the authors systematically modified the termination conditions of loops to introduce off-by-one errors in the Pine email client to test whether software is still usable in the presence of errors once sanity checks and assertions are removed.
