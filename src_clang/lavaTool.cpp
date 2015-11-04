@@ -105,6 +105,8 @@ struct Insertions {
 };
 
 
+std::set<std::string> lava_get_proto;
+std::set<std::string> lava_set_proto;
 
 
 std::map<Ptr, std::set<uint32_t>> ptr_to_set;
@@ -116,6 +118,13 @@ std::stringstream new_start_of_file_src;
 
 
 #define MAX_STRNLEN 64
+
+
+std::string hex_str(uint32_t x) {
+    std::stringstream ss; 
+    ss << "0x" << std::hex << x;
+    return ss.str();
+}
 
 /*******************************************************************************
  * LavaTaintQuery
@@ -566,6 +575,11 @@ public:
         return  (inss.top_of_file == "" && inss.before_part == "" && inss.after_part == "");
     }
 
+    // ignore top of file stuff
+    bool EmptyInsertions2(Insertions &inss) {
+        return  ( inss.before_part == "" && inss.after_part == "");
+    }
+
     void SpitInsertions(Insertions &inss) {
         errs() << "top_of_file=[" << inss.top_of_file << "]\n";
         errs() << "before_part=[" << inss.before_part << "]\n";
@@ -622,10 +636,11 @@ public:
        i = 0; // byte # in global
        lava_1 |=  (((unsigned char *) &dua))[o] << (i*8) ;
     */
-    Insertions ComposeDuaSiphoning(Llval &llval, Bug &bug) {
+    Insertions ComposeDuaSiphoning(Llval &llval, std::set<Bug> &injectable_bugs, std::string filename) {
         Insertions inss;
-        // only insert one dua siphon
-        if (returnCode & INSERTED_DUA_SIPHON) return inss;
+        // only insert one dua siphon if single bug
+        // if > 1 bug we are living dangerously. 
+        if (bugs.size() == 1 && (returnCode & INSERTED_DUA_SIPHON)) return inss;
         returnCode |= INSERTED_DUA_SIPHON;
         std::string lval_name = llval.name;
         //        errs() << "ComposeDuaSiphoning\n";
@@ -641,139 +656,173 @@ public:
             siphon << "(" << llval.name << ")";       
         if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
             siphon << ")  {";
-
-        uint32_t i = 0;
-        std::string gn = LavaGlobal(bug.id);
-        siphon << "int " << gn << " = 0;\n";
-        uint32_t o = 0;
-        std::string lval_base;
-        if (llval.is_ptr) 
-            lval_base = llval.name;
-        else 
-            lval_base = "&(" + llval.name + ")";
-        for ( auto ptr : bug.dua.lval_taint ) {
-            // 0 means this offset of the lval is either untainted or not-viable for use by lava
-            if (ptr != 0) {
-                siphon << LavaGlobal(bug.id) 
-                   << " |= ((unsigned char *) " 
-                   << lval_base << ")[" << o << "] << (" << i << "*8);";
-                i ++;
+        for ( auto &bug : injectable_bugs) {
+            uint32_t i = 0;
+            std::string gn = LavaGlobal(bug.id);
+            siphon << "int " << gn << " = 0;\n";
+            uint32_t o = 0;
+            std::string lval_base;
+            if (llval.is_ptr) 
+                lval_base = llval.name;
+            else 
+                lval_base = "&(" + llval.name + ")";
+            for ( auto ptr : bug.dua.lval_taint ) {
+                // 0 means this offset of the lval is either untainted or not-viable for use by lava
+                if (ptr != 0) {
+                    siphon << LavaGlobal(bug.id) 
+                           << " |= ((unsigned char *) " 
+                           << lval_base << ")[" << o << "] << (" << i << "*8);";
+                    i ++;
+                }
+                // we don't need more than 4 bytes of dua
+                if (i == 4) break;
+                o ++;
             }
-            // we don't need more than 4 bytes of dua
-            if (i == 4) break;
-            o ++;
+            siphon << "lava_set(" << (std::to_string(bug.id)) << "," << gn << ");\n";
         }
-        siphon << "lava_set(" << bug.id << ", " << gn << ");\n";
         if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
             siphon << "}";       
 
         inss.after_part = siphon.str();
         // this is prototype for setter 
-        inss.top_of_file = "void lava_set(unsigned int idx, unsigned int val);\n";
+        if (lava_set_proto.count(filename) == 0) {
+            inss.top_of_file = "void lava_set(unsigned int bn, unsigned int val);\n";
+            lava_set_proto.insert(filename);
+        }
         return inss;
     }
 
     /*
-      Add code to call expr to use the global.
+      Add code to call expr corresponding to use of dua that will trigger a bug here.
+      Note that we may be injecting code that triggers more than one bug here. 
       NB: we dont actually know how to *change* code.
       so we instead just add another copy of the call with one
       of the arg perturbed by global.  :)
     */
-    Insertions ComposeAtpGlobalUse(CallExpr *call_expr, Bug &bug) {
-        errs() << "in ComposeAtpGlobalUse\n";
+    Insertions ComposeAtpDuaUse(CallExpr *call_expr, std::set<Bug> &injectable_bugs, std::string filename) {
+        //        errs() << "in ComposeAtpDuaUse\n";
         Insertions inss;        
-        // only insert one dua use
-        if (returnCode & INSERTED_DUA_USE) return inss;
+        // NB: only insert one dua use if single bug.  
+        // if > 1 bug we live dangerously and may have multiple attack points
+        if (bugs.size() == 1 && (returnCode & INSERTED_DUA_USE)) return inss;
         returnCode |= INSERTED_DUA_USE;
-        
-        //        if (bug.atp.filename != bug.dua.filename) {
-            // only needed if dua is in different file from attack point
-            inss.top_of_file = "extern unsigned int lava_get(unsigned int idx) ;\n";
-            //        }
         std::string fn_name = call_expr->getDirectCallee()->getNameInfo().getName().getAsString();
+        if (lava_get_proto.count(filename) == 0) {
+            inss.top_of_file = "extern unsigned int lava_get(unsigned int) ;\n";
+            lava_get_proto.insert(filename);
+        }
         uint32_t num_args = call_expr->getNumArgs();
         std::vector<uint32_t> attackable_args;        
         uint32_t i=0;
         // collect inds of attackable args
         for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {            
-            //            errs() << " \n";
-            if (IsArgAttackable(dyn_cast<Expr>(*it)))  {
-                //                errs() << "arg " << i << " is attackable\n\n";
+            if (IsArgAttackable(dyn_cast<Expr>(*it))) 
                 attackable_args.push_back(i);
-            }
-            else {
-                //                errs() << "arg " << i << " is NOT attackable\n\n";
-            }
             i ++;
-        }
-        //        errs() << (attackable_args.size()) << " attackable args\n";
-        //        for ( auto ind : attackable_args ) {
-        //            errs() << "arg " << ind << " is attackable\n";
-        //        }
-        uint32_t arg_to_attack = attackable_args[0];
-        /*
-        // choose arg at random to attack
-        std::default_random_engine generator;
-        std::uniform_int_distribution<int> distribution(0,attackable_args.size()-1);
-        int arg_to_attack = distribution(generator);
-        Expr *arg = call_expr->getArgs()[arg_to_attack];            
-        */
+        }                       
         std::stringstream new_call;
         new_call << fn_name << "(";
-        std::stringstream gnss;
-        gnss << "(lava_get(" << bug.id << "))";
-        std::string gn(gnss.str());
-        i=0;        
+        i = 0;        
+        uint32_t ii = 0;
+        uint32_t j = 0;
+        uint32_t num_injectable_bugs = injectable_bugs.size();
+        uint32_t num_attackable_args = attackable_args.size();
         for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {
+            errs() << "considering arg " << ii << "\n";
             Expr *arg = dyn_cast<Expr>(*it);
             // really, this cast can't fail, right?
             assert(arg); 
-            if (i == arg_to_attack) {
-                errs() << "attacking arg " << i << "\n";
-                // attack this arg.
-                // nasty heuristic.
-                // for malloc, we want the lava switch to undersize the malloc to a few bytes
-                // and hope for an overflow
-                if (fn_name.find("malloc") != std::string::npos) {
-                    new_call << "(0x6c617661 == " + gn + " || 0x6176616c == " + gn + ") ? 1 : " << (ExprStr(arg));
+            std::stringstream new_arg;            
+            std::string orig_arg = ExprStr(arg);
+            bool arg_was_attacked = false;
+            if (IsArgAttackable(arg)) {
+                errs() << "is attackable\n";
+                uint32_t j = 0;
+                bool first_attack = true;
+                Insertions arg_ins;
+                for (auto &bug : injectable_bugs) {
+                    errs() << "considering bug " << j << "\n";
+                    if ((j % num_attackable_args) == i) {
+                        errs() << "attacking arg " << ii << " with bug " << j << " -- bugid=" << bug.id << "\n";
+                        std::string gn = "(lava_get(" + (std::to_string(bug.id)) + "))";
+                        arg_was_attacked = true;
+                        // this is the magic value that will trigger the bug
+                        uint32_t magic_value = 0x6c617661;
+                        //                        if (bugs.size() > 1) {
+                            // with lots of bugs we need magic value to be distinct per bug
+                            magic_value -=  bug.id;
+                            //                        }
+                            //                        else {
+                            //                        }
+                        std::string magic_value_s = hex_str(magic_value);
+                        // byte-swapped version of magic value
+                        uint32_t magic_value_bs = __bswap_32(magic_value);                                        
+                        std::string magic_value_bs_s = hex_str(magic_value_bs);
+                        // evaluates to 1 iff dua is the magic value
+                        std::string magic_test = "(" + magic_value_s + "==" + gn + "||" + magic_value_bs_s + "==" + gn + ")";
+                        if (fn_name.find("malloc") != std::string::npos) {
+                            // nasty heuristic. for malloc, we want the lava switch 
+                            // to undersize the malloc to a few bytes and hope for
+                            // an overflow
+                            // ... oh dear how do we compose multiple attacks on malloc? 
+                            //                assert (first_attack);
+                            if (first_attack) {
+                                first_attack = false;
+                                //                                new_arg << magic_test << " ? 1 : " << orig_arg;
+                                arg_ins.before_part = magic_test + " ? 1 : "; 
+                            }
+                        }                                
+                        else {
+                            // for everything else we add lava_get() to the arg and hope to break things
+                            // also we test if its equal to magic value 
+                            // ... if arg is an lval we'll += instead
+                            std::string plus_op = "+";
+                            if (arg->isLValue()) plus_op = "+=";                        
+                            /*
+                            if (first_attack) {
+                                first_attack = false;
+                                new_arg << orig_arg; 
+                            }
+                            new_arg << plus_op << gn << "*" << magic_test;
+                            */
+                            arg_ins.after_part += plus_op + gn + "*" + magic_test;
+                        }
+                    }
+                    j ++;
                 }
-                else {
-                    // for everything else we add lava_get() to the arg an hope to break things
-                    // ... if arg is an lval we'll += instead
-                    std::string plus_op = "+";
-                    if (arg->isLValue()) plus_op = "+=";
-                    //                    errs() << "using plus_op " << plus_op << "\n";
-                    new_call << "( (" + (ExprStr(arg)) + "))" + plus_op + " " +  gn + " * (0x6c617661 == " + gn + " || 0x6176616c == " + gn + ")";
-                }
+                rewriter.InsertTextAfterToken(arg->getLocEnd(), arg_ins.after_part);
+
+
+                i ++;
             }
             else {
-                // this arg gets used in original form
-                new_call << (ExprStr(arg));
+                errs() << "is not attackable\n";
             }
-            if (i < num_args-1) {
+            if (!arg_was_attacked) {
+                // arg wasn't attacked -- it gets used in original form
+                new_arg << (ExprStr(arg));
+            }
+            new_call << new_arg.str();
+            if (ii < num_args-1) {
                 new_call << ",";
             }
-            i++;
+            ii ++;
         }
         new_call << ")";        
-        SourceRange sr = SourceRange(call_expr->getLocStart(),call_expr->getLocEnd());
-        rewriter.ReplaceText(sr, new_call.str());
+        //        SourceRange sr = SourceRange(call_expr->getLocStart(),call_expr->getLocEnd());
+        //        rewriter.ReplaceText(sr, new_call.str());
         return inss;
     }        
 
 
-    /*
-      NOTE: this is a little borked.
-      actually, there can be more than one Bug for a lvalname/filename/line.
-      only in the dua when it is in a loop.  lval will be same but it will be tainted
-      by different parts of the input
-      returns Bug 
-    */
-    bool AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint, 
-               uint32_t insertion_point, Bug *the_bug, bool is_retval ) {
-        //        errs() << "atbug : lvalname=" << lvalname << " filename=" << filename << " line=" << line << " atAttackPoint=" << atAttackPoint << " insertion_point=" << insertion_point<< " \n";
+    // is this lvalname / line / filename, etc a bug inj point?  
+    // if so, return the vector of bugs that are injectable at this point
+    std::set<Bug> AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint, 
+                        uint32_t insertion_point, bool is_retval ) {
+        //                errs() << "atbug : lvalname=" << lvalname << " filename=" << filename << " line=" << line << " atAttackPoint=" << atAttackPoint << " insertion_point=" << insertion_point<< " \n";
+        std::set<Bug> injectable_bugs;
         for ( auto bug : bugs ) { 
-            //            errs() << bug.str() << "\n";
+            //                        errs() << bug.str() << "\n";
             bool atbug = false;
             if (atAttackPoint) {
                 // this is where we'll use the dua.  only need to match the file and line
@@ -789,13 +838,20 @@ public:
                          && insertion_point == bug.dua.insertionpoint);
             }
             if (atbug) {
-                errs() << "Injecting bug @ line " << line << "\n";
-                *the_bug = bug;
-                return true;
+                //                errs() << "found injectable bug @ line " << line << "\n";
+                injectable_bugs.insert(bug);
             }
         }
-        //        errs() << "Not at bug\n";
-        return false;
+        //                errs() << "Not at bug\n";
+        /*
+        if (injectable_bugs.size() > 1) {
+            errs() << (injectable_bugs.size()) << " injectable bugs at this source loc\n";
+            for (auto bug : injectable_bugs) {
+                errs() << bug.str() << " \n";
+            }
+        }
+        */
+        return injectable_bugs;
     }
         
     /*
@@ -816,16 +872,20 @@ public:
                                 uint32_t line, uint32_t insertion_point, bool is_retval) {
         Insertions inss;
         //        errs() << "ComposeDuaNewSrc\n";
+        //        errs() << llval.name << " : " << line << " : " << filename << " : " << insertion_point << "\n";
         if (LavaAction == LavaQueries) {
             // yes, always pack this into after_part
             inss.after_part = ComposeDuaTaintQuery(llval, GetStringID(filename), 
                                                    line, insertion_point);
         }
         else if (LavaAction == LavaInjectBugs) {
-            Bug bug;
-            if (AtBug(llval.name, filename, line, /*atAttackPoint=*/false,
-                      insertion_point, &bug, is_retval)) {
-                inss = ComposeDuaSiphoning(llval, bug);
+            std::set<Bug> injectable_bugs = 
+                AtBug(llval.name, filename, line, /*atAttackPoint=*/false,
+                      insertion_point, is_retval);
+            // NOTE: if injecting multiple bugs the same dua will need to be instrumented more than once        
+            if (!injectable_bugs.empty()) {
+                errs() << "ComposeDuaNewSrc: injecting a dua siphon for " << injectable_bugs.size() << " bugs " << filename << " : " << line << " : " << llval.name << "\n"; 
+                inss = ComposeDuaSiphoning(llval, injectable_bugs, filename);
             }
         }
         else if (LavaAction == LavaInstrumentMain) {
@@ -844,18 +904,25 @@ public:
     */
     Insertions ComposeAtpNewSrc( CallExpr *call_expr, std::string filename, uint32_t line) {
         Insertions inss;
-        //        errs() << "ComposeAtpNewSrc\n";
+
+        FunctionDecl *f = call_expr->getDirectCallee();
+        std::string fn_name = f->getNameInfo().getName().getAsString();       
+
+
+        //                errs() << "ComposeAtpNewSrc\n";
         if (LavaAction == LavaQueries) {            
             inss = ComposeAtpQuery(call_expr, filename, line);
         }
         else if (LavaAction == LavaInjectBugs) {
-            Bug bug;
-            if (AtBug("", filename, line, /*atAttackPoint=*/true, /*insertion_point=*/-1, &bug, false)) {
-                                errs() << "at bug in ComposeAtpNewSrc\n";
-                // NB: No insertion -- we insert things into the call 
-                inss = ComposeAtpGlobalUse(call_expr, bug);
-            } 
-       }
+            std::set<Bug> injectable_bugs = 
+                AtBug("", filename, line, /*atAttackPoint=*/true, 
+                      /*insertion_point=*/-1, /*is_retval=*/false);
+            // NOTE: if injecting multiple bugs the same atp may need to be instrumented more than once.
+            if (!injectable_bugs.empty()) {
+                errs() << "ComposeAtpNewSrc: injecting a dua use for " << injectable_bugs.size() << " bugs " << filename << " : " << line << " : " << fn_name << "\n"; 
+                inss = ComposeAtpDuaUse(call_expr, injectable_bugs, filename);
+            }
+        }
         else if (LavaAction == LavaInstrumentMain) {
             // do nothing
         }
@@ -1009,6 +1076,7 @@ public:
             }
             // if injecting, should not have both an arg dua insertion and a retval insertion
             if (LavaAction == LavaInjectBugs) {
+                /*
                 if (any_dua_insertions) {
                     if (!EmptyInsertions(rv_inss)) {
                         errs() << "We have both dua insertions due to args and dua insertions due to rv?\n";
@@ -1020,6 +1088,7 @@ public:
                     }
                     assert (EmptyInsertions(rv_inss));
                 }
+                */
             }
             any_dua_insertions |= (!EmptyInsertions(rv_inss));
             if (any_dua_insertions) {
@@ -1037,6 +1106,8 @@ public:
         //        SpitInsertions (inssDua);
         //        errs() << "inssAtp\n";
         //        SpitInsertions (inssAtp);
+        
+
         Insertions inss = ComposeInsertions(inssDua, inssAtp);
         if (!EmptyInsertions(inss)) {
             //            printf ("non-empty insertions\n");
@@ -1054,23 +1125,6 @@ public:
         }
 
     */
-    }
-
-    bool VisitFunctionDecl(FunctionDecl *FD) {
-        //printf("FunctionDecl %s!\n", FD->getName().str().c_str());
-        if (LavaAction == LavaInstrumentMain && FD->getName() == "main"
-            && FD->doesThisDeclarationHaveABody()) {
-            // This is the file with main! insert lava_[gs]et and whatever.
-            std::string lava_funcs_path(LavaPath + "/src_clang/lava_set.c");
-            std::ifstream lava_funcs_file(lava_funcs_path);
-            std::stringbuf temp;
-            lava_funcs_file.get(temp, '\0');
-            printf("Inserting stufff from %s:\n", lava_funcs_path.c_str());
-            printf("%s", temp.str().c_str());
-            new_start_of_file_src << temp.str();
-            returnCode |= INSERTED_MAIN_STUFF;
-        }
-        return true;
     }
 
 private:
@@ -1137,6 +1191,20 @@ public:
         if (LavaAction == LavaQueries) {
             new_start_of_file_src << "#include \"pirate_mark_lava.h\"\n";
         }
+
+        // add lava_get lava_set defs if this is a file with main () in it
+        if (LavaAction == LavaInstrumentMain) {           
+            // This is the file with main! insert lava_[gs]et and whatever.
+            std::string lava_funcs_path(LavaPath + "/src_clang/lava_set.c");
+            std::ifstream lava_funcs_file(lava_funcs_path);
+            std::stringbuf temp;
+            lava_funcs_file.get(temp, '\0');
+            printf("Inserting stuff from %s:\n", lava_funcs_path.c_str());
+            printf("%s", temp.str().c_str());
+            new_start_of_file_src << temp.str();
+            returnCode |= INSERTED_MAIN_STUFF;
+        }
+
         rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
                             new_start_of_file_src.str(),
                             true, true);
@@ -1178,11 +1246,11 @@ int main(int argc, const char **argv) {
         }
     }
 
-    if (LavaAction == LavaInjectBugs) {
-        std::ifstream json_file(ProjectFile);
-        Json::Value root;
-        json_file >> root;
+    std::ifstream json_file(ProjectFile);
+    Json::Value root;
+    json_file >> root;
 
+    if (LavaAction == LavaInjectBugs) {
         std::string dbhost(root["dbhost"].asString());
         std::string dbname(root["db"].asString());
 
@@ -1192,11 +1260,44 @@ int main(int argc, const char **argv) {
 
         std::set<uint32_t> bug_ids = parse_ints(LavaBugList);
         printf ("%d bug_ids\n", bug_ids.size());
-        bugs = loadBugs(bug_ids, conn);
+        bugs = loadBugs(bug_ids, conn);        
+
+        /*
+        // determine if we have any file / src for which BOTH dua siphon and use will be injected on same line
+        std::map<std::pair<std::string, uint32_t>, uint32_t> num_dua_siphon;
+        std::map<std::pair<std::string, uint32_t>, uint32_t> num_dua_use;
+        std::set<std::pair<std::string, uint32_t>> srcloc;
+        for ( auto &bug : bugs ) {            
+            Dua dua = bug.dua;
+            AttackPoint atp = bug.atp;
+            std::pair<std::string, uint32_t> dua_siphon_srcloc = std::make_pair(dua.filename, dua.line);
+            std::pair<std::string, uint32_t> dua_use_srcloc = std::make_pair(atp.filename, atp.line);
+            srcloc.insert(dua_siphon_srcloc);
+            srcloc.insert(dua_use_srcloc);
+            if (num_dua_siphon.count(dua_siphon_srcloc) == 0) 
+                num_dua_siphon[dua_siphon_srcloc] = 1;
+            else 
+                num_dua_siphon[dua_siphon_srcloc] ++;
+            if (num_dua_use.count(dua_use_srcloc) == 0) 
+                num_dua_use[dua_use_srcloc] = 1;
+            else 
+                num_dua_use[dua_use_srcloc] ++;
+        }
+
+        for ( auto sl : srcloc ) {
+            if (num_dua_siphon.count(sl) > 0 && num_dua_use.count(sl) > 0) {
+                errs() << " BOTH dua siphon and use @ " << sl.first << " : " << sl.second << "\n";
+            }
+        }
+        */
+
         ptr_to_set = loadTaintSets(conn);
+
+        /*
         for ( auto bug : bugs ) {
             errs() << bug.str() << "\n";
         }
+        */
     } 
     errs() << "about to call Tool.run \n";
     int r = Tool.run(newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
