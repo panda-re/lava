@@ -160,12 +160,14 @@ complexity (rather than favoring flows that are "short" temporally)}
 
 \subsection{Vulnerability Discovery Tool Evaluation}
 We ran three vulnerability discovery tools on our corpora of bugs.
-We chose an open source fuzzer, a Commericial Static Analyzer (CSE), and a Symbolic Execution and SAT Solver (SES) because they represented three unique approaches to vulnerability discovery.
+We chose an open source fuzzer, two Commericial Static Analyzers (CSAs), and a Symbolic Execution and SAT Solver (SES) because they represented three unique approaches to vulnerability discovery.
 Our corpora was a collection of 69 modifications of the program \verb+file+.
 Each modification represented one of six different bug types and a randomly selected $Bug ID$.
 All the tools were run on the same system, a x64 Debian 7 server with 16 cores at 3.50 GHz and 365 gB of \uppercase{ram}.
 The tools were run to completion except in the case of the fuzzer where a wall time of 1 hour was given.
 The evaluation results are summarized in Table~\ref{table:tool-eval-results}. 
+\todo[inline]{Should probably explain here what the range bugs are.}
+
 \begin{table}[h]
 \centering
 \begin{tabular}{l|l|l|l|l|l|l} 
@@ -173,13 +175,15 @@ $Tool Type$ &                     \multicolumn{6}{|c}{$Bug Type$}               
             &                     \multicolumn{5}{|c|}{$Range Bug$}               & $KT$    \\   
             &    1       & $2^7$       & $2^{14}$     & $2^{21}$   & $2^{28}$     & 1   \\  \hline 
 $Fuzzer$    &    0       & 0           & 0            & 7\%        & 58\%         & 0         \\
-$CSA$       &    0       & 0           & 0            & 0          & 0            & 0         \\
+$CSA_1$       &    0       & 0           & 0            & 0          & 0            & 0         \\
 $SES$       &    0       & 0           & 0            & 0          & 0            & 0         \\
 \end{tabular}
-\caption{Percentage of bugs found as a function of $Bug Type$ and $Tool Type$.  The most vulnerability finding tool proved to be the open source fuzzer.  However, it was only able to find bugs that had an enormous range of possible inputs to trigger the bug.}
+\caption{Percentage of bugs found as a function of $Bug Type$ and $Tool Type$.  The most effective vulnerability finding tool proved to be the open source fuzzer.  However, it was only able to find bugs that had an enormous range of possible inputs to trigger the bug.}
 \label{table:tool-eval-results}
 \end{table}
+
+We also evalued a second commercial static analyzer, referred to in this text as $CSA_2$. Because we were only allowed a limited number of analysis runs, we opted to create a single version of \verb+who+ from the GNU coreutils that contained 60 injected, verified bugs. This was fed to $CSA_2$, generating 117 alerts; we then went through its alerts by hand to see which ones referenced our injected bugs.
+
+Of the 117 alerts, 17 referred to code we had injected into \verb+who+. We did not investigate the other 100 further; presumably these are some mix of true and false positives in the original source code to \verb+who+. The 17 that were specific to our injected bugs were examined in more detail. Fourteen were found to be essentially false positives: they referred to innocuous artifacts of the injection process. For example, to guard against introducing pointer errors, we emit code like \verb+if(p) { ... }+; however, the static analysis software took this as proof that \verb+p+ might be NULL, and then warned us that it was dereferenced elsewhere before the NULL check. After discounting such artifacts, we found that $CSA_2$ correctly identified three of our injected bugs, labeling them all as ``Out-of-bounds access''.
+
 %And something needs to go here when we get it from NEU who is doing the eval.
-
-
-
