@@ -158,7 +158,61 @@ The histogram in Figure~\ref{fig:rdf-hist} quantifies this effect for all potent
 
 
 \subsection{Vulnerability Discovery Tool Evaluation}
-We ran three vulnerability discovery tools on our corpora of bugs.
+We ran four vulnerability discovery tools on LAVA-injected bugs to investigate their use in evaluation.
+\begin{enumerate}
+\item Open-source fuzzer (referred to as FUZZER)
+\item Commercial static analyzers (referred to as CSA) % 1 and CSA2)
+\item Symbolic execution + SAT solver system (referred to as SES)
+\end{enumerate}
+The tools were selected to span the range of approaches employed by automated bug finders, constrained by availability.
+FUZZER and SESAT are both state-of-the-art, high-profile tools. 
+%CSA1 and CSA2, both closed-source, appear to use quite different approaches according to their advertising literature.
+For every tool, we expended significant effort to ensure that we were using tools correctly.
+This means carefully reading all documentation, blog posts, and email lists.
+Additionally, we constructed tiny example buggy programs and used them to verify that we were able to use each tool to find them.  
+For some tools we had to resort to reading source code in order to determine the correct command-line incantations to employ. 
+In no case did we contact tool authors or companies for guidance in tool use, as this seemed likely to bias results.
+
+Note that the names of tools under evaluation are being withheld in reporting results.
+Careful evaluation is a large and important job, and we would not want to give it short shrift, either in terms of careful setup and use of tools, or in presenting and discussing results.
+Our intent, here, is to determine if LAVA bugs \emph{can be used} to evaluate a bug finding system. 
+It is our expectation that, in future work either by ourselves or others, full and careful evaluation of real, named tools will be performed using LAVA.
+Additionally, it is our plan and hope that LAVA bugs can be made available for self-evaluation and hill climbing.
+
+
+The first corpus was created using the \verb+file+ target, the smallest of those into which we have injected bugs.
+LAVA was used to inject 69 buffer overflow bugs.
+Each bug was inserted into a different branch of the source, and came with a fuzzed version of the input that was verified to trigger either a segfault or heap corruption.  
+Two types of buffer overflows were injected each of which makes use of a single 4-byte DUA to trigger and control the overflow.
+\begin{enumerate}
+\item \emph{Knob-and-trigger}.  In this type of bug, two bytes of the DUA are to test against a magic value to determine if the overflow will happen, while the other two bytes of the DUA determine how much to overflow.   Thus, these bugs manifest if a 2-byte unsigned integer is a magic value and some other 2-byte unsigned integer determines the extent of the overflow. 
+\item \emph{Range}.  These bugs trigger if the magic value is in some range, but also use the magic value to determine how much to overflow.
+The magic value is a 4-byte unsigned integer and the range varies.
+\end{enumerate}
+The results of this evaluation are summarized in Table~\ref{table:eval1-file}
+Five different ranges were employed: $1, 128, 16384, 2097152, 268435456$. 
+Unfortunately, SES was unable to analyze \verb+file+ due to unsupported library calls.
+Thus, we only have results for FUZZER and CSA.
+We examined all of the output from both tools.  
+CSA found none of the LAVA bugs, but ran in a very short time.  
+FUZZER ran for one hour on each bug and found 7\% of those with a range of 2097152 and 58\% of those with a range size of 268435456.
+These results seem to accord with both how these LAVA bugs work and also what we know about how these two tools work.
+CSA is a code scanner which looks for dodgy patterns in source code.
+It is unlikely to be performing a deep and detailed analysis as it runs so quickly.
+FUZZER uses the program largely as a black box, randomizing individual bytes, and using coverage to guide exploration.  
+Bugs that trigger if and only if a four-byte extent in the input is set to a magic value are unlikely to be discovered in this way.
+Given time, FUZZER finds bugs that trigger for ranges of a million or more bytes. 
+For many of these LAVA bugs, when the range is so large, discovery is possible by simply fuzzing every byte in the input a few times.  
+These bugs may, in fact, be trivially discoverable with a regression suite for a program like \verb+file+ that accepts arbitrary file input.
+
+Note that having each bug on a separate branch means that, for each run of a bug finding tool, only one bug is available for discovery at a time.  
+This is one kind of evaluation, but it seems to disadvantage tools like FUZZER and SES, which appear to be designed to work for a long time (10s of hours) on a single program that includes perhaps a number of bugs. 
+To address this issue and also to allow all tools to be evaluated on a single program, we arranged to have LAVA inject more than one bug into the source code.
+We chose the \verb+who+ program from the \verb+coreutils+ suite after first determining that all four tools were capable of analyzing it.
+LAVA injected 52 bugs into \verb+who+.  
+
+
+
 We chose an open source fuzzer, two Commericial Static Analyzers (CSAs), and a Symbolic Execution and SAT Solver (SES) because they represented three unique approaches to vulnerability discovery.
 Our corpora was a collection of 69 modifications of the program \verb+file+.
 Each modification represented one of six different bug types and a randomly selected $Bug ID$.
@@ -178,7 +232,7 @@ $CSA_1$       &    0       & 0           & 0            & 0          & 0        
 $SES$       &    0       & 0           & 0            & 0          & 0            & 0         \\
 \end{tabular}
 \caption{Percentage of bugs found as a function of $Bug Type$ and $Tool Type$.  The most effective vulnerability finding tool proved to be the open source fuzzer.  However, it was only able to find bugs that had an enormous range of possible inputs to trigger the bug.}
-\label{table:tool-eval-results}
+\label{table:eval1-file}
 \end{table}
 
 We also evalued a second commercial static analyzer, referred to in this text as $CSA_2$. Because we were only allowed a limited number of analysis runs, we opted to create a single version of \verb+who+ from the GNU coreutils that contained 60 injected, verified bugs. This was fed to $CSA_2$, generating 117 alerts; we then went through its alerts by hand to see which ones referenced our injected bugs.
