@@ -34,13 +34,14 @@ basic block of emulated code.
 This LLVM version includes emulated versions of every x86 instruction that QEMU supports.
 QEMU often implements tricky processor instructions (e.g. MMX and XMM on x86) in C code.
 These are compiled to LLVM bitcode using Clang, and, thereby made available for taint analysis by PANDA.
+This process ensures that PANDA's taint analysis is \emph{complete} in the sense that it can track dataflow through all instructions.
 
 LAVA employs a simple PANDA plugin named \verb+file_taint+ that is able to apply taint labels to bytes read from files in Linux.
 The plugin, in turn, leverages operating system introspection and system call plugins in PANDA to determine the start file offset of the read as well as the number of bytes actually read.
 This allows LAVA to make use of taint information that maps internal program quantities back to file offsets.
 
 Before running a target program under PANDA, LAVA first invokes a custom Clang tool to insert taint queries into the source before and after function calls.
-Each function argument is deconstructed into constituent lvals, and, for each, Clang adds a taint query as a \emph{hypervisor call} which notifies PANDA to query the taint system about a specific source-level variable.
+Each function argument is deconstructed into its constituent lvalues, and Clang adds a taint query for each as a \emph{hypervisor call} which notifies PANDA to query the taint system about a specific source-level variable.
 The function return value also gets a taint query hypercall.
 LAVA also uses Clang to insert source hypervisor calls at potential attack points.
 

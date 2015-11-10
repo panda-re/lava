@@ -26,7 +26,7 @@ Second, we evaluated the distribution and realism of LAVA's bugs by proposing an
 
 \subsection*{Counting Bugs}
 
-Before we delve into the results, we must specify what it is we mean by an injected bug, and what makes two injected bugs distinct. Although there are many possible ways to define a bug, we choose a definition that best fits our target use case: two bugs should be considered different if an automated tool would have to reasonabout them differently. For our purposes, we define a bug as a unique pair $(DUA, attack point)$. Expanding this out, that means that the source file, line number, and variable name of the DUA, and the source file and line number of the attack point must be unique.
+Before we delve into the results, we must specify what it is we mean by an injected bug, and what makes two injected bugs distinct. Although there are many possible ways to define a bug, we choose a definition that best fits our target use case: two bugs should be considered different if an automated tool would have to reason about them differently. For our purposes, we define a bug as a unique pair $(DUA, attack point)$. Expanding this out, that means that the source file, line number, and variable name of the DUA, and the source file and line number of the attack point must be unique.
 
 Some might object that this artificially inflates the count of bugs injected into the program, for example because it would consider two bugs distinct if they differ in where the file input becomes available to the program, even if the same file input bytes are used in both cases. But in fact these should be counted as different bugs: the data and control flow leading up to the point where the DUA occurs will be very different, and vulnerability discovery tools will have to reason differently about the two cases.
 
@@ -49,15 +49,14 @@ The penultimate column in the table is \emph{Yield} which is the fraction of pot
 The last column gives the time required to test a single potential bug injection for the target.
 
 
-Exhaustive testing was not possible; for each of the target programs, we attempted to validate 2000 potential bugs. 
-Note that larger targets had larger numbers of potential bugs: \verb+tshark+ has over a million.
-Larger targets also take longer to test: almost 10 minutes for \verb+tshark+.
+Exhaustive testing was not possible for several reasons.
+Larger targets had larger numbers of potential bugs and take longer to test; for example, \verb+tshark+ has over a million bugs and took almost 10 minutes to test.
 This is because testing requires not only injecting a small amount of code to add the bug, but also recompiling and running the resulting program.
 For many targets, we found the build to be subtly broken so that a \verb+make clean+ was necessary to pick up the bug injection reliably, which further increased testing time.
+Instead, we attempted to validate 2000 potential bugs chosen uniformly at random.
 
 As the injected bug is designed to be triggered only if a particular set of four bytes in the input is set to a magic value, we tested with both the original input and with the modified one that contained the trigger. 
-We did not encounter any situation in which the original input caused an overflow.
-
+We did not encounter any situation in which the original input triggered a crash.
 
 \begin{table}[b]
 \centering
@@ -80,7 +79,7 @@ For each DUA used to inject a bug, we determined $mTCN$, the maximum TCN for any
 More informally, $mTCN$ represents how complicated a function of the input bytes a DUA is, and $mLIV$ is a measure of how much the control flow of a program is influenced by the input bytes that determine a DUA.
 Table~\ref{table:yield-breakdown} is a two-dimensional histogram with the bins for $mTCN$ intervals along the vertical axis and bins for $mLIV$ along the horizontal axis.
 The top-left cell of this table represents all bug injections for which $mTCN<10$ and $mLIV<10$, and the bottom-right cell is all those for which $mTCN>=1000$ and $mLIV>=1000$.
-Recall that, when  $mTCN=mLIV=0$, the DUA is not only a direct copy of input bytes, but also, those input bytes have not been observed to be used in deciding any program branches. 
+Recall that when  $mTCN=mLIV=0$, the DUA is not only a direct copy of input bytes, but those input bytes have also not been observed to be used in deciding any program branches. 
 As either $mTCN$ or $mLIV$ increase, yield deteriorates.  
 However, we were surprised to observe that $mLIV$ values of over 1000 still gave yield in the 10\% range.
 
@@ -114,6 +113,9 @@ The intended use of the bugs created by this system is as ground truth for devel
 Thus, it is crucial that they be realistic in some sense.  
 Realism is, however, difficult to assess.
 
+Because this work is, to our knowledge, the first to consider the problem of fully automated bug injection, we are not able to make use of any standard measures for bug realism.
+Instead, we devised our own measures, based on reasonable assumptions about properties that naturally occurring bugs exhibit.
+
 We examined three aspects of our injected bugs as measures of realism. 
 The first two are DUA and attack point position within the program trace, which are depicted in Figure~\ref{fig:dua-atp-trace}.
 That is, we determined the fraction of trace instructions executed at the point the DUA is siphoned off and at the point it is used to attack the program by corrupting an internal program value.
@@ -130,9 +132,6 @@ The quantity $I(DUA)/I(ATP)$ will be close to 1 for injected bugs that minimize 
 This would correspond to the worked example in Figure~\ref{fig:worked-example}; the DUA is still in scope when, a few lines later in the same function, it can be used to corrupt a pointer.
 No abnormal data flow is required.
 The histogram in Figure~\ref{fig:rdf-hist} quantifies this effect for all potential LAVA bugs, and it is clear that a large fraction have $I(DUA)/I(ATP) \approx 1$, and are therefore highly realistic.
-
-\todo[inline]{Should we include some reasonable measure here where we don't turn out so well? Right now the evaluation feels kind of cooked -- we invent some measures and hey, LAVA looks really good under them! So we should a) acknowledge that it's not ideal that we're inventing our own metric for success, and b) we should maybe include something that seems like it would be a nice property, but that LAVA doesn't happen to have -- one that comes to mind is some measure of data flow
-complexity (rather than favoring flows that are "short" temporally)}
 
 \begin{figure}
 \centering

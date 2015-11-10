@@ -47,10 +47,10 @@ To begin to address this, we present LAVA, a dynamic taint analysis-based system
 Every LAVA vulnerability is accompanied by an input that triggers it, and guarantees that normal inputs are extremely unlikely to do so.
 Further, every injected bug is validated, and thus every working bug comes with both a proof-of-concept input and a known manifestation point.
 These vulnerabilities are synthetic but, we argue, still realistic, in the sense that they are embedded deep within programs and are triggered by real inputs.
-Using LAVA, we have injected thousands of bugs into popular programs such as file, readelf, bash, and tshark.
-We believe LAVA can form the basis of an approach for generating extremely high quality ground truth vulnerability corpora on demand.
+Using LAVA, we have injected thousands of bugs into real-world programs such as file, readelf, bash, and tshark.
+In a preliminary evaluation with three open-source and commercial bug-finding tools, we found that current vulnerability discovery tools have ample room for improvement, detecting at best only XX\% of the injected bugs.
+Our work forms the basis of an approach for generating extremely high quality ground truth vulnerability corpora on demand that enables rigorous tool evaluation and gives tool vendors a high-quality target to aim for.
 \todo[inline]{TODO - We should put some concrete results (preferably any quantitative ones if we have them) at the end of the results section so we can support the assertion that LAVA is useful}
-
 
 \end{abstract}
 
