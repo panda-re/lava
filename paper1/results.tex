@@ -248,11 +248,11 @@ Finally, there is a copy of \verb+coreutils+ with 2136 bugs existing all at once
 \begin{tabular}{l|c|c|c|c|c} 
 \multirow{2}{*}{Tool Name} & \multirow{2}{*}{Total Bugs} & \multicolumn{4}{c}{Unique Bugs Found} \\
               &            & FUZZER       & SES     & Combined \\ \hline 
-\verb+uniq+   &    28      & 7                 & 0          & 0               \\
-\verb+base64+ &    44      & 7              & 9          & 0               \\
-\verb+md5sum+ &    57      & 2             & 0          & 0               \\
-\verb+who+    &    2136    & 0              & 18          & 0               \\
-Total         &    0       & 16                 & 27          & 0               \\
+\verb+uniq+   &    28      & 7                 & 0          & 7               \\
+\verb+base64+ &    44      & 7              & 9          & 14               \\
+\verb+md5sum+ &    57      & 2             & 0          & 2               \\
+\verb+who+    &    2136    & 0              & 18          & 18               \\
+Total         &     2265      & 16                 & 27          & 41               \\
 \end{tabular}
 \caption{Bugs found in \emph{LAVA-M} corpus by each tool type.}
 \label{table:tool-eval-results-coreutils}
