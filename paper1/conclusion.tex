@@ -1,8 +1,9 @@
-In this paper, we have introduced LAVA, a fully automated system that can inject large numbers of realistic bugs into C programs.
-LAVA has already been used to introduce over 2000 realistic buffer overflows into open-source Linux C programs of between 10,000 and 2 million lines of code.  
-The taint-based measures employed by LAVA to identify attacker-controlled data for use in creating new vulnerabilities should be usable to inject other classes of vulnerabilities than the buffer overflow we demonstrate here, and we will pursue that actively.  
-We believe LAVA will be of immense value as an on-demand source of ground truth corpora of very large size.
-The availability of these corpora should energize research and development of automated vulnerability discovery tools and techniques, as well as the evaluation thereof.
+In this paper, we have introduced LAVA, a fully automated system that can rapidly inject large numbers of realistic bugs into C programs.
+LAVA has already been used to introduce over 4000 realistic buffer overflows into open-source Linux C programs of up to 2 million lines of code.  
+We have used LAVA corpora to evaluate the detection powers of state-of-the-art bug finding tools, and are planning future investigations along these same lines.
+The taint-based measures employed by LAVA to identify attacker-controlled data for use in creating new vulnerabilities are powerful and should be usable to inject a diversity of vulnerabilities, but there are likely fundamental limits; LAVA will not be injecting logic errors into programs anytime soon.
+Nevertheless, LAVA is ready for immediate use as an on-demand source of realistic ground truth vulnerabilities, for classes of serious vulnerabilities that are still abundant in mission-critical code.
+It is our hope that LAVA can drive both development and evaluation of the host of promising tools and techniques for vulnerability discovery.
 
 
 %LAVA is fast, injecting a new buffer overflow into a program like \verb+file+ in less than 20 seconds.
