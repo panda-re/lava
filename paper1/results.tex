@@ -118,19 +118,19 @@ Instead, we devised our own measures, focusing on features such as how well dist
 We examined three aspects of our injected bugs as measures of realism. 
 The first two are DUA and attack point position within the program trace, which are depicted in Figure~\ref{fig:dua-atp-trace}.
 That is, we determined the fraction of trace instructions executed at the point the DUA is siphoned off and at the point it is used to attack the program by corrupting an internal program value.
-\todo[inline]{Ricky: what is the other "measures of realism?"  The "portion of hte trace between I(DUA) and I(ATP)? I(DUA)/I(ATP)? I(TOT)?} 
 
 Histograms for these two quantities, $I(DUA)$ and $I(ATP)$, are provided in Figures~\ref{fig:dua-hist} and~\ref{fig:atp-hist}, where counts are for all potential bugs in the LAVA database for all five open source programs. 
 DUAs and attack points are clearly available at all points during the trace, although there appear to be more at the beginning and end.
 This is important, since bugs created using these DUAs have entirely realistic control and data-flow all the way up to $I(DUA)$.
 Therefore, vulnerability discovery tools will have to reason correctly about all of the program up to $I(DUA)$ in order to correctly diagnose the bug.
 
-The portion of the trace \emph{between} the $I(DUA)$ and $I(ATP)$ is of particular interest since LAVA currently makes data flow between DUA and attack point via a pair of function calls.
+Our third metric concerns the portion of the trace \emph{between} the $I(DUA)$ and $I(ATP)$.
+This segment is of particular interest since LAVA currently makes data flow between DUA and attack point via a pair of function calls.
 Thus, it might be argued that this is an unrealistic portion of the trace in terms of data flow.
 The quantity $I(DUA)/I(ATP)$ will be close to 1 for injected bugs that minimize this source of unrealism.
 This would correspond to the worked example in Figure~\ref{fig:worked-example}; the DUA is still in scope when, a few lines later in the same function, it can be used to corrupt a pointer.
 No abnormal data flow is required.
-The histogram in Figure~\ref{fig:rdf-hist} quantifies this effect for all potential LAVA bugs, and it is clear that a large fraction have $I(DUA)/I(ATP) \approx 1$, and are therefore highly realistic.
+The histogram in Figure~\ref{fig:rdf-hist} quantifies this effect for all potential LAVA bugs, and it is clear that a large fraction have $I(DUA)/I(ATP) \approx 1$, and are therefore highly realistic by this metric.
 
 \begin{figure}
 \centering
