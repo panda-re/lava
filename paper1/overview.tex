@@ -23,14 +23,13 @@ The pointers \texttt{s} and \texttt{d}, and the buffers pointed to by them are u
 
 \subsection {The DUA}
 
-Because they ensure that attacker-controlled data is available to influence program behavior, DUAs form the raw material from which we construct bugs. To identify DUAs in program, we perform the following actions.
-
-The program is executed under a dynamic taint analysis~\cite{newsometaint} for a specific input.
+Because they ensure that attacker-controlled data is available to influence program behavior, DUAs form the raw material from which we construct bugs. 
+We identify DUAs in a program by running that program under a dynamic taint analysis~\cite{newsometaint} for a specific input.
 That taint analysis has a few important features.
 
 \begin{itemize}
 \item Each byte in the input is given its own label.
-Thus, if an internal program quantity is tainted and is a direct copy of input bytes, then we can map that quantity back to a specific part of the input.
+Thus, if an internal program quantity is tainted, then we can map that quantity back to a specific part of the input.
 \item The taint analysis is as complete and correct as possible.  
 All program code including library and kernel is subject to taint analysis.
 Multiple threads and processes are also handled correctly, so that taint flows are not lost.
@@ -69,7 +68,7 @@ Later, just before line 7 and after the loop, $TCN(c)=n+1$ because each iteratio
 The other taint-based measure LAVA introduces is \emph{Liveness}, which is associated with taint labels, i.e., the input bytes themselves.
 This is a straightforward accounting of how many branches a byte in the input has been used to decide.
 Thus, if a particular input byte label was never found in a taint label set associated with any byte used to decide a branch, it will have liveness of 0.
-A DUA entirely consisting of bytes with 0 or very low liveness can be considered \emph{dead} in the sense that it can have little influence upon control flow for this program trace.
+A DUA entirely consisting of bytes with 0 or very low liveness can be considered \emph{dead} in the sense that it has little influence upon control flow for this program trace.
 If one were to fuzz dead input bytes, the program should be indifferent and execute the same trace.  
 In the running example, $LIV(0..3)=1$ after line 3, since \verb+a+ is a direct copy of input bytes 0..3.
 After each iteration of the loop, the liveness of bytes 8..11, the loop bound, increase by one, and so after the loop $LIV(8..11)=n$.
@@ -83,7 +82,8 @@ Arguments \verb+a+ and \verb+n+ are therefore too live to be useful in injecting
 Argument \verb+b+, on the other hand, has a TCN of 0 and the bytes from which it derives, 4..7 are completely dead, 
 making it an ideal trigger to control a vulnerability. 
 
-Precisely which DUAs should be included, based on their liveness and TCN, is a configurable threshold. We explore the impact (in terms of whether the bug can be successfully injected and verified) of various thresholds in Section~\ref{sec:results:subsec:injection}.
+Precisely which DUAs should be included, based on their liveness and TCN, is a configurable threshold of LAVA.
+We explore the impact (in terms of whether the bug can be successfully injected and verified) of various thresholds in Section~\ref{sec:results:subsec:injection}.
 
 \subsection {The attack point}
 
@@ -108,5 +108,8 @@ If we replace the first argument to the call to \verb+memcpy+, \verb+d+, with \v
 Although this mechanism for ensuring that each bug is only triggered for one specific input has worked well for us so far, there are other ways we could accomplish the same task.
 For example, we could instead guard the call to the buggy code with an \verb+if+ statement, or perform a comparison with the input bytes that make up the DUA one by one.
 Although these are functionally equivalent, the exact mechanism used may make it easier for certain tools to find the bug.
-Comparing the input bytes one by one, for example, would allow coverage-maximizing fuzzers like American Fuzzy Lop (AFL) to incrementally discover the bug by guessing one byte at a time, rather than having to guess the entire 32-bit trigger at once.
+Comparing the input bytes one by one, for example, would allow coverage-maximizing fuzzers 
+%NO WE CANT NAME IT
+% like American Fuzzy Lop (AFL) 
+to incrementally discover the bug by guessing one byte at a time, rather than having to guess the entire 32-bit trigger at once.
 For a full-scale tool evaluation, it would be best to inject bugs with a variety of different trigger mechanisms; however, for our current prototype we use only the one described in this section.
