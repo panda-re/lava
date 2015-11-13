@@ -159,12 +159,13 @@ The histogram in Figure~\ref{fig:rdf-hist} quantifies this effect for all potent
 \subsection{Vulnerability Discovery Tool Evaluation}
 
 We ran two vulnerability discovery tools on LAVA-injected bugs to investigate their use in evaluation.
+
 \begin{enumerate}
 \item Coverage guided fuzzer (referred to as FUZZER)
 \item Symbolic execution + SAT solving (referred to as SES)
 \end{enumerate}
 
-These types of tools were chosen because fuzzing and symbolic execution are extremely popular techniques for finding real-world bugs.
+These two, specifically, were chosen because fuzzing and symbolic execution are extremely popular techniques for finding real-world bugs.
 FUZZER and SES are both state-of-the-art, high-profile tools. 
 For each tool, we expended significant effort to ensure that we were using them correctly.
 This means carefully reading all documentation, blog posts, and email lists.
@@ -177,36 +178,39 @@ Careful evaluation is a large and important job, and we would not want to give i
 Our intent, here, is to determine if LAVA bugs \emph{can be used} to evaluate bug finding systems. 
 It is our expectation that, in future work either by ourselves or others, full and careful evaluation of real, named tools will be performed using LAVA.
 While that work is outside the scope of this paper, we hope to indicate that it should be both possible and valuable. 
-Additionally, it is our plan and hope that LAVA bugs can be made available for self-evaluation and hill climbing.
-
+Additionally, it is our plan and hope that LAVA bugs will be made available in quantity and at regular refresh intervals, for self-evaluation and hill climbing.
 
 The first corpus we created, \emph{LAVA-1}, used the \verb+file+ target, the smallest of those programs into which we have injected bugs.
-This corpus consists of sixty-nine buffer overflow bugs injected into the source, each on a different branch in a \verb+git+ repository with a fuzzed version of the input verified to trigger a crash checked in along with the code.
+This corpus consists of sixty-nine buffer overflow bugs injected into the source with LAVA, each on a different branch in a \verb+git+ repository with a fuzzed version of the input verified to trigger a crash checked in along with the code.
 Two types of buffer overflows were injected, each of which makes use of a single 4-byte DUA to trigger and control the overflow.
 
 \begin{enumerate}
-    \item \textbf{Knob-and-trigger}. In this type of bug, two bytes of the DUA (the \emph{trigger}) are used to test against a magic value to determine if the overflow will happen, while the other two bytes of the DUA (the \emph{knob}) determine how much to overflow. Thus, these bugs manifest if a 2-byte unsigned integer in the input is a particular value but only if another 2-bytes in the input are big enough to cause trouble. 
-    \item \textbf{Range}. These bugs trigger if the magic value is simply in some range, but also use the magic value to determine how much to overflow.
+    \item \textbf{Knob-and-trigger}. 
+In this type of bug, two bytes of the DUA (the \emph{trigger}) are used to test against a magic value to determine if the overflow will happen.
+The other two bytes of the DUA (the \emph{knob}) determine how much to overflow. 
+Thus, these bugs manifest if a 2-byte unsigned integer in the input is a particular value but only if another 2-bytes in the input are big enough to cause trouble. 
+    \item \textbf{Range}. 
+These bugs trigger if the magic value is simply in some range, but also use the magic value to determine how much to overflow.
 The magic value is a 4-byte unsigned integer and the range varies.  
 \end{enumerate}
 
 These bug types were designed to mirror real bugs patterns.  
-For knob-and-trigger bugs, two different parts of the input are used in different ways to determine the manifestation of the bug.  
-For range bugs, rather than triggering on a single value out of $2^{32}$, the size of the haystack varies.
-Note that a range of $2^0$ is equivalent to bug presented in Figure~\ref{src:dua-use}.
+In knob-and-trigger bugs, two different parts of the input are used in different ways to determine the manifestation of the bug.  
+In range bugs, rather than triggering on a single value out of $2^{32}$, the size of the haystack varies.
+Note that a range of $2^0$ is equivalent to the bug presented in Figure~\ref{src:dua-use}.
 
 \begin{table}[h]
 \centering
 \begin{tabular}{l|l|l|l|l|l|l} 
-$Tool Type$ &                     \multicolumn{6}{|c}{$Bug Type$}                           \\  \hline  
-            &                     \multicolumn{5}{|c|}{$Range Bug$}               & $KT$    \\   
-            &    1       & $2^7$       & $2^{14}$     & $2^{21}$   & $2^{28}$     & 1   \\  \hline 
-$Fuzzer$    &    0       & 0           & 0            & 7\%        & 58\%         & 0         \\
-%$CSA_1$    &    0       & 0           & 0            & 0          & 0            & 0         \\
-$SES$       &    0       & 0           & 0            & 0          & 0            & 0         \\
+$Tool$   &                     \multicolumn{6}{|c}{$Bug Type$}                           \\  \hline  
+         &                     \multicolumn{5}{|c|}{$Range$}                   &     \\   
+         &    1       & $2^7$       & $2^{14}$     & $2^{21}$   & $2^{28}$     & $KT$   \\  \hline 
+$Fuzzer$ &    0       & 0           & 0            & 7\%        & 58\%         & 0         \\
+%$CSA_1$ &    0       & 0           & 0            & 0          & 0            & 0         \\
+$SES$    &    0       & 0           & 0            & 0          & 0            & 0         \\
 \end{tabular}
-\caption{Percentage of bugs found in \emph{LAVA-1} corpus as a function of $Bug Type$ and $Tool Type$.  
-The most effective vulnerability finding tool proved to be Fuzzer.  
+\caption{Percentage of bugs found in \emph{LAVA-1} corpus. % as a function of $Bug Type$ and $Tool Type$.  
+The most effective vulnerability finding tool proved to be FUZZER.  
 However, it was only able to find bugs that allowed an enormous range of possible inputs to trigger the bug.}
 \label{table:eval1-file}
 \end{table}
