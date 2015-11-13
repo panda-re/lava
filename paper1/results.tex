@@ -180,7 +180,7 @@ While that work is outside the scope of this paper, we hope to indicate that it 
 Additionally, it is our plan and hope that LAVA bugs can be made available for self-evaluation and hill climbing.
 
 
-The first corpus we created, \emph{LAVA1}, used the \verb+file+ target, the smallest of those programs into which we have injected bugs.
+The first corpus we created, \emph{LAVA-1}, used the \verb+file+ target, the smallest of those programs into which we have injected bugs.
 This corpus consists of sixty-nine buffer overflow bugs injected into the source, each on a different branch in a \verb+git+ repository with a fuzzed version of the input verified to trigger a crash checked in along with the code.
 Two types of buffer overflows were injected, each of which makes use of a single 4-byte DUA to trigger and control the overflow.
 
@@ -205,7 +205,7 @@ $Fuzzer$    &    0       & 0           & 0            & 7\%        & 58\%       
 %$CSA_1$    &    0       & 0           & 0            & 0          & 0            & 0         \\
 $SES$       &    0       & 0           & 0            & 0          & 0            & 0         \\
 \end{tabular}
-\caption{Percentage of bugs found in \emph{LAVA1} corpus as a function of $Bug Type$ and $Tool Type$.  
+\caption{Percentage of bugs found in \emph{LAVA-1} corpus as a function of $Bug Type$ and $Tool Type$.  
 The most effective vulnerability finding tool proved to be Fuzzer.  
 However, it was only able to find bugs that allowed an enormous range of possible inputs to trigger the bug.}
 \label{table:eval1-file}
@@ -217,7 +217,7 @@ We examined all output from both tools.
 FUZZER ran for one hour on each bug and found 7\% of those with a range of $2^{21}$ and 58\% of those with a range size of $2^{28}$.
 SES ran for five hours on each bug, and found \todo{KLEE results}.
 
-The results for the \emph{LAVA1} corpus seem to accord well with how these tools work.
+The results for the \emph{LAVA-1} corpus seem to accord well with how these tools work.
 FUZZER uses the program largely as a black box, randomizing individual bytes, and guiding exploration with coverage measurements.
 Bugs that trigger if and only if a four-byte extent in the input is set to a magic value are unlikely to be discovered in this way.
 Given time, FUZZER finds bugs that trigger for ranges of a million or more bytes. 
@@ -227,13 +227,13 @@ These bugs may, in fact, be trivially discoverable with a regression suite for a
 Note that having each bug in a separate copy of the program means that for each run of a bug finding tool, only one bug is available for discovery at a time.  
 This is one kind of evaluation, but it seems to disadvantage tools like FUZZER and SES, which appear to be designed to work for a long time (10s of hours) on a single program that may contain multiple bugs. 
 
-Thus, we created a second corpus, \emph{LAVA2}, in which we injected more than one bug at a time into the source code.
+Thus, we created a second corpus, \emph{LAVA-M}, in which we injected more than one bug at a time into the source code.
 We chose four programs from the \verb+coreutils+ suite that took file input: \verb+base64+, \verb+md5sum+, \verb+uniq+, and \verb+who+.
 Into each, we injected as many verified bugs as possible.
 Because the \verb+coreutils+ programs are quite small, and because we only used a single input file for each to perform the taint analysis, the total number of bugs injected into each program was generally quite small.
 The one exception to this pattern was the \verb+who+ program, which parses a binary file with many dead or even unused fields, and therefore had many DUAs available for bug injection.
 We were not able to inject multiple bugs of the two types described above (knob-and-trigger and range), as interactions became a problem, and so all bugs were of the type in Figure~\ref{src:dua-use}, which trigger for only a single setting of four input bytes.  
-The \emph{LAVA2} corpus, therefore, is four copies of the source code for \verb+coreutils+ version 8.24.
+The \emph{LAVA-M} corpus, therefore, is four copies of the source code for \verb+coreutils+ version 8.24.
 One copy has 44 bugs injected into \verb+base64+, and comes with 44 inputs known to trigger those bugs individually.
 Another copy has 57 bugs in \verb+md5sum+, another has 28 bugs in \verb+uniq+.
 Finally, there is a copy of \verb+coreutils+ with 2136 bugs existing all at once and individually expressible, in \verb+who+.
@@ -254,7 +254,7 @@ Total         &    0       & 16          & 0            & 0          & 0        
 \label{table:tool-eval-results-coreutils}
 \end{table}
 
-To do: fix up Table~\ref{table:tool-eval-results-coreutils} and write paragraph(s) describing results for \emph{LAVA2} corpus.
+To do: fix up Table~\ref{table:tool-eval-results-coreutils} and write paragraph(s) describing results for \emph{LAVA-M} corpus.
 
 %We also evalued a second commercial static analyzer, referred to in this text as $CSA_2$. Because we were only allowed a limited number of analysis runs, we opted to create a single version of \verb+who+ from the GNU coreutils that contained 60 injected, verified bugs. This was fed to $CSA_2$, generating 117 alerts; we then went through its alerts by hand to see which ones referenced our injected bugs.
 
