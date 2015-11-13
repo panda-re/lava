@@ -1,7 +1,7 @@
 \label{section:results}
 
-\begin{table*}[t!]
-\centering
+\begin{figure*}[t!]
+\centering\footnotesize
 \begin{tabular}{c|c|c|c|c|c|c|c|c|c|c}
         &         & Num       & Lines     &        &        & Potential & Validated  &         & Inj Time \\
 Name    & Version & Src Files & C code    & N(DUA) & N(ATP) & Bugs      & Bugs       & Yield   & (sec)  \\\hline
@@ -15,7 +15,7 @@ tshark  & 1.8.2   & 1272      & 2186252   & 9853   & 1037   & 1240777   & 354   
 For each, a single input file was used to perform a taint analysis with PANDA.
 Various program and dynamic trace statistics are reported as well as DUA, attack point (ATP), and yield (fraction of injected bugs that result in a segmentation violation).}
 \label{table:insertion-results}
-\end{table*}
+\end{figure*}
 
 We evaluated LAVA in three ways.
 First, we injected large numbers of bugs into four open source programs: file, readelf (from binutils), bash, and tshark (the command-line verison of the packet capture and analysis tool Wireshark).
@@ -58,7 +58,7 @@ As the injected bug is designed to be triggered only if a particular set of four
 We did not encounter any situation in which the original input triggered a crash.
 
 \begin{figure}[b]
-\centering
+\centering\footnotesize
 \begin{tabular}{l|l|l|l|l} 
        & \multicolumn{3}{c}{$mLIV$} &  \\  
 $mTCN$ &         $[0,10)$ & $[10,100)$ & $[100,1000)$ & $[1000,+\inf]$ \\  \hline 
@@ -200,7 +200,7 @@ In range bugs, rather than triggering on a single value out of $2^{32}$, the siz
 Note that a range of $2^0$ is equivalent to the bug presented in Figure~\ref{src:dua-use}.
 
 \begin{figure}[h]
-\centering
+\centering\footnotesize
 \begin{tabular}{l|l|l|l|l|l|l} 
 Tool   &                     \multicolumn{6}{|c}{Bug Type}                           \\  \hline  
          &                     \multicolumn{5}{|c|}{Range}                   &     \\   
@@ -210,7 +210,7 @@ FUZZER &    0       & 0           & 0            & 7\%        & 58\%         & 0
 SES    &    8\%     & 0           & 9\%          & 21\%       & 0            & 10\%         \\
 \end{tabular}
 \caption{Percentage of bugs found in \emph{LAVA-1} corpus. % as a function of $Bug Type$ and $Tool Type$.  
-The most effective vulnerability finding tool proved to be FUZZER.  
+FUZZER proved to be an effective vulnerability finding tool.
 However, it was only able to find bugs that allowed an enormous range of possible inputs to trigger the bug.}
 \label{table:eval1-file}
 \end{figure}
@@ -246,7 +246,7 @@ Finally, there is a copy of \verb+coreutils+ with 2136 bugs existing all at once
 
 
 \begin{figure}[h]
-\centering
+\centering\footnotesize
 \begin{tabular}{l|c|c|c|c} 
 \multirow{2}{*}{Tool Name} & \multirow{2}{*}{Total Bugs} & \multicolumn{3}{c}{Unique Bugs Found} \\
               &            & FUZZER       & SES        & Combined \\ \hline 
