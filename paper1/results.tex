@@ -272,9 +272,11 @@ The tool finds 9 bugs in \verb+base64+ out of 44 inserted; these include both de
 
 SES's results are a little more complicated for \verb+who+.
 All of the bugs it finds for \verb+who+ use one of two DUAs, and all of them occur very early in the trace.
-One artifiact of our method for injecting multiple bugs simultaneously is that multiple bugs share the same attack point.
+One artifact of our method for injecting multiple bugs simultaneously is that multiple bugs share the same attack point.
 It is debatable how realistically this aspect represents real bugs.
 In practice, it means that SES can only find one bug per attack point, as finding an additional bug at the same ATP does not necessarily require covering new code.
+LAVA could certainly be changed to have each bug involve new code coverage.
+SES could also be improved to find all the bugs at each attack point, which means generating multiple satisfying inputs for the same set of conditions.
 
 FUZZER found bugs in all utilities except \verb+who+~\footnote{In fact, we allowed FUZZER to continue running after 5 hours had passed; it managed to find a bug in \texttt{who} in the sixth hour.}.
 Unlike SES, the bugs were fairly uniformly distributed throughout the program, as they depend only on guessing the correct 4-byte trigger at the right position in the input file.
@@ -286,10 +288,6 @@ Indeed, tool anomalies of this sort are exactly the sort of thing one would hope
 We note that the bugs found by FUZZER and SES have very little overlap (only 2 bugs where found by both utility).
 This is a very promising result for LAVA, as it indicates that the kinds of bugs created by LAVA are not tailored to a particular bug finding strategy.
 
-To do: fix up Table~\ref{table:tool-eval-results-coreutils} and write paragraph(s) describing results for \emph{LAVA-M} corpus.
-
 %We also evalued a second commercial static analyzer, referred to in this text as $CSA_2$. Because we were only allowed a limited number of analysis runs, we opted to create a single version of \verb+who+ from the GNU coreutils that contained 60 injected, verified bugs. This was fed to $CSA_2$, generating 117 alerts; we then went through its alerts by hand to see which ones referenced our injected bugs.
 
 %Of the 117 alerts, 17 referred to code we had injected into \verb+who+. We did not investigate the other 100 further; presumably these are some mix of true and false positives in the original source code to \verb+who+. The 17 that were specific to our injected bugs were examined in more detail. Fourteen were found to be essentially false positives: they referred to innocuous artifacts of the injection process. For example, to guard against introducing pointer errors, we emit code like \verb+if(p) { ... }+; however, the static analysis software took this as proof that \verb+p+ might be NULL, and then warned us that it was dereferenced elsewhere before the NULL check. After discounting such artifacts, we found that $CSA_2$ correctly identified three of our injected bugs, labeling them all as ``Out-of-bounds access''.
-
-\subsection*{Discussion}
