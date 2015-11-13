@@ -4,7 +4,7 @@
 %- Limited class of bugs (pointer corruptions)
 % bug injection artifacts due to no actual static analysis
 
-A significant chunk of future work for LAVA involves making the generated corpora look more like more of the bugs that are found in real programs. 
+A significant chunk of future work for LAVA involves making the generated corpora look more like the bugs that are found in real programs. 
 LAVA currently injects only buffer overflows into programs.
 But our taint-based analysis overcomes the crucial first hurdle to injecting any kind of bug: making sure that attacker-controlled data can be used in the bug's potential exploitation. 
 As a result, other classes of bugs, such as temporal safety bugs (use-after-free) and meta-character bugs (e.g. format string) should also be injectable using our approach. 
