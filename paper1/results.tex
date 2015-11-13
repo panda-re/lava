@@ -57,7 +57,7 @@ Instead, we attempted to validate 2000 potential bugs chosen uniformly at random
 As the injected bug is designed to be triggered only if a particular set of four bytes in the input is set to a magic value, we tested with both the original input and with the modified one that contained the trigger. 
 We did not encounter any situation in which the original input triggered a crash.
 
-\begin{table}[b]
+\begin{figure}[b]
 \centering
 \begin{tabular}{l|l|l|l|l} 
        & \multicolumn{3}{c}{$mLIV$} &  \\  
@@ -70,7 +70,7 @@ $[100,+\inf]$ &  --       & --         & --           & 0     \\
 Yield is highest for DUAs with low values for both of these measures, i.e., that are both a relatively uncomplicated function of input bytes and also that derive from input bytes involved in deciding fewer branches.
 Cells for which there were no samples are indicated with the contents '--'.}
 \label{table:yield-breakdown}
-\end{table}
+\end{figure}
 
 Yield varies considerably from less than 10\% to over 50\%.
 To understand this better, we investigated the relationship between our two taint-based measures and yield.
@@ -199,21 +199,21 @@ In knob-and-trigger bugs, two different parts of the input are used in different
 In range bugs, rather than triggering on a single value out of $2^{32}$, the size of the haystack varies.
 Note that a range of $2^0$ is equivalent to the bug presented in Figure~\ref{src:dua-use}.
 
-\begin{table}[h]
+\begin{figure}[h]
 \centering
 \begin{tabular}{l|l|l|l|l|l|l} 
-$Tool$   &                     \multicolumn{6}{|c}{$Bug Type$}                           \\  \hline  
-         &                     \multicolumn{5}{|c|}{$Range$}                   &     \\   
-         &    $2^0$   & $2^7$       & $2^{14}$     & $2^{21}$   & $2^{28}$     & $KT$   \\  \hline 
-$Fuzzer$ &    0       & 0           & 0            & 7\%        & 58\%         & 0         \\
+Tool   &                     \multicolumn{6}{|c}{Bug Type}                           \\  \hline  
+         &                     \multicolumn{5}{|c|}{Range}                   &     \\   
+         &    $2^0$   & $2^7$       & $2^{14}$     & $2^{21}$   & $2^{28}$     & KT   \\  \hline 
+FUZZER &    0       & 0           & 0            & 7\%        & 58\%         & 0         \\
 %$CSA_1$ &    0       & 0           & 0            & 0          & 0            & 0         \\
-$SES$    &    8\%     & 0           & 9\%          & 21\%       & 0            & 10\%         \\
+SES    &    8\%     & 0           & 9\%          & 21\%       & 0            & 10\%         \\
 \end{tabular}
 \caption{Percentage of bugs found in \emph{LAVA-1} corpus. % as a function of $Bug Type$ and $Tool Type$.  
 The most effective vulnerability finding tool proved to be FUZZER.  
 However, it was only able to find bugs that allowed an enormous range of possible inputs to trigger the bug.}
 \label{table:eval1-file}
-\end{table}
+\end{figure}
 
 The results of this evaluation are summarized in Table~\ref{table:eval1-file}.
 Five different ranges were employed: $2^0, 2^7, 2^{16}, 2^{21}, 2^{28}$. 
@@ -245,10 +245,10 @@ Another copy has 57 bugs in \verb+md5sum+, another has 28 bugs in \verb+uniq+.
 Finally, there is a copy of \verb+coreutils+ with 2136 bugs existing all at once and individually expressible, in \verb+who+.
 
 
-\begin{table}[h]
+\begin{figure}[h]
 \centering
-\begin{tabular}{l|c|c|c|c|c} 
-\multirow{2}{*}{Tool Name} & \multirow{2}{*}{Total Bugs} & \multicolumn{4}{c}{Unique Bugs Found} \\
+\begin{tabular}{l|c|c|c|c} 
+\multirow{2}{*}{Tool Name} & \multirow{2}{*}{Total Bugs} & \multicolumn{3}{c}{Unique Bugs Found} \\
               &            & FUZZER       & SES        & Combined \\ \hline 
 \verb+uniq+   &    28      & 7            & 0          & 7               \\
 \verb+base64+ &    44      & 7            & 9          & 14               \\
@@ -258,7 +258,7 @@ Total         &    2265    & 16           & 27         & 41               \\
 \end{tabular}
 \caption{Bugs found in \emph{LAVA-M} corpus by each tool type.}
 \label{table:tool-eval-results-coreutils}
-\end{table}
+\end{figure}
 
 We ran FUZZER and SES against each program in \emph{LAVA-M}, with 5 hours of runtime for each program on machines with essentially unlimited RAM.
 \verb+md5sum+ ran with the \verb+-c+ argument, as if it were checking digests in a symbolic file.
