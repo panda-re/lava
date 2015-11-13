@@ -204,7 +204,7 @@ Note that a range of $2^0$ is equivalent to the bug presented in Figure~\ref{src
 \begin{tabular}{l|l|l|l|l|l|l} 
 $Tool$   &                     \multicolumn{6}{|c}{$Bug Type$}                           \\  \hline  
          &                     \multicolumn{5}{|c|}{$Range$}                   &     \\   
-         &    1       & $2^7$       & $2^{14}$     & $2^{21}$   & $2^{28}$     & $KT$   \\  \hline 
+         &    $2^0$   & $2^7$       & $2^{14}$     & $2^{21}$   & $2^{28}$     & $KT$   \\  \hline 
 $Fuzzer$ &    0       & 0           & 0            & 7\%        & 58\%         & 0         \\
 %$CSA_1$ &    0       & 0           & 0            & 0          & 0            & 0         \\
 $SES$    &    8\%     & 0           & 9\%          & 21\%       & 0            & 10\%         \\
@@ -219,14 +219,16 @@ The results of this evaluation are summarized in Table~\ref{table:eval1-file}.
 Five different ranges were employed: $2^0, 2^7, 2^{16}, 2^{21}, 2^{28}$. 
 We examined all output from both tools.
 FUZZER ran for one hour on each bug and found 7\% of those with a range of $2^{21}$ and 58\% of those with a range size of $2^{28}$.
-SES ran for five hours on each bug, and found \todo{KLEE results}.
+SES ran for five hours on each bug, and found several bugs in all categories except the $2^7$ and $2^{28}$ ranges.
 
 The results for the \emph{LAVA-1} corpus seem to accord well with how these tools work.
 FUZZER uses the program largely as a black box, randomizing individual bytes, and guiding exploration with coverage measurements.
 Bugs that trigger if and only if a four-byte extent in the input is set to a magic value are unlikely to be discovered in this way.
 Given time, FUZZER finds bugs that trigger for ranges of a million or more bytes. 
 Note that for many of these LAVA bugs, when the range is so large, discovery is possible by simply fuzzing every byte in the input a few times.  
-These bugs may, in fact, be trivially discoverable with a regression suite for a program like \verb+file+ that accepts arbitrary file input\footnote{In principle, anyway. In practice file's test suite consists of just 3 tests, none of which trigger our injected bugs.}.
+These bugs may, in fact, be trivially discoverable with a regression suite for a program like \verb+file+ that accepts arbitrary file input\footnote{In principle, anyway. In practice \texttt{file}'s test suite consists of just 3 tests, none of which trigger our injected bugs.}.
+By contrast, SES is able to find both knob-and-trigger bugs and different ranges, and the size of the range does not affect the number of bugs found.
+This is because it is no more difficult for a SAT solver to find a satisfying input for a large range or a small range; rather, the number of bugs found is limited by how deep into the program the symbolic execution can go.
 
 Note that having each bug in a separate copy of the program means that for each run of a bug finding tool, only one bug is available for discovery at a time.  
 This is one kind of evaluation, but it seems to disadvantage tools like FUZZER and SES, which appear to be designed to work for a long time (10s of hours) on a single program that may contain multiple bugs. 
@@ -247,12 +249,12 @@ Finally, there is a copy of \verb+coreutils+ with 2136 bugs existing all at once
 \centering
 \begin{tabular}{l|c|c|c|c|c} 
 \multirow{2}{*}{Tool Name} & \multirow{2}{*}{Total Bugs} & \multicolumn{4}{c}{Unique Bugs Found} \\
-              &            & FUZZER       & SES     & Combined \\ \hline 
-\verb+uniq+   &    28      & 7                 & 0          & 7               \\
-\verb+base64+ &    44      & 7              & 9          & 14               \\
-\verb+md5sum+ &    57      & 2             & 0          & 2               \\
-\verb+who+    &    2136    & 0              & 18          & 18               \\
-Total         &     2265      & 16                 & 27          & 41               \\
+              &            & FUZZER       & SES        & Combined \\ \hline 
+\verb+uniq+   &    28      & 7            & 0          & 7               \\
+\verb+base64+ &    44      & 7            & 9          & 14               \\
+\verb+md5sum+ &    57      & 2            & 0          & 2               \\
+\verb+who+    &    2136    & 0            & 18         & 18               \\
+Total         &    2265    & 16           & 27         & 41               \\
 \end{tabular}
 \caption{Bugs found in \emph{LAVA-M} corpus by each tool type.}
 \label{table:tool-eval-results-coreutils}
@@ -261,16 +263,28 @@ Total         &     2265      & 16                 & 27          & 41           
 We ran FUZZER and SES against each program in \emph{LAVA-M}, with 5 hours of runtime for each program on machines with essentially unlimited RAM.
 \verb+md5sum+ ran with the \verb+-c+ argument, as if it were checking digests in a symbolic file.
 \verb+base64+ ran with the \verb+-d+ argument, to decode base 64.
+
 SES found no bugs in \verb+uniq+ or \verb+md5sum+.
 In \verb+uniq+, we believe this is because the control flow is too unconstrained.
 In \verb+md5sum+, SES failed to execute any code past the first instance of the hash function.
 \verb+base64+ and \verb+who+ both turn out more successful for SES.
 The tool finds 9 bugs in \verb+base64+ out of 44 inserted; these include both deep and shallow bugs, as base64 is such a simple program to analyze.
-SES' results are a little more complicated for \verb+who+.
+
+SES's results are a little more complicated for \verb+who+.
 All of the bugs it finds for \verb+who+ use one of two DUAs, and all of them occur very early in the trace.
 One artifiact of our method for injecting multiple bugs simultaneously is that multiple bugs share the same attack point.
 It is debatable how realistically this aspect represents real bugs.
 In practice, it means that SES can only find one bug per attack point, as finding an additional bug at the same ATP does not necessarily require covering new code.
+
+FUZZER found bugs in all utilities except \verb+who+~\footnote{In fact, we allowed FUZZER to continue running after 5 hours had passed; it managed to find a bug in \texttt{who} in the sixth hour.}.
+Unlike SES, the bugs were fairly uniformly distributed throughout the program, as they depend only on guessing the correct 4-byte trigger at the right position in the input file.
+
+FUZZER's failure to find bugs in \verb+who+ is surprising.
+We speculate that the size of the seed file (the first 768 bytes of a \verb+utmp+ file) used for the fuzzer may have been too large to effectively explore through random mutation, but more investigation is necessary to pin down the true cause.
+Indeed, tool anomalies of this sort are exactly the sort of thing one would hope to find with LAVA, as they represent areas where tools might make easy gains.
+
+We note that the bugs found by FUZZER and SES have very little overlap (only 2 bugs where found by both utility).
+This is a very promising result for LAVA, as it indicates that the kinds of bugs created by LAVA are not tailored to a particular bug finding strategy.
 
 To do: fix up Table~\ref{table:tool-eval-results-coreutils} and write paragraph(s) describing results for \emph{LAVA-M} corpus.
 
