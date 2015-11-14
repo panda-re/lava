@@ -3,7 +3,7 @@
 \begin{table*}[t]
 \caption{LAVA Injection results for open source programs of various sizes}
 \centering\footnotesize
-\begin{tabular}{c|c|c|c|c|c|c|c|c|c|c}
+\begin{tabular}{c|c|c|c|c|c|c|c|c|c}
         &         & Num       & Lines     &        &        & Potential & Validated  &         & Inj Time \\
 Name    & Version & Src Files & C code    & N(DUA) & N(ATP) & Bugs      & Bugs       & Yield   & (sec)  \\\hline
 file    & 5.22    & 19        & 10809     & 631    & 114    & 17518     & 774        & 38.7\%  & 16         \\  %    files verified.  sloc recomputed
@@ -45,16 +45,16 @@ The input to \verb+bash+ was a 124-line shell script written by the authors.
 $N(DUA)$ and $N(ATP)$ are the number of DUAs and attack points collected by the \verb+FIB+ analysis.
 Note that, in order for a DUA or attack point to be counted, it must have been deemed viable for some bug, as described in Section~\ref{sec:mining}.
 The columns \emph{Potential Bugs} and \emph{Validated Bugs} in Table~\ref{table:insertion-results} give the numbers of both potential bugs found by \verb+FIB+, but also those verified to actually return exitcodes indicating a buffer overflow (-11 for segfault or -6 for heap corruption) when run against the modified input.
-The penultimate column in the table is \emph{Yield} which is the fraction of potential bugs what were tested and determined to be actual buffer overflows.
+The penultimate column in the table is \emph{Yield}, which is the fraction of potential bugs what were tested and determined to be actual buffer overflows.
 The last column gives the time required to test a single potential bug injection for the target.
 
 
 Exhaustive testing was not possible for a number of reasons.
-Larger targets had larger numbers of potential bugs and take longer to test; for example, \verb+tshark+ has over a million bugs and took almost 10 minutes to test.
+Larger targets had larger numbers of potential bugs and take longer to test; for example, \verb+tshark+ has over a million bugs and each bug took almost 10 minutes to test.
 This is because testing requires not only injecting a small amount of code to add the bug, but also recompiling and running the resulting program.
 For many targets, we found the build to be subtly broken so that a \verb+make clean+ was necessary to pick up the bug injection reliably, which further increased testing time.
 Instead, we attempted to validate 2000 potential bugs chosen uniformly at random for each target.
-Thus, when we report, in Table~\ref{table:insertion-results} that for \verb+tshark+, the yield is 17.7\%, this is because 306 out of 2000 bugs were found to be valid.
+Thus, when we report in Table~\ref{table:insertion-results} that for \verb+tshark+ the yield is 17.7\%, this is because 306 out of 2000 bugs were found to be valid.
 
 As the injected bug is designed to be triggered only if a particular set of four bytes in the input is set to a magic value, we tested with both the original input and with the modified one that contained the trigger. 
 We did not encounter any situation in which the original input triggered a crash.
@@ -78,7 +78,8 @@ Yield varies considerably from less than 10\% to over 50\%.
 To understand this better, we investigated the relationship between our two taint-based measures and yield.
 For each DUA used to inject a bug, we determined $mTCN$, the maximum TCN for any of its bytes and $mLIV$, the maximum liveness for any label in any taint label set associated with one of its bytes.  
 More informally, $mTCN$ represents how complicated a function of the input bytes a DUA is, and $mLIV$ is a measure of how much the control flow of a program is influenced by the input bytes that determine a DUA.
-Table~\ref{table:yield-breakdown} is a two-dimensional histogram with the bins for $mTCN$ intervals along the vertical axis and bins for $mLIV$ along the horizontal axis.
+
+Table~\ref{table:yield-breakdown} shows a two-dimensional histogram with bins for $mTCN$ intervals along the vertical axis and bins for $mLIV$ along the horizontal axis.
 The top-left cell of this table represents all bug injections for which $mTCN<10$ and $mLIV<10$, and the bottom-right cell is all those for which $mTCN>=1000$ and $mLIV>=1000$.
 Recall that when  $mTCN=mLIV=0$, the DUA is not only a direct copy of input bytes, but those input bytes have also not been observed to be used in deciding any program branches. 
 As either $mTCN$ or $mLIV$ increase, yield deteriorates.  
@@ -89,12 +90,15 @@ However, we were surprised to observe that $mLIV$ values of over 1000 still gave
 It would appear that LAVA can inject a very large number of bugs into a program.
 If we extrapolate from yield numbers in Table~\ref{table:insertion-results}, we estimate there would be almost 400,000 real bugs if all were tested.
 But how well distributed is this set of bugs? 
+
 For programs like \verb+file+ and \verb+bash+, between 11 and 44 source files  are involved in a potential bug.
 In this case, the bugs appear to be fairly well distributed, as those numbers represent 58\% and 31\% of the total for each, respectively.
 On the other hand, \verb+readelf+ and \verb+tshark+ fare worse, with only 2 and 122 source files found to involve a potential bug for each (16.7\% and 9.6\% of source files).
-For \verb+tshark+, much of the code for which is devoted to parsing esoteric network protocols, coverage is probably the issue since we use only a single input.
-Similiary, we only use a single hand-written script with \verb+bash+, with little attempt to cover a majority of language features.
-We are unsure why so few of the source files in \verb+readelf+ involve a potential bug.
+
+The underlying cause for the low numbers of files in which bugs appear seems to be poor dynamic coverage.
+For \verb+tshark+, much of the code is devoted to parsing esoteric network protocols, and we used only a single input file.
+Similarly, we only used a single hand-written script with \verb+bash+, and made little attempt to cover a majority of language features.
+Finally, we ran \verb+readelf+ with a single command line flag (\verb+-a+); this means that functionality such as DWARF symbol parsing was not exercised.
  
 
 \subsection{Bug Realism}
@@ -170,15 +174,13 @@ FUZZER and SES are both state-of-the-art, high-profile tools.
 For each tool, we expended significant effort to ensure that we were using them correctly.
 This means carefully reading all documentation, blog posts, and email lists.
 Additionally, we constructed tiny example buggy programs and used them to verify that we were able to use each tool at least to find known easy bugs.  
-For some tools we had to resort to reading source code in order to determine the proper command-line incantations to employ. 
-We did not contact tool authors for guidance in tool use, as this seemed likely to bias results.
 
 Note that the names of tools under evaluation are being withheld in reporting results.
 Careful evaluation is a large and important job, and we would not want to give it short shrift, either in terms of careful setup and use of tools, or in presenting and discussing results.
 Our intent, here, is to determine if LAVA bugs \emph{can be used} to evaluate bug finding systems. 
-It is our expectation that, in future work either by ourselves or others, full and careful evaluation of real, named tools will be performed using LAVA.
+It is our expectation that in future work either by ourselves or others, full and careful evaluation of real, named tools will be performed using LAVA.
 While that work is outside the scope of this paper, we hope to indicate that it should be both possible and valuable. 
-Additionally, it is our plan and hope that LAVA bugs will be made available in quantity and at regular refresh intervals, for self-evaluation and hill climbing.
+Additionally, it is our plan and hope that LAVA bugs will be made available in quantity and at regular refresh intervals for self-evaluation and hill climbing.
 
 The first corpus we created, \emph{LAVA-1}, used the \verb+file+ target, the smallest of those programs into which we have injected bugs.
 This corpus consists of sixty-nine buffer overflow bugs injected into the source with LAVA, each on a different branch in a \verb+git+ repository with a fuzzed version of the input verified to trigger a crash checked in along with the code.
@@ -194,7 +196,7 @@ These bugs trigger if the magic value is simply in some range, but also use the 
 The magic value is a 4-byte unsigned integer and the range varies.  
 \end{enumerate}
 
-These bug types were designed to mirror real bugs patterns.  
+These bug types were designed to mirror real bug patterns.  
 In knob-and-trigger bugs, two different parts of the input are used in different ways to determine the manifestation of the bug.  
 In range bugs, rather than triggering on a single value out of $2^{32}$, the size of the haystack varies.
 Note that a range of $2^0$ is equivalent to the bug presented in Figure~\ref{src:dua-use}.
@@ -217,9 +219,9 @@ SES    &    8\%     & 0           & 9\%          & 21\%       & 0            & 1
 \end{table}
 
 The results of this evaluation are summarized in Table~\ref{table:eval1-file}.
-Five different ranges were employed: $2^0, 2^7, 2^{16}, 2^{21}, 2^{28}$. 
+Ranges of five different sizes were employed: $2^0, 2^7, 2^{16}, 2^{21}, 2^{28}$. 
 We examined all output from both tools.
-FUZZER ran for one hour on each bug and found 7\% of those with a range of $2^{21}$ and 58\% of those with a range size of $2^{28}$.
+FUZZER ran for five hours on each bug and found 7\% of those with a range of $2^{21}$ and 58\% of those with a range size of $2^{28}$.
 SES ran for five hours on each bug, and found several bugs in all categories except the $2^7$ and $2^{28}$ ranges.
 
 The results for the \emph{LAVA-1} corpus seem to accord well with how these tools work.
@@ -227,23 +229,24 @@ FUZZER uses the program largely as a black box, randomizing individual bytes, an
 Bugs that trigger if and only if a four-byte extent in the input is set to a magic value are unlikely to be discovered in this way.
 Given time, FUZZER finds bugs that trigger for ranges of a million or more bytes. 
 Note that for many of these LAVA bugs, when the range is so large, discovery is possible by simply fuzzing every byte in the input a few times.  
-These bugs may, in fact, be trivially discoverable with a regression suite for a program like \verb+file+ that accepts arbitrary file input\footnote{In principle, anyway. In practice \texttt{file}'s test suite consists of just 3 tests, none of which trigger our injected bugs.}.
+These bugs may, in fact, be trivially discoverable with a regression suite for a program like \verb+file+ that accepts arbitrary file input.\footnote{In principle, anyway. In practice \texttt{file}'s test suite consists of just 3 tests, none of which trigger our injected bugs.}
 By contrast, SES is able to find both knob-and-trigger bugs and different ranges, and the size of the range does not affect the number of bugs found.
-This is because it is no more difficult for a SAT solver to find a satisfying input for a large range or a small range; rather, the number of bugs found is limited by how deep into the program the symbolic execution can go.
+This is because it is no more difficult for a SAT solver to find a satisfying input for a large range than a small range; rather, the number of bugs found is limited by how deep into the program the symbolic execution can go.
 
 Note that having each bug in a separate copy of the program means that for each run of a bug finding tool, only one bug is available for discovery at a time.  
-This is one kind of evaluation, but it seems to disadvantage tools like FUZZER and SES, which appear to be designed to work for a long time (10s of hours) on a single program that may contain multiple bugs. 
+This is one kind of evaluation, but it seems to disadvantage tools like FUZZER and SES, which appear to be designed to work for a long time on a single program that may contain multiple bugs. 
 
 Thus, we created a second corpus, \emph{LAVA-M}, in which we injected more than one bug at a time into the source code.
 We chose four programs from the \verb+coreutils+ suite that took file input: \verb+base64+, \verb+md5sum+, \verb+uniq+, and \verb+who+.
 Into each, we injected as many verified bugs as possible.
 Because the \verb+coreutils+ programs are quite small, and because we only used a single input file for each to perform the taint analysis, the total number of bugs injected into each program was generally quite small.
 The one exception to this pattern was the \verb+who+ program, which parses a binary file with many dead or even unused fields, and therefore had many DUAs available for bug injection.
-We were not able to inject multiple bugs of the two types described above (knob-and-trigger and range), as interactions became a problem, and so all bugs were of the type in Figure~\ref{src:dua-use}, which trigger for only a single setting of four input bytes.  
+
+We were not able to inject multiple bugs of the two types described above (knob-and-trigger and range) as interactions between bugs became a problem, and so all bugs were of the type in Figure~\ref{src:dua-use}, which trigger for only a single setting of four input bytes.  
 The \emph{LAVA-M} corpus, therefore, is four copies of the source code for \verb+coreutils+ version 8.24.
 One copy has 44 bugs injected into \verb+base64+, and comes with 44 inputs known to trigger those bugs individually.
-Another copy has 57 bugs in \verb+md5sum+, another has 28 bugs in \verb+uniq+.
-Finally, there is a copy of \verb+coreutils+ with 2136 bugs existing all at once and individually expressible, in \verb+who+.
+Another copy has 57 bugs in \verb+md5sum+, and a third has 28 bugs in \verb+uniq+.
+Finally, there is a copy with 2136 bugs existing all at once and individually expressible in \verb+who+.
 
 
 \begin{table}[h]
@@ -261,32 +264,32 @@ Total         &    2265    & 16           & 27         & 41               \\
 \label{table:tool-eval-results-coreutils}
 \end{table}
 
-We ran FUZZER and SES against each program in \emph{LAVA-M}, with 5 hours of runtime for each program on machines with essentially unlimited RAM.
-\verb+md5sum+ ran with the \verb+-c+ argument, as if it were checking digests in a symbolic file.
+We ran FUZZER and SES against each program in \emph{LAVA-M}, with 5 hours of runtime for each program.
+\verb+md5sum+ ran with the \verb+-c+ argument, to check digests in a file.
 \verb+base64+ ran with the \verb+-d+ argument, to decode base 64.
 
 SES found no bugs in \verb+uniq+ or \verb+md5sum+.
 In \verb+uniq+, we believe this is because the control flow is too unconstrained.
 In \verb+md5sum+, SES failed to execute any code past the first instance of the hash function.
 \verb+base64+ and \verb+who+ both turn out more successful for SES.
-The tool finds 9 bugs in \verb+base64+ out of 44 inserted; these include both deep and shallow bugs, as base64 is such a simple program to analyze.
+The tool finds 9 bugs in \verb+base64+ out of 44 inserted; these include both deep and shallow bugs, as \verb+base64+ is such a simple program to analyze.
 
 SES's results are a little more complicated for \verb+who+.
 All of the bugs it finds for \verb+who+ use one of two DUAs, and all of them occur very early in the trace.
 One artifact of our method for injecting multiple bugs simultaneously is that multiple bugs share the same attack point.
-It is debatable how realistically this aspect represents real bugs.
-In practice, it means that SES can only find one bug per attack point, as finding an additional bug at the same ATP does not necessarily require covering new code.
+It is debatable how well this represents real bugs.
+In practice, it means that SES can only find one bug per attack point, as finding an additional bug at the same attack point does not necessarily require covering new code.
 LAVA could certainly be changed to have each bug involve new code coverage.
 SES could also be improved to find all the bugs at each attack point, which means generating multiple satisfying inputs for the same set of conditions.
 
-FUZZER found bugs in all utilities except \verb+who+\footnote{In fact, we allowed FUZZER to continue running after 5 hours had passed; it managed to find a bug in \texttt{who} in the sixth hour.}.
+FUZZER found bugs in all utilities except \verb+who+.\footnote{In fact, we allowed FUZZER to continue running after 5 hours had passed; it managed to find a bug in \texttt{who} in the sixth hour.}
 Unlike SES, the bugs were fairly uniformly distributed throughout the program, as they depend only on guessing the correct 4-byte trigger at the right position in the input file.
 
 FUZZER's failure to find bugs in \verb+who+ is surprising.
 We speculate that the size of the seed file (the first 768 bytes of a \verb+utmp+ file) used for the fuzzer may have been too large to effectively explore through random mutation, but more investigation is necessary to pin down the true cause.
 Indeed, tool anomalies of this sort are exactly the sort of thing one would hope to find with LAVA, as they represent areas where tools might make easy gains.
 
-We note that the bugs found by FUZZER and SES have very little overlap (only 2 bugs where found by both utility).
+We note that the bugs found by FUZZER and SES have very little overlap (only 2 bugs were found by both tools).
 This is a very promising result for LAVA, as it indicates that the kinds of bugs created by LAVA are not tailored to a particular bug finding strategy.
 
 %We also evalued a second commercial static analyzer, referred to in this text as $CSA_2$. Because we were only allowed a limited number of analysis runs, we opted to create a single version of \verb+who+ from the GNU coreutils that contained 60 injected, verified bugs. This was fed to $CSA_2$, generating 117 alerts; we then went through its alerts by hand to see which ones referenced our injected bugs.

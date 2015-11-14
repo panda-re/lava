@@ -12,7 +12,7 @@ There also remains work to be done in making LAVA's bug-triggering data flow mor
 This execution includes the data flow that leads up to the capture of the DUA, which is often nontrivial.
 
 However rosy the future seems for LAVA, it is likely that certain classes of bugs are simply not injectable via taint-based measures.
-Logic errors, crypto flaws, and side-channel attacks, for instance, all seem to operate at a rather different level than the kinds of data-flow triggered flaws LAVA is well positioned to generate.
+Logic errors, crypto flaws, and side-channel vulnerabilities, for instance, all seem to operate at a rather different level than the kinds of data-flow triggered flaws LAVA is well positioned to generate.
 We are not hopeful that these types of vulnerabilities will soon be injectable with LAVA. 
 
 We discovered, in the course of our use of LAVA bugs to evaluate vulnerability discovery tools, a number of situations in which LAVA introduces unintended bugs, such as use-after free and dereference of an uninitialized pointer in the code that siphons of a DUA value for later use triggering a bug.  
@@ -22,14 +22,14 @@ It should be possible to remedy this situation dramatically in many cases but a 
 
 LAVA is limited to only work on C source code, but there is no fundamental reason for this.
 In principle, our approach would work for any source language with a usable source-to-source rewriting framework. 
-In Python, for example, one could easily implement our taint queries in a CPython plugin that executed the hypervisor call against the address of a variable in memory. 
+In Python, for example, one could easily implement our taint queries in a modified CPython interpreter that executed the hypervisor call against the address of a variable in memory. 
 Since our approach records the correspondence between source lines and program basic block execution, it would be just as easy to figure out where to edit the Python code as it is in C.
 We have no immediate plans to extend LAVA in these directions.
 
 We are planning some additional evaluation work.
 In particular, an extensive evaluation of real, named tools should be undertaken.
-Taken with care, the results will shed light on the the strengths and weaknesses of classes of techniques, as well as particular implementations of each type of tool.
-It should also be noted that, in our preliminary evaluation of vulnerability discovery tools, we measured only the \emph{miss rate}; no attempt was made to gauge the \emph{false alarm rate}.
+Taken with care, the results will shed light on the strengths and weaknesses of classes of techniques, as well as particular implementations of each type of tool.
+It should also be noted that in our preliminary evaluation of vulnerability discovery tools we measured only the \emph{miss rate}; no attempt was made to gauge the \emph{false alarm rate}.
 For tools that generate a triggering input, as do both SES and FUZZER, measuring false alarm rate should be trivial. 
 Every input can be tested against the program after it has been instrumented to be able to detect the vulnerability.
 In the case of buffer overflows in C, this could mean compiling in fine-grained bounds checking~\cite{ruwase2004practical}.

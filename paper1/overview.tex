@@ -25,7 +25,7 @@ The pointers \texttt{s} and \texttt{d}, and the buffers pointed to by them are u
 
 Because they ensure that attacker-controlled data is available to influence program behavior, DUAs form the raw material from which we construct bugs. 
 We identify DUAs in a program by running that program under a dynamic taint analysis~\cite{newsometaint} for a specific input.
-That taint analysis has a few important features.
+That taint analysis has a few important features:
 
 \begin{itemize}
 \item Each byte in the input is given its own label.
@@ -65,7 +65,7 @@ Whenever the taint system needs to compute the union of sets of taint labels to 
 In the running example, and illustrated in Figure~\ref{fig:taint-compute-number}, $TCN(c)=1$ after line 1, since it is computed from quantities \verb+a+ and \verb+b+ which are directly derived from input.
 Later, just before line 7 and after the loop, $TCN(c)=n+1$ because each iteration of the loop increases the depth of the tree of computation by one.  
 
-The other taint-based measure LAVA introduces is \emph{Liveness}, which is associated with taint labels, i.e., the input bytes themselves.
+The other taint-based measure LAVA introduces is \emph{liveness}, which is associated with taint labels, i.e., the input bytes themselves.
 This is a straightforward accounting of how many branches a byte in the input has been used to decide.
 Thus, if a particular input byte label was never found in a taint label set associated with any byte used to decide a branch, it will have liveness of 0.
 A DUA entirely consisting of bytes with 0 or very low liveness can be considered \emph{dead} in the sense that it has little influence upon control flow for this program trace.
