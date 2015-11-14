@@ -208,7 +208,7 @@ Note that a range of $2^0$ is equivalent to the bug presented in Figure~\ref{src
 Tool   &                     \multicolumn{6}{|c}{Bug Type}                           \\  \hline  
          &                     \multicolumn{5}{|c|}{Range}                   &     \\   
          &    $2^0$   & $2^7$       & $2^{14}$     & $2^{21}$   & $2^{28}$     & KT   \\  \hline 
-FUZZER &    0       & 0           & 0            & 7\%        & 58\%         & 0         \\
+FUZZER &    0       & 0           & 9\%          & 79\%       & 75\%         & 20\%      \\
 %$CSA_1$ &    0       & 0           & 0            & 0          & 0            & 0         \\
 SES    &    8\%     & 0           & 9\%          & 21\%       & 0            & 10\%         \\
 \end{tabular}
@@ -219,15 +219,16 @@ SES    &    8\%     & 0           & 9\%          & 21\%       & 0            & 1
 \end{table}
 
 The results of this evaluation are summarized in Table~\ref{table:eval1-file}.
-Ranges of five different sizes were employed: $2^0, 2^7, 2^{16}, 2^{21}, 2^{28}$. 
+Ranges of five different sizes were employed: $2^0, 2^7, 2^{14}, 2^{21}, 2^{28}$. 
 We examined all output from both tools.
-FUZZER ran for five hours on each bug and found 7\% of those with a range of $2^{21}$ and 58\% of those with a range size of $2^{28}$.
+FUZZER ran for five hours on each bug and found bugs in the larger ranges ($2^{14}$, $2^{21}$, and $2^{28}$).
+It was also able to uncover 20\% of the knob-and-trigger bugs, perhaps because the knob and trigger could be fuzzed independently.
 SES ran for five hours on each bug, and found several bugs in all categories except the $2^7$ and $2^{28}$ ranges.
 
 The results for the \emph{LAVA-1} corpus seem to accord well with how these tools work.
 FUZZER uses the program largely as a black box, randomizing individual bytes, and guiding exploration with coverage measurements.
 Bugs that trigger if and only if a four-byte extent in the input is set to a magic value are unlikely to be discovered in this way.
-Given time, FUZZER finds bugs that trigger for ranges of a million or more bytes. 
+Given time, FUZZER finds bugs that trigger for large byte ranges. 
 Note that for many of these LAVA bugs, when the range is so large, discovery is possible by simply fuzzing every byte in the input a few times.  
 These bugs may, in fact, be trivially discoverable with a regression suite for a program like \verb+file+ that accepts arbitrary file input.\footnote{In principle, anyway. In practice \texttt{file}'s test suite consists of just 3 tests, none of which trigger our injected bugs.}
 By contrast, SES is able to find both knob-and-trigger bugs and different ranges, and the size of the range does not affect the number of bugs found.
