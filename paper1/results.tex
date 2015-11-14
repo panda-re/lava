@@ -5,11 +5,11 @@
 \begin{tabular}{c|c|c|c|c|c|c|c|c|c|c}
         &         & Num       & Lines     &        &        & Potential & Validated  &         & Inj Time \\
 Name    & Version & Src Files & C code    & N(DUA) & N(ATP) & Bugs      & Bugs       & Yield   & (sec)  \\\hline
-file    & 5.22    & 19        & 10809     & 631    & 114    & 17518     & 774        & 39.0\%  & 16         \\  %    files verified.  sloc recomputed
+file    & 5.22    & 19        & 10809     & 631    & 114    & 17518     & 774        & 38.7\%  & 16         \\  %    files verified.  sloc recomputed
 %eog    & 3.4.2   &           & 22997     &        &        &           &            &         &         \\ 
-readelf & 2.25    & 12        & 21052     & 3849   & 266    & 276367    & 1064       & 53.4 \% & 354     \\  % time verified.  files verified. sloc recomputed
-bash    & 4.3     & 143       & 98871     & 3832   & 604    & 447645    & 192        & 9.5\%   & 153     \\  % time verified.  
-tshark  & 1.8.2   & 1272      & 2186252   & 9853   & 1037   & 1240777   & 354        & 15.3\%  & 542     \\
+readelf & 2.25    & 12        & 21052     & 3849   & 266    & 276367    & 1064       & 53.2 \% & 354     \\  % time verified.  files verified. sloc recomputed
+bash    & 4.3     & 143       & 98871     & 3832   & 604    & 447645    & 192        & 9.6\%   & 153     \\  % time verified.  
+tshark  & 1.8.2   & 1272      & 2186252   & 9853   & 1037   & 1240777   & 354        & 17.7\%  & 542     \\
 \end{tabular} 
 \caption{LAVA Injection results for open source programs of various sizes.
 For each, a single input file was used to perform a taint analysis with PANDA.
@@ -18,7 +18,7 @@ Various program and dynamic trace statistics are reported as well as DUA, attack
 \end{figure*}
 
 We evaluated LAVA in three ways.
-First, we injected large numbers of bugs into four open source programs: file, readelf (from binutils), bash, and tshark (the command-line verison of the packet capture and analysis tool Wireshark).
+First, we injected large numbers of bugs into four open source programs: file, readelf (from binutils), bash, and tshark (the command-line version of the packet capture and analysis tool Wireshark).
 For each of these, we report various statistics with respect to both the target program and also LAVA's success at injecting bugs.
 Second, we evaluated the distribution and realism of LAVA's bugs by proposing and computing various measures.
 Finally, we performed a preliminary investigation to see how effective existing bug-finding tools are at finding LAVA's bugs, by measuring the detection rates of an open-source fuzzer and a symbolic execution-based bug finder.
@@ -27,7 +27,8 @@ Finally, we performed a preliminary investigation to see how effective existing 
 
 Before we delve into the results, we must specify what it is we mean by an injected bug, and what makes two injected bugs distinct. Although there are many possible ways to define a bug, we choose a definition that best fits our target use case: two bugs should be considered different if an automated tool would have to reason about them differently. For our purposes, we define a bug as a unique pair $(DUA, attack point)$. Expanding this out, that means that the source file, line number, and variable name of the DUA, and the source file and line number of the attack point must be unique.
 
-Some might object that this artificially inflates the count of bugs injected into the program, for example because it would consider two bugs distinct if they differ in where the file input becomes available to the program, even if the same file input bytes are used in both cases. But in fact these should be counted as different bugs: the data and control flow leading up to the point where the DUA occurs will be very different, and vulnerability discovery tools will have to reason differently about the two cases.
+Some might object that this artificially inflates the count of bugs injected into the program, for example because it would consider two bugs distinct if they differ in where the file input becomes available to the program, even though the same file input bytes are used in both cases. 
+But in fact these should be counted as different bugs: the data and control flow leading up to the point where the DUA occurs will be very different, and vulnerability discovery tools will have to reason differently about the two cases.
 
 \subsection{Injection Experiments}
 \label{sec:results:subsec:injection}
@@ -41,18 +42,19 @@ The input to \verb+tshark+ was a 16K packet capture file from a site hosting a n
 The input to \verb+bash+ was a 124-line shell script written by the authors.
 % TRL -- removed this since table was too big and I wanted to add bug inj time
 %The number of sequential and unique basic blocks in the PANDA trace for each program are reported as N(BBs) and N(BBu).
-$N(DUA)$ and $N(ATP)$ are the number of DUAs and attack points collected by the FIB analysis.
+$N(DUA)$ and $N(ATP)$ are the number of DUAs and attack points collected by the \verb+FIB+ analysis.
 Note that, in order for a DUA or attack point to be counted, it must have been deemed viable for some bug, as described in Section~\ref{sec:mining}.
-The columns \emph{Potential Bugs} and \emph{Validated Bugs} in Table~\ref{table:insertion-results} give the numbers of both potential bugs found by FIB, but also those verified to actually return exitcodes indicating a buffer overflow (-11 for segfault or -6 for heap corruption) when run against the modified input.
+The columns \emph{Potential Bugs} and \emph{Validated Bugs} in Table~\ref{table:insertion-results} give the numbers of both potential bugs found by \verb+FIB+, but also those verified to actually return exitcodes indicating a buffer overflow (-11 for segfault or -6 for heap corruption) when run against the modified input.
 The penultimate column in the table is \emph{Yield} which is the fraction of potential bugs what were tested and determined to be actual buffer overflows.
 The last column gives the time required to test a single potential bug injection for the target.
 
 
-Exhaustive testing was not possible for several reasons.
+Exhaustive testing was not possible for a number of reasons.
 Larger targets had larger numbers of potential bugs and take longer to test; for example, \verb+tshark+ has over a million bugs and took almost 10 minutes to test.
 This is because testing requires not only injecting a small amount of code to add the bug, but also recompiling and running the resulting program.
 For many targets, we found the build to be subtly broken so that a \verb+make clean+ was necessary to pick up the bug injection reliably, which further increased testing time.
-Instead, we attempted to validate 2000 potential bugs chosen uniformly at random.
+Instead, we attempted to validate 2000 potential bugs chosen uniformly at random for each target.
+Thus, when we report, in Table~\ref{table:insertion-results} that for \verb+tshark+, the yield is 17.7\%, this is because 306 out of 2000 bugs were found to be valid.
 
 As the injected bug is designed to be triggered only if a particular set of four bytes in the input is set to a magic value, we tested with both the original input and with the modified one that contained the trigger. 
 We did not encounter any situation in which the original input triggered a crash.
@@ -84,7 +86,7 @@ However, we were surprised to observe that $mLIV$ values of over 1000 still gave
 
 \subsection{Bug Distribution}
 
-It would appear that LAVA can inject a very large number of bugs.
+It would appear that LAVA can inject a very large number of bugs into a program.
 If we extrapolate from yield numbers in Table~\ref{table:insertion-results}, we estimate there would be almost 400,000 real bugs if all were tested.
 
 \noindent
