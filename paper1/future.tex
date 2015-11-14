@@ -26,14 +26,12 @@ In Python, for example, one could easily implement our taint queries in a CPytho
 Since our approach records the correspondence between source lines and program basic block execution, it would be just as easy to figure out where to edit the Python code as it is in C.
 We have no immediate plans to extend LAVA in these directions.
 
-We are planning some additional evaluatory work.  
+We are planning some additional evaluation work.
 In particular, an extensive evaluation of real, named tools should be undertaken and the results examined with care and used to diagnose the the strengths and weaknesses of both implementations and also classes of techniques.
 It should also be noted that, in our preliminary evaluation of vulnerability discovery tools, we measured only the \emph{miss rate}; no attempt was made to gauge the \emph{false alarm rate}.
-It is not clear exactly how LAVA can be used to measure false alarms for every kind of tool.
-For tools that generate a triggering input, as do both SES and FUZZER, this should be trivial. 
+For tools that generate a triggering input, as do both SES and FUZZER, measuring false alarm rate should be trivial. 
 Every input can be tested against the program after it has been instrumented to be able to detect the vulnerability.
 In the case of buffer overflows in C, this could mean compiling in fine-grained bounds checking~\cite{ruwase2004practical}.
-However, many bug finding tools, especially static analyzers and abstract interpretation ones, do not generate existence proof inputs.
+However, many bug finding tools, especially static analyzers and abstract interpretation ones, do not generate bug-triggering inputs.
 Instead, they merely gesture at a line in the program and make a claim about possible bugs at that point.
-In this situation, we can think of no way to assess false alarm rate.
-
+In this situation, we can think of no way to assess false alarm rate without extensive manual effort.
