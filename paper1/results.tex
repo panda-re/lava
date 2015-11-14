@@ -278,7 +278,7 @@ In practice, it means that SES can only find one bug per attack point, as findin
 LAVA could certainly be changed to have each bug involve new code coverage.
 SES could also be improved to find all the bugs at each attack point, which means generating multiple satisfying inputs for the same set of conditions.
 
-FUZZER found bugs in all utilities except \verb+who+~\footnote{In fact, we allowed FUZZER to continue running after 5 hours had passed; it managed to find a bug in \texttt{who} in the sixth hour.}.
+FUZZER found bugs in all utilities except \verb+who+\footnote{In fact, we allowed FUZZER to continue running after 5 hours had passed; it managed to find a bug in \texttt{who} in the sixth hour.}.
 Unlike SES, the bugs were fairly uniformly distributed throughout the program, as they depend only on guessing the correct 4-byte trigger at the right position in the input file.
 
 FUZZER's failure to find bugs in \verb+who+ is surprising.
