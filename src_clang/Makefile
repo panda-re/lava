@@ -29,7 +29,7 @@ $(info Using LLVM_BIN_PATH = $(LLVM_BIN_PATH))
 $(info -----------------------------------------------)
 
 CXX := g++
-CXXFLAGS := -fexceptions -fno-rtti -O0 -g -std=c++11 -lpq -I/usr/include/jsoncpp -ljsoncpp
+CXXFLAGS := -fexceptions -fno-rtti -O0 -g -std=c++11 -I/usr/include/jsoncpp
 PLUGIN_CXXFLAGS := -fpic -fexceptions
 
 LLVM_CXXFLAGS := `$(LLVM_BIN_PATH)/llvm-config --cxxflags`
@@ -37,6 +37,8 @@ LLVM_LDFLAGS := `$(LLVM_BIN_PATH)/llvm-config --ldflags --libs --system-libs`
 
 LLVM_LDFLAGS_NOLIBS := `$(LLVM_BIN_PATH)/llvm-config --ldflags`
 PLUGIN_LDFLAGS := -shared
+
+OTHER_LIBS := -lpq -ljsoncpp
 
 CLANG_INCLUDES := \
 	-I$(LLVM_SRC_PATH)/tools/clang/include \
@@ -85,7 +87,7 @@ includes.h.gch: includes.h
 
 $(BUILDDIR)/lavaTool: lavaTool.cpp lavaDB.cpp includes.h.gch ../sql/lava_sql.cpp 
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) lavaTool.cpp lavaDB.cpp ../sql/lava_sql.cpp \
-		$(CLANG_LIBS) $(LLVM_LDFLAGS) -o $@
+		$(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS) -o $@
 
 
 .PHONY: clean
