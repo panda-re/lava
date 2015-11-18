@@ -53,6 +53,7 @@ tarfile="$(jq -r .tarfile $json)"
 
 progress "Untarring $tarfile..."
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
+
 if [ -e "$source" ]; then
   rm -rf "$source"
 fi
@@ -76,8 +77,13 @@ $lava/btrace/sw-btrace $(jq -r .make $json)
 progress "Installing..."
 $(jq -r .install $json)
 
+
+# figure out where llvm is
+llvm_src=$(grep LLVM_SRC_PATH $lava/src_clang/config.mak | cut -d' ' -f3)
+
+
 progress "Creating compile_commands.json..."
-$lava/btrace/sw-btrace-to-compiledb /home/moyix/git/llvm/Debug+Asserts/lib/clang/3.6.1/include
+$lava/btrace/sw-btrace-to-compiledb $llvm_src/Release/lib/clang/3.6.1/include
 git add compile_commands.json
 git commit -m 'Add compile_commands.json.'
 
@@ -94,13 +100,15 @@ for i in $c_dirs; do
   cp $lava/include/*.h $i/
 done
 
+
 progress "Inserting queries..."
 for i in $c_files; do
   echo "running lavaTool on $i"
+
   $lava/src_clang/build/lavaTool -action=query \
     -lava-db="$directory/$name/lavadb" \
     -p="$source/compile_commands.json" \
-    -project-file="$json" "$i"
+    -project-file="$json" "$i"   
 done
 
 progress "Done inserting queries. Time to make and run actuate.py on a 64-BIT machine!"
