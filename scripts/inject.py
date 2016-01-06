@@ -127,6 +127,10 @@ if __name__ == "__main__":
             help = 'Choose the next bug randomly rather than by score')
     parser.add_argument('-m', '--many', action="store", default=-1,
             help = 'Inject this many bugs (chosen randomly)')
+    parser.add_argument('-l', '--buglist', action="store", default=False,
+            help = 'Inject this list of bugs')
+   
+    
     args = parser.parse_args()
     project = json.load(args.project)
     project_file = args.project.name
@@ -258,23 +262,21 @@ if __name__ == "__main__":
         bugs_to_inject.append(bug)
         next_bug_db = True
         num_bugs_to_inject = 1
+    elif args.buglist:
+        buglist = eval(args.buglist)
+        num_bugs_to_inject = len(buglist)
+        for bug_id in buglist:
+            (dua_id, atp_id) = get_bug(project, bug_id)
+            bug = (bug_id, dua_id, atp_id, True)   
+            bugs_to_inject.append(bug)
+        print "bugs to inject: " + (str(bugs_to_inject))
+        next_bug_db = False
     elif args.many:
         num_bugs_to_inject = int(args.many)
         print "Injecting %d bugs" % num_bugs_to_inject
-        if False:
-            # These 10 inject and 4 of them work
-            # bn = [8609, 12095, 12789, 6440, 3200, 8634, 12506, 12047, 13822, 11886]
-            bn = [11166,9754,15729,17158,3860,7995,348,12562,5065,9157,17245,6715,5315,14417,7889,4605,8033,14638,13115,4299,15488,17011,15785,9122,7475,24,8649,9024,12130,15011,10545,9874,6860,13066,7831,17391,5149,349,13512,14999,9664,16566,12176,1831,13446,6108,8535,15755,9856,10340,5027,4848,2929,3345,6848,11356,3367,9291,1156,15612,5186,3167,14021,2804,8674,7565,14605,5714,2048,15692,11387,1652,14479,11036,7440,10414,10760,16565,11887,3399,15138,12792,350,10661,14977,11651,7715,15318,8053,17385,15477,3031,14434,7004,7668,16544,12248,14936,4367,9745]
-            num_bugs_to_inject = len(bn)
-            for bug_id in bn:
-                (dua_id, atp_id) = get_bug(project, bug_id)
-                bug = (bug_id, dua_id, atp_id, False)   
-                bugs_to_inject.append(bug)
-        else:
-            for i in range(num_bugs_to_inject):
-                bug = next_bug_random(project, False)
-                bugs_to_inject.append(bug)
-
+        for i in range(num_bugs_to_inject):
+            bug = next_bug_random(project, True)
+            bugs_to_inject.append(bug)
         print "bugs to inject: " + (str(bugs_to_inject))
         # NB: We won't be updating db for these bugs
 #        next_bug_db = True
@@ -398,10 +400,11 @@ if __name__ == "__main__":
             (rv, outp) = run_prog(bugs_install, orig_input, timeout)
             if rv != 0:
                 print "***** buggy program fails on original input!"
+                assert 1 == 0
             print "retval = %d" % rv
             print "output:"
             lines = outp[0] + " ; " + outp[1]
-            print lines
+#            print lines
             if next_bug_db:
                 add_run_row(build_id, False, rv, lines, True)
             print "SUCCESS"
@@ -410,26 +413,32 @@ if __name__ == "__main__":
             suff = get_suffix(orig_input)
             pref = orig_input[:-len(suff)] if suff != "" else orig_input
             num_real_bugs = 0
+            real_bugs = []
+            ii = 0
             for bug in bugs_to_inject:
+                ii += 1
                 (bug_id, dua_id, atp_id, inj) = bug
                 dua = Dua(project, dua_id, sourcefile, inputfile, lval)                
                 fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug_id, suff)
                 print "fuzzed = [%s]" % fuzzed_input
                 mutfile(orig_input, dua.lval_taint, fuzzed_input, bug_id)
-                print "testing with fuzzed input for bug %d" % bug_id
+                print "testing with fuzzed input for %d of %d potential.  %d real. bug %d" % (ii, len(bugs_to_inject), len(real_bugs), bug_id)
                 (rv, outp) = run_prog(bugs_install, fuzzed_input, timeout)
                 print "retval = %d" % rv
                 print "output:"
-                lines = outp[0] + " ; " + outp[1]
-                print lines
+#                lines = outp[0] + " ; " + outp[1]
+#                print lines
                 if next_bug_db:        
                     add_run_row(build_id, True, rv, lines, True)
                 if rv == -11 or rv == -6:
                     num_real_bugs += 1
+                    real_bugs.append(bug_id)
             f = (float(num_real_bugs)) / (len(bugs_to_inject))
             print "yield %.2f (%d out of %d) real bugs" % (f, num_real_bugs, len(bugs_to_inject))
             print "TESTING COMPLETE"
-            # NB: at the end of testing, the fuzzed input is still in place
+            if len(bugs_to_inject) > 1:
+                print "list of real validated bugs: " + (str(real_bugs))
+            # NB: at the end of testing, the fuzzed input is still in place            
             # if you want to try it 
         except:
             print "TESTING FAIL"
