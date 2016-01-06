@@ -1,13 +1,14 @@
 \documentclass[conference]{IEEEtran} 
 \IEEEoverridecommandlockouts
-\usepackage{epsfig,graphicx,subcaption}
+\usepackage{epsfig,graphicx}
 % \usepackage[hyphens]{url}
 \usepackage{hyperref}
 \usepackage{amsmath}
+\usepackage{multirow}
 
 %\documentclass[a4paper,10pt]{article}
 \usepackage[utf8]{inputenc}
-\usepackage{times}
+%\usepackage{times}
 %\usepackage{algorithm}
 \usepackage{listings}
 \usepackage[colorinlistoftodos,prependcaption,textsize=tiny]{todonotes}
@@ -15,25 +16,25 @@
 %\usepackage[disable]{todonotes}
 
 %opening
-\title{LAVA: Large-scale Automated Vulnerability Addition
-  \thanks{This work is sponsored by the Assistant Secretary of Defense
-    for Research \& Engineering under Air Force Contract
-    \#FA8721-05-C-0002.  Opinions, interpretations, conclusions and
-    recommendations are those of the author and are not necessarily
-    endorsed by the United States Government.} }
+\title{LAVA: Large-scale Automated Vulnerability Addition}
+%  \thanks{This work is sponsored by the Assistant Secretary of Defense
+%    for Research \& Engineering under Air Force Contract
+%    \#FA8721-05-C-0002.  Opinions, interpretations, conclusions and
+%    recommendations are those of the author and are not necessarily
+%    endorsed by the United States Government.} }
 
-\author{
-\IEEEauthorblockN{Brendan Dolan-Gavitt\IEEEauthorrefmark{1}, Patrick Hulin\IEEEauthorrefmark{2}, Engin Kirda\IEEEauthorrefmark{3}, Tim Leek\IEEEauthorrefmark{2}, Andrea Mambretti\IEEEauthorrefmark{3}, \\
-Wil Robertson\IEEEauthorrefmark{3}, Frederick Ulrich\IEEEauthorrefmark{2}, Ryan Whelan\IEEEauthorrefmark{2}}
-\\
-\small (Authors listed alphabetically) \\
-\\
-\IEEEauthorblockA{\IEEEauthorrefmark{1}NYU\\brendandg@nyu.edu}
-\IEEEauthorblockA{\IEEEauthorrefmark{2}MIT Lincoln Laboratory\\
-\{patrick.hulin, tleek, frederick.ulrich, rwhelan\}@ll.mit.edu}
-\IEEEauthorblockA{\IEEEauthorrefmark{3}Northeastern University\\
-\{ek, mbr, wkr\}@ccs.neu.edu}
-}
+%\author{
+%\IEEEauthorblockN{Brendan Dolan-Gavitt\IEEEauthorrefmark{1}, Patrick Hulin\IEEEauthorrefmark{2}, Engin Kirda\IEEEauthorrefmark{3}, Tim Leek\IEEEauthorrefmark{2}, Andrea Mambretti\IEEEauthorrefmark{3}, \\
+%Wil Robertson\IEEEauthorrefmark{3}, Frederick Ulrich\IEEEauthorrefmark{2}, Ryan Whelan\IEEEauthorrefmark{2}}
+%\\
+%\small (Authors listed alphabetically) \\
+%\\
+%\IEEEauthorblockA{\IEEEauthorrefmark{1}NYU\\brendandg@nyu.edu}
+%\IEEEauthorblockA{\IEEEauthorrefmark{2}MIT Lincoln Laboratory\\
+%\{patrick.hulin, tleek, frederick.ulrich, rwhelan\}@ll.mit.edu}
+%\IEEEauthorblockA{\IEEEauthorrefmark{3}Northeastern University\\
+%\{ek, mbr, wkr\}@ccs.neu.edu}
+%}
 
 
 \begin{document}
@@ -43,14 +44,13 @@ Wil Robertson\IEEEauthorrefmark{3}, Frederick Ulrich\IEEEauthorrefmark{2}, Ryan 
 \begin{abstract}
 
 Work on automating vulnerability discovery has long been hampered by a shortage of ground-truth corpora with which to evaluate tools and techniques.
-To begin to address this, we present LAVA, a dynamic taint analysis-based system for automatically and quickly injecting large numbers of realistic bugs into program source code.  
-Every LAVA vulnerability is accompanied by an input that triggers it, and guarantees that normal inputs are extremely unlikely to do so.
-Further, every injected bug is validated, and thus every working bug comes with both a proof-of-concept input and a known manifestation point.
+This lack of ground truth prevents authors and users of tools alike from being able to measure such fundamental quantities as  miss and false alarm rates.
+In this paper, we present LAVA, a novel dynamic taint analysis-based technique for producing ground-truth corpora by quickly and automatically injecting large numbers of realistic bugs into program source code.
+Every LAVA bug is accompanied by an input that triggers it whereas normal inputs are extremely unlikely to do so.
 These vulnerabilities are synthetic but, we argue, still realistic, in the sense that they are embedded deep within programs and are triggered by real inputs.
-Using LAVA, we have injected thousands of bugs into popular programs such as file, readelf, bash, and tshark.
-We believe LAVA can form the basis of an approach for generating extremely high quality ground truth vulnerability corpora on demand.
-\todo[inline]{TODO - We should put some concrete results (preferably any quantitative ones if we have them) at the end of the results section so we can support the assertion that LAVA is useful}
-
+Using LAVA, we have injected thousands of bugs into eight real-world programs, including bash, tshark, and the GNU coreutils.
+In a preliminary evaluation, we found that a prominent fuzzer and a symbolic execution-based bug finder were able to locate some but not all LAVA-injected bugs, and that interesting patterns and pathologies were already apparent in their performance.
+Our work forms the basis of an approach for generating large ground-truth vulnerability corpora on demand, enabling rigorous tool evaluation and providing a high-quality target for tool developers.
 
 \end{abstract}
 
@@ -93,5 +93,5 @@ We believe LAVA can form the basis of an approach for generating extremely high 
 \bibliographystyle{plain}
 \bibliography{biblio}
 
-\listoftodos
+%\listoftodos
 \end{document}

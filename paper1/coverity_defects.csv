@@ -1,0 +1,118 @@
+﻿CID,Type,Impact,Status,First Detected,Owner,Classification,Severity,Action,Component,Category,File,Function
+29443,Read from pointer after free,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Memory - illegal accesses,/lib/readutmp.c,read_utmp
+29442,Use after free,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Memory - illegal accesses,/src/pr.c,store_columns
+29440,Uninitialized scalar variable,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Uninitialized variables,/lib/parse-datetime.y,parse_datetime
+29439,Uninitialized scalar variable,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Uninitialized variables,/lib/posixtm.c,posixtime
+29438,Uninitialized scalar variable,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Uninitialized variables,/src/chmod.c,process_file
+29437,Uninitialized scalar variable,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Uninitialized variables,/src/chmod.c,process_file
+29436,Uninitialized scalar variable,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Uninitialized variables,/src/od.c,main
+29435,Uninitialized scalar variable,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Uninitialized variables,/lib/gl_anylinked_list2.h,gl_linked_iterator_from_to
+29434,Uninitialized scalar variable,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Uninitialized variables,/lib/gl_anylinked_list2.h,gl_linked_iterator
+29409,String not null terminated,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Memory - illegal accesses,/src/wc.c,wc
+29401,Resource leak,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Resource leaks,/lib/freopen-safer.c,protect_fd
+29400,Resource leak,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Resource leaks,/src/libstdbuf.c,apply_mode
+29399,Resource leak,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Resource leaks,/src/sync.c,sync_arg
+29398,Resource leak,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Resource leaks,/src/tsort.c,tsort
+29397,Resource leak,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Resource leaks,/src/split.c,lines_rr
+29395,Out-of-bounds access,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Memory - corruptions,/lib/getcwd.c,rpl_getcwd
+29394,Out-of-bounds access,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Memory - corruptions,/src/tac.c,main
+29393,Out-of-bounds read,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Memory - illegal accesses,/src/base64.c,do_decode
+29392,Out-of-bounds read,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Memory - illegal accesses,/src/sort.c,compare_random
+29391,Out-of-bounds access,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Memory - corruptions,/src/tr.c,unquote
+29389,Memset fill value of '0',High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Memory - illegal accesses,/lib/strftime.c,strftime_case_
+29329,Out-of-bounds access,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Memory - corruptions,/src/who.c,print_user
+29328,Out-of-bounds access,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Memory - corruptions,/src/who.c,time_string
+29327,Out-of-bounds access,High,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Memory - corruptions,/src/who.c,idle_string
+29441,Unused value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Incorrect expression,/src/od.c,main
+29425,Use of untrusted string value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/env.c,main
+29424,Use of untrusted string value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/unlink.c,main
+29423,Use of untrusted string value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/runcon.c,main
+29422,Use of untrusted string value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/nice.c,main
+29421,Use of untrusted string value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/mktemp.c,main
+29420,Use of untrusted string value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/ln.c,main
+29419,Use of untrusted string value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/rmdir.c,main
+29418,Use of untrusted string value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/df.c,main
+29417,Use of untrusted string value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/stdbuf.c,main
+29416,Use of untrusted string value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/chroot.c,main
+29415,Use of untrusted string value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/mv.c,main
+29414,Use of untrusted string value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/timeout.c,main
+29413,Use of untrusted string value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/split.c,create
+29412,Untrusted value as argument,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/libstdbuf.c,stdbuf
+29411,Use of untrusted scalar value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/wc.c,wc
+29410,Untrusted value as argument,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/realpath.c,main
+29408,Wrong size argument,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Incorrect expression,/lib/mgetgroups.c,mgetgroups
+29406,Dereference before null check,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/who.c,scan_entries
+29405,Dereference before null check,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/who.c,print_user
+29404,Dereference before null check,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/who.c,print_user
+29403,Dereference before null check,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/who.c,print_user
+29402,Dereference before null check,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/who.c,print_line
+29390,Dereference null return value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/split.c,lines_split
+29388,Unsigned compared against 0,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Control flow issues,/lib/anytostr.copy4.c,uinttostr
+29387,Unsigned compared against 0,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Control flow issues,/lib/anytostr.copy5.c,umaxtostr
+29386,Improper use of negative value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/src/head.c,head
+29385,Failure to restore non-local value,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Control flow issues,/lib/parse-datetime.y,lookup_word
+29384,Missing break in switch,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Control flow issues,/lib/long-options.c,parse_long_options
+29383,Integer overflowed argument,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Insecure data handling,/src/split.c,lines_split
+29382,Dereference after null check,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/df.c,get_dev
+29381,Explicit null dereferenced,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/df.c,get_dev
+29380,Dereference after null check,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/lib/obstack.c,_obstack_newchunk
+29379,Explicit null dereferenced,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/tail.c,pipe_lines
+29378,Explicit null dereferenced,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/tail.c,pipe_bytes
+29377,Explicit null dereferenced,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/tail.c,pipe_bytes
+29376,Dereference after null check,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/who.c,who
+29375,Dereference after null check,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/who.c,who
+29374,Dereference after null check,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/who.c,print_line
+29373,Dereference after null check,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/who.c,print_line
+29372,Explicit null dereferenced,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/head.c,elide_tail_lines_pipe
+29371,Explicit null dereferenced,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/head.c,elide_tail_lines_pipe
+29370,Dereference after null check,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/split.c,cwrite
+29369,Explicit null dereferenced,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Null pointer dereferences,/src/pr.c,main
+29368,Logically dead code,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Control flow issues,/lib/dirname-lgpl.c,dir_len
+29367,Logically dead code,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Control flow issues,/lib/strerror.c,rpl_strerror
+29366,Logically dead code,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Control flow issues,/lib/areadlink-with-size.c,areadlink_with_size
+29365,Logically dead code,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Control flow issues,/lib/mgetgroups.c,mgetgroups
+29364,Logically dead code,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Control flow issues,/src/sync.c,main
+29363,Logically dead code,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Control flow issues,/lib/parse-datetime.y,yylex
+29362,Logically dead code,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Control flow issues,/src/dd.c,set_fd_flags
+29361,Logically dead code,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Control flow issues,/src/cat.c,main
+29360,Logically dead code,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Control flow issues,/src/paste.c,paste_parallel
+29359,Logically dead code,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Control flow issues,/src/pr.c,main
+29358,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/lib/posixver.c,posix2_version
+29357,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/lib/memchr2.c,memchr2
+29356,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/lib/memchr2.c,memchr2
+29355,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/lib/memchr2.c,memchr2
+29354,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/lib/sha1.c,sha1_process_block
+29353,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/src/stat.c,out_epoch_sec
+29352,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/src/stat.c,out_epoch_sec
+29351,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/lib/md5.c,md5_process_block
+29350,Same on both sides,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Incorrect expression,/usr/include/i386-linux-gnu/bits/stdio2.h,fread_unlocked
+29349,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/lib/sha512.c,sha512_process_block
+29348,Same on both sides,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Incorrect expression,/lib/quotearg.c,quotearg_buffer_restyled
+29347,Same on both sides,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Incorrect expression,/src/who.c,print_user
+29346,Same on both sides,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Incorrect expression,/src/who.c,print_user
+29345,Same on both sides,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Incorrect expression,/src/who.c,print_user
+29344,Same on both sides,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Incorrect expression,/src/who.c,time_string
+29343,Same on both sides,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Incorrect expression,/src/who.c,print_line
+29342,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/lib/sha256.c,sha256_process_block
+29341,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/src/stty.c,screen_columns
+29340,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/src/pr.c,getoptarg
+29339,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/src/numfmt.c,parse_format_string
+29338,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/src/csplit.c,max_out
+29337,Operands don't affect result,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/src/test.copy.c,unary_operator
+29336,Insecure chroot,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,API usage errors,/src/chroot.c,main
+29335,Unchecked return value from library,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Error handling issues,/src/mktemp.c,main
+29334,Unchecked return value from library,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Error handling issues,/src/shred.c,direct_mode
+29333,Incorrect sizeof expression,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Incorrect expression,/lib/fts.c,fts_sort
+29332,Bad bit shift operation,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/lib/fsusage.c,get_fs_usage
+29331,Bad bit shift operation,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Integer handling issues,/src/factor.c,prime2_p
+29330,Unintended comparison to logical negation,Medium,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Incorrect expression,/src/dircolors.c,main
+29433,Time of check time of use,Low,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Security best practices violations,/src/find-mount-point.c,find_mount_point
+29432,Time of check time of use,Low,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Security best practices violations,/lib/dirchownmod.c,dirchownmod
+29431,Time of check time of use,Low,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Security best practices violations,/src/truncate.c,main
+29430,Time of check time of use,Low,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Security best practices violations,/src/ln.c,do_link
+29429,Time of check time of use,Low,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Security best practices violations,/src/df.c,main
+29428,Time of check time of use,Low,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Security best practices violations,/src/cp.c,make_dir_parents_private
+29427,Time of check time of use,Low,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Security best practices violations,/src/copy.c,copy_internal
+29426,Time of check time of use,Low,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Security best practices violations,/src/install.c,need_copy
+29407,Insecure temporary file,Low,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Security best practices violations,/lib/mkstemp-safer.c,mkstemp_safer
+29396,Big parameter passed by value,Low,New,11/03/15,Unassigned,Unclassified,Unspecified,Undecided,Other,Performance inefficiencies,/src/sort.c,cs_leave

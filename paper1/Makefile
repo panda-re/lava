@@ -81,7 +81,7 @@ die_unsupported:
 	$(warning  <BLANK> all pdf $(TARGET) clean)
 	$(error Exiting)
 
-LATEX=	xelatex #--interaction batchmode
+LATEX=	pdflatex #--interaction batchmode
 TARGET=	$(MAIN:.tex=.pdf)
 
 # 9 Dec 2008 JG: This is now a worklist algorithm to pick up all recursive

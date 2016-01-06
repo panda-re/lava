@@ -2,26 +2,37 @@
 %- C code only
 %- Dataflow is... manufactured, maybe not reflective
 %- Limited class of bugs (pointer corruptions)
-Future work for LAVA largely involves making the generated corpora look more like the bugs that are found in real programs. 
-First, LAVA currently injects only buffer overflows. 
+% bug injection artifacts due to no actual static analysis
+
+A significant chunk of future work for LAVA involves making the generated corpora look more like the bugs that are found in real programs. 
+LAVA currently injects only buffer overflows into programs.
 But our taint-based analysis overcomes the crucial first hurdle to injecting any kind of bug: making sure that attacker-controlled data can be used in the bug's potential exploitation. 
-As a result, the addition of other classes of bugs, such as temporal safety bugs (use-after-free) and meta-character bugs (e.g. format string) should also be injectable using our approach. 
-There also remains work to be done in making LAVA's data flow more realistic, although even in its current state, the vast majority of the execution of the modified program is realistic. 
-This execution includes the dataflow that leads up to the capture of the DUA, which is often nontrivial.
+As a result, other classes of bugs, such as temporal safety bugs (use-after-free) and meta-character bugs (e.g. format string) should also be injectable using our approach. 
+There also remains work to be done in making LAVA's bug-triggering data flow more realistic, although even in its current state, the vast majority of the execution of the modified program is realistic. 
+This execution includes the data flow that leads up to the capture of the DUA, which is often nontrivial.
+
+However rosy the future seems for LAVA, it is likely that certain classes of bugs are simply not injectable via taint-based measures.
+Logic errors, crypto flaws, and side-channel vulnerabilities, for instance, all seem to operate at a rather different level than the kinds of data-flow triggered flaws LAVA is well positioned to generate.
+We are not hopeful that these types of vulnerabilities will soon be injectable with LAVA. 
+
+We discovered, in the course of our use of LAVA bugs to evaluate vulnerability discovery tools, a number of situations in which LAVA introduces unintended bugs, such as use-after free and dereference of an uninitialized pointer in the code that siphons of a DUA value for later use triggering a bug.  
+In some cases, the tool under evaluation even found these real bugs that were due to LAVA artifacts and we had to remove them and re-run in order to ensure that the evaluation was not compromised. 
+These artifacts are a result of LAVA performing no real static analysis to determine if it is even vaguely safe to dereference a pointer in order to introduce the data flow it requires to inject a bug.
+It should be possible to remedy this situation dramatically in many cases but a complete solution would likely require intractable whole-program static analysis.  
 
 LAVA is limited to only work on C source code, but there is no fundamental reason for this.
 In principle, our approach would work for any source language with a usable source-to-source rewriting framework. 
-In Python, for example, one could easily implement our taint queries in a CPython plugin that executed the hypervisor call against the address of a variable in memory. 
+In Python, for example, one could easily implement our taint queries in a modified CPython interpreter that executed the hypervisor call against the address of a variable in memory. 
 Since our approach records the correspondence between source lines and program basic block execution, it would be just as easy to figure out where to edit the Python code as it is in C.
 We have no immediate plans to extend LAVA in these directions.
 
-We are planning some additional evaluatory work.
-In particular, we want to determine if the bugs that LAVA injects can be found by current vulnerability discovery tools, both open source and commercial.
-It should be possible to measure both miss and false alarm rates for these tools. 
-Miss rate is straightforward as we can merely compute the fraction of injected, validated bugs that a tool finds.
-False alarm rate will be trickier to estimate, as it requires determining with certainty if a bug claimed by a tool is real or not. 
-If we do this, the cost for evaluation will be high.
-Alternately, we may choose to run the tools on the targets and investigate all vulnerability claims.
-All such claims are very likely false alarms and should persist even when LAVA injects bugs.  
-These can be used to estimate false alarm rates.  
-
+We are planning some additional evaluation work.
+In particular, an extensive evaluation of real, named tools should be undertaken.
+Taken with care, the results will shed light on the strengths and weaknesses of classes of techniques, as well as particular implementations of each type of tool.
+It should also be noted that in our preliminary evaluation of vulnerability discovery tools we measured only the \emph{miss rate}; no attempt was made to gauge the \emph{false alarm rate}.
+For tools that generate a triggering input, as do both SES and FUZZER, measuring false alarm rate should be trivial. 
+Every input can be tested against the program after it has been instrumented to be able to detect the vulnerability.
+In the case of buffer overflows in C, this could mean compiling in fine-grained bounds checking~\cite{ruwase2004practical}.
+However, many bug finding tools, especially static analyzers and abstract interpretation ones, do not generate bug-triggering inputs.
+Instead, they merely gesture at a line in the program and make a claim about possible bugs at that point.
+In this situation, we can think of no way to assess false alarm rate without extensive manual effort.
