@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import re
 import sys
 import random 
 import psycopg2
@@ -12,12 +13,15 @@ import shlex
 import lockfile
 import signal
 import atexit
+import time
 from os.path import basename, dirname, join, abspath
 
 import signal
 
 from lava import *
 
+
+start_time = time.time()
 
 
 project = None
@@ -152,6 +156,7 @@ if __name__ == "__main__":
 
     # This should be {{directory}}/{{name}}/bugs
     bugs_top_dir = join(top_dir, 'bugs')
+    
     try:
         os.makedirs(bugs_top_dir)
     except: pass
@@ -213,8 +218,19 @@ if __name__ == "__main__":
     main_files = set(project['main_file'])
 
     if not os.path.exists(join(bugs_build, 'compile_commands.json')):
-        run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'),
-                '/home/moyix/git/llvm/Debug+Asserts/lib/clang/3.6.1/include'])
+        # find llvm_src dir so we can figure out where clang #includes are for btrace
+        llvm_src = None
+        for line in open(os.path.realpath(os.getcwd() + "/../src_clang/config.mak")):
+            foo = re.search("LLVM_SRC_PATH := (.*)$", line)
+            if foo:
+                llvm_src = foo.groups()[0]
+                break
+        assert(not (llvm_src is None))
+
+        print "lvm_src = %s" % llvm_src
+
+        run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'), llvm_src + "/Release/lib/clang/3.6.1/include"])
+#                '/home/moyix/git/llvm/Debug+Asserts/lib/clang/3.6.1/include'])
         # also insert instr for main() fn in all files that need it
         print "Instrumenting main fn by running lavatool on %d files\n" % (len(main_files))
         for f in main_files:
@@ -261,21 +277,15 @@ if __name__ == "__main__":
     elif args.many:
         num_bugs_to_inject = int(args.many)
         print "Injecting %d bugs" % num_bugs_to_inject
-        if False:
-            # These 10 inject and 4 of them work
-            # bn = [8609, 12095, 12789, 6440, 3200, 8634, 12506, 12047, 13822, 11886]
-            bn = [11166,9754,15729,17158,3860,7995,348,12562,5065,9157,17245,6715,5315,14417,7889,4605,8033,14638,13115,4299,15488,17011,15785,9122,7475,24,8649,9024,12130,15011,10545,9874,6860,13066,7831,17391,5149,349,13512,14999,9664,16566,12176,1831,13446,6108,8535,15755,9856,10340,5027,4848,2929,3345,6848,11356,3367,9291,1156,15612,5186,3167,14021,2804,8674,7565,14605,5714,2048,15692,11387,1652,14479,11036,7440,10414,10760,16565,11887,3399,15138,12792,350,10661,14977,11651,7715,15318,8053,17385,15477,3031,14434,7004,7668,16544,12248,14936,4367,9745]
-            num_bugs_to_inject = len(bn)
-            for bug_id in bn:
-                (dua_id, atp_id) = get_bug(project, bug_id)
-                bug = (bug_id, dua_id, atp_id, False)   
-                bugs_to_inject.append(bug)
-        else:
-            for i in range(num_bugs_to_inject):
-                bug = next_bug_random(project, False)
-                bugs_to_inject.append(bug)
+        for i in range(num_bugs_to_inject):
+            bug = next_bug_random(project, False)
+            bugs_to_inject.append(bug)
 
+        bn = []
+        for bug in bugs_to_inject:
+            bn.append(bug[0])
         print "bugs to inject: " + (str(bugs_to_inject))
+        print bn
         # NB: We won't be updating db for these bugs
 #        next_bug_db = True
     else:
@@ -398,6 +408,9 @@ if __name__ == "__main__":
             (rv, outp) = run_prog(bugs_install, orig_input, timeout)
             if rv != 0:
                 print "***** buggy program fails on original input!"
+                assert (1==0)
+            else:
+                print "buggy program succeeds on original input"
             print "retval = %d" % rv
             print "output:"
             lines = outp[0] + " ; " + outp[1]
@@ -410,7 +423,10 @@ if __name__ == "__main__":
             suff = get_suffix(orig_input)
             pref = orig_input[:-len(suff)] if suff != "" else orig_input
             num_real_bugs = 0
+            i = 0
             for bug in bugs_to_inject:
+                print "Validating bug %d" % i
+                i += 1
                 (bug_id, dua_id, atp_id, inj) = bug
                 dua = Dua(project, dua_id, sourcefile, inputfile, lval)                
                 fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug_id, suff)
@@ -439,3 +455,4 @@ if __name__ == "__main__":
 
 
 
+print "inject complete %.2f seconds" % (time.time() - start_time)
