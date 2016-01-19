@@ -68,6 +68,9 @@ uint32_t MainInstrCorrection;
  
 uint32_t returnCode=0;
 
+uint32_t num_taint_queries = 0;
+uint32_t num_atp_queries = 0;
+
 /*
 static cl::opt<std::string> LavaBugBuildDir("bug-build-dir",
     cl::desc("Path to build dir for bug-inj src" 
@@ -877,6 +880,7 @@ public:
             // yes, always pack this into after_part
             inss.after_part = ComposeDuaTaintQuery(llval, GetStringID(filename), 
                                                    line, insertion_point);
+	    num_taint_queries ++;
         }
         else if (LavaAction == LavaInjectBugs) {
             std::set<Bug> injectable_bugs = 
@@ -912,6 +916,7 @@ public:
         //                errs() << "ComposeAtpNewSrc\n";
         if (LavaAction == LavaQueries) {            
             inss = ComposeAtpQuery(call_expr, filename, line);
+	    num_atp_queries ++;
         }
         else if (LavaAction == LavaInjectBugs) {
             std::set<Bug> injectable_bugs = 
@@ -1300,8 +1305,12 @@ int main(int argc, const char **argv) {
         */
     } 
     errs() << "about to call Tool.run \n";
+    
     int r = Tool.run(newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
     errs() << "back from calling Tool.run \n";
+    errs() << "num taint queries added " << num_taint_queries << "\n";
+    errs() << "num atp queries added " << num_atp_queries << "\n";
+
     return (r | returnCode);
 
 }
