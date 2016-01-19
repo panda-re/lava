@@ -33,7 +33,19 @@ import pexpect
 from os.path import dirname, abspath, join
 import psutil
 
+from lava import *
+
 debug = True
+
+start_time = 0
+
+def tick():
+    global start_time
+    start_time = time.time()
+
+def tock():
+    global start_time
+    return time.time() - start_time
 
 
 def dprint(msg):
@@ -47,6 +59,8 @@ if len(sys.argv) < 3:
     print >>sys.stderr, "Usage: python project.json inputfile"
     sys.exit(1)
 
+
+tick()
 
 project_file = abspath(sys.argv[1])
 input_file = abspath(sys.argv[2])
@@ -89,6 +103,7 @@ assert 'kconf_group' in project
 lavadir = dirname(dirname(abspath(sys.argv[0])))
 
 progress("Entering {}.".format(project['directory']))
+
 os.chdir(os.path.join(project['directory'], project['name']))
 
 tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']])
@@ -203,6 +218,11 @@ monitor.close()
 console.close()
 shutil.rmtree(tempdir)
 
+record_time = tock()
+print "panda record complete %.2f seconds" % record_time
+sys.stdout.flush()
+
+tick()
 progress("Starting first-pass replay...")
 qemu_args = ['-replay', isoname,
         '-panda', 'taint2:no_tp',
@@ -244,6 +264,13 @@ qemu_args = ['-replay', isoname,
 dprint ("qemu args: [%s]" % (" ".join(qemu_args)))
 subprocess32.check_call([project['qemu']]+ qemu_args, stdout=sys.stdout, stderr=sys.stderr)
 
+
+replay_time = tock()
+print "taint analysis complete %.2f seconds" % replay_time
+sys.stdout.flush()
+
+tick()
+
 progress("Trying to create database {}...".format(project['name']))
 createdb_args = ['createdb', '-h', project['dbhost'],
         '-U', 'postgres', project['db']]
@@ -267,3 +294,25 @@ subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
 
 print
 progress("Found Bugs, Injectable!!")
+
+fib_time = tock()
+print "fib complete %.2f seconds" % fib_time
+sys.stdout.flush()
+
+
+def sql_q(query):
+    conn = get_conn(project)
+    cur = conn.cursor()
+    cur.execute(query)
+    return cur.fetchone()
+
+
+num_dua = int(sql_q("select count(*) from dua;")[0])
+num_atp = int(sql_q("select count(*) from atp;")[0])
+num_bug = int(sql_q("select count(*) from bug;")[0])
+
+print "total dua: %d" % num_dua
+print "total atp: %d" % num_atp
+print "total bug: %d" % num_bug
+
+
