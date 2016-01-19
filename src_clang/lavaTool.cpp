@@ -957,7 +957,7 @@ public:
             src_filename = FullPath(fullLoc);
         }
         uint32_t src_line = fullLoc.getExpansionLineNumber(); 
-        //        errs() << "VisitCallExpr " << src_filename << " " << src_line << "\n";
+        errs() << "VisitCallExpr " << src_filename << " " << src_line << "\n";
         // if we dont know the filename, that indicates unhappy situation.  bail.
         if (src_filename == "") return true;
         FunctionDecl *f = e->getDirectCallee();
@@ -1205,8 +1205,15 @@ public:
             returnCode |= INSERTED_MAIN_STUFF;
         }
 
-        rewriter.InsertText(sm.getLocForStartOfFile(sm.getMainFileID()),
-                            new_start_of_file_src.str(),
+        std::string start_of_file_str = std::string(new_start_of_file_src.str());
+        auto y = sm.getMainFileID();
+        //        y.dump();
+        auto x = sm.getLocForStartOfFile(y);
+        x.dump(sm);
+
+        rewriter.InsertText(x, // sm.getLocForStartOfFile(sm.getMainFileID()),
+                            //                            new_start_of_file_src.str(),
+                            start_of_file_str,
                             true, true);
         bool ret = rewriter.overwriteChangedFiles();
         // save the strings db 
@@ -1219,6 +1226,14 @@ public:
         rewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
         errs() << "** Creating AST consumer for: " << file << "\n";
         StringIDs = LoadDB(LavaDB);
+
+        SourceManager &sm = rewriter.getSourceMgr();
+        auto y = sm.getMainFileID();
+        //        y.dump();
+        auto x = sm.getLocForStartOfFile(y);
+        x.dump(sm);
+
+
         return make_unique<LavaTaintQueryASTConsumer>(rewriter,StringIDs);
     }
 

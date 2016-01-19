@@ -278,9 +278,9 @@ def run_cmd(cmd, cw_dir, envv, timeout):
     exitcode = p.returncode
     if debugging:
         print "run_cmd(" + cmd + ")"
-        print "exitcode = " + str(exitcode)
-        for line in output:
-            print "output = [" + line + "]"
+#        print "exitcode = " + str(exitcode)
+#        for line in output:
+#            print "output = [" + line + "]"
     return (exitcode, output)
 
 def run_cmd_nto(cmd, cw_dir, envv):
@@ -299,6 +299,6 @@ def mutfile(filename, lval_taint, new_filename, bug_id):
     file_bytes = bytearray(open(filename).read())
     # change first 4 bytes in dua to magic value
     for (i, offset) in zip(range(4), fuzz_offsets):
-        print "i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes))
+#        print "i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes))
         file_bytes[offset] = magic_val[i]
     open(new_filename, "w").write(file_bytes)
