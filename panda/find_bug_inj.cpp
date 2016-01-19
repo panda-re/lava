@@ -59,7 +59,7 @@ std::string src_pfx;
 int inputfile_id;
 std::map<uint32_t,std::string> ind2str;
 
-bool debug = true;
+bool debug = false;
 
 std::pair<float, float> update_range(float val, std::pair<float, float> range) {
     if (val < range.first) {
@@ -340,10 +340,12 @@ bool add_bug_to_db(PGconn *conn, Dua &dua, AttackPoint &atp, BugKey &b) {
         }
     }
 
-    printf ("-----------------------------------------------------\n");
-    printf ("Adding new bug to db.  dua_id = %d  atp_id = %d\n", did, aid);
-    std::cout << "Dua:\n" << dua.str() << "\n";
-    std::cout << "Atp:\n" << atp.str() << "\n";
+    if (debug) {
+        printf ("-----------------------------------------------------\n");
+        printf ("Adding new bug to db.  dua_id = %d  atp_id = %d\n", did, aid);
+        std::cout << "Dua:\n" << dua.str() << "\n";
+        std::cout << "Atp:\n" << atp.str() << "\n";
+    }
     // we don't need to get bug_id back
     sql.str("");
     sql.clear();
@@ -355,8 +357,10 @@ bool add_bug_to_db(PGconn *conn, Dua &dua, AttackPoint &atp, BugKey &b) {
     int bug_id = -1;
     assert (PQresultStatus(res) == PGRES_TUPLES_OK);
     bug_id = stou(PQgetvalue(res, 0, 0));
-    std::cout << "bug_id = " << bug_id << "\n";
-    printf ("-----------------------------------------------------\n");
+    if (debug) {
+        std::cout << "bug_id = " << bug_id << "\n";
+        printf ("-----------------------------------------------------\n");
+    }
     PQclear(res);
     return true;
 }
@@ -469,7 +473,7 @@ void taint_query_hypercall(Panda__LogEntry *ple,
     // ignore duas in header files
     if (is_header_file(ind2str[si->filename])) return;
     assert (si != NULL);
-    bool ddebug = true;    
+    bool ddebug = false;    
     // entry 2 is callstack -- ignore
     Panda__CallStack *cs = tqh->call_stack;
     assert (cs != NULL);
@@ -804,7 +808,8 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
                 uint64_t i1 = duas[dk].instr ;
                 uint64_t i2 = instr ;
                 float rdf_frac = ((float)i1) / ((float)i2);
-                std::cout << "i1=" << i1 << " i2=" << i2 << " rdf_frac=" << rdf_frac << "\n";
+                if (debug) 
+                    std::cout << "i1=" << i1 << " i2=" << i2 << " rdf_frac=" << rdf_frac << "\n";
                 num_bugs_added_to_db ++;
             }                                  
             num_bugs_local ++;
