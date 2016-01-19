@@ -1,3 +1,4 @@
+#!/bin/bash
 #
 # A script to run all of lava.
 # 
@@ -55,28 +56,47 @@ progress() {
   echo -e "\e[32m[everything]\e[0m \e[1m$2\e[0m" 
 }   
 
+
+# start timer
+function tick() {
+    ns=$(date +%s%N)
+    START=$(echo "scale=2; $ns/1000000000" | bc)
+}
+
+function tock() {
+    ns=$(date +%s%N)
+    END=$(echo "scale=2; $ns/1000000000" | bc)
+    time_diff=$(echo "scale=2; $END-$START" | bc)   
+}  
+
 # defaults
 ok=0
+reset=0
 add_queries=0
 make=0
 taint=0
 inject=0
-num_inject=0
+num_trials=0
 
 
 # -s means skip everything up to injection
 # -i 15 means inject 15 bugs (default is 1)
 echo 
 progress 0 "Parsing args"
-while getopts  "aqmti:k" flag
+while getopts  "arqmti:k" flag
 do
   if [ "$flag" = "a" ]; then
+      reset=1
       add_queries=1
       make=1
       taint=1
       inject=1
-      num_inject=1
+      num_trials=1
       progress 0 "All steps will be executed"
+  fi
+  if [ "$flag" = "r" ]; then
+      reset=1
+      progress 0 "Reset step will be executed"
   fi
   if [ "$flag" = "q" ]; then
       add_queries=1
@@ -92,8 +112,8 @@ do
   fi
   if [ "$flag" = "i" ]; then
       inject=1
-      num_inject=$OPTARG
-      progress 0 "Inject step will be executed: num_inject = $num_inject"
+      num_trials=$OPTARG
+      progress 0 "Inject step will be executed: num_trials = $num_trials"
   fi
   if [ "$flag" = "k" ]; then
       ok=1 
@@ -103,6 +123,12 @@ done
 shift $((OPTIND -1))
 
 json="$(realpath $1)"
+
+# how many bugs will be injected at  time
+many=100
+
+
+gnome-terminal --geometry=90x40  -x python ./lava_mon.py $1
 
 
 deldir () {
@@ -165,8 +191,8 @@ logs="$directory/$name/logs"
 /bin/mkdir -p $logs
 
 
-if [ $add_queries -eq 1 ]; then
-    progress 1  "Add queries step -- btrace lavatool and fixups"
+if [ $reset -eq 1 ]; then 
+    tick
     dbexists=$(psql -tAc "SELECT 1 from pg_database where datname='$db'" -U postgres)
     echo "dbexists $dbexists"    
     if [ -z $dbexists ]; then
@@ -187,7 +213,16 @@ if [ $add_queries -eq 1 ]; then
     lf="$logs/dbwipe.log"  
     progress 1  "Wiping db $db & setting up anew -- logging to $lf"
     run_remote "$dbhost" "/usr/bin/psql -d $db -f $lava/sql/lava.sql -U postgres >& $lf"
+    run_remote "$dbhost" "echo dbwipe complete >> $lf"
     /bin/mkdir -p $logs
+    tock
+    echo "reset complete $time_diff seconds"
+fi
+
+
+if [ $add_queries -eq 1 ]; then
+    tick
+    progress 1  "Add queries step -- btrace lavatool and fixups"
     lf="$logs/add_queries.log" 
     progress 1 "Adding queries to source -- logging to $lf"
     run_remote "$buildhost" "$scripts/add_queries.sh $json >& $lf" 
@@ -198,19 +233,45 @@ if [ $add_queries -eq 1 ]; then
     else
         progress 1 "No fixups"
     fi
+    tock
+    echo "add queries complete $time_diff seconds"
 fi
 
 
 if [ $make -eq 1 ]; then 
+    tick
     progress 1 "Make step -- making 32-bit version with queries"
     lf="$logs/make.log"    
     run_remote "$buildhost" "cd $sourcedir && $makecmd  >& $lf"
     run_remote "$buildhost" "cd $sourcedir && make install   &>> $lf"
+    tock
+    echo "make complete $time_diff seconds" 
+    run_remote "$buildhost" "echo make complete $time_diff seconds &>> $lf" 
+
 fi
 
-    
+inputs_dir="$directory/$name/inputs"
+$( mkdir -p $inputs_dir )
+for input in $inputs
+do
+    $( cp $input $inputs_dir )
+done
+
+
 if [ $taint -eq 1 ]; then 
+    tick
     progress 1 "Taint step -- running panda and fbi"
+#    run_remote "$pandahost" "rm -rf $directory"
+#    run_remote "$pandahost" "mkdir -p $directory"
+    for f in `ls $directory | grep -v qcow` 
+    do
+	run_remote "$pandahost" "rm -rf $directory/$f"
+	$(scp  -r $directory/$f $pandahost:$directory)
+    done
+
+#    echo "scp -r $directory $pandahost:$directory"
+#    upone=$( realpath $directory/.. )
+#    $( scp -r $directory $pandahost:$upone )
     for input in $inputs
     do
         i=`echo $input | sed 's/\//-/g'`
@@ -220,32 +281,36 @@ if [ $taint -eq 1 ]; then
         echo -n "Num Bugs in db: "
         run_remote "$dbhost" "/usr/bin/psql -d $db -U postgres -c 'select count(*) from bug' | head -3 | tail -1"
     done
+    tock
+    echo "bug_mining complete $time_diff seconds"
 fi
 
 
 na=1
 if [ $inject -eq 1 ]; then 
-    progress 1 "Injecting step -- trying $num_inject bugs"
-    for i in `seq $num_inject`
+    progress 1 "Injecting step -- $num_trials trials"
+    for i in `seq $num_trials`
     do    
-        lf=`/bin/mktemp`
-        progress 1 "Injecting bug $i -- logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -r $json >& $lf"
-        grep Remaining $lf
-        grep SELECTED $lf
-        grep retval "$lf"
-        bn=`grep SELECTED $lf | awk '{print $3}'`
+        lf="$logs/inject-$i.log"
+#        lf=`/bin/mktemp`
+        progress 1 "Trial $i -- injecting $many bugs logging to $lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many $json >& $lf"
+	grep yield $lf
+#        grep Remaining $lf
+#        grep SELECTED $lf
+#        grep retval "$lf"
+#        bn=`grep SELECTED $lf | awk '{print $3}'`
 #        echo bug number $bn
-        nlf="$logs/inject-$bn.log"
-        echo move $lf $nlf
-        /bin/mv $lf $nlf
-        a=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode != -11 and exitcode != -6" | head -3  | tail -1 `
-        b=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and (exitcode = -11 or exitcode = -6)" | head -3  | tail -1 `
-        y=`bc <<< "scale=3; $b/($a+$b)"`
-        t=`bc <<< "$a + $b"`
-        echo "Runs: $t  a=$a b=$b  Yield: $y"
+#        nlf="$logs/inject-$bn.log"
+#        echo move $lf $nlf
+#        /bin/mv $lf $nlf
+#        a=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode != -11 and exitcode != -6" | head -3  | tail -1 `
+#        b=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and (exitcode = -11 or exitcode = -6)" | head -3  | tail -1 `
+#        y=`bc <<< "scale=3; $b/($a+$b)"`
+#        t=`bc <<< "$a + $b"`
+#        echo "Runs: $t  a=$a b=$b  Yield: $y"
     done
 fi
 
-progress 1 "Everthing finished."
+progress 1 "Everything finished."
 
