@@ -301,9 +301,9 @@ def monitor_lava(stdscr):
 #            mon.addstr(v4, 48, "Database")
 #            first_db = False
         if num_dua != last_num_dua:
-            mon.addstr(v4, 48, " DUAs:  %d" % num_dua)
+            mon.addstr(v4, 48, " DUAs: %d" % num_dua)
         if num_atp != last_num_atp:
-            mon.addstr(v4+1, 48, " ATPs:  %d" % num_atp)
+            mon.addstr(v4+1, 48, " ATPs: %d" % num_atp)
         if num_bug != last_num_bug:
             mon.addstr(v4+2, 48, "pBUGs: %d" % num_bug)
         last_num_dua = num_dua
@@ -356,7 +356,7 @@ def monitor_lava(stdscr):
 
         logp("validate")
         # validate bugs 
-        patt = "Validating bug 20"
+        patt = "testing with fuzzed input for" 
         x = check_for(patt, lf)
         wait_for(patt, lf)
         mon.addstr(vt, 43, "V")
