@@ -248,6 +248,9 @@ qemu_replay.close()
 print
 progress("Starting second-pass replay, tainting from {}...".format(instr))
 pandalog = 'queries-{}.plog'.format(os.path.basename(isoname))
+pandalog = "%s/%s/%s" % (project['directory'], project['name'], pandalog)
+print "pandalog = [%s] " % pandalog
+
 
 
 
