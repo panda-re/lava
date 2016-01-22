@@ -27,6 +27,11 @@
 #
 
 
+
+ns=$(date +%s%N)
+START=$(echo "scale=2; $ns/1000000000" | bc)
+
+
 progress() {
   echo
   echo -e "\e[32m[queries]\e[0m \e[1m$1\e[0m"
@@ -111,4 +116,14 @@ for i in $c_files; do
     -project-file="$json" "$i"   
 done
 
+
 progress "Done inserting queries. Time to make and run actuate.py on a 64-BIT machine!"
+
+
+ns=$(date +%s%N)
+END=$(echo "scale=2; $ns/1000000000" | bc)
+
+time_diff=$(echo "scale=2; $END-$START" | bc)
+
+echo "add queries complete $time_diff seconds"
+

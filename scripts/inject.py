@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import re
 import sys
 import random 
 import psycopg2
@@ -12,12 +13,15 @@ import shlex
 import lockfile
 import signal
 import atexit
+import time
 from os.path import basename, dirname, join, abspath
 
 import signal
 
 from lava import *
 
+
+start_time = time.time()
 
 
 project = None
@@ -156,6 +160,7 @@ if __name__ == "__main__":
 
     # This should be {{directory}}/{{name}}/bugs
     bugs_top_dir = join(top_dir, 'bugs')
+    
     try:
         os.makedirs(bugs_top_dir)
     except: pass
@@ -217,8 +222,19 @@ if __name__ == "__main__":
     main_files = set(project['main_file'])
 
     if not os.path.exists(join(bugs_build, 'compile_commands.json')):
-        run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'),
-                '/home/moyix/git/llvm/Debug+Asserts/lib/clang/3.6.1/include'])
+        # find llvm_src dir so we can figure out where clang #includes are for btrace
+        llvm_src = None
+        for line in open(os.path.realpath(os.getcwd() + "/../src_clang/config.mak")):
+            foo = re.search("LLVM_SRC_PATH := (.*)$", line)
+            if foo:
+                llvm_src = foo.groups()[0]
+                break
+        assert(not (llvm_src is None))
+
+        print "lvm_src = %s" % llvm_src
+
+        run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'), llvm_src + "/Release/lib/clang/3.6.1/include"])
+#                '/home/moyix/git/llvm/Debug+Asserts/lib/clang/3.6.1/include'])
         # also insert instr for main() fn in all files that need it
         print "Instrumenting main fn by running lavatool on %d files\n" % (len(main_files))
         for f in main_files:
@@ -400,7 +416,9 @@ if __name__ == "__main__":
             (rv, outp) = run_prog(bugs_install, orig_input, timeout)
             if rv != 0:
                 print "***** buggy program fails on original input!"
-                assert 1 == 0
+                assert (1==0)
+            else:
+                print "buggy program succeeds on original input"
             print "retval = %d" % rv
             print "output:"
             lines = outp[0] + " ; " + outp[1]
@@ -448,3 +466,4 @@ if __name__ == "__main__":
 
 
 
+print "inject complete %.2f seconds" % (time.time() - start_time)
