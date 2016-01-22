@@ -254,6 +254,10 @@ print "pandalog = [%s] " % pandalog
 
 
 
+pandalog = "%s/%s/%s" % (project['directory'], project['name'], pandalog)
+
+print "pandalog = [%s] " % pandalog
+
 qemu_args = ['-replay', isoname,
         '-pandalog', pandalog,
         '-panda', 'osi',

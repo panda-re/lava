@@ -224,7 +224,10 @@ if __name__ == "__main__":
     if not os.path.exists(join(bugs_build, 'compile_commands.json')):
         # find llvm_src dir so we can figure out where clang #includes are for btrace
         llvm_src = None
-        for line in open(os.path.realpath(os.getcwd() + "/../src_clang/config.mak")):
+#        for line in open(os.path.realpath(os.getcwd() + "/../src_clang/config.mak")):
+        config_mak = project['lava'] + "/src_clang/config.mak" 
+        print "config.mak = [%s]" % config_mak
+        for line in open(config_mak):
             foo = re.search("LLVM_SRC_PATH := (.*)$", line)
             if foo:
                 llvm_src = foo.groups()[0]

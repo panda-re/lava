@@ -77,13 +77,13 @@ make=0
 taint=0
 inject=0
 num_trials=0
-
+demo=0
 
 # -s means skip everything up to injection
 # -i 15 means inject 15 bugs (default is 1)
 echo 
 progress 0 "Parsing args"
-while getopts  "arqmti:k" flag
+while getopts  "arqmti:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -91,7 +91,7 @@ do
       make=1
       taint=1
       inject=1
-      num_trials=1
+      num_trials=2
       progress 0 "All steps will be executed"
   fi
   if [ "$flag" = "r" ]; then
@@ -119,6 +119,10 @@ do
       ok=1 
       progress 0 "-k: Okaying through deletes"
   fi
+  if [ "$flag" = "d" ]; then
+      demo=1
+      progress 0 "-d: demo mode"
+  fi
 done
 shift $((OPTIND -1))
 
@@ -127,9 +131,12 @@ json="$(realpath $1)"
 # how many bugs will be injected at  time
 many=100
 
-
-gnome-terminal --geometry=90x40  -x python ./lava_mon.py $1
-
+echo here1 > /tmp/lf
+if [[ $demo -eq 1 ]]
+then
+    gnome-terminal --geometry=90x40  -x python ./lava_mon.py $1 &
+fi
+echo here2 >> /tmp/lf
 
 deldir () {
   deldir=$1
@@ -263,11 +270,11 @@ if [ $taint -eq 1 ]; then
     progress 1 "Taint step -- running panda and fbi"
 #    run_remote "$pandahost" "rm -rf $directory"
 #    run_remote "$pandahost" "mkdir -p $directory"
-    for f in `ls $directory | grep -v qcow` 
-    do
-	run_remote "$pandahost" "rm -rf $directory/$f"
-	$(scp  -r $directory/$f $pandahost:$directory)
-    done
+#    for f in `ls $directory | grep -v qcow` 
+#    do
+#	run_remote "$pandahost" "rm -rf $directory/$f"
+#	$(scp  -r $directory/$f $pandahost:$directory)
+#    done
 
 #    echo "scp -r $directory $pandahost:$directory"
 #    upone=$( realpath $directory/.. )
