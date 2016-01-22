@@ -251,6 +251,10 @@ pandalog = 'queries-{}.plog'.format(os.path.basename(isoname))
 
 
 
+pandalog = "%s/%s/%s" % (project['directory'], project['name'], pandalog)
+
+print "pandalog = [%s] " % pandalog
+
 qemu_args = ['-replay', isoname,
         '-pandalog', pandalog,
         '-panda', 'osi',
