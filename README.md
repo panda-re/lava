@@ -19,3 +19,5 @@ scripts/add_queries.sh: Untars a tar file and builds it, tracing the execution w
 scripts/bug_mining.py: Uses PANDA to collect an execution trace against a given input and then runs FBI against the resulting pandalog. This fills the database with a set of DUAs and attack points, and then finds the combinations that lead to injectable bugs.
 
 scripts/inject.py: Actually injects bugs into the program. Can inject either one or multiple. (Tim explain this better?)
+
+This all needs rewriting.  
