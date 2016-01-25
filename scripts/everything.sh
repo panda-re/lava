@@ -91,7 +91,7 @@ do
       make=1
       taint=1
       inject=1
-      num_trials=2
+      num_trials=4
       progress 0 "All steps will be executed"
   fi
   if [ "$flag" = "r" ]; then
