@@ -74,7 +74,13 @@ If one were to fuzz dead input bytes, the program should be indifferent and exec
 In the running example, $LIV(0..3)=1$ after line 3, since \verb+a+ is a direct copy of input bytes 0..3.
 After each iteration of the loop, the liveness of bytes 8..11, the loop bound, increase by one, and so after the loop $LIV(8..11)=n$.
 
-%The tope plots in Figures~\ref{
+Figures~\ref{fig:liv-graph} and~\ref{fig:tcn-graph} are plots of liveness and taint computer number for the program \verb+file+ processing the input \verb+/bin/ls+.
+In both plots, the horizontal axis is the number of replay instructions processed, and so corresponds, roughly, to time.
+The vertical axis is file position, so the bottom is the first byte in \verb+/bin/ls+ and the top is the 70th byte.  
+Obviously, \verb+/bin/ls+ is bigger than 70 bytes.  
+However, only the 64-byte elf header has any interesting liveness or taint compute number and so we restrict our attention, in these plots, to that portion of the file.
+
+                                                                                                      
 
 \begin{figure}
 \centering
