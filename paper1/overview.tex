@@ -42,7 +42,7 @@ Multiple threads and processes are also handled correctly, so that taint flows a
 
 \begin{figure}
 \centering
-\includegraphics[width=3in]{tcn.pdf}
+\includegraphics[scale=0]{tcn.pdf}
 \caption{Taint Compute Number examples from the running example.  
 TCN is simply the depth of the tree of computation that produces the value from tainted inputs.
 TCN(c) after line 2 is 1, and after line 6 (upon exiting the loop), it is n+1.}
@@ -84,13 +84,14 @@ However, only the 64-byte elf header has any interesting liveness or taint compu
 
 \begin{figure}
 \centering
-\includegraphics[width=3in]{liv-graph.png}
+\includegraphics[width=3.3in]{liv-graph.png}
 \caption{Liveness plotted, over time, for the input bytes of '/bin/ls' being processed by the program 'file'.}
 \label{fig:liv-graph}
 \end{figure}
 
-\begin{figure} % [htb]
-\includegraphics[width=3in]{tcn-graph.png}
+\begin{figure}
+\centering
+\includegraphics*[width=3.3in]{tcn-graph.png}
 \caption{Taint compute number, over time, for the input bytes of '/bin/ls' being processed by the program 'file'.}
 \label{fig:tcn-graph}
 \end{figure}
