@@ -1,4 +1,5 @@
 
+
 At a high level, LAVA adds bugs to programs in the following manner. Given an execution trace of the program on some specific input, we:
 
 \begin {enumerate}
@@ -72,6 +73,25 @@ A DUA entirely consisting of bytes with 0 or very low liveness can be considered
 If one were to fuzz dead input bytes, the program should be indifferent and execute the same trace.  
 In the running example, $LIV(0..3)=1$ after line 3, since \verb+a+ is a direct copy of input bytes 0..3.
 After each iteration of the loop, the liveness of bytes 8..11, the loop bound, increase by one, and so after the loop $LIV(8..11)=n$.
+
+%The tope plots in Figures~\ref{
+
+\begin{figure}
+\centering
+\includegraphics[width=3in]{liv-graph.png}
+\caption{Liveness plotted, over time, for the input bytes of '/bin/ls' being processed by the program 'file'.}
+\label{fig:liv-graph}
+\end{figure}
+
+\begin{figure} % [htb]
+\includegraphics[width=3in]{tcn-graph.png}
+\caption{Taint compute number, over time, for the input bytes of '/bin/ls' being processed by the program 'file'.}
+\label{fig:tcn-graph}
+\end{figure}
+
+%The horizontal axis is the number of replay instructions processed, and so, roughly, corresponds to time.
+%Along the vertical axis is file position.
+%Liveness is represented as the darkness of the spot at a particular x-y position in the image, darker patches are more live, and thus are involved in more branches.
 
 The combination of uncomplicated (low TCN) and dead (low liveness) program data is a powerful one for vulnerability injection.
 The DUAs it identifies are internal program quantities that are often a direct copy of input bytes, and can be set to any chosen value without sending the program along a different path.  
