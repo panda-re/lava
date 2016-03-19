@@ -15,7 +15,7 @@ However rosy the future seems for LAVA, it is likely that certain classes of bug
 Logic errors, crypto flaws, and side-channel vulnerabilities, for instance, all seem to operate at a rather different level than the kinds of data-flow triggered flaws LAVA is well positioned to generate.
 We are not hopeful that these types of vulnerabilities will soon be injectable with LAVA. 
 
-We discovered, in the course of our use of LAVA bugs to evaluate vulnerability discovery tools, a number of situations in which LAVA introduces unintended bugs, such as use-after free and dereference of an uninitialized pointer in the code that siphons of a DUA value for later use triggering a bug.  
+We discovered, in the course of our use of LAVA bugs to evaluate vulnerability discovery tools, a number of situations in which LAVA introduces unintended bugs, such as use-after free and dereference of an uninitialized pointer in the code that siphons off a DUA value for later use triggering a bug.  
 In some cases, the tool under evaluation even found these real bugs that were due to LAVA artifacts and we had to remove them and re-run in order to ensure that the evaluation was not compromised. 
 These artifacts are a result of LAVA performing no real static analysis to determine if it is even vaguely safe to dereference a pointer in order to introduce the data flow it requires to inject a bug.
 It should be possible to remedy this situation dramatically in many cases but a complete solution would likely require intractable whole-program static analysis.  
@@ -28,7 +28,7 @@ We have no immediate plans to extend LAVA in these directions.
 
 We are planning some additional evaluation work.
 In particular, an extensive evaluation of real, named tools should be undertaken.
-Taken with care, the results will shed light on the strengths and weaknesses of classes of techniques, as well as particular implementations of each type of tool.
+The results will shed light on the strengths and weaknesses of classes of techniques, as well as particular implementations.
 It should also be noted that in our preliminary evaluation of vulnerability discovery tools we measured only the \emph{miss rate}; no attempt was made to gauge the \emph{false alarm rate}.
 For tools that generate a triggering input, as do both SES and FUZZER, measuring false alarm rate should be trivial. 
 Every input can be tested against the program after it has been instrumented to be able to detect the vulnerability.

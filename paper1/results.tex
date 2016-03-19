@@ -50,7 +50,7 @@ The last column gives the time required to test a single potential bug injection
 
 
 Exhaustive testing was not possible for a number of reasons.
-Larger targets had larger numbers of potential bugs and take longer to test; for example, \verb+tshark+ has over a million bugs and each bug took almost 10 minutes to test.
+Larger targets had larger numbers of potential bugs and take longer to test; for example, \verb+tshark+ has over a million potential bugs and each takes almost 10 minutes to test.
 This is because testing requires not only injecting a small amount of code to add the bug, but also recompiling and running the resulting program.
 For many targets, we found the build to be subtly broken so that a \verb+make clean+ was necessary to pick up the bug injection reliably, which further increased testing time.
 Instead, we attempted to validate 2000 potential bugs chosen uniformly at random for each target.
@@ -232,7 +232,7 @@ Given time, FUZZER finds bugs that trigger for large byte ranges.
 Note that for many of these LAVA bugs, when the range is so large, discovery is possible by simply fuzzing every byte in the input a few times.  
 These bugs may, in fact, be trivially discoverable with a regression suite for a program like \verb+file+ that accepts arbitrary file input.\footnote{In principle, anyway. In practice \texttt{file}'s test suite consists of just 3 tests, none of which trigger our injected bugs.}
 By contrast, SES is able to find both knob-and-trigger bugs and different ranges, and the size of the range does not affect the number of bugs found.
-This is because it is no more difficult for a SAT solver to find a satisfying input for a large range than a small range; rather, the number of bugs found is limited by how deep into the program the symbolic execution can go.
+This is because it is no more difficult for a SAT solver to find a satisfying input for a large range than a small range; rather, the number of bugs found is limited by how deep into the program the symbolic execution reaches.
 
 Note that having each bug in a separate copy of the program means that for each run of a bug finding tool, only one bug is available for discovery at a time.  
 This is one kind of evaluation, but it seems to disadvantage tools like FUZZER and SES, which appear to be designed to work for a long time on a single program that may contain multiple bugs. 
@@ -251,10 +251,10 @@ Finally, there is a copy with 2136 bugs existing all at once and individually ex
 
 
 \begin{table}[h]
-\caption{Bugs found in \emph{LAVA-M} corpus by tool type}
+\caption{Bugs found in \emph{LAVA-M} corpus}
 \centering\footnotesize
 \begin{tabular}{l|c|c|c|c} 
-\multirow{2}{*}{Tool Name} & \multirow{2}{*}{Total Bugs} & \multicolumn{3}{c}{Unique Bugs Found} \\
+\multirow{2}{*}{Program} & \multirow{2}{*}{Total Bugs} & \multicolumn{3}{c}{Unique Bugs Found} \\
               &            & FUZZER       & SES        & Combined \\ \hline 
 \verb+uniq+   &    28      & 7            & 0          & 7               \\
 \verb+base64+ &    44      & 7            & 9          & 14               \\

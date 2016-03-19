@@ -16,9 +16,11 @@
 %\usepackage{times}
 %\usepackage{algorithm}
 \usepackage{listings}
-\usepackage[colorinlistoftodos,prependcaption,textsize=tiny]{todonotes}
+%\usepackage[colorinlistoftodos,prependcaption,textsize=tiny]{todonotes}
 %to disable todonotes without removing them manually, replace todonote package in include line above with
 %\usepackage[disable]{todonotes}
+
+\usepackage{balance}
 
 %opening
 \title{LAVA: Large-scale Automated Vulnerability Addition
@@ -48,14 +50,7 @@ Wil Robertson\IEEEauthorrefmark{3}, Frederick Ulrich\IEEEauthorrefmark{2}, Ryan 
 
 \begin{abstract}
 
-Work on automating vulnerability discovery has long been hampered by a shortage of ground-truth corpora with which to evaluate tools and techniques.
-This lack of ground truth prevents authors and users of tools alike from being able to measure such fundamental quantities as  miss and false alarm rates.
-In this paper, we present LAVA, a novel dynamic taint analysis-based technique for producing ground-truth corpora by quickly and automatically injecting large numbers of realistic bugs into program source code.
-Every LAVA bug is accompanied by an input that triggers it whereas normal inputs are extremely unlikely to do so.
-These vulnerabilities are synthetic but, we argue, still realistic, in the sense that they are embedded deep within programs and are triggered by real inputs.
-Using LAVA, we have injected thousands of bugs into eight real-world programs, including bash, tshark, and the GNU coreutils.
-In a preliminary evaluation, we found that a prominent fuzzer and a symbolic execution-based bug finder were able to locate some but not all LAVA-injected bugs, and that interesting patterns and pathologies were already apparent in their performance.
-Our work forms the basis of an approach for generating large ground-truth vulnerability corpora on demand, enabling rigorous tool evaluation and providing a high-quality target for tool developers.
+Work on automating vulnerability discovery has long been hampered by a shortage of ground-truth corpora with which to evaluate tools and techniques.  This lack of ground truth prevents authors and users of tools alike from being able to measure such fundamental quantities as miss and false alarm rates.  In this paper, we present LAVA, a novel dynamic taint analysis-based technique for producing ground-truth corpora by quickly and automatically injecting large numbers of realistic bugs into program source code.  Every LAVA bug is accompanied by an input that triggers it whereas normal inputs are extremely unlikely to do so.  These vulnerabilities are synthetic but, we argue, still realistic, in the sense that they are embedded deep within programs and are triggered by real inputs.  Using LAVA, we have injected thousands of bugs into eight real-world programs, including bash, tshark, and the GNU coreutils.  In a preliminary evaluation, we found that a prominent fuzzer and a symbolic execution-based bug finder were able to locate some but not all LAVA-injected bugs, and that interesting patterns and pathologies were already apparent in their performance.  Our work forms the basis of an approach for generating large ground-truth vulnerability corpora on demand, enabling rigorous tool evaluation and providing a high-quality target for tool developers.
 
 \end{abstract}
 
@@ -97,6 +92,8 @@ Our work forms the basis of an approach for generating large ground-truth vulner
 
 \section{Acknowledgements}
 \input{ack}
+
+\balance
 
 \bibliographystyle{plain}
 \bibliography{biblio}
