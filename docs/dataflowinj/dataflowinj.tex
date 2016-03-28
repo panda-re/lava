@@ -1,0 +1,115 @@
+
+\documentclass{article}
+
+\title{`Real' data flow injection for LAVA}
+
+\author{Tim Leek}
+
+\begin{document}
+
+\maketitle
+
+\section{The problem}
+We want to improve LAVA bugs.  Consider the problem of systematically inserting code that introduces data flows from DUAs to Attack points.  For simplicity, we will continue to restrict attention to just buffer overflows.  This should be expanded soon. 
+
+\section{Definitons}
+
+\begin{itemize}
+
+\item When we talk about an \textbf{instruction}, $i$, what we mean is a particular point in a replay, that is, an instruction count, which implies a machine instruction and, perhaps, the target program, $P$'s source code from which it was compiled.
+
+\item A \textbf{variable}, $v$, is something that is declared somewhere (global, local, formal parameter, etc) in a program and has a known type; it is also either in scope or not in scope at instruction $i$.  
+
+\item An \textbf{lval}, $lv$, is something that, in a program could be on the left-hand-side of an assignment.  This includes variables, but also array elements, struct fields, and so on.  The internal program quantities that live on stack and heap are all lvals, but so are things reachable from them via pointer dereference.
+
+\end{itemize}
+
+\section{Primitives, some new}
+
+Let's assume some magical abilities to determine certain pieces of information at every instruction, $i$,  in a trace.
+
+\begin{enumerate}
+
+\item $scope_i$.  This is what's in scope for the target program at instruction $i$.  If $i$ is an instruction executed in $P$'s source code, then we have the set $scope_i$ which is all variables in scope at that instance.  If instruction $i$ is not part of $P$ (remember, our analysis is whole-system) then $scope_i$ is  empty.  
+
+\item $reachable_i$.  We can expand $scope_i$ using type information into a larger set of lvals that are reachable at instruction $i$.  For instance, if \verb+q+ is in $scope_i$ and the type of \verb+q+ is pointer to \verb+struct foo+, and \verb+bar+ is a field in that struct, then not only \verb+q+, but also \verb+q->bar+ is in $reachable_i$.  
+
+\item $U_{lv}$.  Assume we also know when two dynamic lvals are the same.  More precisely, we are able to tell not just that they hold the same value, but, further, that they derived in the same way from the same input bytes.  Let's assume we can compute a function $U_{lv}$ that will return the same unique number for two dynamic lvals if they are the same and derived identically from the same input bytes.  
+
+\item $lava_i \subset reachable_i$.  This is the set of lvals that are reachable at $i$ in the trace \emph{and are also useable for LAVA data flow purposes}.  For instance, consider a variable, \verb+x+, which is declared, then initialized, then used for computation, and then no longer needed by the program, yet, is lexically still in scope.  This 
+\verb+x+ should be in the $lava$ set for some set of instructions.  Similarly, if a variable is declared and uninitialized and useable for some stretch of instructions before it is written, it can be in $lava$.  Both are viable slots into which we can place a DUA value for a little while.  Let's assume we have a way to find the set of such lvals at each instruction, $lava_i$. 
+
+\item $atp_i$. For the purposes of injecting a buffer overflow, an attack point is a read or write to a pointer.   Call these attack points $atp_i$ and say that $atp_i$ is the name of a pointer in the source code over which we want to have \emph{complete control} at instruction $i$ in order to guarantee overflow.  This doesn't need to be a set since there can only be a single possibly attackable pointer at a particular instruction, I think.  
+
+
+
+\end{enumerate}
+
+\section{Complicatedness}
+
+We have a function that will tell us how complicated a function of input bytes an lval is at a particular point in the trace.  For every $lv$ in $reachable_i$,  $compl_i(lv)$ is 0 if $lv$ is a direct copy of input bytes and increases as $lv$ becomes a more complicated function of input.  Another way of saying this might be that $compl_i(lv)$ increases as the value of $lv$ at $i$ becomes less predictable given the input bytes.
+This is a function of all the bytes in $lv$, so might be a max or average over byte-by-byte measures.
+Note that $compl_i(lv)$ could make use of taint compute number (TCN) or the new `number of reversible bits' measure Patrick has already implemented.  
+This is not a new concept; we have a stand-in for it that we use in LAVA at the moment.  
+We just need to give it a name, $compl_i(lv)$, that relates it to an entire lval $lv$ rather than individual bytes.
+
+\section{Branch Effect}
+
+Similarly, we also have the ability to determine how much of an effect an lval, at a particular instruction in the trace, has had upon all the branches up to that point.  $be_i(lv)$ is some function of all the bytes in $lv$, computed at point $i$ in the trace.  If $lv$ has no influence upon branches up to $i$, then $be_i(lv)$ is zero.  The bigger $be_i(lv)$ is, the more influence $lv$ has upon control flow so far.  
+Again, this is not a new idea.  We can use per-input-byte liveness we already know how to compute.  
+But, for the purposes of this discussion, it is necessary to be able to talk about this in terms of an lval, $lv$.
+
+\section{DUA++}
+
+Given the above information, we can figure out what DUAs are available at every point $i$ in the trace.  Call this the set $dua_i$.  We simply make a pass over the trace and label those values that are DUAs at particular instructions. If $compl_i(lv)$ and $be_i(lv)$ are both below their respective thresholds then $lv$ is in the set $dua_i$. Note that this simply corresponds to an improvement of the \verb+collect_duas+ method in the FIB pseudocode in the LAVA paper, which identifies (possibly) new DUAs from taint query info.  
+This new version is strictly \emph{better} than the old LAVA one, which only examines lvals embedded in arguments to functions.  
+
+
+Additionally, it will be useful to abstract away from a specific DUA at instruction $i$ to represent the fact that the same DUA is actually available in multiple places with possibly different names. For any $lv$ in $dua_i$, we really want to know the set of instructions for which it is available equivalently and the names it takes on at those points in the trace.  Let's call this $ud(dua_{i}(lv))$, which is a set of pairs: instruction and lval name.  Note that $U_{lv}$ will be the same for every lval in $ud(dua_{i}(lv))$.
+
+
+\section{Inserting a Buffer Overlow}
+
+Now, to the business at hand.  We want to insert a buffer overflow.  Here is the set up.  
+
+\begin{enumerate}
+
+\item Choose a DUA.  Pick an instruction in the trace at random, $i^{0}$.  Then pick some attacker-controlled data available there, $lv^{0} \in dua_{i^0}$, at random. This is the data we'd like to use later to cause a buffer overflow.  We will refer to this dua as $d^{0} = (lv^{0},i^{0})$,
+
+\item Choose a pointer to attack, $atp_{i^1}$, at random.  There are two requirements of $atp_{i^1}$.
+
+\begin{enumerate}
+\item The attack point has to be temporally after the dua.  So $i^0<i^1$ must be true.
+\item The input bytes from which  $lv^0$ derives mustn't have accumulated too much effect upon control flow between $i^0$ and $i^1$.  That is, $be_{i^1}(lv^0)$ is below threshold.  
+\end{enumerate}
+\end{enumerate}
+
+\subsection {Iteratively inserting data flow}
+
+All that remains is to figure out how to insert code that will execute between $i^0$ and $i^1$ and will serve to flow the data from DUA $d^{0}$ to attack point $atp_{i^1}$.  
+
+Given $ud$, we know how much later, temporally, in the trace that $d^0$ is available without our having to do any work.  We could pick any of the instructions in $ud(d^0)$ and, at that point in the trace, copy the value off into an available slot.  
+ Note that the intersection between $ud(d^0)$ and $lava$, identifies all instructions at which there is \emph{both} a dua available and at which there is a slot into which we can store it safely. 
+
+We can imagine an iterative procedure in which we do the following over and over, at step $t$. Each iteration introduces source code changes that get the DUA closer to the attack point.  
+
+\begin{enumerate}
+\item \label{step1} Find the intersection between $ud(d^{t})$ and $lava$.
+\item Choose randomly amongst the elements in that intersection.  Call the chosen slot $s^t$.
+\item Insert code to flow the data from $d^{t}$ to $s^t$. 
+\item $d^{t+1} \leftarrow s^t$.  Iterate 
+\item Stopping condition:  intersection between $ud(d^t)$ and $atp_{i^1}$ is non-empty.  That is, we are done when the dua $d^0$ has been made available at $i^1$; we can just use it there to completely control the pointer and cause an overflow. 
+\end{enumerate}
+
+\section{Thorns}
+
+
+We will obviously encounter situations in which we are stuck when the intersection found in step \ref{step1} is empty.  
+We can perhaps fix this by adding new local variables, or additional fields to structs.  Perhaps we can do this somewhat randomly, adding variables and struct fields with some probability up-front before we run the program under any taint analysis.  If we add enough potential slots we may be ok.  And we can prune those that aren't used after the fact?  Probably there is a better way that provides actual guarantees.  
+
+Another problem.  We can't just set $d^{t+1} \leftarrow s^t$.  To do so, we have to update $ud$.  But many slots are going to be untainted and therefore this isn't meaningful, since $U_{lv}$ is something we are most likely to know about \emph{tainted} lvals.  Ugh.  
+
+More fundamentally, how can we get $U_lv$?  Perhaps we can graft this onto the current taint system.  Some of it is there.  But what if we have two different pieces of code that compute the same thing from the same input in the same way?  We'd want the $U_lv$ values to be the same.  But it's not completely clear how to achieve that via an efficient computation. 
+
+
+\end{document}
