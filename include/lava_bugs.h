@@ -15,6 +15,7 @@ extern "C" {
 #include <map>
 #include <set>
 #include <vector>
+#include <tuple>
 
 // instruction count
 typedef uint64_t Instr;
@@ -23,12 +24,8 @@ typedef uint32_t Tcn;
 // ptr used to ref a label set
 typedef uint64_t Ptr;
 
-
-
 std::string iset_str(std::set<uint32_t> &iset);
 std::string pvec_str(std::vector<Ptr> &pvec);
-
-
 
 // represents the src mod for a dua
 // note that two duas can map to the same src mod
@@ -40,30 +37,21 @@ struct DuaKey {
     uint32_t insertionpoint;
     std::set<uint32_t> lval_offsets_tainted;
 
+    auto inline to_tuple() const {
+        return std::tie(filename, linenum, astnodename, insertionpoint,
+                lval_offsets_tainted);
+    }
+
+public:
     bool operator<(const DuaKey &other) const {
-        if (filename < other.filename) return true;
-        if (filename > other.filename) return false;
-        if (linenum < other.linenum) return true;
-        if (linenum > other.linenum) return false;
-        if (astnodename < other.astnodename) return true;
-        if (astnodename > other.astnodename) return false;
-        if (insertionpoint < other.insertionpoint) return true;
-        if (insertionpoint > other.insertionpoint) return false;
-        return (lval_offsets_tainted < other.lval_offsets_tainted);
+        return to_tuple() < other.to_tuple();
     }
 
     bool operator==(const DuaKey &other) const {
-        return ((filename == other.filename)
-                && (linenum == other.linenum)
-                && (astnodename == other.astnodename)
-                && (insertionpoint == other.insertionpoint)
-                && (lval_offsets_tainted == other.lval_offsets_tainted));
+        return to_tuple() == other.to_tuple();
     }
 
 };
-
-
-
 
 struct Dua {
 
@@ -81,6 +69,13 @@ struct Dua {
     uint32_t scount;                      // num times this dua has been used to inject a bug that turned out to realy be a bug
     uint64_t instr;                       // instr count
 
+    auto inline to_tuple() const {
+        return std::tie(filename, line, lvalname, insertionpoint, input_file,
+                max_liveness, max_tcn, max_card, icount, scount, instr,
+                file_offsets, lval_taint);
+    }
+
+public:
     std::string str() {
         std::stringstream ss;
         ss << "DUA ["
@@ -99,73 +94,32 @@ struct Dua {
     }
 
     bool operator<(const Dua &other) const {
-        if (filename < other.filename) return true;
-        if (filename > other.filename) return false;
-        if (line < other.line) return true;
-        if (line > other.line) return false;
-        if (lvalname < other.lvalname) return true;
-        if (lvalname > other.lvalname) return false;
-        if (insertionpoint < other.insertionpoint) return true;
-        if (insertionpoint > other.insertionpoint) return false;
-        if (input_file < other.input_file) return true;
-        if (input_file > other.input_file) return false;
-        if (max_liveness < other.max_liveness) return true;
-        if (max_liveness > other.max_liveness) return false;
-        if (max_tcn < other.max_tcn) return true;
-        if (max_tcn > other.max_tcn) return false;
-        if (max_card < other.max_card) return true;
-        if (max_card > other.max_card) return false;
-        if (icount < other.icount) return true;
-        if (icount > other.icount) return false;
-        if (scount < other.scount) return true;
-        if (scount > other.scount) return false;
-        if (instr < other.instr) return true;
-        if (instr > other.instr) return false;
-        if (file_offsets < other.file_offsets) return true;
-        if (file_offsets > other.file_offsets) return false;
-        return lval_taint < other.lval_taint;
+        return to_tuple() < other.to_tuple();
     }
 
     bool operator==(const Dua &other) const {
-        return ((filename == other.filename)
-                && (line == other.line)
-                && (lvalname == other.lvalname)
-                && (insertionpoint == other.insertionpoint)
-                && (input_file == other.input_file)
-                && (max_liveness == other.max_liveness)
-                && (max_tcn == other.max_tcn)
-                && (max_card == other.max_card)
-                && (icount == other.icount)
-                && (scount == other.scount)
-                && (instr == other.instr)
-                && (file_offsets == other.file_offsets)
-                && (lval_taint == other.lval_taint));
+        return to_tuple() == other.to_tuple();
     }
 
 };
-
 
 struct AttackPointKey {
     uint32_t filename;
     uint32_t line;
     uint32_t typ;
 
+    auto inline to_tuple() const { return std::tie(filename, line, typ); }
+
+public:
     bool operator<(const AttackPointKey &other) const {
-        if (filename < other.filename) return true;
-        if (filename > other.filename) return false;
-        if (line < other.line) return true;
-        if (line > other.line) return false;
-        return (typ < other.typ);
+        return to_tuple() < other.to_tuple();
     }
 
     bool operator==(const AttackPointKey &other) const {
-        return ((filename == other.filename)
-                && (line == other.line)
-                && (typ == other.typ));
+        return to_tuple() == other.to_tuple();
     }
 
 };
-
 
 struct AttackPoint {
 
@@ -176,6 +130,19 @@ struct AttackPoint {
     uint32_t icount;
     uint32_t scount;
 
+    auto inline to_tuple() const {
+        return std::tie(filename, line, typ, input_file, icount, scount);
+    }
+
+public:
+    bool operator<(const AttackPoint &other) const {
+        return to_tuple() < other.to_tuple();
+    }
+
+    bool operator==(const AttackPoint &other) const {
+        return to_tuple() == other.to_tuple();
+    }
+
     std::string str() {
         std::stringstream ss;
         ss << "ATP [";
@@ -184,53 +151,21 @@ struct AttackPoint {
         return ss.str();
     }
 
-    bool operator<(const AttackPoint &other) const {
-        if (line < other.line) return true;
-        if (line > other.line) return false;
-        if (filename < other.filename) return true;
-        if (filename > other.filename) return false;
-        if (typ < other.typ) return true;
-        if (typ > other.typ) return false;
-        if (input_file < other.input_file) return true;
-        if (input_file > other.input_file) return false;
-        if (icount < other.icount) return true;
-        if (icount > other.icount) return false;
-        return (scount < other.scount);
-    }
-
-    bool operator==(const AttackPoint &other) const {
-        return ((line == other.line)
-                && (filename == other.filename)
-                && (typ == other.typ)
-                && (input_file == other.input_file)
-                && (icount == other.icount)
-                && (scount == other.scount));
-    }
-
 };
-
-
 
 struct BugKey {
     DuaKey dk;
     AttackPointKey atpk;
 
     bool operator<(const BugKey &other) const {
-        if (dk < other.dk) return true;
-        if (!(dk == other.dk)) return false;
-        return (atpk < other.atpk);
+        return std::tie(dk, atpk) < std::tie(other.dk, other.atpk);
     }
 
     bool operator==(const BugKey &other) const {
-        return ((dk == other.dk)
-                && (atpk == other.atpk));
+        return std::tie(dk, atpk) == std::tie(other.dk, other.atpk);
     }
 
 };
-
-
-
-
 
 struct Bug {
     uint32_t id;
@@ -239,6 +174,9 @@ struct Bug {
     std::string global_name;  // name of global that will provide data flow between dua and atp.
     uint32_t size;            // size of global in bytes
 
+    auto inline to_tuple() const { return std::tie(dua, atp, global_name, size); }
+
+public:
     std::string str() {
         std::stringstream ss;
         ss << "BUG [";
@@ -248,21 +186,11 @@ struct Bug {
     }
 
     bool operator<(const Bug &other) const {
-        // NB: got no > for dua & atp. make do with < & ==
-        if (dua < other.dua) return true;
-        if (!(dua == other.dua)) return false; // must be >
-        if (atp < other.atp) return true;
-        if (!(atp == other.atp)) return false;
-        if (global_name < other.global_name) return true;
-        if (global_name > other.global_name) return false;
-        return (size < other.size);
+        return to_tuple() < other.to_tuple();
     }
 
     bool operator==(const Bug &other) const {
-        return ((dua == other.dua)
-                && (atp == other.atp)
-                && (global_name == other.global_name)
-                && (size == other.size));
+        return to_tuple() == other.to_tuple();
     }
 
 };
