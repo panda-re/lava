@@ -1,9 +1,9 @@
 /*
 
 Create all the tables and data bases for a run
- 
+
 fbi will populate all of these tables.
-lavaTool will consult them to figure out which bug to inject next, 
+lavaTool will consult them to figure out which bug to inject next,
 preferring bugs with lower icount for dua / ap, and updating the icount for those selected.
 something else will update the scount field when a real bug gets found
 
@@ -38,7 +38,7 @@ create language plpythonu;
 
 CREATE USER lava WITH PASSWORD 'llaavvaa';
 -- create DATABASE tshark;
-	
+
 -- Table of source file names
 CREATE TABLE sourcefile (
        sourcefile_id  serial primary key,
@@ -63,7 +63,7 @@ CREATE TABLE lval (
 
 
 -- Table of AttackPoint types
-CREATE TABLE atptype (    
+CREATE TABLE atptype (
        atptype_id  serial primary key,
        atptype_nm  text unique not null -- memcpy, malloc, etc
 );
@@ -76,11 +76,11 @@ CREATE TABLE unique_taint_set (
   file_offset  integer[],
   inputfile_id integer references inputfile,
   UNIQUE(ptr,inputfile_id)
-); 
+);
 
-    
--- CREATE OR REPLACE FUNCTION take_lock ( h text, r text, w datetime ) 
---    if (select (*) from 
+
+-- CREATE OR REPLACE FUNCTION take_lock ( h text, r text, w datetime )
+--    if (select (*) from
 
 -- Table of dead uncomplicated and available data
 -- A dua is one or more bytes of an lval at a particular source location
@@ -88,34 +88,34 @@ CREATE TABLE unique_taint_set (
 -- function of those bytes, but is also dead in the sense that it does not
 -- taint many branches
 CREATE TABLE dua (
-       dua_id          serial primary key, 
+       dua_id          serial primary key,
        filename_id	   integer references sourcefile, -- source file containing this dua (see SourceFile table)
        line	           integer,                       -- line in source file
-       lval_id	       integer references lval,       -- name of the lval, at least some bytes of which are dua 
-       insertionpoint  integer,                       -- tells us if dua came from a taint query before (1) or after (2) the fn call   
-       file_offset     integer[],                     -- bytes in the input file that taint this dua                                   
+       lval_id	       integer references lval,       -- name of the lval, at least some bytes of which are dua
+       insertionpoint  integer,                       -- tells us if dua came from a taint query before (1) or after (2) the fn call
+       file_offset     integer[],                     -- bytes in the input file that taint this dua
        lval_taint	   numeric[],                     -- lval_taint[0] is ptr to taint set.  0 means untainted
-       inputfile_id    integer references inputfile,  -- input file that gave us this dua                                              
-       max_tcn         real,                          -- max taint compute number across bytes in this dua                             
-       max_card	       integer,                       -- max cardinality of a taint label set for any byte in the dua                  
-       max_liveness    float,                         -- max liveness of any label in any taint label set for any byte in the dua      
-       dua_icount      integer,                       -- number of times used to inject a bug                                          
-       dua_scount      integer,                        -- number of times used to inject a bug that was successful                      
-       instr           numeric,                       -- instruction count for this dua (uint64) 
+       inputfile_id    integer references inputfile,  -- input file that gave us this dua
+       max_tcn         real,                          -- max taint compute number across bytes in this dua
+       max_card	       integer,                       -- max cardinality of a taint label set for any byte in the dua
+       max_liveness    float,                         -- max liveness of any label in any taint label set for any byte in the dua
+       dua_icount      integer,                       -- number of times used to inject a bug
+       dua_scount      integer,                        -- number of times used to inject a bug that was successful
+       instr           numeric,                       -- instruction count for this dua (uint64)
        UNIQUE(filename_id,line,lval_id,insertionpoint,file_offset,lval_taint,inputfile_id,max_tcn,max_card,max_liveness,instr)
 );
 
 
 
 -- Table of attack points
--- An attack point is a 
+-- An attack point is a
 CREATE TABLE atp (
-       atp_id      	  serial primary key, 
+       atp_id      	  serial primary key,
        filename_id	  integer references sourcefile,   -- source file containing this ap (see SourceFile table)
        line	          integer,                         -- line in source file
        typ_id	      integer references atptype,      -- type of attack point (see AttackPoint table)
        inputfile_id   integer references inputfile,    -- input file that gave us this dua
-       atp_icount     integer,                         -- number of times used to inject a bug                    
+       atp_icount     integer,                         -- number of times used to inject a bug
        atp_scount     integer,                         -- number of times used to inject a bug that was successful
        UNIQUE(filename_id,line,typ_id,inputfile_id)
 );
@@ -135,9 +135,9 @@ CREATE TABLE bugkey (
    bugkey_id           serial primary key,
    dua_filename_id	   integer references sourcefile, -- source file containing this dua (see SourceFile table)
    dua_line	           integer,                       -- line in source file
-   dua_lval_id	       integer references lval,       -- name of the lval, at least some bytes of which are dua 
-   dua_insertionpoint  integer,                       -- tells us if dua came from a taint query before (1) or after (2) the fn call   
-   dua_file_offset     integer[],                     -- bytes in the input file that taint this dua                                   
+   dua_lval_id	       integer references lval,       -- name of the lval, at least some bytes of which are dua
+   dua_insertionpoint  integer,                       -- tells us if dua came from a taint query before (1) or after (2) the fn call
+   dua_file_offset     integer[],                     -- bytes in the input file that taint this dua
    atp_filename_id     integer references sourcefile,   -- source file containing this ap (see SourceFile table)
    atp_line            integer,                         -- line in source file
    atp_typ_id          integer references atptype,      -- type of attack point (see AttackPoint table)
@@ -154,7 +154,7 @@ CREATE TABLE build (
 );
 
 
--- Table of runs. 
+-- Table of runs.
 CREATE TABLE run (
        run_id             serial primary key,
        build_id           integer references build,   -- the build used to generate this exe
@@ -171,7 +171,15 @@ create table run_stats  (
        max_liveness   real,
        max_tcn        int,
        max_card       int
-);  
+);
+
+-- Table of functions, enables us to do callstacks.
+CREATE TABLE function (
+        function_id     serial primary key,
+        filename_id     integer references sourcefile,
+        line            integer,
+        UNIQUE(filename_id, line)
+)
 
 
 
@@ -206,8 +214,8 @@ drop function if exists  take_lava_lock(text);
 
 
 -- count rows in table
-create or replace function num_rows(tablename text) returns integer 
-as $$ 
+create or replace function num_rows(tablename text) returns integer
+as $$
   cmd = "select count (*) from " + tablename + ";"
   rv = plpy.execute(cmd, 1)
   return rv[0]["count"]
@@ -246,7 +254,7 @@ as $$
     cmd = "update %s set %s_icount=%d where %s_id=%d;" % (tablename, tablename, random.randint(0,1000), tablename, i)
     rv = plpy.execute(cmd, 1)
 $$ LANGUAGE plpythonu;
-  
+
 
 
 drop type if exists bug_info;
@@ -256,28 +264,28 @@ create type bug_info as (
   bug    int,
   dua    int,
   atp    int
-);                                                                                                                                                                   
+);
 
-  
+
 
 /*
   next_bug()
 
  returns next bug to work on
  first, get set of bugs that have not been injected
- consider each, and for each compute a score that is the sum of the 
- counts for the dua and atp.  
+ consider each, and for each compute a score that is the sum of the
+ counts for the dua and atp.
  The bug that gets retured is the one for which that score is minimized.
  update count for dua and atp in bug that was chosen.
  and set the inj field to true for the chosen bug.
 
-*/ 
+*/
 
 
 /*
  tshark=# select * from next_bug();
 
-  bug  | dua | atp 
+  bug  | dua | atp
 -------+-----+-----
  13838 | 478 |  30
 */
@@ -298,9 +306,9 @@ as $$
   for res in reses:
     # if the bigger of the two counts is smaller than min_score
     # then this bug is best seen so far
-    bigger = res["dua_icount"] 
+    bigger = res["dua_icount"]
     if res["atp_icount"] > bigger:
-      bigger = res["atp_icount"] 
+      bigger = res["atp_icount"]
     if bigger < min_score:
       min_score = bigger
       b_argmin = res["bug_id"]
@@ -355,11 +363,11 @@ as $$
     typ_id = res2[0]["typ_id"]
     if typ_id == atp_typ:
       dua_id = res2[0]["dua_id"]
-      atp_id = res2[0]["atp_id"]      
+      atp_id = res2[0]["atp_id"]
       r = { "exitcode": exitcode, "run": run_id, "bug": bug_id, "dua": dua_id, "atp": atp_id }
       fishy.append(r)
   return fishy
-$$ LANGUAGE plpythonu;    
+$$ LANGUAGE plpythonu;
 
 
 
