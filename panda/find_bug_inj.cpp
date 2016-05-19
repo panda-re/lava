@@ -42,6 +42,7 @@ extern "C" {
 #include <vector>
 #include <sstream>
 #include <algorithm>
+#include <cstring>
 #include "pandalog.h"
 #include "pandalog_print.h"
 #include "../src_clang/lavaDB.h"
@@ -823,6 +824,114 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
     }
 }
 
+struct SrcFunction {
+    uint64_t id;
+    std::string filename;
+    uint64_t line;
+    std::string name;
+};
+
+static std::pair<bool, SrcFunction> get_function(PGconn *conn,
+        std::string filename, uint64_t line, std::string name) {
+    std::stringstream sql;
+    sql << "SELECT (id, sourcefile_nm, line, name) FROM src_function "
+        << "LEFT JOIN sourcefile "
+        << "ON src_function.filename_id = sourcefile.sourcefile_id "
+        << "WHERE sourcefile_nm = '" << filename << "' "
+        << "AND line = " << line << ";";
+
+    PGresult *res = pg_exec_ss(conn,sql);
+    assert(PQresultStatus(res) == PGRES_COMMAND_OK);
+
+    int num_results = PQntuples(res);
+    assert(num_results == 0 || num_results == 1);
+    if (num_results == 0) {
+        PQclear(res);
+        return std::make_pair(false, SrcFunction());
+    } else {
+        SrcFunction result = {
+            strtoull(PQgetvalue(res, 0, 0), NULL, 10),
+            std::string(PQgetvalue(res, 0, 1)),
+            strtoull(PQgetvalue(res, 0, 2), NULL, 10),
+            std::string(PQgetvalue(res, 0, 3))
+        };
+        PQclear(res);
+        return std::make_pair(true, result);
+    }
+}
+
+static SrcFunction get_or_insert_function(PGconn *conn,
+        std::string filename, uint64_t line, std::string name) {
+    bool exists;
+    SrcFunction func;
+    std::tie(exists, func) = get_function(conn, filename, line, name);
+
+    if (exists) return func;
+    else {
+        int filename_id = addstr(conn, "sourcefile", strip_pfx(filename, src_pfx));
+
+        std::stringstream sql;
+        sql << "INSERT INTO src_function (filename_id, line, name) VALUES "
+            << "(" <<  filename_id << ", " << line << ", '" << name << "');";
+        PGresult *res = pg_exec_ss(conn, sql);
+        assert(PQresultStatus(res) == PGRES_COMMAND_OK);
+        PQclear(res);
+
+        std::tie(exists, func) = get_function(conn, filename, line, name);
+        assert(exists);
+        return func;
+    }
+}
+
+namespace std {
+    template<>
+    struct less<Panda__DwarfCall> {
+        bool operator() (const Panda__DwarfCall &A, const Panda__DwarfCall &B) const {
+            int64_t cmp = strcmp(A.file_callee, B.file_callee);
+            if (cmp != 0) return cmp > 0;
+
+            cmp = strcmp(A.function_name_callee, B.function_name_callee);
+            if (cmp != 0) return cmp > 0;
+
+            if (A.line_number_callee != B.line_number_callee)
+                return A.line_number_callee > B.line_number_callee;
+
+            cmp = strcmp(A.file_callsite, B.file_callsite);
+            if (cmp != 0) return cmp > 0;
+
+            return A.line_number_callsite > B.line_number_callsite;
+        }
+    };
+}
+std::map<Panda__DwarfCall, std::vector<uint64_t> > dwarf_call_to_instr;
+
+void record_call(Panda__LogEntry *ple, PGconn *conn) {
+    assert(ple->dwarf_call);
+    dwarf_call_to_instr[*ple->dwarf_call].push_back(ple->instr);
+}
+
+void record_ret(Panda__LogEntry *ple, PGconn *conn) {
+    // Find corresponding call for this return.
+    assert(ple->dwarf_ret);
+    Panda__DwarfCall *dwarf_ret = ple->dwarf_ret;
+
+    std::vector<uint64_t> &calls = dwarf_call_to_instr[*dwarf_ret];
+    assert(!calls.empty());
+
+    uint64_t call_instr = calls.back(), ret_instr = ple->instr;
+    calls.pop_back();
+
+    SrcFunction func = get_or_insert_function(conn, dwarf_ret->file_callee,
+            dwarf_ret->line_number_callee, dwarf_ret->function_name_callee);
+
+    std::string callsite_filename = strip_pfx(dwarf_ret->file_callsite, src_pfx);
+    int callsite_filename_id = addstr(conn, "sourcefile", callsite_filename);
+    std::stringstream sql;
+    sql << "INSERT INTO call (call_instr, ret_instr, "
+        << "called_function, filename_id, line) VALUES ("
+        << call_instr << ", " << ret_instr << ", " << func.id << ", "
+        << callsite_filename_id << ", " << dwarf_ret->line_number_callsite << ");";
+}
 
 int main (int argc, char **argv) {
     if (argc != 5) {
@@ -896,6 +1005,12 @@ int main (int argc, char **argv) {
         if (ple->attack_point) {
             find_bug_inj_opportunities(ple, duas, ptr_to_set,
                                        liveness, max_liveness, conn);
+        }
+        if (ple->dwarf_call) {
+            record_call(ple, conn);
+        }
+        if (ple->dwarf_ret) {
+            record_ret(ple, conn);
         }
         pandalog_free_entry(ple);
     }

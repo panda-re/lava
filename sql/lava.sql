@@ -174,12 +174,22 @@ create table run_stats  (
 );
 
 -- Table of functions, enables us to do callstacks.
-CREATE TABLE function (
-        function_id     serial primary key,
-        filename_id     integer references sourcefile,
-        line            integer,
-        UNIQUE(filename_id, line)
-)
+CREATE TABLE src_function (
+    id              serial primary key,
+    filename_id     integer references sourcefile,
+    line            integer,
+    name            text not null,
+    UNIQUE(filename_id, line)
+);
+
+CREATE TABLE call (
+    id              serial primary key,
+    call_instr      integer,                            -- instruction count at call
+    ret_instr       integer,                            -- instruction count at ret
+    called_function integer references src_function,    -- called function
+    filename_id     integer references sourcefile,       -- callsite filename
+    line            integer
+);
 
 
 
@@ -192,6 +202,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON atp TO lava;
 GRANT SELECT, INSERT, UPDATE, DELETE ON bug TO lava;
 GRANT SELECT, INSERT, UPDATE, DELETE ON build TO lava;
 GRANT SELECT, INSERT, UPDATE, DELETE ON run TO lava;
+GRANT SELECT, INSERT, UPDATE, DELETE ON src_function TO lava;
+GRANT SELECT, INSERT, UPDATE, DELETE ON call TO lava;
 
 -- grant all privileges on all tables in schema public to lava;
 
