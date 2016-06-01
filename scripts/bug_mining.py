@@ -98,6 +98,9 @@ assert 'proc_name' in project
 assert 'kconf_file' in project
 assert 'kconf_group' in project
 
+assert 'panda_os_string' in project
+
+panda_os_string = project['panda_os_string']
 
 
 lavadir = dirname(dirname(abspath(sys.argv[0])))
@@ -225,6 +228,7 @@ sys.stdout.flush()
 tick()
 progress("Starting first-pass replay...")
 qemu_args = ['-replay', isoname,
+        '-os', panda_os_string,
         '-panda', 'taint2:no_tp',
         '-panda', 'osi',
         '-panda', 'osi_linux:kconf_file=%s,kconf_group=%s' % (project['kconf_file'], project['kconf_group']),
