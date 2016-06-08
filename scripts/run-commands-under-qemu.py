@@ -64,11 +64,11 @@ assert 'library_path' in project
 # assert 'proc_name' in project
 
 # path to project on host
-assert 'source_dir' in project
+assert 'install_dir' in project
 #test_src = "/nas/ulrich/test.c"
-test_src = "/nas/ulrich/fileopen_test.c"
-test_exec = test_src[:-2]
-test_input_file = "/nas/ulrich/fileopen_test_input"
+#test_src = "/nas/ulrich/fileopen_test.c"
+#test_exec = test_src[:-2]
+#test_input_file = "/nas/ulrich/fileopen_test_input"
 #test_input_file = "/nas/ulrich/test.c"
 
 
@@ -89,12 +89,13 @@ test_input_file = "/nas/ulrich/fileopen_test_input"
 input_file = project['inputs'][0]
 input_file_base = basename(input_file)
 tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']])
-sourcedir = project['source_dir']
+#sourcedir = project['source_dir']
+installdir = project['install_dir']
 
 print
 
 #panda_log_base_dir = "/nas/ulrich/det_logs/"
-panda_log_base_dir = project['lava']
+panda_log_base_dir = project['directory']
 if not os.path.isdir(panda_log_base_dir):
     os.makedirs(panda_log_base_dir)
 
@@ -106,14 +107,16 @@ if os.path.isdir(panda_log_loc):
     shutil.rmtree(panda_log_loc)
 os.mkdir(panda_log_loc)
 progress("Creating panda log directory {}...".format(panda_log_loc))
-panda_log_name = os.path.join(panda_log_loc, basename("test"))
+
+
+panda_log_name = os.path.join(panda_log_loc, project['name'] + "_" + input_file_base)
 
 # prepping lava-install by copying necessary input files into it
-installdir = join(sourcedir, 'lava-install')
-print "inputfile: {} inputfilebase: {} sourcedir: {}".format(input_file, input_file_base, sourcedir)
+#installdir = join(sourcedir, 'lava-install')
+#print "inputfile: {} inputfilebase: {} sourcedir: {}".format(input_file, input_file_base, sourcedir)
 shutil.copy(input_file,      join(installdir, input_file_base))
-shutil.copy(test_input_file, join(installdir, basename(test_input_file)))
-shutil.copy(test_exec,       join(installdir, basename(test_exec)))
+#shutil.copy(test_input_file, join(installdir, basename(test_input_file)))
+#shutil.copy(test_exec,       join(installdir, basename(test_exec)))
 
 #iso_base = "/nas/ulrich/dwarf_tshark_capture2/wireshark-1.2.1"
 #isoname = '{}-{}.iso'.format(iso_base, input_file_base)
