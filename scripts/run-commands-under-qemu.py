@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # import re
 import os
+from os.path import abspath, join, basename
 # import socket
 import sys
 import tempfile
@@ -9,12 +10,10 @@ import shutil
 import time
 import pipes
 import json
-# import psycopg2
 #from colorama import colorama.Fore, colorama.Back, colorama.Style
 import colorama
 #from pexpect import pexpect.spawn, pexpect.fdpexpect
 import pexpect
-from os.path import dirname, abspath, join, basename
 import psutil
 
 debug = True
@@ -59,26 +58,18 @@ assert 'name' in project
 assert 'tarfile' in project
 # if needed, what to set LD_LIBRARY_PATH to
 assert 'library_path' in project
-# network name of host where postgres is running
-# process name
-# assert 'proc_name' in project
 
 # path to project on host
 assert 'install_dir' in project
-#test_src = "/nas/ulrich/test.c"
-#test_src = "/nas/ulrich/fileopen_test.c"
-#test_exec = test_src[:-2]
-#test_input_file = "/nas/ulrich/fileopen_test_input"
-#test_input_file = "/nas/ulrich/test.c"
-
 
 #############
 # compile on laredo-26 omitting for now . . .
-# r_host = "laredo-26.mit.edu"
+# r_host = project['buildhost']
 # progress("Building {}".format(test_src, r_host))
-#cmd = "gcc -g -O3 -o {} {}".format(test_exec, test_src).split()
-#cmd = "make".format(test_exec, test_src).split()
-#cmd = "gcc -g -o {} {}".format(test_exec, test_src).split()
+#cmd = "cd {}".format(sourcedir)
+#cmd += "&&" + project['configure']
+#cmd += "&&" + project['make']
+#cmd += "&&" + project['install']
 # run_remote(r_host, cmd)
 
 ##############
@@ -94,7 +85,6 @@ installdir = project['install_dir']
 
 print
 
-#panda_log_base_dir = "/nas/ulrich/det_logs/"
 panda_log_base_dir = project['directory']
 if not os.path.isdir(panda_log_base_dir):
     os.makedirs(panda_log_base_dir)
@@ -219,15 +209,13 @@ progress("Beginning recording queries...")
 run_monitor("begin_record {}".format(panda_log_name))
 
 progress("Running command inside guest. Panda log to: {}".format(panda_log_name))
-#progress("{} {}".format(os.path.join(installdir, basename(test_exec)),os.path.join(installdir, basename(test_input_file))))
-#run_console("{}".format(join(installdir, "test")))
-#run_console("{} {}".format(join(installdir, basename(test_exec)),\
-#        join(installdir, basename(test_input_file))))
 input_file_guest = join(installdir, input_file_base)
 expectation = project['expect'] if 'expect' in project else "root@debian-i386:~"
 
 env = project['env'] if 'env' in project else {}
-env['LD_LIBRARY_PATH'] = project['library_path'].format(install_dir=installdir)
+if project['library_path'] != "":
+    env['LD_LIBRARY_PATH'] = project['library_path'].format(install_dir=installdir)
+
 env_string = " ".join(["{}={}".format(pipes.quote(k), pipes.quote(env[k])) for k in env])
 
 # run command
