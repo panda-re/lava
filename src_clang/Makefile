@@ -74,9 +74,21 @@ CLANG_LIBS := -Wl,--start-group \
 BUILDDIR := build
 
 .PHONY: all
-all: make_builddir \
+all: lavatool attackpoints
+
+lavatool: make_builddir \
 	emit_build_config \
 	$(BUILDDIR)/lavaTool\
+
+attackpoints: make_builddir \
+	emit_build_config \
+	$(BUILDDIR)/attackpoints\
+
+
+#all: make_builddir \
+#	emit_build_config \
+#	$(BUILDDIR)/lavaTool\
+
 
 .PHONY: emit_build_config
 emit_build_config: make_builddir
@@ -93,6 +105,9 @@ $(BUILDDIR)/lavaTool: lavaTool.cpp lavaDB.cpp includes.h.gch ../sql/lava_sql.cpp
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) lavaTool.cpp lavaDB.cpp ../sql/lava_sql.cpp \
 		$(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS) -o $@
 
+$(BUILDDIR)/attackpoints: AttackPoints.cpp 
+	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) AttackPoints.cpp  \
+		$(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS) -o $@
 
 .PHONY: clean
 clean:
