@@ -58,15 +58,19 @@ public:
     }
 
     void Attack(LavaAttackType lat, Expr *e) {
-        errs() << "\nAttack type = " << lat << ":" << lavaAttackTypeString[lat] << "\n";
+        errs() << "\nAttack type = " << lat << ":" << lavaAttackTypeString[lat] << " ";
         //        e->dump();
         SourceManager &sm = Context->getSourceManager();
         FullSourceLoc deref_start(e->getLocStart(), sm);
-        FullSourceLoc deref_end(e->getLocStart(), sm);
+        FullSourceLoc deref_end(e->getLocEnd(), sm);
         std::string filename = sm.getFilename(deref_start).str();
         uint32_t deref_start_line = deref_start.getExpansionLineNumber();
         uint32_t deref_end_line = deref_end.getExpansionLineNumber();
-        errs() << filename << ":" << deref_start_line << ".." << deref_end_line << ":" << (ExprStr(e)) << "\n";
+        uint32_t deref_start_col = deref_start.getExpansionColumnNumber();
+        uint32_t deref_end_col = deref_end.getExpansionColumnNumber();
+        errs() << filename << ":lines[" << deref_start_line << ".." << deref_end_line << "]";
+        errs() << ":columns[" << deref_start_col << ".." << deref_end_col << "] ";
+        errs() << (ExprStr(e)) << "\n";
     }
 
 
@@ -84,7 +88,6 @@ public:
         //        errs() << "------------------\nVisitExpr \n";
         //        expr->dump();
         //        bounds(expr);
-
         if (expr->isRValue()) {
             // NB: an assignment *is* an rval because C is insane
             if (isa<BinaryOperator>(expr)) {
@@ -113,21 +116,6 @@ public:
                 }
             }
             else {
-            /*
-------------------
-VisitExpr
-ImplicitCastExpr 0x91ca608 'char' <LValueToRValue>
-`-ArraySubscriptExpr 0x91ca5f0 'char' lvalue
-  |-ImplicitCastExpr 0x91ca5e0 'char *' <LValueToRValue>
-  | `-MemberExpr 0x91ca5a4 'char *' lvalue ->z 0x91c9e10
-  |   `-ImplicitCastExpr 0x91ca598 'Foo *' <LValueToRValue>
-  |     `-DeclRefExpr 0x91ca57c 'Foo *' lvalue Var 0x91ca150 'foo' 'Foo *'
-  `-IntegerLiteral 0x91ca5c8 'int' 3
-file.c:564..564:foo->z[3]
-------------------
-
-             */
-
                 //            errs() << "its an rvalue\n";
                 Expr *nc_expr = expr->IgnoreImpCasts()->IgnoreCasts();                
                 if (isa<UnaryOperator>(nc_expr)) {
@@ -183,12 +171,5 @@ int main(int argc, const char **argv) {
 
     int r = Tool.run(newFrontendActionFactory<FindAttackPointsAction>().get());
     return r;
-
-    /* 
-    if (argc > 1) {
-        printf ("blah\n");
-        clang::tooling::runToolOnCode(new FindAttackPointsAction, argv[1]);
-    }
-    */
 }
 
