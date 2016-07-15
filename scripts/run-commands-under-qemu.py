@@ -104,7 +104,8 @@ panda_log_name = os.path.join(panda_log_loc, project['name'] + "_" + input_file_
 # prepping lava-install by copying necessary input files into it
 #installdir = join(sourcedir, 'lava-install')
 #print "inputfile: {} inputfilebase: {} sourcedir: {}".format(input_file, input_file_base, sourcedir)
-shutil.copy(input_file,      join(installdir, input_file_base))
+if not os.path.exists(join(installdir, input_file_base)):
+    shutil.copy(input_file,      join(installdir, input_file_base))
 #shutil.copy(test_input_file, join(installdir, basename(test_input_file)))
 #shutil.copy(test_exec,       join(installdir, basename(test_exec)))
 

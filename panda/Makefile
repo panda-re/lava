@@ -9,3 +9,6 @@ fbi: find_bug_inj.cpp \
     ../../panda/qemu/panda/pandalog.c \
     ../../panda/qemu/panda/pandalog.pb-c.c
 	g++ -o $@ $^ $(LDFLAGS) $(CXXFLAGS)
+
+clean:
+	rm -f fbi
