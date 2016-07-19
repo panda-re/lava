@@ -165,14 +165,6 @@ CREATE TABLE run (
 );
 
 
-create table run_stats  (
-       run_id         integer references run,
-       exitcode       int,
-       max_liveness   real,
-       max_tcn        int,
-       max_card       int
-);
-
 -- Table of functions, enables us to do callstacks.
 CREATE TABLE src_function (
     id              serial primary key,
