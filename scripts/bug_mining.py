@@ -230,8 +230,6 @@ progress("Starting first-pass replay...")
 qemu_args = ['-replay', isoname,
         '-os', panda_os_string,
         '-panda', 'taint2:no_tp',
-        '-panda', 'osi',
-        '-panda', 'osi_linux:kconf_file=%s,kconf_group=%s' % (project['kconf_file'], project['kconf_group']),
         '-panda', 'file_taint:notaint,filename=' + input_file_guest]
 
 
@@ -261,8 +259,6 @@ print "pandalog = [%s] " % pandalog
 qemu_args = ['-replay', isoname,
         '-pandalog', pandalog,
         'os', panda_os_string,
-        '-panda', 'osi',
-        '-panda', 'osi_linux:kconf_file=%s,kconf_group=%s' % (project['kconf_file'], project['kconf_group']),
         '-panda', 'coverage:process=%s' % project['proc_name'],
         '-panda', 'taint2:no_tp',
         '-panda', 'tainted_branch',
