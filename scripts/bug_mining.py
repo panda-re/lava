@@ -260,6 +260,7 @@ print "pandalog = [%s] " % pandalog
 
 qemu_args = ['-replay', isoname,
         '-pandalog', pandalog,
+        'os', panda_os_string,
         '-panda', 'osi',
         '-panda', 'osi_linux:kconf_file=%s,kconf_group=%s' % (project['kconf_file'], project['kconf_group']),
         '-panda', 'coverage:process=%s' % project['proc_name'],
