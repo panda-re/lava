@@ -258,7 +258,7 @@ print "pandalog = [%s] " % pandalog
 
 qemu_args = ['-replay', isoname,
         '-pandalog', pandalog,
-        'os', panda_os_string,
+        '-os', panda_os_string,
         '-panda', 'coverage:process=%s' % project['proc_name'],
         '-panda', 'taint2:no_tp',
         '-panda', 'tainted_branch',
