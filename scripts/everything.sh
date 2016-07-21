@@ -131,12 +131,10 @@ json="$(realpath $1)"
 # how many bugs will be injected at  time
 many=100
 
-echo here1 > /tmp/lf
 if [[ $demo -eq 1 ]]
 then
     gnome-terminal --geometry=90x40  -x python ./lava_mon.py $1 &
 fi
-echo here2 >> /tmp/lf
 
 deldir () {
   deldir=$1
