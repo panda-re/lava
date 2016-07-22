@@ -1,4 +1,3 @@
-
 extern "C" {
 #include <stdlib.h>
 #include <libgen.h>
@@ -6,15 +5,18 @@ extern "C" {
 
 #include <json/json.h>
 
-#include <set>
 #include "includes.h"
 #include "lavaDB.h"
 
-#include "../include/lava_bugs.h"
+#include "../include/lava.hxx"
+#include "../include/lava-odb.hxx"
+#include <odb/pgsql/database.hxx>
 
 #define RV_PFX "kbcieiubweuhc"
 #define RV_PFX_LEN 13
 
+using namespace odb::core;
+std::unique_ptr<odb::pgsql::database> db;
 
 std::string BuildPath;
 char resolved_path[512];
@@ -83,23 +85,15 @@ struct Llval {
     std::string name;         // name of constructed lval
     std::string pointer_tst;  // name of base ptr for null test
     std::string len;          // string repr of computation of lval length
-    const Type *typ;                // type of lval
+    const Type *typ;          // type of lval
     bool is_ptr;              // true if name represents ptr to what we are supposed to trace taint on (so no need to use '&').
 
     bool operator<(const Llval &other) const {
-        if (name < other.name) return true;
-        if (name > other.name) return false;
-        if (pointer_tst < other.pointer_tst) return true;
-        if (pointer_tst > other.pointer_tst) return false;
-        if (len < other.len) return true;
-        if (len > other.len) return false;
-        if (typ < other.typ) return true;
-        if (typ > other.typ) return false;
-        return is_ptr < other.is_ptr;
+        return std::tie(name, pointer_tst, len, typ, is_ptr) <
+            std::tie(other.name, other.pointer_tst, other.len, other.typ,
+                    other.is_ptr);
     }
 };
-
-
 
 struct Insertions {
     std::string top_of_file;  // stuff to insert at top of file
@@ -107,21 +101,14 @@ struct Insertions {
     std::string after_part;   // stuff to insert right after the thing under inspection
 };
 
-
 std::set<std::string> lava_get_proto;
 std::set<std::string> lava_set_proto;
 
-
-std::map<Ptr, std::set<uint32_t>> ptr_to_set;
-
-static std::set<Bug> bugs;
-
+static std::set<const Bug*> bugs;
 
 std::stringstream new_start_of_file_src;
 
-
 #define MAX_STRNLEN 64
-
 
 std::string hex_str(uint32_t x) {
     std::stringstream ss;
@@ -639,7 +626,7 @@ public:
        i = 0; // byte # in global
        lava_1 |=  (((unsigned char *) &dua))[o] << (i*8) ;
     */
-    Insertions ComposeDuaSiphoning(Llval &llval, std::set<Bug> &injectable_bugs, std::string filename) {
+    Insertions ComposeDuaSiphoning(Llval &llval, std::set<const Bug*> &injectable_bugs, std::string filename) {
         Insertions inss;
         // only insert one dua siphon if single bug
         // if > 1 bug we are living dangerously.
@@ -659,9 +646,9 @@ public:
             siphon << "(" << llval.name << ")";
         if ((!(llval.pointer_tst == ""))  || llval.is_ptr)
             siphon << ")  {";
-        for ( auto &bug : injectable_bugs) {
+        for ( const Bug *bug : injectable_bugs) {
             uint32_t i = 0;
-            std::string gn = LavaGlobal(bug.id);
+            std::string gn = LavaGlobal(bug->id);
             siphon << "int " << gn << " = 0;\n";
             uint32_t o = 0;
             std::string lval_base;
@@ -669,10 +656,10 @@ public:
                 lval_base = llval.name;
             else
                 lval_base = "&(" + llval.name + ")";
-            for ( auto ptr : bug.dua.lval_taint ) {
+            for ( auto ptr : bug->dua->lval_taint ) {
                 // 0 means this offset of the lval is either untainted or not-viable for use by lava
                 if (ptr != 0) {
-                    siphon << LavaGlobal(bug.id)
+                    siphon << LavaGlobal(bug->id)
                            << " |= ((unsigned char *) "
                            << lval_base << ")[" << o << "] << (" << i << "*8);";
                     i ++;
@@ -681,7 +668,7 @@ public:
                 if (i == 4) break;
                 o ++;
             }
-            siphon << "lava_set(" << (std::to_string(bug.id)) << "," << gn << ");\n";
+            siphon << "lava_set(" << (std::to_string(bug->id)) << "," << gn << ");\n";
         }
         if ((!(llval.pointer_tst == ""))  || llval.is_ptr)
             siphon << "}";
@@ -702,7 +689,7 @@ public:
       so we instead just add another copy of the call with one
       of the arg perturbed by global.  :)
     */
-    Insertions ComposeAtpDuaUse(CallExpr *call_expr, std::set<Bug> &injectable_bugs, std::string filename) {
+    Insertions ComposeAtpDuaUse(CallExpr *call_expr, std::set<const Bug*> &injectable_bugs, std::string filename) {
         //        errs() << "in ComposeAtpDuaUse\n";
         Insertions inss;
         // NB: only insert one dua use if single bug.
@@ -746,14 +733,14 @@ public:
                 for (auto &bug : injectable_bugs) {
                     errs() << "considering bug " << j << "\n";
                     if ((j % num_attackable_args) == i) {
-                        errs() << "attacking arg " << ii << " with bug " << j << " -- bugid=" << bug.id << "\n";
-                        std::string gn = "(lava_get(" + (std::to_string(bug.id)) + "))";
+                        errs() << "attacking arg " << ii << " with bug " << j << " -- bugid=" << bug->id << "\n";
+                        std::string gn = "(lava_get(" + (std::to_string(bug->id)) + "))";
                         arg_was_attacked = true;
                         // this is the magic value that will trigger the bug
                         uint32_t magic_value = 0x6c617661;
                         //                        if (bugs.size() > 1) {
                             // with lots of bugs we need magic value to be distinct per bug
-                            magic_value -=  bug.id;
+                            magic_value -=  bug->id;
                             //                        }
                             //                        else {
                             //                        }
@@ -820,25 +807,26 @@ public:
 
     // is this lvalname / line / filename, etc a bug inj point?
     // if so, return the vector of bugs that are injectable at this point
-    std::set<Bug> AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint,
-                        uint32_t insertion_point, bool is_retval ) {
+    std::set<const Bug*> AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint,
+                        SourceLval::Timing insertion_point, bool is_retval ) {
         //                errs() << "atbug : lvalname=" << lvalname << " filename=" << filename << " line=" << line << " atAttackPoint=" << atAttackPoint << " insertion_point=" << insertion_point<< " \n";
-        std::set<Bug> injectable_bugs;
-        for ( auto bug : bugs ) {
+        std::set<const Bug*> injectable_bugs;
+        for ( const Bug *bug : bugs ) {
             //                        errs() << bug.str() << "\n";
             bool atbug = false;
             if (atAttackPoint) {
                 // this is where we'll use the dua.  only need to match the file and line
                 assert (insertion_point == -1);
-                atbug = (filename == bug.atp.filename && line == bug.atp.line + MainInstrCorrection);
-            }
-            else {
+                atbug = (filename == bug->atp->file && line == bug->atp->line + MainInstrCorrection);
+            } else {
                 // this is the dua siphon -- need to match most every part of dua
                 // if dua is a retval, the one in the db wont match this one but verify prefix
-                atbug = (filename == bug.dua.filename && line == (bug.dua.line + MainInstrCorrection)
-                         && ((is_retval && (0 == strncmp(lvalname.c_str(), bug.dua.lvalname.c_str(), RV_PFX_LEN)))
-                             || (lvalname == bug.dua.lvalname))
-                         && insertion_point == bug.dua.insertionpoint);
+                atbug = (filename == bug->dua->lval->file
+                        && line == (bug->dua->lval->line + MainInstrCorrection)
+                        && ((is_retval
+                                && (0 == strncmp(lvalname.c_str(), bug->dua->lval->ast_name.c_str(), RV_PFX_LEN)))
+                            || lvalname == bug->dua->lval->ast_name)
+                        && insertion_point == bug->dua->lval->timing);
             }
             if (atbug) {
                 //                errs() << "found injectable bug @ line " << line << "\n";
@@ -871,8 +859,9 @@ public:
       1 = query was before call
       2 = query was after call
     */
-    Insertions ComposeDuaNewSrc(Llval &llval, std::string filename,
-                                uint32_t line, uint32_t insertion_point, bool is_retval) {
+    Insertions ComposeDuaNewSrc(
+            Llval &llval, std::string filename, uint32_t line,
+            SourceLval::Timing insertion_point, bool is_retval) {
         Insertions inss;
         //        errs() << "ComposeDuaNewSrc\n";
         //        errs() << llval.name << " : " << line << " : " << filename << " : " << insertion_point << "\n";
@@ -880,10 +869,10 @@ public:
             // yes, always pack this into after_part
             inss.after_part = ComposeDuaTaintQuery(llval, GetStringID(filename),
                                                    line, insertion_point);
-	    num_taint_queries ++;
+            num_taint_queries ++;
         }
         else if (LavaAction == LavaInjectBugs) {
-            std::set<Bug> injectable_bugs =
+            std::set<const Bug*> injectable_bugs =
                 AtBug(llval.name, filename, line, /*atAttackPoint=*/false,
                       insertion_point, is_retval);
             // NOTE: if injecting multiple bugs the same dua will need to be instrumented more than once
@@ -912,16 +901,16 @@ public:
         FunctionDecl *f = call_expr->getDirectCallee();
         std::string fn_name = f->getNameInfo().getName().getAsString();
 
-
         //                errs() << "ComposeAtpNewSrc\n";
         if (LavaAction == LavaQueries) {
             inss = ComposeAtpQuery(call_expr, filename, line);
-	    num_atp_queries ++;
+            num_atp_queries ++;
         }
         else if (LavaAction == LavaInjectBugs) {
             std::set<Bug> injectable_bugs =
                 AtBug("", filename, line, /*atAttackPoint=*/true,
-                      /*insertion_point=*/-1, /*is_retval=*/false);
+                        /*insertion_point=*/SourceLval::NULL_TIMING,
+                        /*is_retval=*/false);
             // NOTE: if injecting multiple bugs the same atp may need to be instrumented more than once.
             if (!injectable_bugs.empty()) {
                 errs() << "ComposeAtpNewSrc: injecting a dua use for " << injectable_bugs.size() << " bugs " << filename << " : " << line << " : " << fn_name << "\n";
@@ -938,13 +927,12 @@ public:
     }
 
     bool InFnBlackList(std::string fn_name) {
-        return
-            ((fn_name == "vm_lava_query_buffer")
-             || (fn_name.find("va_start") != std::string::npos)
-             || (fn_name == "va_arg")
-             || (fn_name == "va_end")
-             || (fn_name == "va_copy")
-             || (fn_name.find("free") != std::string::npos));
+        return fn_name == "vm_lava_query_buffer"
+             || fn_name.find("va_start") != std::string::npos
+             || fn_name == "va_arg"
+             || fn_name == "va_end"
+             || fn_name == "va_copy"
+             || fn_name.find("free") != std::string::npos;
     }
 
     bool VisitCallExpr(CallExpr *e) {
@@ -1247,6 +1235,13 @@ private:
     Rewriter rewriter;
 };
 
+std::set<const Bug*> loadBugs(const std::set<uint32_t> &bug_ids) {
+    std::set<const Bug*> result;
+    for (uint32_t bug_id : bug_ids) {
+        result.insert(db->load<Bug>(bug_id));
+    }
+
+}
 
 int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
@@ -1271,53 +1266,16 @@ int main(int argc, const char **argv) {
     json_file >> root;
 
     if (LavaAction == LavaInjectBugs) {
-        std::string dbhost(root["dbhost"].asString());
-        std::string dbname(root["db"].asString());
+        db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
+                    root["db"].asString(), root["dbhost"].asString()));
 
-        PGconn *conn = pg_connect(dbhost, dbname);
         // get bug info for the injections we are supposed to be doing.
         errs() << "LavaBugList: [" << LavaBugList << "]\n";
 
         std::set<uint32_t> bug_ids = parse_ints(LavaBugList);
         printf ("%d bug_ids\n", bug_ids.size());
-        bugs = loadBugs(bug_ids, conn);
-
-        /*
-        // determine if we have any file / src for which BOTH dua siphon and use will be injected on same line
-        std::map<std::pair<std::string, uint32_t>, uint32_t> num_dua_siphon;
-        std::map<std::pair<std::string, uint32_t>, uint32_t> num_dua_use;
-        std::set<std::pair<std::string, uint32_t>> srcloc;
-        for ( auto &bug : bugs ) {
-            Dua dua = bug.dua;
-            AttackPoint atp = bug.atp;
-            std::pair<std::string, uint32_t> dua_siphon_srcloc = std::make_pair(dua.filename, dua.line);
-            std::pair<std::string, uint32_t> dua_use_srcloc = std::make_pair(atp.filename, atp.line);
-            srcloc.insert(dua_siphon_srcloc);
-            srcloc.insert(dua_use_srcloc);
-            if (num_dua_siphon.count(dua_siphon_srcloc) == 0)
-                num_dua_siphon[dua_siphon_srcloc] = 1;
-            else
-                num_dua_siphon[dua_siphon_srcloc] ++;
-            if (num_dua_use.count(dua_use_srcloc) == 0)
-                num_dua_use[dua_use_srcloc] = 1;
-            else
-                num_dua_use[dua_use_srcloc] ++;
-        }
-
-        for ( auto sl : srcloc ) {
-            if (num_dua_siphon.count(sl) > 0 && num_dua_use.count(sl) > 0) {
-                errs() << " BOTH dua siphon and use @ " << sl.first << " : " << sl.second << "\n";
-            }
-        }
-        */
-
-        ptr_to_set = loadTaintSets(conn);
-
-        /*
-        for ( auto bug : bugs ) {
-            errs() << bug.str() << "\n";
-        }
-        */
+        // std::set<Bug> loadBugs(std::set<uint32_t> &bug_ids, PGconn *conn) {
+        bugs = loadBugs(bug_ids);
     }
     errs() << "about to call Tool.run \n";
 

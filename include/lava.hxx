@@ -29,9 +29,10 @@ struct SourceLval { // was DuaKey
 
     // When did we see taint?
     enum Timing {
-        BEFORE_OCCURRENCE,
-        AFTER_OCCURRENCE
-    } timing; 
+        NULL_TIMING = 0,
+        BEFORE_OCCURRENCE = 1,
+        AFTER_OCCURRENCE = 2
+    } timing;
     std::vector<uint32_t> selected_bytes;
 
 #pragma db index("SourceLval") unique members(file, line, ast_name, timing, selected_bytes)
@@ -46,7 +47,7 @@ struct SourceLval { // was DuaKey
         os << "Lval [" << m.file << ":" << m.line << "]{";
         std::copy(m.selected_bytes.begin(), m.selected_bytes.end(),
                 std::ostream_iterator<uint32_t>(os, ","));
-        os << "}";
+        os << "} \"" << ast_name << "\"";
         return os;
     }
 };

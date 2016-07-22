@@ -43,7 +43,6 @@ extern "C" {
 #include <cassert>
 #include "../src_clang/lavaDB.h"
 
-#include "../include/pgarray.hxx"
 #include "../include/lava.hxx"
 #include "../include/lava-odb.hxx"
 #include <odb/pgsql/database.hxx>

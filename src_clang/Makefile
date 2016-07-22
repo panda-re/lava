@@ -31,15 +31,15 @@ $(info -----------------------------------------------)
 
 #CXX := g++
 #CXXFLAGS := -fexceptions -fno-rtti -O0 -g -std=c++11 -I/usr/include/jsoncpp
-CXX := g++ 
-CXXFLAGS := -fexceptions -fno-rtti -O0 -g -std=c++11 -lpq -I/usr/include/jsoncpp -ljsoncpp -fno-omit-frame-pointer
+CXX := g++
+CXXFLAGS := -fexceptions -O0 -g -std=c++11 -lpq -I/usr/include/jsoncpp -ljsoncpp -fno-omit-frame-pointer
 
 PLUGIN_CXXFLAGS := -fpic -fexceptions
 
-LLVM_CXXFLAGS := `$(LLVM_BIN_PATH)/llvm-config --cxxflags`
-LLVM_LDFLAGS := `$(LLVM_BIN_PATH)/llvm-config --ldflags --libs --system-libs`
+LLVM_CXXFLAGS := $(filter-out -fno-exceptions,$(shell $(LLVM_BIN_PATH)/llvm-config --cxxflags))
+LLVM_LDFLAGS := $(shell $(LLVM_BIN_PATH)/llvm-config --ldflags --libs)
 
-LLVM_LDFLAGS_NOLIBS := `$(LLVM_BIN_PATH)/llvm-config --ldflags`
+LLVM_LDFLAGS_NOLIBS := $(shell $(LLVM_BIN_PATH)/llvm-config --ldflags)
 PLUGIN_LDFLAGS := -shared
 
 OTHER_LIBS := -lpq -ljsoncpp
@@ -87,7 +87,7 @@ make_builddir:
 	@test -d $(BUILDDIR) || mkdir $(BUILDDIR)
 
 includes.h.gch: includes.h
-	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^
+	$(CXX) -c $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^
 
 $(BUILDDIR)/lavaTool: lavaTool.cpp lavaDB.cpp includes.h.gch ../sql/lava_sql.cpp 
 	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) lavaTool.cpp lavaDB.cpp ../sql/lava_sql.cpp \

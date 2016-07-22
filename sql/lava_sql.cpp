@@ -141,7 +141,7 @@ std::set<uint32_t> parse_ints(std::string offs_str_orig) {
     if (offs_str[0] == '\"' && offs_str[l-1] == '\"') {
         offs_str = offs_str.substr(1, l-2);
     }
-    // split on ,    
+    // split on ,
     std::stringstream offs_str_ss(offs_str);
     std::set<uint32_t> offs;
     std::string token;
