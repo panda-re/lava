@@ -43,6 +43,7 @@ extern "C" {
 #include <cassert>
 #include "../src_clang/lavaDB.h"
 
+#include "../include/pgarray.hxx"
 #include "../include/lava.hxx"
 #include "../include/lava-odb.hxx"
 #include <odb/pgsql/database.hxx>
@@ -63,6 +64,7 @@ using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
 
 bool debug = false;
+#define dprintf(...) if (debug) { printf(__VA_ARGS__); }
 
 float max_liveness = 0.0;
 uint32_t max_card = 0;
@@ -71,24 +73,32 @@ uint32_t max_lval = 0;
 
 // These map pointer values in the PANDA taint run to the sets they refer to.
 typedef uint64_t Ptr;
-std::map<Ptr, LabelSet*> ptr_to_labelset;
+std::map<Ptr, const LabelSet*> ptr_to_labelset;
 
 // Liveness for each input byte.
 std::map<uint32_t, float> liveness;
 
 // Map from source lval to most recent DUA incarnation.
-std::map<SourceLval, Dua*> recent_duas;
+std::map<const SourceLval*, const Dua*> recent_duas;
 
 // Templated query to ensure uniqueness across runs.
+// Here's what this means. Some of our datatypes are dependent on input file.
+// So it's guaranteed that those entries in the DB created by separate runs of
+// FBI will be unique. So we only need to memoize local instances of those
+// datatypes.
+// We use the create function to do memoized-create of data types. eq_query
+// specifies the types that are not run-independent and how to find them in the
+// database. C++ SFINAE guarantees that the correct instance of eq_query gets
+// used.
 template<class T>
-class eq_query {
+struct eq_query {
     typedef T disabled;
 };
 
 template<>
-class eq_query<SourceLval> {
-    typedef bool enabled;
-    static auto query(const SourceLval &no_id) {
+struct eq_query<SourceLval> {
+    typedef SourceLval enabled;
+    static const auto query(const SourceLval &no_id) {
         typedef odb::query<SourceLval> q;
         return q::file == no_id.file &&
             q::line == no_id.line &&
@@ -99,9 +109,9 @@ class eq_query<SourceLval> {
 };
 
 template<>
-class eq_query<AttackPoint> {
-    typedef bool enabled;
-    static auto query(const AttackPoint &no_id) {
+struct eq_query<AttackPoint> {
+    typedef AttackPoint enabled;
+    static const auto query(const AttackPoint &no_id) {
         typedef odb::query<AttackPoint> q;
         return q::file == no_id.file &&
             q::line == no_id.line &&
@@ -110,23 +120,25 @@ class eq_query<AttackPoint> {
 };
 
 template<>
-class eq_query<Bug> {
-    typedef bool enabled;
-    static auto query(const Bug &no_id) {
-        typedef odb::query<Bug> q;
-        return q::atp == no_id.atp->id && q::dua == no_id.dua->id;
+struct eq_query<SourceModification> {
+    typedef SourceModification enabled;
+    static const auto query(const SourceModification &no_id) {
+        typedef odb::query<SourceModification> q;
+        return q::atp == no_id.atp->id && q::lval == no_id.lval->id;
     }
 };
 
-template<class T, typename = eq_query<T>::disabled>
-static T* create(T no_id) {
-    static std::set<T> existing;
+template<class T, typename U = typename eq_query<T>::disabled>
+static const U* create(T no_id, bool persist = true) {
+    static std::set<U> existing;
 
     auto it = existing.find(no_id);
     if (it == existing.end()) {
-        transaction t(db->begin());
-        db->persist(no_id);
-        t.commit();
+        if (persist) {
+            transaction t(db->begin());
+            db->persist(no_id);
+            t.commit();
+        }
 
         bool success;
         std::tie(it, success) = existing.insert(no_id);
@@ -135,29 +147,13 @@ static T* create(T no_id) {
     return &*it;
 }
 
-template<class T, typename = eq_query<T>::enabled>
-static T* create(T no_id) {
+template<class T, typename U = typename eq_query<T>::enabled>
+static const T* create(T no_id, bool persist = true) {
     transaction t(db->begin());
-    T *result = db->query_one(eq_query<T>::query);
+    U *result(db->query_one<U>(eq_query<U>::query(no_id)));
     if (!result) {
-        db->persist(no_id);
-        result = new T(std::move(no_id));
-    }
-    t.commit();
-    return result;
-}
-
-template<>
-static AttackPoint* create(AttackPoint no_id) {
-    typedef odb::query<AttackPoint> q;
-    transaction t(db->begin());
-    AttackPoint *result = db->query_one(
-            q::file == no_id.file &&
-            q::line == no_id.line &&
-            q::type == no_id.type);
-    if (!result) {
-        db->persist(no_id);
-        result = new AttackPoint(std::move(no_id));
+        if (persist) db->persist(no_id);
+        result = new U(std::move(no_id));
     }
     t.commit();
     return result;
@@ -190,29 +186,29 @@ std::string strip_pfx(std::string filename, std::string pfx) {
 
 
 void spit_tquls(const Panda__TaintQueryUniqueLabelSet *tquls) {
-    printf ("tquls=[ptr=0x%" PRIx64 ",n_label=%d,label=[", tquls->ptr, (int) tquls->n_label);
+    printf("tquls=[ptr=0x%" PRIx64 ",n_label=%d,label=[", tquls->ptr, (int) tquls->n_label);
     for (uint32_t i=0; i<tquls->n_label; i++) {
-        printf ("%d", tquls->label[i]);
-        if (i+1<tquls->n_label) printf (",");
+        printf("%d", tquls->label[i]);
+        if (i+1<tquls->n_label) printf(",");
     }
     printf("]]");
 }
 
 void spit_tq(Panda__TaintQuery *tq) {
-    printf ("tq=[ptr=0x%" PRIx64 ",tcn=%d,offset=%d]", tq->ptr, tq->tcn, tq->offset);
+    printf("tq=[ptr=0x%" PRIx64 ",tcn=%d,offset=%d]", tq->ptr, tq->tcn, tq->offset);
 }
 
 void spit_si(Panda__SrcInfo *si) {
-    printf ("si=[filename='%s',line=%d,", (char*) ind2str[si->filename].c_str(), si->linenum);
-    printf ("astnodename='%s',", (char *) ind2str[si->astnodename].c_str());
+    printf("si=[filename='%s',line=%d,", (char*) ind2str[si->filename].c_str(), si->linenum);
+    printf("astnodename='%s',", (char *) ind2str[si->astnodename].c_str());
     if (si->has_insertionpoint) {
-        printf ("insertionpoint=%d", si->insertionpoint);
+        printf("insertionpoint=%d", si->insertionpoint);
     }
-    printf ("]");
+    printf("]");
 }
 
 void spit_tqh(Panda__TaintQueryHypercall *tqh) {
-    printf ("tqh=[buf=0x%" PRIx64 ",len=%d,num_tainted=%d]", tqh->buf, tqh->len, tqh->num_tainted);
+    printf("tqh=[buf=0x%" PRIx64 ",len=%d,num_tainted=%d]", tqh->buf, tqh->len, tqh->num_tainted);
 }
 
 void spit_ap(Panda__AttackPoint *ap) {
@@ -222,26 +218,20 @@ void spit_ap(Panda__AttackPoint *ap) {
 
 void update_unique_taint_sets(const Panda__TaintQueryUniqueLabelSet *tquls) {
     if (debug) {
-        printf ("UNIQUE TAINT SET\n");
+        printf("UNIQUE TAINT SET\n");
         spit_tquls(tquls);
-        printf ("\n");
+        printf("\n");
     }
     // maintain mapping from ptr (uint64_t) to actual set of taint labels
     uint32_t i;
     Ptr p = tquls->ptr;
-    if (ptr_to_labelset.count(p) == 0) {
-        // new taint set
-        LabelSet labelset{0, p, inputfile,
-                std::set<uint32_t>(tquls->label, tquls->label + tquls->n_label)};
-        // Don't try to put huge taint sets into the db
-        if (tquls->n_label <= max_card) {
-            transaction t(db->begin());
-            db->persist(labelset);
-            t.commit();
-        }
-        ptr_to_labelset[p] = &labelset;
+    if (ptr_to_labelset.count(p) == 0 && tquls->n_label <= max_card) {
+        const LabelSet *labelset = create(LabelSet{0, p, inputfile,
+            std::vector<uint32_t>(tquls->label,
+                    tquls->label + tquls->n_label)});
+        ptr_to_labelset[p] = labelset;
     }
-    if (debug) printf ("%d unique taint sets\n", ptr_to_labelset.size());
+    if (debug) printf("%d unique taint sets\n", ptr_to_labelset.size());
 }
 
 bool is_header_file(std::string filename) {
@@ -274,15 +264,6 @@ def update_liveness(tainted_branch):
   for tainted_file_offset in tainted_branch:
     liveness[tainted_file_offset]++
 
-def collect_bugs(attack_point):
-  for dua in duas:
-    viable_count = 0
-    for file_offset in dua:
-      if (check_liveness(file_offset)):
-        viable_count ++
-    if (viable_count >= bytes_needed):
-      bugs.add((dua, attack_point))
-
 for event in Pandalog:
   if event.typ is taint_query:
     collect_duas(event);
@@ -309,7 +290,7 @@ void taint_query_hypercall(Panda__LogEntry *ple) {
     Panda__CallStack *cs = tqh->call_stack;
     assert (cs != NULL);
     uint64_t instr = ple->instr;
-    if (debug) printf ("TAINT QUERY HYPERCALL len=%d num_tainted=%d\n", len, num_tainted);
+    if (debug) printf("TAINT QUERY HYPERCALL len=%d num_tainted=%d\n", len, num_tainted);
 
     // collects set of labels on all viable bytes that are actually used in dua
     std::set<uint32_t> all_labels;
@@ -337,59 +318,58 @@ void taint_query_hypercall(Panda__LogEntry *ple) {
     // otherwise it is a ptr to a taint set.
 
     // Make vector of length max_offset and fill w/ zeroes.
-    std::vector<Ptr> viable_byte(max_offset, 0);
+    std::vector<const LabelSet*> viable_byte(max_offset, nullptr);
 
-    if (ddebug) printf ("max_offset = %d\n", max_offset);
-    if (ddebug) printf ("considering taint queries on %d bytes\n", tqh->n_taint_query);
+    if (ddebug) printf("max_offset = %d\n", max_offset);
+    if (ddebug) printf("considering taint queries on %d bytes\n", tqh->n_taint_query);
     // bdg: don't try handle lvals that are bigger than our max lval
     // NB: must do this *after* dealing with unique taint sets
     if (max_offset > max_lval) return;
 
-    uint32_t num_viable_bytes;
+    uint32_t num_viable_bytes = 0;
     for (uint32_t i=0; i<tqh->n_taint_query; i++) {
         Panda__TaintQuery *tq = tqh->taint_query[i];
         uint32_t offset = tq->offset;
-        if (ddebug) printf ("considering offset = %d\n", offset);
-        viable_byte[offset] = 0;
+        if (ddebug) printf("considering offset = %d\n", offset);
+        const LabelSet *ls = ptr_to_labelset.at(tq->ptr);
 
         // flag for tracking *why* we discarded a byte
         // check tcn and cardinality of taint set first
         uint32_t current_byte_not_ok = 0;
         current_byte_not_ok |= (tq->tcn > max_tcn) << CBNO_TCN_BIT;
-        current_byte_not_ok |= (ptr_to_labelset[tq->ptr]->labels.size() > max_card) << CBNO_CRD_BIT;
+        current_byte_not_ok |= (ls->labels.size() > max_card) << CBNO_CRD_BIT;
         if (current_byte_not_ok && debug) {
             // discard this byte
-            printf ("discarding byte -- here's why: %x\n", current_byte_not_ok);
-            if (current_byte_not_ok & (1<<CBNO_TCN_BIT)) printf ("** tcn too high\n");
-            if (current_byte_not_ok & (1<<CBNO_CRD_BIT)) printf ("** card too high\n");
+            printf("discarding byte -- here's why: %x\n", current_byte_not_ok);
+            if (current_byte_not_ok & (1<<CBNO_TCN_BIT)) printf("** tcn too high\n");
+            if (current_byte_not_ok & (1<<CBNO_CRD_BIT)) printf("** card too high\n");
         }
         else {
-            if (ddebug) printf ("retaining byte\n");
+            if (ddebug) printf("retaining byte\n");
             // this byte is ok to retain.
             // keep track of highest tcn, liveness, and card for any viable byte for this lval
             c_max_tcn = std::max(tq->tcn, c_max_tcn);
-            c_max_card = std::max((uint32_t) ptr_to_labelset[tq->ptr]->labels.size(), c_max_card);
+            c_max_card = std::max((uint32_t) ls->labels.size(), c_max_card);
             // collect set of labels on all ok bytes for this extent
             // remember: labels are offsets into input file
             // NB: only do this for bytes that will actually be used in the dua
-            for ( uint32_t l : ptr_to_labelset[tq->ptr]->labels ) {
+            for ( uint32_t l : ls->labels ) {
                 all_labels.insert(l);
             }
-            if (debug) printf ("keeping byte @ offset %d\n", offset);
+            if (debug) printf("keeping byte @ offset %d\n", offset);
             // add this byte to the list of ok bytes
-            viable_byte[offset] = tq->ptr;
+            viable_byte[offset] = ls;
             num_viable_bytes++;
         }
         // we can stop examining query when we have enough viable bytes
         if (num_viable_bytes >= LAVA_MAGIC_VALUE_SIZE) break;
     }
-    if (debug) {
-        printf ("%d viable bytes in lval  %d labels\n",
-                num_viable_bytes, (int) all_labels.size());
-    }
+    dprintf("%u viable bytes in lval  %u labels\n",
+            num_viable_bytes, all_labels.size());
+
     // we need # of unique labels to be at least 4 since
     // that's how big our 'lava' key is
-    //    printf ("num_viable = %d\n", num_viable);
+    //    printf("num_viable = %d\n", num_viable);
     if ((num_viable_bytes == LAVA_MAGIC_VALUE_SIZE)
             && (all_labels.size() == LAVA_MAGIC_VALUE_SIZE)) {
         // keeping track of dead, uncomplicated data extents we have
@@ -399,41 +379,33 @@ void taint_query_hypercall(Panda__LogEntry *ple) {
         // and thus is part of what determines the precise src mods
         std::set<uint32_t> viable_offsets;
         for (uint32_t i = 0; i < viable_byte.size(); i++) {
-            if (viable_byte[i] != 0) viable_offsets.insert(i);
+            if (viable_byte[i] != nullptr) viable_offsets.insert(i);
         }
 
-        //        printf ("viable_offsets size = %d\n", viable_offsets.size());
         assert (viable_offsets.size() == LAVA_MAGIC_VALUE_SIZE);
 
-        SourceLval *d_key = create(SourceLval{0,
+        const SourceLval *d_key = create(SourceLval{0,
                 ind2str[si->filename], si->linenum,
                 ind2str[si->astnodename], (SourceLval::Timing)si->insertionpoint,
-                viable_offsets});
+                std::vector<uint32_t>(viable_offsets.begin(), viable_offsets.end())});
         for (uint32_t l : all_labels) {
             c_max_liveness = std::max(c_max_liveness, liveness[l]);
         }
         // tainted lval we just considered was deemed viable
-        Dua *dua = create(Dua{0,
-            d_key,
-
-            std::move(all_labels),                 // file offsets
-            inputfile,
-            c_max_tcn, c_max_card, c_max_liveness,
-            si->insertionpoint,
-            ple->instr});
+        const Dua *dua = create(Dua{0, d_key, viable_byte,
+                std::vector<uint32_t>(all_labels.begin(), all_labels.end()),
+                inputfile, c_max_tcn, c_max_card, c_max_liveness,
+                ple->instr});
+        dprintf("OK DUA.\n");
         if (debug) {
-            printf ("OK DUA.\n");
-            //std::cout << dua << "\n";
-        }
-        if (debug) {
-            if (recent_duas.count(d_key)==0) printf ("new dua key\n");
-            else printf ("previously observed dua key\n");
+            if (recent_duas.count(d_key)==0) printf("new dua key\n");
+            else printf("previously observed dua key\n");
         }
         recent_duas[d_key] = dua;
     }
     else {
         if (debug) {
-            std::cout << "discarded " << num_viable << " viable bytes "
+            std::cout << "discarded " << num_viable_bytes << " viable bytes "
                       << all_labels.size() << " labels "
                       << ind2str[si->filename] << " "
                       << si->linenum << " "
@@ -449,7 +421,8 @@ void update_liveness(Panda__LogEntry *ple) {
     assert (ple != NULL);
     Panda__TaintedBranch *tb = ple->tainted_branch;
     assert (tb != NULL);
-    if (debug) printf ("TAINTED BRANCH\n");
+    dprintf("TAINTED BRANCH\n");
+
     for (uint32_t i=0; i<tb->n_taint_query; i++) {
         Panda__TaintQuery *tq = tb->taint_query[i];
         assert (tq);
@@ -457,86 +430,77 @@ void update_liveness(Panda__LogEntry *ple) {
             // keep track of unique taint label sets
             update_unique_taint_sets(tq->unique_label_set);
         }
-        if (debug) {
-            spit_tq(tq);
-            printf ("\n");
-        }
+        if (debug) { spit_tq(tq); printf("\n"); }
         // this tells us what byte in the extent this query was for
-        for ( uint32_t l : *ptr_to_labelset[tq->ptr] ) {
-            liveness[l] ++;
+        for ( uint32_t l : ptr_to_labelset.at(tq->ptr)->labels ) {
+            liveness[l]++;
         }
     }
 }
 
+template<class T>
+uint32_t count_nonzero(std::vector<T> arr) {
+    uint32_t count = 0;
+    for (T t : arr) { if (t != 0) count++; }
+    return count;
+}
 
 // determine if this dua is viable
-bool is_dua_viable (Dua &dua, float max_liveness) {
-    if (debug)
-        printf ("checking viability of dua: currently %d viable bytes\n",
-                count_viable_bytes2(dua.lval_taint));
+bool is_dua_viable(const Dua &dua) {
+    dprintf("checking viability of dua: currently %u viable bytes\n",
+            count_nonzero(dua.viable_bytes));
 
-    std::vector<Ptr> new_viable_byte;
     // NB: we have already checked dua for viability wrt tcn & card at induction
     // these do not need re-checking as they are to be captured at dua siphon point
     // Note, also, that we are only checking the 4 or so bytes that were previously deemed viable
     uint32_t num_viable = 0;
-    for (uint32_t off=0; off<dua.lval_taint.size(); off++) {
-        Ptr ts = dua.lval_taint[off];
-        bool viable = true;
-        if (ts == 0) viable = false;
-        if (viable) {
+    bool viable = false;
+    for (const LabelSet *ls : dua.viable_bytes) {
+        if (ls) {
+            num_viable++;
             // determine if liveness for this offset is still low enough
-            for (auto l : ptr_to_labelset[ts]) {
+            for (auto l : ls->labels) {
                 if (liveness[l] > max_liveness) {
-                    if (debug)
-                        printf ("byte offset=%d is nonviable b/c label %d has liveness %.3f\n",
-                                off, l, liveness[l]);
-                    viable = false;
+                    dprintf("byte offset is nonviable b/c label %d has liveness %.3f\n",
+                            l, liveness[l]);
+                    num_viable--;
                     break;
                 }
             }
+            if ((viable = (num_viable == LAVA_MAGIC_VALUE_SIZE)))
+                break;
         }
-        // NB: 0 indicates untainted & nonviable
-        if (viable) {
-            new_viable_byte.push_back(ts);
-            num_viable ++;
-        }
-        else
-            new_viable_byte.push_back(0);
-        if (num_viable == LAVA_MAGIC_VALUE_SIZE)
-            break;
     }
-    dua.lval_taint = new_viable_byte;
-    if (debug) {
-        std::cout << dua.str() << "\n";
-        printf ("dua has %d viable bytes\n", num_viable);
-    }
+    dprintf("%s\ndua has %u viable bytes\n", std::string(dua).c_str(), num_viable);
     // dua is viable iff it has more than one viable byte
-    return (num_viable == LAVA_MAGIC_VALUE_SIZE);
+    return viable;
 }
-
-
 
 uint32_t num_bugs = 0;
 
-
-std::set<SourceModification> bugs;
+std::set<const SourceModification*> source_mods;
 
 uint64_t num_bugs_local = 0;
 uint64_t num_bugs_added_to_db = 0;
 uint64_t num_bugs_attempted = 0;
 
 /*
+def collect_bugs(attack_point):
+  for dua in duas:
+    viable_count = 0
+    for file_offset in dua:
+      if (check_liveness(file_offset)):
+        viable_count ++
+    if (viable_count >= bytes_needed):
+      bugs.add((dua, attack_point))
+*/
+
+/*
   we are at an attack point
   iterate over all currently viable duas and
   look for bug inj opportunities
 */
-void find_bug_inj_opportunities(Panda__LogEntry *ple,
-                                std::map <SourceLval,Dua> &duas,
-                                std::map <Ptr,std::set<uint32_t>> &ptr_to_labelset,
-                                std::map <uint32_t,float> &liveness,
-                                float max_liveness,
-                                PGconn *conn) {
+void find_bug_inj_opportunities(Panda__LogEntry *ple) {
     assert (ple != NULL);
     uint64_t instr = ple->instr;
     Panda__AttackPoint *pleatp = ple->attack_point;
@@ -544,65 +508,50 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple,
     Panda__SrcInfo *si = pleatp->src_info;
     // ignore duas in header files
     if (is_header_file(ind2str[si->filename])) return;
+
     assert (si != NULL);
-    if (debug) printf ("ATTACK POINT\n");
-    if (duas.size() == 0) {
-        if (debug) printf ("no duas yet -- discarding attack point\n");
+    dprintf("ATTACK POINT\n");
+    if (recent_duas.size() == 0) {
+        dprintf("no duas yet -- discarding attack point\n");
         return;
     }
-    std::vector <SourceLval> non_viable_duas;
-    if (debug)  printf ("checking viability of %d duas\n", (int) duas.size());
+
+    std::vector<const SourceLval*> non_viable_duas;
+    dprintf("checking viability of %u duas\n", recent_duas.size());
     // collect list of nonviable duas
-    for (auto kvp : duas) {
-        SourceLval dk = kvp.first;
-        Dua dua = kvp.second;
+    for (auto kvp : recent_duas) {
+        const SourceLval *dk = kvp.first;
+        const Dua *dua = kvp.second;
         // is this dua still viable?
-        if (!(is_dua_viable(dua, liveness, ptr_to_labelset, max_liveness))) {
-            if (debug) {
-                std::cout << dua.str() << "\n";
-                printf (" ** DUA not viable\n");
-            }
+        if (!is_dua_viable(*dua)) {
+            dprintf("%s\n ** DUA not viable\n", std::string(*dua).c_str());
             non_viable_duas.push_back(dk);
         }
     }
-    if (debug) printf ("%d non-viable duas \n", (int) non_viable_duas.size());
+    dprintf("%u non-viable duas \n", non_viable_duas.size());
     // discard non-viable duas
     for (auto dk : non_viable_duas) {
-        duas.erase(dk);
+        recent_duas.erase(dk);
     }
-    if (debug) printf ("%d viable duas remain\n", (int) duas.size());
-    AttackPoint atp = {ind2str[si->filename], si->linenum, ind2str[pleatp->info]};
-    AttackPointKey atpk = {si->filename, si->linenum, pleatp->info};
-    if (debug) {
-        std::cout << "@ ATP: " << atp.str() << "\n";
-    }
+
+    dprintf("%u viable duas remain\n", recent_duas.size());
+    const AttackPoint *atp = create(AttackPoint{0, 
+            ind2str[si->filename], si->linenum, AttackPoint::ATP_POINTER_RW});
+    dprintf("@ATP: %s\n", std::string(*atp).c_str());
+
     // every still viable dua is a bug inj opportunity at this point in trace
-    for ( auto kvp : duas ) {
-        SourceLval dk = kvp.first;
-        Dua dua = kvp.second;
-        SourceModification b = {dk, atpk};
-        if (bugs.count(b) == 0) {
+    for ( auto kvp : recent_duas ) {
+        const SourceLval *dk = kvp.first;
+        const Dua *dua = kvp.second;
+        const SourceModification *source_mod = create(SourceModification{0, dk, atp});
+        if (source_mods.insert(source_mod).second) {
             // this is a new bug (new src mods for both dua and atp)
-            bugs.insert(b);
-
-            assert (dua.max_liveness < max_liveness);
-
-            bool newb = add_bug_to_db(conn, dua, atp, b);
-            if (newb) {
-                uint64_t i1 = duas[dk].instr ;
-                uint64_t i2 = instr ;
-                float rdf_frac = ((float)i1) / ((float)i2);
-                if (debug)
-                    std::cout << "i1=" << i1 << " i2=" << i2 << " rdf_frac=" << rdf_frac << "\n";
-                num_bugs_added_to_db ++;
-            }
-            num_bugs_local ++;
+            const Bug *bug = create(Bug{0, dua, atp});
+            float rdf_frac = ((float)dua->instr) / ((float)instr);
+            dprintf("i1=%lu i2=%lu rdf_frac=%f", dua->instr, instr, rdf_frac);
+            num_bugs_added_to_db++;
         }
-        else {
-            if (debug) {
-                printf ("not a new bug\n");
-            }
-        }
+        else dprintf("not a new bug\n");
         num_bugs_attempted ++;
     }
 }
@@ -636,12 +585,12 @@ namespace std {
 }
 std::map<Panda__DwarfCall, std::vector<uint64_t> > dwarf_call_to_instr;
 
-void record_call(Panda__LogEntry *ple, PGconn *conn) {
+void record_call(Panda__LogEntry *ple) {
     assert(ple->dwarf_call);
     dwarf_call_to_instr[*ple->dwarf_call].push_back(ple->instr);
 }
 
-void record_ret(Panda__LogEntry *ple, PGconn *conn) {
+void record_ret(Panda__LogEntry *ple) {
     /*// Find corresponding call for this return.
     assert(ple->dwarf_ret);
     Panda__DwarfCall *dwarf_ret = ple->dwarf_ret;
@@ -666,7 +615,7 @@ void record_ret(Panda__LogEntry *ple, PGconn *conn) {
 
 int main (int argc, char **argv) {
     if (argc != 5) {
-        printf ("usage: fbi project.json src_pfx pandalog inputfile\n");
+        printf("usage: fbi project.json src_pfx pandalog inputfile\n");
         printf("    src_pfx: Prefix of source tree from lavaTool queries, so we can strip it\n");
         printf("    JSON file should have properties:\n");
         printf("        max_liveness: Maximum liveness for DUAs\n");
@@ -693,22 +642,21 @@ int main (int argc, char **argv) {
     const char *plf = plog.c_str();
     // maps from ind -> (filename, lvalname, attackpointname)
     ind2str = LoadIDB(lavadb);
-    printf ("%d strings in lavadb\n", (int) ind2str.size());
+    printf("%d strings in lavadb\n", (int) ind2str.size());
 
     max_liveness = root["max_liveness"].asFloat();
-    printf ("maximum liveness score of %.2f\n", max_liveness);
+    printf("maximum liveness score of %.2f\n", max_liveness);
     max_card = root["max_cardinality"].asUInt();
-    printf ("max card of taint set returned by query = %d\n", max_card);
+    printf("max card of taint set returned by query = %d\n", max_card);
     max_tcn = root["max_tcn"].asUInt();
-    printf ("max tcn for addr = %d\n", max_tcn);
+    printf("max tcn for addr = %d\n", max_tcn);
     max_lval = root["max_lval_size"].asUInt();
-    printf ("max lval size = %d\n", max_lval);
+    printf("max lval size = %d\n", max_lval);
     inputfile = std::string(argv[4]);
     src_pfx = std::string(argv[2]);
-    std::map <uint32_t, float> liveness;
 
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
-                root["db"].asString(), root["dbhost"].asString()))
+                root["db"].asString(), root["dbhost"].asString()));
     /*
      re-read pandalog, this time focusing on taint queries.  Look for
      dead available data, attack points, and thus bug injection oppotunities
@@ -723,8 +671,10 @@ int main (int argc, char **argv) {
         if (ple == NULL)  break;
         ii ++;
         if ((ii % 10000) == 0) {
-            printf ("processed %lu pandalog entries \n", ii);
-            std::cout << num_bugs_added_to_db << " added to db " << num_bugs_local << " local bugs " << num_bugs_attempted << " total attempted. " << (duas.size()) << " duas\n";
+            printf("processed %lu pandalog entries \n", ii);
+            std::cout << num_bugs_added_to_db << " added to db "
+                << num_bugs_attempted << " total attempted. "
+                << recent_duas.size() << " duas\n";
         }
 
         if (ple->taint_query_hypercall) {

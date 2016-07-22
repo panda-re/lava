@@ -8,13 +8,13 @@ CXXFLAGS=$(CFLAGS) -std=c++14
 all: fbi
 
 %.o: %.cpp
-	g++ -c -o $@ $< $(CXXFLAGS)
+	clang++ -c -o $@ $< $(CXXFLAGS)
 
 %.o: %.cxx
-	g++ -c -o $@ $< $(CXXFLAGS)
+	clang++ -c -o $@ $< $(CXXFLAGS)
 
 %.o: %.c
-	gcc -c -o $@ $< $(CFLAGS)
+	clang -c -o $@ $< $(CFLAGS)
 
 fbi_sources=find_bug_inj.cpp \
 			../sql/lava_sql.cpp \
@@ -24,12 +24,13 @@ fbi_sources=find_bug_inj.cpp \
 			../include/lava-odb.cxx
 
 ../include/lava-odb.cxx: ../include/lava.hxx
-	odb -d pgsql --std c++11 -o ../include $<
+	odb -d pgsql --std c++11 -o ../include --generate-query --generate-schema \
+		--cxx-prologue '#include "../include/pgarray.hxx"' $<
 
 fbi_objs=$(addsuffix .o,$(basename $(fbi_sources)))
 
 fbi: $(fbi_objs)
-	g++ -o $@ $^ $(LDFLAGS)
+	clang++ -o $@ $^ $(LDFLAGS)
 
 clean:
 	rm $(fbi_objs) fbi
