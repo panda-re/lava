@@ -1,7 +1,7 @@
 
 import struct
 import sys
-import random 
+import random
 import psycopg2
 import shutil
 import subprocess32
@@ -52,16 +52,12 @@ def next_bug(project):
     return bug
 
 
-# if updatedb = True, we set inj column. 
+# if updatedb = True, we set inj column.
 def next_bug_random(project, updatedb):
     conn = get_conn(project)
     cur = conn.cursor()
     cur.execute("SELECT * FROM bug WHERE inj=false OFFSET floor(random() * (SELECT COUNT(*) FROM bug WHERE inj=false) ) LIMIT 1;")
-#    cur.execute("select bug_id from bug,dua where (bug.dua_id=dua.dua_id) and (dua.max_liveness=0) and (dua.max_tcn=0);")
-#    bugid = cur.fetchone()[0]
-#    cur.execute("select * from bug where bug_id=%d" % bugid);
     bug = cur.fetchone()
-#    cur.execute("UPDATE bug SET inj=true WHERE bug_id=%d;" % bugid)
     if updatedb:
         cur.execute("UPDATE bug SET inj=true WHERE bug_id={};".format(bug[0]))
     # need to do all three of these in order for the writes to db to actually happen
@@ -81,8 +77,6 @@ def get_bug(project,bug_id):
     conn.commit()
     conn.close()
     return (bug[1], bug[2])
-    
-
 
 def get_runs(project):
     conn = get_conn(project)
@@ -91,7 +85,7 @@ def get_runs(project):
     run = {}
     while True:
         foo = cur.fetchone()
-        if foo is None: 
+        if foo is None:
             break
         (run_id, build_id, fuzz, exitcode, output_lines, success) = foo
         run[run_id] = (build_id, fuzz, exitcode, output_lines, success)
@@ -104,9 +98,9 @@ def get_builds(project):
     build = {}
     while True:
         foo = cur.fetchone()
-        if foo is None: 
+        if foo is None:
             break
-        (build_id, bugs, binpath, compiles) = foo        
+        (build_id, bugs, binpath, compiles) = foo
         build[build_id] = (bugs, binpath, compiles)
     return build;
 
@@ -118,7 +112,7 @@ def get_bugs(project):
     bug = {}
     while True:
         foo = cur.fetchone()
-        if foo is None: 
+        if foo is None:
             break
         (bug_id, dua_id, atp_id, inj) = foo
         bug[bug_id] = (dua_id, atp_id, inj)
@@ -131,9 +125,9 @@ def get_duas(project):
     dua = {}
     while True:
         foo = cur.fetchone()
-        if foo is None: 
+        if foo is None:
             break
-        (dua_id, filename_id, line, lval_id, insertionpoint, file_offset, lval_taint, inputfile_id, max_tcn, max_card, max_liveness, dua_icount, dua_scount, instr) = foo   
+        (dua_id, filename_id, line, lval_id, insertionpoint, file_offset, lval_taint, inputfile_id, max_tcn, max_card, max_liveness, dua_icount, dua_scount, instr) = foo
         dua[dua_id] = (filename_id, line, lval_id, insertionpoint, file_offset, lval_taint, inputfile_id, max_tcn, max_card, max_liveness, dua_icount, dua_scount, instr)
     return dua
 
@@ -157,7 +151,7 @@ def remaining_inj(project):
     cur = conn.cursor()
     cur.execute("select * from bug where inj=false;")
     return cur.rowcount
-        
+
 
 def ptr_to_set(project, ptr, inputfile_id):
     if ptr == 0: return []
@@ -166,7 +160,7 @@ def ptr_to_set(project, ptr, inputfile_id):
     cur.execute("select * from unique_taint_set where ptr = " + (str(ptr)) + " and inputfile_id = " + str(inputfile_id) + ";")
     (x, file_offsets, ret_inputfile_id) = cur.fetchone()
     assert (x == ptr and inputfile_id == ret_inputfile_id)
-    return file_offsets 
+    return file_offsets
 
 
 class Dua:
@@ -191,7 +185,7 @@ class Dua:
             ptr = self.lval_taint[i]
             self.lval_taint[i] = ptr_to_set(project, ptr, self.inputfile_id)
         assert(x==dua_id)
-        self.filename = self.sourcefile[self.filename_id] 
+        self.filename = self.sourcefile[self.filename_id]
         self.lval = self.lval[self.lval_id]
         self.inputfile = self.inputfile[self.inputfile_id]
 
@@ -223,7 +217,7 @@ class Atp:
         self.filename = self.sourcefile[self.filename_id]
         self.inputfile = self.inputfile[self.inputfile_id]
         self.typ = self.atptype[self.typ_id]
-    
+
     def as_array(self):
         return [self.atp_id, self.filename, self.line, self.typ, self.inputfile, \
                     self.atp_icount, self.atp_scount]
@@ -260,21 +254,21 @@ class Command(object):
             if debugging:
                 print 'Terminating process cmd=[%s] due to timeout' % self.cmd
             self.process.terminate()
-            os.killpg(self.process.pid, signal.SIGTERM) 
+            os.killpg(self.process.pid, signal.SIGTERM)
             self.process.kill()
             print "terminated"
             thread.join(1)
             self.returncode = -9
         else:
             self.returncode = self.process.returncode
-        
+
 
 
 def run_cmd(cmd, cw_dir, envv, timeout):
     p = Command(cmd, cw_dir, envv)
     p.run(timeout)
 #    p = subprocess32.Popen(cmd.split(), cwd=cw_dir, env=envv, stdout=subprocess32.PIPE, stderr=subprocess32.PIPE)
-    output = p.output  
+    output = p.output
     exitcode = p.returncode
     if debugging:
         print "run_cmd(" + cmd + ")"

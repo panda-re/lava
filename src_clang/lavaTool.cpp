@@ -16,7 +16,7 @@ extern "C" {
 #define RV_PFX_LEN 13
 
 
-std::string BuildPath; 
+std::string BuildPath;
 char resolved_path[512];
 std::string LavaPath;
 
@@ -55,17 +55,17 @@ static cl::opt<std::string> ProjectFile("project-file",
     cl::init("XXX"));
 
 static cl::opt<std::string> SMainInstrCorrection("main_instr_correction",
-    cl::desc("Insertion line correction for post-main instr"), 
+    cl::desc("Insertion line correction for post-main instr"),
     cl::cat(LavaCategory),
     cl::init("XXX"));
-                    
-         
+
+
 uint32_t MainInstrCorrection;
 
 #define INSERTED_DUA_SIPHON 0x4
 #define INSERTED_DUA_USE    0x8
 #define INSERTED_MAIN_STUFF 0x16
- 
+
 uint32_t returnCode=0;
 
 uint32_t num_taint_queries = 0;
@@ -73,7 +73,7 @@ uint32_t num_atp_queries = 0;
 
 /*
 static cl::opt<std::string> LavaBugBuildDir("bug-build-dir",
-    cl::desc("Path to build dir for bug-inj src" 
+    cl::desc("Path to build dir for bug-inj src"
         "Used only in inject mode."),
     cl::cat(LavaCategory),
     cl::init("XXX"));
@@ -96,7 +96,7 @@ struct Llval {
         if (typ < other.typ) return true;
         if (typ > other.typ) return false;
         return is_ptr < other.is_ptr;
-    }      
+    }
 };
 
 
@@ -124,7 +124,7 @@ std::stringstream new_start_of_file_src;
 
 
 std::string hex_str(uint32_t x) {
-    std::stringstream ss; 
+    std::stringstream ss;
     ss << "0x" << std::hex << x;
     return ss.str();
 }
@@ -140,15 +140,15 @@ public:
         std::vector< VarDecl* > &globalVars, std::map<std::string,uint32_t> &StringIDs) :
             rewriter(rewriter), globalVars(globalVars), StringIDs(StringIDs)  {}
 
-    
+
     void SpitLlval(Llval &llval) {
-        errs() << "name=" << llval.name << 
-            " pointer_tst=" << llval.pointer_tst << 
-            " len=" << llval.len << 
+        errs() << "name=" << llval.name <<
+            " pointer_tst=" << llval.pointer_tst <<
+            " len=" << llval.len <<
             " is_ptr=" << llval.is_ptr;
         llval.typ->dump();
-        
-    }            
+
+    }
 
 
     uint32_t GetStringID(std::string s) {
@@ -179,7 +179,7 @@ public:
         SourceManager &sm = rewriter.getSourceMgr();
         if (sm.isInMainFile(d->getLocation()))
             return RecursiveASTVisitor<LavaTaintQueryASTVisitor>::TraverseDecl(d);
-        
+
         return true;
     }
 
@@ -199,37 +199,37 @@ public:
         return ((field_name == "__st_ino" ) || (field_name.size() == 0));
     }
 
-    
-    
+
+
     /*
       llval is lval we want to query for taint.
-      note that we insert extra code if lval needs guarding b/c it might 
+      note that we insert extra code if lval needs guarding b/c it might
       otherwise try to deref a null pointer.
      */
     std::string ComposeDuaTaintQuery(Llval &llval, uint32_t filename_id, uint32_t line, uint32_t insertion_point) {
         Insertions inss;
         std::stringstream query;
 
-        if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
+        if ((!(llval.pointer_tst == ""))  || llval.is_ptr)
             query << "if (";
 
         if (!(llval.pointer_tst == ""))  {
             query << "(" << llval.pointer_tst << ")";
-            if (llval.is_ptr) 
+            if (llval.is_ptr)
                 query << " && ";
         }
 
-        if (llval.is_ptr) 
+        if (llval.is_ptr)
             query << "(" << llval.name << ")";
-        
-        if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
+
+        if ((!(llval.pointer_tst == ""))  || llval.is_ptr)
             query << ")  {";
-        
-            
+
+
         query << "vm_lava_query_buffer(";
-        if (llval.is_ptr) 
+        if (llval.is_ptr)
             query << "(" << llval.name << "), " ;
-        else 
+        else
             query << "&(" << llval.name << "), " ;
         query << llval.len << ", "
               << filename_id << ", "
@@ -237,14 +237,14 @@ public:
               << line << ", "
               << insertion_point << ");\n";
 
-        if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
+        if ((!(llval.pointer_tst == ""))  || llval.is_ptr)
             query << "}";
-        
+
         return query.str();
     }
 
     /*
-      recurse to determine if this statement contains any declarations 
+      recurse to determine if this statement contains any declarations
       if expr is a fn arg this would mean any lvals for those decls wouldn't be in scope before
       the fn call
     */
@@ -283,7 +283,7 @@ public:
                 Expr *e = dyn_cast<Expr>(s);
                 if (e) {
                     if (! ((e->getType().getTypePtr())->isNullPtrType()) ) {
-                        Expr *eic = e->IgnoreCasts(); 
+                        Expr *eic = e->IgnoreCasts();
                         if (eic->isLValue()) {
                             StringLiteral *sl = dyn_cast<StringLiteral>(eic);
                             if (!sl) {
@@ -299,12 +299,12 @@ public:
             }
             else {
                 // s has children -- recurse
-                for ( auto &child : s->children() ) {             
+                for ( auto &child : s->children() ) {
                     CollectLvalsStmt(child, lvals);
                 }
             }
         }
-    }        
+    }
 
     // Find lvals buried in e. new lvals get added to lvals set
     void CollectLvals(Expr *e, std::set<Expr *> &lvals) {
@@ -315,30 +315,30 @@ public:
     }
 
 
-    
+
     std::pair<bool, Llval> ConstructLlval(std::string lvalname, std::string pointer_tst, const Type *lval_type) {
         std::string lvalderef;
         std::string lvallen;
         bool success = true;
         bool is_ptr = false;
-        if (lval_type->isPointerType()) {            
+        if (lval_type->isPointerType()) {
             is_ptr = true;
             const Type *pt = lval_type->getPointeeType().getTypePtr();
             //            lvalderef = "(" + lvalname + ")";
-            if (pt->isCharType()) {                
+            if (pt->isCharType()) {
                 // lval is a string
                 lvallen = "(size_t) -1";  // strnlen(" + lvalname + "," + std::to_string(MAX_STRNLEN) + ")";
             }
             else {
-                if ( pt->isVoidType() ) 
+                if ( pt->isVoidType() )
                     success = false;
                 // lval is a pointer, but not a string
                 lvallen = "sizeof(*(" + lvalname + "))";
             }
-        } 
+        }
         else {
             // lval not a pointer
-            if ( lval_type->isVoidType() ) 
+            if ( lval_type->isVoidType() )
                 success = false;
             //            lvalderef = "(" + lvalname + ")";
             lvallen = "sizeof(" + lvalname + ")";
@@ -348,14 +348,14 @@ public:
         // t is not a pointer
         Llval llval = { lvalname, pointer_tst, lvallen, lval_type, is_ptr };
         return std::make_pair(success,llval);
-    }        
+    }
 
 
     // based on type, determine if this lval is queriable
     // which means can we get an addr out of it in ways we'll need to
     // and determine its size
     bool QueriableType(const Type *lval_type) {
-        if ((lval_type->isIncompleteType())  
+        if ((lval_type->isIncompleteType())
             || (lval_type->isIncompleteArrayType())
             || (lval_type->isVoidType())
             || (lval_type->isNullPtrType())
@@ -365,38 +365,38 @@ public:
         if (lval_type->isPointerType()) {
             const Type *pt = lval_type->getPointeeType().getTypePtr();
             return QueriableType(pt);
-        }           
+        }
         return true;
     }
-    
+
     /*
       lv_name is base for a struct.  Might be a pointer.
-      Use rd to iterate over slots in that struct and collect llvals.  
+      Use rd to iterate over slots in that struct and collect llvals.
       pointer indicates if lv_name is a pointer (and thus needs a null test)
     */
-    void CollectLlvalsStruct1stLevel(std::string lv_name, RecordDecl *rd, 
+    void CollectLlvalsStruct1stLevel(std::string lv_name, RecordDecl *rd,
                                      bool pointer, std::set<Llval> &llvals) {
         for (auto field : rd->fields()) {
             if ( (!(field->getType()->isIncompleteType()))
                  && (!(field->getType()->isIncompleteArrayType()))
-                 && (!(field->isBitField())) 
+                 && (!(field->isBitField()))
                  && (!(InFieldBlackList(field->getName().str())))) {
                 std::string accessor =
-                    (pointer ? (std::string("->")) : (std::string(".")));                    
-                std::string lval_ss = 
+                    (pointer ? (std::string("->")) : (std::string(".")));
+                std::string lval_ss =
                     lv_name + accessor + field->getName().str();
-                std::string pointer_tst = (pointer ? lv_name : "");                
+                std::string pointer_tst = (pointer ? lv_name : "");
                 QualType qt = field->getType();
-                // discard a->b when it is a pointer.  
-                // why?  because what if a is non-null but doesnt point to valid memory? 
-                // a->b is a deref that will seg fault.  
+                // discard a->b when it is a pointer.
+                // why?  because what if a is non-null but doesnt point to valid memory?
+                // a->b is a deref that will seg fault.
                 const Type *lval_type = qt.getTypePtr();
                 if (!lval_type->isPointerType()) {
                     std::pair<bool, Llval> res = ConstructLlval(lval_ss, pointer_tst, lval_type);
                     bool success = res.first;
                     if (success) {
-                        Llval llval = res.second;                
-                        llvals.insert(llval); 
+                        Llval llval = res.second;
+                        llvals.insert(llval);
                     }
                 }
             }
@@ -406,14 +406,14 @@ public:
     // check if lval is a struct or a ptr-to-a-struct,
     // if so, then collect lvals (as strings) that are 1st level struct slots
     void CollectLlvalsStruct(Expr *lval, std::set<Llval> &llvals) {
-        if (!CanGetSizeOf(lval)) 
+        if (!CanGetSizeOf(lval))
             return;
         QualType qt = lval->getType();
         const Type *t = qt.getTypePtr();
         std::string lv_name = "(" + ExprStr(lval) + ")";
         if (t->isPointerType()) {
             if (t->getPointeeType()->isRecordType()) {
-                // we have a ptr to a struct 
+                // we have a ptr to a struct
                 const RecordType *rt = t->getPointeeType()->getAsStructureType();
                 if (rt) {
                     CollectLlvalsStruct1stLevel(lv_name, rt->getDecl(), /* pointer = */ true, llvals);
@@ -521,7 +521,7 @@ public:
             if (t->isPointerType()) {
                 //                errs() << "is a pointer type\n";
                 const Type *pt = t->getPointeeType().getTypePtr();
-                // its a pointer to a non-void 
+                // its a pointer to a non-void
                 if ( ! (pt->isVoidType() ) ) {
                     //                    errs() << "is not a void type -- ATTACKABLE\n";
                     return true;
@@ -541,7 +541,7 @@ public:
             Stmt *stmt = dyn_cast<Stmt>(*it);
             if (stmt) {
                 Expr *arg = dyn_cast<Expr>(*it);
-                // can't fail, right? 
+                // can't fail, right?
                 assert (arg);
                 if (IsArgAttackable(arg)) return true;
             }
@@ -550,7 +550,7 @@ public:
         /*
         std::string fn_name = fd->getDirectCallee()->getNameInfo().getName().getAsString();
         return
-            ((fn_name.find("memcpy") != std::string::npos) 
+            ((fn_name.find("memcpy") != std::string::npos)
              || (fn_name.find("malloc") != std::string::npos)
              || (fn_name.find("memmove") != std::string::npos)
              || (fn_name.find("bcopy") != std::string::npos)
@@ -564,9 +564,9 @@ public:
     }
 
     // insertions are like parentheses.  they have to match
-    // as in: 
+    // as in:
     // before_outer before_inner thing after_inner after_outer
-    Insertions ComposeInsertions(Insertions &inss_outer, Insertions &inss_inner) { 
+    Insertions ComposeInsertions(Insertions &inss_outer, Insertions &inss_inner) {
         Insertions inss;
         inss.top_of_file = inss_outer.top_of_file + inss_inner.top_of_file;
         inss.before_part = inss_outer.before_part + inss_inner.before_part;
@@ -592,9 +592,9 @@ public:
     Insertions ComposeAtpQuery(CallExpr *ce, std::string filename, uint32_t line) {
         std::string fn_name =  ce->getDirectCallee()->getNameInfo().getName().getAsString();
         Insertions inss;
-        if (IsAttackPoint(ce)) {                
+        if (IsAttackPoint(ce)) {
             /*
-              if ((fn_name.find("memcpy") != std::string::npos) 
+              if ((fn_name.find("memcpy") != std::string::npos)
               || (fn_name.find("malloc") != std::string::npos)
               || (fn_name.find("memmove") != std::string::npos)
               || (fn_name.find("bcopy") != std::string::npos)
@@ -605,7 +605,7 @@ public:
               || (fn_name.find("exec") != std::string::npos)
               || (fn_name.find("popen") != std::string::npos)) {
             */
-            // this is an attack point              
+            // this is an attack point
             std::stringstream before;
             std::stringstream after;
             //            errs() << "Found attack point at " << filename << ":" << line << "\n";
@@ -625,7 +625,7 @@ public:
         }
         return inss;
     }
-        
+
     // compose a lava global for this bug id
     std::string LavaGlobal(uint32_t id) {
         std::stringstream ss;
@@ -642,22 +642,22 @@ public:
     Insertions ComposeDuaSiphoning(Llval &llval, std::set<Bug> &injectable_bugs, std::string filename) {
         Insertions inss;
         // only insert one dua siphon if single bug
-        // if > 1 bug we are living dangerously. 
+        // if > 1 bug we are living dangerously.
         if (bugs.size() == 1 && (returnCode & INSERTED_DUA_SIPHON)) return inss;
         returnCode |= INSERTED_DUA_SIPHON;
         std::string lval_name = llval.name;
         //        errs() << "ComposeDuaSiphoning\n";
         std::stringstream siphon;
-        if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
+        if ((!(llval.pointer_tst == ""))  || llval.is_ptr)
             siphon << "if (";
         if (!(llval.pointer_tst == ""))  {
             siphon << "(" << llval.pointer_tst << ")";
-            if (llval.is_ptr) 
+            if (llval.is_ptr)
                 siphon << " && ";
         }
-        if (llval.is_ptr) 
-            siphon << "(" << llval.name << ")";       
-        if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
+        if (llval.is_ptr)
+            siphon << "(" << llval.name << ")";
+        if ((!(llval.pointer_tst == ""))  || llval.is_ptr)
             siphon << ")  {";
         for ( auto &bug : injectable_bugs) {
             uint32_t i = 0;
@@ -665,15 +665,15 @@ public:
             siphon << "int " << gn << " = 0;\n";
             uint32_t o = 0;
             std::string lval_base;
-            if (llval.is_ptr) 
+            if (llval.is_ptr)
                 lval_base = llval.name;
-            else 
+            else
                 lval_base = "&(" + llval.name + ")";
             for ( auto ptr : bug.dua.lval_taint ) {
                 // 0 means this offset of the lval is either untainted or not-viable for use by lava
                 if (ptr != 0) {
-                    siphon << LavaGlobal(bug.id) 
-                           << " |= ((unsigned char *) " 
+                    siphon << LavaGlobal(bug.id)
+                           << " |= ((unsigned char *) "
                            << lval_base << ")[" << o << "] << (" << i << "*8);";
                     i ++;
                 }
@@ -683,11 +683,11 @@ public:
             }
             siphon << "lava_set(" << (std::to_string(bug.id)) << "," << gn << ");\n";
         }
-        if ((!(llval.pointer_tst == ""))  || llval.is_ptr) 
-            siphon << "}";       
+        if ((!(llval.pointer_tst == ""))  || llval.is_ptr)
+            siphon << "}";
 
         inss.after_part = siphon.str();
-        // this is prototype for setter 
+        // this is prototype for setter
         if (lava_set_proto.count(filename) == 0) {
             inss.top_of_file = "void lava_set(unsigned int bn, unsigned int val);\n";
             lava_set_proto.insert(filename);
@@ -697,15 +697,15 @@ public:
 
     /*
       Add code to call expr corresponding to use of dua that will trigger a bug here.
-      Note that we may be injecting code that triggers more than one bug here. 
+      Note that we may be injecting code that triggers more than one bug here.
       NB: we dont actually know how to *change* code.
       so we instead just add another copy of the call with one
       of the arg perturbed by global.  :)
     */
     Insertions ComposeAtpDuaUse(CallExpr *call_expr, std::set<Bug> &injectable_bugs, std::string filename) {
         //        errs() << "in ComposeAtpDuaUse\n";
-        Insertions inss;        
-        // NB: only insert one dua use if single bug.  
+        Insertions inss;
+        // NB: only insert one dua use if single bug.
         // if > 1 bug we live dangerously and may have multiple attack points
         if (bugs.size() == 1 && (returnCode & INSERTED_DUA_USE)) return inss;
         returnCode |= INSERTED_DUA_USE;
@@ -715,17 +715,17 @@ public:
             lava_get_proto.insert(filename);
         }
         uint32_t num_args = call_expr->getNumArgs();
-        std::vector<uint32_t> attackable_args;        
+        std::vector<uint32_t> attackable_args;
         uint32_t i=0;
         // collect inds of attackable args
-        for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {            
-            if (IsArgAttackable(dyn_cast<Expr>(*it))) 
+        for ( auto it = call_expr->arg_begin(); it != call_expr->arg_end(); ++it) {
+            if (IsArgAttackable(dyn_cast<Expr>(*it)))
                 attackable_args.push_back(i);
             i ++;
-        }                       
+        }
         std::stringstream new_call;
         new_call << fn_name << "(";
-        i = 0;        
+        i = 0;
         uint32_t ii = 0;
         uint32_t j = 0;
         uint32_t num_injectable_bugs = injectable_bugs.size();
@@ -734,8 +734,8 @@ public:
             errs() << "considering arg " << ii << "\n";
             Expr *arg = dyn_cast<Expr>(*it);
             // really, this cast can't fail, right?
-            assert(arg); 
-            std::stringstream new_arg;            
+            assert(arg);
+            std::stringstream new_arg;
             std::string orig_arg = ExprStr(arg);
             bool arg_was_attacked = false;
             if (IsArgAttackable(arg)) {
@@ -759,32 +759,32 @@ public:
                             //                        }
                         std::string magic_value_s = hex_str(magic_value);
                         // byte-swapped version of magic value
-                        uint32_t magic_value_bs = __bswap_32(magic_value);                                        
+                        uint32_t magic_value_bs = __bswap_32(magic_value);
                         std::string magic_value_bs_s = hex_str(magic_value_bs);
                         // evaluates to 1 iff dua is the magic value
                         std::string magic_test = "(" + magic_value_s + "==" + gn + "||" + magic_value_bs_s + "==" + gn + ")";
                         if (fn_name.find("malloc") != std::string::npos) {
-                            // nasty heuristic. for malloc, we want the lava switch 
+                            // nasty heuristic. for malloc, we want the lava switch
                             // to undersize the malloc to a few bytes and hope for
                             // an overflow
-                            // ... oh dear how do we compose multiple attacks on malloc? 
+                            // ... oh dear how do we compose multiple attacks on malloc?
                             //                assert (first_attack);
                             if (first_attack) {
                                 first_attack = false;
                                 //                                new_arg << magic_test << " ? 1 : " << orig_arg;
-                                arg_ins.before_part = magic_test + " ? 1 : "; 
+                                arg_ins.before_part = magic_test + " ? 1 : ";
                             }
-                        }                                
+                        }
                         else {
                             // for everything else we add lava_get() to the arg and hope to break things
-                            // also we test if its equal to magic value 
+                            // also we test if its equal to magic value
                             // ... if arg is an lval we'll += instead
                             std::string plus_op = "+";
-                            if (arg->isLValue()) plus_op = "+=";                        
+                            if (arg->isLValue()) plus_op = "+=";
                             /*
                             if (first_attack) {
                                 first_attack = false;
-                                new_arg << orig_arg; 
+                                new_arg << orig_arg;
                             }
                             new_arg << plus_op << gn << "*" << magic_test;
                             */
@@ -811,20 +811,20 @@ public:
             }
             ii ++;
         }
-        new_call << ")";        
+        new_call << ")";
         //        SourceRange sr = SourceRange(call_expr->getLocStart(),call_expr->getLocEnd());
         //        rewriter.ReplaceText(sr, new_call.str());
         return inss;
-    }        
+    }
 
 
-    // is this lvalname / line / filename, etc a bug inj point?  
+    // is this lvalname / line / filename, etc a bug inj point?
     // if so, return the vector of bugs that are injectable at this point
-    std::set<Bug> AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint, 
+    std::set<Bug> AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint,
                         uint32_t insertion_point, bool is_retval ) {
         //                errs() << "atbug : lvalname=" << lvalname << " filename=" << filename << " line=" << line << " atAttackPoint=" << atAttackPoint << " insertion_point=" << insertion_point<< " \n";
         std::set<Bug> injectable_bugs;
-        for ( auto bug : bugs ) { 
+        for ( auto bug : bugs ) {
             //                        errs() << bug.str() << "\n";
             bool atbug = false;
             if (atAttackPoint) {
@@ -837,7 +837,7 @@ public:
                 // if dua is a retval, the one in the db wont match this one but verify prefix
                 atbug = (filename == bug.dua.filename && line == (bug.dua.line + MainInstrCorrection)
                          && ((is_retval && (0 == strncmp(lvalname.c_str(), bug.dua.lvalname.c_str(), RV_PFX_LEN)))
-                             || (lvalname == bug.dua.lvalname)) 
+                             || (lvalname == bug.dua.lvalname))
                          && insertion_point == bug.dua.insertionpoint);
             }
             if (atbug) {
@@ -856,39 +856,39 @@ public:
         */
         return injectable_bugs;
     }
-        
+
     /*
-      returns new code called for @ dua: 
+      returns new code called for @ dua:
       lval taint queries OR siphoning lval off into bug global
       this is called once for every lval found @ source location.
       how to insert this string into source is determined by the caller.
-      what is insertion_point?  
+      what is insertion_point?
       If we are composing taint queries then they can go before or after
       a call site.  We need the taint query to differentiate and transmit that
-      info up to hypervisor.  This is needed because bug insertion, later, 
-      will need it.  
-      insertion_point is just a number that (currently) can be 
+      info up to hypervisor.  This is needed because bug insertion, later,
+      will need it.
+      insertion_point is just a number that (currently) can be
       1 = query was before call
       2 = query was after call
     */
-    Insertions ComposeDuaNewSrc(Llval &llval, std::string filename, 
+    Insertions ComposeDuaNewSrc(Llval &llval, std::string filename,
                                 uint32_t line, uint32_t insertion_point, bool is_retval) {
         Insertions inss;
         //        errs() << "ComposeDuaNewSrc\n";
         //        errs() << llval.name << " : " << line << " : " << filename << " : " << insertion_point << "\n";
         if (LavaAction == LavaQueries) {
             // yes, always pack this into after_part
-            inss.after_part = ComposeDuaTaintQuery(llval, GetStringID(filename), 
+            inss.after_part = ComposeDuaTaintQuery(llval, GetStringID(filename),
                                                    line, insertion_point);
 	    num_taint_queries ++;
         }
         else if (LavaAction == LavaInjectBugs) {
-            std::set<Bug> injectable_bugs = 
+            std::set<Bug> injectable_bugs =
                 AtBug(llval.name, filename, line, /*atAttackPoint=*/false,
                       insertion_point, is_retval);
-            // NOTE: if injecting multiple bugs the same dua will need to be instrumented more than once        
+            // NOTE: if injecting multiple bugs the same dua will need to be instrumented more than once
             if (!injectable_bugs.empty()) {
-                errs() << "ComposeDuaNewSrc: injecting a dua siphon for " << injectable_bugs.size() << " bugs " << filename << " : " << line << " : " << llval.name << "\n"; 
+                errs() << "ComposeDuaNewSrc: injecting a dua siphon for " << injectable_bugs.size() << " bugs " << filename << " : " << line << " : " << llval.name << "\n";
                 inss = ComposeDuaSiphoning(llval, injectable_bugs, filename);
             }
         }
@@ -900,8 +900,8 @@ public:
         }
         return inss;
     }
-    
-    /*     
+
+    /*
       returns insertions called for @ attack point:
       attack query OR bug global use
       this is called once for the call expr that is @ the source location
@@ -910,21 +910,21 @@ public:
         Insertions inss;
 
         FunctionDecl *f = call_expr->getDirectCallee();
-        std::string fn_name = f->getNameInfo().getName().getAsString();       
+        std::string fn_name = f->getNameInfo().getName().getAsString();
 
 
         //                errs() << "ComposeAtpNewSrc\n";
-        if (LavaAction == LavaQueries) {            
+        if (LavaAction == LavaQueries) {
             inss = ComposeAtpQuery(call_expr, filename, line);
 	    num_atp_queries ++;
         }
         else if (LavaAction == LavaInjectBugs) {
-            std::set<Bug> injectable_bugs = 
-                AtBug("", filename, line, /*atAttackPoint=*/true, 
+            std::set<Bug> injectable_bugs =
+                AtBug("", filename, line, /*atAttackPoint=*/true,
                       /*insertion_point=*/-1, /*is_retval=*/false);
             // NOTE: if injecting multiple bugs the same atp may need to be instrumented more than once.
             if (!injectable_bugs.empty()) {
-                errs() << "ComposeAtpNewSrc: injecting a dua use for " << injectable_bugs.size() << " bugs " << filename << " : " << line << " : " << fn_name << "\n"; 
+                errs() << "ComposeAtpNewSrc: injecting a dua use for " << injectable_bugs.size() << " bugs " << filename << " : " << line << " : " << fn_name << "\n";
                 inss = ComposeAtpDuaUse(call_expr, injectable_bugs, filename);
             }
         }
@@ -953,7 +953,7 @@ public:
         FullSourceLoc fullLoc(e->getLocStart(), sm);
         std::string src_filename;
         if (LavaAction == LavaInjectBugs) {
-            // we want to strip the build path so that 
+            // we want to strip the build path so that
             // we can actually compare bug in and query files for
             // same source which will be in different directories
             src_filename = StripPfx(FullPath(fullLoc), BuildPath);
@@ -961,43 +961,43 @@ public:
         else {
             src_filename = FullPath(fullLoc);
         }
-        uint32_t src_line = fullLoc.getExpansionLineNumber(); 
+        uint32_t src_line = fullLoc.getExpansionLineNumber();
         errs() << "VisitCallExpr " << src_filename << " " << src_line << "\n";
         // if we dont know the filename, that indicates unhappy situation.  bail.
         if (src_filename == "") return true;
         FunctionDecl *f = e->getDirectCallee();
         // this is also bad -- bail
         if (!f) return true;
-        std::string fn_name = f->getNameInfo().getName().getAsString();       
+        std::string fn_name = f->getNameInfo().getName().getAsString();
         //        errs() << "VisitCallExpr " << src_filename << " " << fn_name << " " << src_line << "\n";
         /*
-          if this is an attack point, we will either 
-          * insert code to say "im at an attack point" 
-          * insert code to use lava global modulo bugs list 
+          if this is an attack point, we will either
+          * insert code to say "im at an attack point"
+          * insert code to use lava global modulo bugs list
         */
         Insertions inssAtp;
         if (IsAttackPoint(e)) {
             inssAtp = ComposeAtpNewSrc(e, src_filename, src_line);
         }
         /*
-          Regardless of whether or not this is an attack point there may be 
-          duas in CallExpr. Could be buried in expression args. 
-          Or could be the return value. 
-          Either 
+          Regardless of whether or not this is an attack point there may be
+          duas in CallExpr. Could be buried in expression args.
+          Or could be the return value.
+          Either
           * add taint query for each discovered lval
-          * add code to siphon dua bytes into global. 
+          * add code to siphon dua bytes into global.
         */
-        Insertions inssDua;                
+        Insertions inssDua;
         bool any_dua_insertions = false;
-        // NB: there are some fns for which we will skip this step. 
+        // NB: there are some fns for which we will skip this step.
         if (!(InFnBlackList(fn_name))) {
             // collect queriable / siphonable lvals for this fn.
             std::set<Llval> llvals;
-            QualType rqt = e->getCallReturnType(); 
+            QualType rqt = e->getCallReturnType();
             bool has_retval = CallExprHasRetVal(rqt);
-            std::string retvalname = RandVarName();            
+            std::string retvalname = RandVarName();
             std::string rv_before;
-            std::string rv_after;            
+            std::string rv_after;
             Llval rv_llval;
             bool queriable_retval = false;
             if (has_retval) {
@@ -1023,7 +1023,7 @@ public:
                 Stmt *stmt = dyn_cast<Stmt>(*it);
                 if (stmt) {
                     Expr *arg = dyn_cast<Expr>(*it);
-                    // can't fail, right? 
+                    // can't fail, right?
                     assert (arg);
                     // if this arg contains a decl, i.e., { int x; ... }, discard
                     bool cd = ContainsDecl(stmt);
@@ -1032,7 +1032,7 @@ public:
                         std::set<Expr *> lvals;
                         CollectLvals(arg, lvals);
                         // Now collect lvals as llvals.
-                        // And, for lvals that are structs, for all 1st-level fields.  
+                        // And, for lvals that are structs, for all 1st-level fields.
                         for ( auto lval : lvals ) {
                             std::string lv_name = "(" + ExprStr(lval) + ")";
                             std::string pointer_tst = (lval->getType().getTypePtr()->isPointerType() ? lv_name : "");
@@ -1050,14 +1050,14 @@ public:
             }
             // compose and collect dua code: either taint queries or dua siphoning
             std::stringstream dua_src_before;
-            std::stringstream dua_src_after;            
+            std::stringstream dua_src_after;
             for ( auto llval : llvals ) {
                 assert (llval.name.length() > 0);
                 if (!(QueriableType(llval.typ))) {
                     continue;
                 }
                 Insertions inss_before;
-                Insertions inss_after; 
+                Insertions inss_after;
                 // for taint queries, we want to insert *both* before and after call, potentially
                 // for dua siphoning, we want to insert *either* before or after.
                 // based on the bug
@@ -1075,9 +1075,9 @@ public:
             // check the retval for insertions
             // for both query & dua siphon, only makes sense to insert *after* return value is set.
             Insertions rv_inss;
-            if (has_retval && queriable_retval) { 
-                rv_inss = ComposeDuaNewSrc(rv_llval, src_filename, src_line, 
-                                           INSERTION_POINT_AFTER_CALL, /* is_retval=*/ true);            
+            if (has_retval && queriable_retval) {
+                rv_inss = ComposeDuaNewSrc(rv_llval, src_filename, src_line,
+                                           INSERTION_POINT_AFTER_CALL, /* is_retval=*/ true);
             }
             // if injecting, should not have both an arg dua insertion and a retval insertion
             if (LavaAction == LavaInjectBugs) {
@@ -1111,20 +1111,20 @@ public:
         //        SpitInsertions (inssDua);
         //        errs() << "inssAtp\n";
         //        SpitInsertions (inssAtp);
-        
+
 
         Insertions inss = ComposeInsertions(inssDua, inssAtp);
         if (!EmptyInsertions(inss)) {
             //            printf ("non-empty insertions\n");
             //            SpitInsertions(inss);
-            rewriter.InsertText(e->getLocStart(), inss.before_part, true, true);        
+            rewriter.InsertText(e->getLocStart(), inss.before_part, true, true);
             rewriter.InsertTextAfterToken(e->getLocEnd(), inss.after_part);
-            new_start_of_file_src << inss.top_of_file;    
+            new_start_of_file_src << inss.top_of_file;
         }
         return true;
         /*
         }
-    
+
         catch (...) {
             errs() << "exception?\n";
         }
@@ -1155,7 +1155,7 @@ public:
             if (vd) {
                 if (vd->isFileVarDecl() && vd->hasGlobalStorage())  {
                     globalVars.push_back(vd);
-                }  
+                }
             }
             else
                 visitor.TraverseDecl(*b);
@@ -1183,9 +1183,9 @@ private:
 class LavaTaintQueryFrontendAction : public ASTFrontendAction {
 public:
     std::string startoffile_ins;
-    
+
     LavaTaintQueryFrontendAction() {}
-    
+
     void EndSourceFileAction() override {
         SourceManager &sm = rewriter.getSourceMgr();
         errs() << "*** EndSourceFileAction for: "
@@ -1198,7 +1198,7 @@ public:
         }
 
         // add lava_get lava_set defs if this is a file with main () in it
-        if (LavaAction == LavaInstrumentMain) {           
+        if (LavaAction == LavaInstrumentMain) {
             // This is the file with main! insert lava_[gs]et and whatever.
             std::string lava_funcs_path(LavaPath + "/src_clang/lava_set.c");
             std::ifstream lava_funcs_file(lava_funcs_path);
@@ -1221,7 +1221,7 @@ public:
                             start_of_file_str,
                             true, true);
         bool ret = rewriter.overwriteChangedFiles();
-        // save the strings db 
+        // save the strings db
         if (LavaAction == LavaQueries)
             SaveDB(StringIDs, LavaDB);
     }
@@ -1280,27 +1280,27 @@ int main(int argc, const char **argv) {
 
         std::set<uint32_t> bug_ids = parse_ints(LavaBugList);
         printf ("%d bug_ids\n", bug_ids.size());
-        bugs = loadBugs(bug_ids, conn);        
+        bugs = loadBugs(bug_ids, conn);
 
         /*
         // determine if we have any file / src for which BOTH dua siphon and use will be injected on same line
         std::map<std::pair<std::string, uint32_t>, uint32_t> num_dua_siphon;
         std::map<std::pair<std::string, uint32_t>, uint32_t> num_dua_use;
         std::set<std::pair<std::string, uint32_t>> srcloc;
-        for ( auto &bug : bugs ) {            
+        for ( auto &bug : bugs ) {
             Dua dua = bug.dua;
             AttackPoint atp = bug.atp;
             std::pair<std::string, uint32_t> dua_siphon_srcloc = std::make_pair(dua.filename, dua.line);
             std::pair<std::string, uint32_t> dua_use_srcloc = std::make_pair(atp.filename, atp.line);
             srcloc.insert(dua_siphon_srcloc);
             srcloc.insert(dua_use_srcloc);
-            if (num_dua_siphon.count(dua_siphon_srcloc) == 0) 
+            if (num_dua_siphon.count(dua_siphon_srcloc) == 0)
                 num_dua_siphon[dua_siphon_srcloc] = 1;
-            else 
+            else
                 num_dua_siphon[dua_siphon_srcloc] ++;
-            if (num_dua_use.count(dua_use_srcloc) == 0) 
+            if (num_dua_use.count(dua_use_srcloc) == 0)
                 num_dua_use[dua_use_srcloc] = 1;
-            else 
+            else
                 num_dua_use[dua_use_srcloc] ++;
         }
 
@@ -1318,9 +1318,9 @@ int main(int argc, const char **argv) {
             errs() << bug.str() << "\n";
         }
         */
-    } 
+    }
     errs() << "about to call Tool.run \n";
-    
+
     int r = Tool.run(newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
     errs() << "back from calling Tool.run \n";
     errs() << "num taint queries added " << num_taint_queries << "\n";

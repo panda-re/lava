@@ -119,7 +119,7 @@ def add_run_row(build_id, fuzz, exitcode, lines, success):
 
 
 
-if __name__ == "__main__":    
+if __name__ == "__main__":
 
     next_bug_db = False
     parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
@@ -133,8 +133,8 @@ if __name__ == "__main__":
             help = 'Inject this many bugs (chosen randomly)')
     parser.add_argument('-l', '--buglist', action="store", default=False,
             help = 'Inject this list of bugs')
-   
-    
+
+
     args = parser.parse_args()
     project = json.load(args.project)
     project_file = args.project.name
@@ -160,7 +160,7 @@ if __name__ == "__main__":
 
     # This should be {{directory}}/{{name}}/bugs
     bugs_top_dir = join(top_dir, 'bugs')
-    
+
     try:
         os.makedirs(bugs_top_dir)
     except: pass
