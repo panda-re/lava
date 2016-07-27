@@ -35,7 +35,7 @@ struct SourceLval { // was DuaKey
     } timing;
     std::vector<uint32_t> selected_bytes;
 
-#pragma db index("SourceLval") unique members(file, line, ast_name, timing, selected_bytes)
+#pragma db index("SourceLvalUniq") unique members(file, line, ast_name, timing, selected_bytes)
 
     bool operator<(const SourceLval &other) const {
         return std::tie(file, line, ast_name, timing, selected_bytes) <
@@ -47,7 +47,7 @@ struct SourceLval { // was DuaKey
         os << "Lval [" << m.file << ":" << m.line << "]{";
         std::copy(m.selected_bytes.begin(), m.selected_bytes.end(),
                 std::ostream_iterator<uint32_t>(os, ","));
-        os << "} \"" << ast_name << "\"";
+        os << "} \"" << m.ast_name << "\"";
         return os;
     }
 };
@@ -62,7 +62,7 @@ struct LabelSet {
 
     std::vector<uint32_t> labels;
 
-#pragma db index("LabelSet") unique members(ptr, inputfile, labels)
+#pragma db index("LabelSetUniq") unique members(ptr, inputfile, labels)
 
     bool operator<(const LabelSet &other) const {
         return std::tie(ptr, inputfile, labels) <
@@ -97,7 +97,7 @@ struct Dua {
 
     uint64_t instr;     // instr count
 
-#pragma db index("Dua") unique members(lval, inputfile, instr)
+#pragma db index("DuaUniq") unique members(lval, inputfile, instr)
 
     bool operator<(const Dua &other) const {
          return std::tie(lval, viable_bytes, labels, inputfile, max_tcn,
@@ -118,7 +118,7 @@ struct Dua {
         os << "[{";
         auto it = std::ostream_iterator<uint64_t>(os, "}, {");
         for (const LabelSet *ls : dua.viable_bytes) {
-            *it++ = ls->ptr;
+            *it++ = ls ? ls->ptr : 0;
         }
         os << "}]," << "{";
         std::copy(dua.labels.begin(), dua.labels.end(),
@@ -143,7 +143,7 @@ struct AttackPoint {
         ATP_POINTER_RW
     } type;
 
-#pragma db index("AttackPoint") unique members(file, line, type)
+#pragma db index("AttackPointUniq") unique members(file, line, type)
 
     bool operator<(const AttackPoint &other) const {
         return std::tie(file, line, type) <
@@ -178,7 +178,7 @@ struct Bug {
 #pragma db not_null
     const AttackPoint* atp;
 
-#pragma db index("Bug") unique members(atp, dua)
+#pragma db index("BugUniq") unique members(atp, dua)
 
     bool operator<(const Bug &other) const {
          return std::tie(atp, dua) < std::tie(other.atp, other.dua);
@@ -196,7 +196,7 @@ struct SourceModification {
 #pragma db not_null
     const AttackPoint* atp;
 
-#pragma db index("SourceModification") unique members(atp, lval)
+#pragma db index("SourceModificationUniq") unique members(atp, lval)
 
     bool operator<(const SourceModification &other) const {
          return std::tie(atp, lval) < std::tie(other.atp, other.lval);
@@ -249,7 +249,7 @@ struct SourceFunction {
     uint32_t line;          // Definition line
     std::string name;       // Function name
 
-#pragma db index("SourceFunction") unique members(file, line, name)
+#pragma db index("SourceFunctionUniq") unique members(file, line, name)
 
     bool operator<(const SourceFunction &other) const {
         return std::tie(file, line, name) <
@@ -270,7 +270,7 @@ struct Call {
     std::string callsite_file;
     uint32_t callsite_line;
 
-#pragma db index("Call") unique members(call_instr, ret_instr, called_function, callsite_file, callsite_line)
+#pragma db index("CallUniq") unique members(call_instr, ret_instr, called_function, callsite_file, callsite_line)
 
     bool operator<(const Call &other) const {
         return std::tie(call_instr, ret_instr, called_function,

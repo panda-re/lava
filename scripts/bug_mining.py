@@ -94,10 +94,10 @@ assert 'dbhost' in project
 assert 'db' in project
 # process name
 assert 'proc_name' in project
-# kernel config and group for osi_linux
-assert 'kconf_file' in project
-assert 'kconf_group' in project
 
+assert 'panda_os_string' in project
+
+panda_os_string = project['panda_os_string']
 
 
 lavadir = dirname(dirname(abspath(sys.argv[0])))
@@ -225,9 +225,8 @@ sys.stdout.flush()
 tick()
 progress("Starting first-pass replay...")
 qemu_args = ['-replay', isoname,
+        '-os', panda_os_string,
         '-panda', 'taint2:no_tp',
-        '-panda', 'osi',
-        '-panda', 'osi_linux:kconf_file=%s,kconf_group=%s' % (project['kconf_file'], project['kconf_group']),
         '-panda', 'file_taint:notaint,filename=' + input_file_guest]
 
 
@@ -256,8 +255,7 @@ print "pandalog = [%s] " % pandalog
 
 qemu_args = ['-replay', isoname,
         '-pandalog', pandalog,
-        '-panda', 'osi',
-        '-panda', 'osi_linux:kconf_file=%s,kconf_group=%s' % (project['kconf_file'], project['kconf_group']),
+        '-os', panda_os_string,
         '-panda', 'coverage:process=%s' % project['proc_name'],
         '-panda', 'taint2:no_tp',
         '-panda', 'tainted_branch',
@@ -283,7 +281,7 @@ print
 if createdb_result == 0: # Created new DB; now populate
     progress("Database created. Initializing...")
     psql_args = ['psql', '-h', project['dbhost'], '-U', 'postgres',
-            '-d', project['db'], '-f', join(join(lavadir, 'sql'), 'lava.sql')]
+                 '-d', project['db'], '-f', join(join(lavadir, 'include'), 'lava.sql')]
     dprint ("psql invocation: [%s]" % (" ".join(psql_args)))
     subprocess32.check_call(psql_args, stdout=sys.stdout, stderr=sys.stderr)
 else:
