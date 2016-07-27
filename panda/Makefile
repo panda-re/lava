@@ -17,7 +17,6 @@ all: fbi
 	clang -c -o $@ $< $(CFLAGS)
 
 fbi_sources=find_bug_inj.cpp \
-			../sql/lava_sql.cpp \
 			../src_clang/lavaDB.cpp \
 			../../panda/qemu/panda/pandalog.c \
 			../../panda/qemu/panda/pandalog.pb-c.c \
