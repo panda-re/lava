@@ -135,9 +135,9 @@ static const U* create(T no_id) {
 
     auto it = existing.find(no_id);
     if (it == existing.end()) {
-        transaction t(db->begin());
+        //transaction t(db->begin());
         db->persist(no_id);
-        t.commit();
+        //t.commit();
 
         bool success;
         std::tie(it, success) = existing.insert(no_id);
@@ -151,15 +151,19 @@ static const T* create(T no_id) {
     static std::set<U> existing;
 
     auto it = existing.find(no_id);
-    const U *result;
     if (it == existing.end()) {
-        transaction t(db->begin());
-        result = db->query_one<U>(eq_query<U>::query(no_id));
-        if (!result) {
+        const U *result;
+        //transaction t(db->begin());
+
+        try {
             db->persist(no_id);
             result = &no_id;
+        } catch (const odb::object_already_persistent &e) {
+            result = db->query_one<U>(eq_query<U>::query(no_id));
+            assert(result);
         }
-        t.commit();
+
+        //t.commit();
 
         bool success;
         std::tie(it, success) = existing.insert(*result);
@@ -253,40 +257,6 @@ bool is_header_file(std::string filename) {
     uint32_t l = filename.length();
     return (filename[l-2] == '.' && filename[l-1] == 'h');
 }
-
-/*
-def check_liveness(file_bytes):
-  for file_byte in file_bytes:
-    if (liveness[file_byte]
-        > max_liveness):
-      return False
-  return True
-
-def collect_duas(taint_query):
-  retained_bytes = []
-  for tainted_byte in taint_query:
-    if tainted_byte.tcn <= max_tcn
-    and
-    len(tainted_byte.file_offsets) <= max_card
-    and
-    check_liveness(tainted_byte.file_offsets)):
-      retained_bytes += tainted_byte.file_offsets
-  duakey = (taint_query.source_loc,
-    taint_query.ast_name)
-  duas[duakey] = retained_bytes
-
-def update_liveness(tainted_branch):
-  for tainted_file_offset in tainted_branch:
-    liveness[tainted_file_offset]++
-
-for event in Pandalog:
-  if event.typ is taint_query:
-    collect_duas(event);
-  if event.typ is tainted_branch:
-    update_liveness(event);
-  if event.typ is attack_point:
-    collect_bugs(event);
-*/
 
 void taint_query_hypercall(Panda__LogEntry *ple) {
     assert (ple != NULL);
@@ -493,7 +463,6 @@ uint32_t num_bugs = 0;
 
 std::set<const SourceModification*> source_mods;
 
-uint64_t num_bugs_local = 0;
 uint64_t num_bugs_added_to_db = 0;
 uint64_t num_bugs_attempted = 0;
 
@@ -670,6 +639,7 @@ int main (int argc, char **argv) {
 
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
                 root["db"].asString(), root["dbhost"].asString()));
+    transaction t(db->begin());
     /*
      re-read pandalog, this time focusing on taint queries.  Look for
      dead available data, attack points, and thus bug injection oppotunities
@@ -703,6 +673,7 @@ int main (int argc, char **argv) {
         }
         pandalog_free_entry(ple);
     }
-    std::cout << num_bugs_added_to_db << " added to db " << num_bugs_local << " local bugs " << num_bugs_attempted << " total attempted\n";
+    std::cout << num_bugs_added_to_db << " added to db " << num_bugs_attempted << " total attempted\n";
     pandalog_close();
+    t.commit();
 }
