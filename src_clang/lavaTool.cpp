@@ -116,6 +116,18 @@ std::string hex_str(uint32_t x) {
     return ss.str();
 }
 
+std::set<uint32_t> parse_ints(std::string ints) {
+    std::stringstream ss(ints);
+    std::set<uint32_t> result;
+    uint32_t i;
+    while (ss >> i) {
+        result.insert(i);
+        assert(ss.peek() == ',');
+        ss.ignore();
+    }
+    return result;
+}
+
 /*******************************************************************************
  * LavaTaintQuery
  ******************************************************************************/
@@ -656,7 +668,7 @@ public:
                 lval_base = llval.name;
             else
                 lval_base = "&(" + llval.name + ")";
-            for ( auto ptr : bug->dua->lval_taint ) {
+            for ( const LabelSet *ptr : bug->dua->viable_bytes ) {
                 // 0 means this offset of the lval is either untainted or not-viable for use by lava
                 if (ptr != 0) {
                     siphon << LavaGlobal(bug->id)
@@ -907,7 +919,7 @@ public:
             num_atp_queries ++;
         }
         else if (LavaAction == LavaInjectBugs) {
-            std::set<Bug> injectable_bugs =
+            std::set<const Bug*> injectable_bugs =
                 AtBug("", filename, line, /*atAttackPoint=*/true,
                         /*insertion_point=*/SourceLval::NULL_TIMING,
                         /*is_retval=*/false);
@@ -1050,9 +1062,9 @@ public:
                 // for dua siphoning, we want to insert *either* before or after.
                 // based on the bug
                 inss_before = ComposeDuaNewSrc(llval, src_filename, src_line,
-                                               INSERTION_POINT_BEFORE_CALL, /*is_retval=*/ false);
+                                               SourceLval::BEFORE_OCCURRENCE, /*is_retval=*/ false);
                 inss_after = ComposeDuaNewSrc(llval, src_filename, src_line,
-                                              INSERTION_POINT_AFTER_CALL, /*is_retval=*/ false);
+                                              SourceLval::AFTER_OCCURRENCE, /*is_retval=*/ false);
                 inssDua.top_of_file += inss_before.top_of_file;
                 inssDua.top_of_file += inss_after.top_of_file;
                 // NB: yes, this is correct
@@ -1065,7 +1077,7 @@ public:
             Insertions rv_inss;
             if (has_retval && queriable_retval) {
                 rv_inss = ComposeDuaNewSrc(rv_llval, src_filename, src_line,
-                                           INSERTION_POINT_AFTER_CALL, /* is_retval=*/ true);
+                                           SourceLval::AFTER_OCCURRENCE, /* is_retval=*/ true);
             }
             // if injecting, should not have both an arg dua insertion and a retval insertion
             if (LavaAction == LavaInjectBugs) {
@@ -1240,7 +1252,7 @@ std::set<const Bug*> loadBugs(const std::set<uint32_t> &bug_ids) {
     for (uint32_t bug_id : bug_ids) {
         result.insert(db->load<Bug>(bug_id));
     }
-
+    return result;
 }
 
 int main(int argc, const char **argv) {
@@ -1274,7 +1286,6 @@ int main(int argc, const char **argv) {
 
         std::set<uint32_t> bug_ids = parse_ints(LavaBugList);
         printf ("%d bug_ids\n", bug_ids.size());
-        // std::set<Bug> loadBugs(std::set<uint32_t> &bug_ids, PGconn *conn) {
         bugs = loadBugs(bug_ids);
     }
     errs() << "about to call Tool.run \n";
@@ -1285,5 +1296,4 @@ int main(int argc, const char **argv) {
     errs() << "num atp queries added " << num_atp_queries << "\n";
 
     return (r | returnCode);
-
 }

@@ -212,12 +212,12 @@ struct Build {
     // Bugs that were inserted into this build
     std::vector<const Bug*> bugs;
 
-    std::string binpath;    // path to executable
+    std::string output;    // path to executable
     bool compile;           // did the build compile?
 
     bool operator<(const Build &other) const {
-        return std::tie(bugs, binpath, compile) <
-            std::tie(other.bugs, other.binpath, other.compile);
+        return std::tie(bugs, output, compile) <
+            std::tie(other.bugs, other.output, other.compile);
     }
 };
 
@@ -228,7 +228,7 @@ struct Run {
 
 #pragma db not_null
     const Build* build;
-    bool fuzzed;            // was this run on fuzzed or orig input?
+    const Bug* fuzzed;      // was this run on fuzzed or orig input?
     int exitcode;           // exit code of program
     std::string output;     // output of program
     bool success;           // true unless python script failed somehow.

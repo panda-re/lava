@@ -10,7 +10,7 @@ import getpass
 
 from lava import *
 
-log = open ("/tmp/foo.log", "w")
+log = open ("/tmp/foo-phulin.log", "w")
 log_ind = 0
 def logp (msg):
     global log_ind
