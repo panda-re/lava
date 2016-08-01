@@ -18,10 +18,6 @@ extern "C" {
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <assert.h>
 
 #include "pandalog.h"
 #include "pandalog_print.h"
@@ -365,10 +361,12 @@ void taint_query_hypercall(Panda__LogEntry *ple) {
             if (viable_byte[i] != nullptr) viable_offsets.insert(i);
         }
 
-        assert (viable_offsets.size() == LAVA_MAGIC_VALUE_SIZE);
+        assert(viable_offsets.size() == LAVA_MAGIC_VALUE_SIZE);
 
+        std::string relative_filename = strip_pfx(ind2str[si->filename], src_pfx);
+        assert(relative_filename.size() > 0);
         const SourceLval *d_key = create(SourceLval{0,
-                ind2str[si->filename], si->linenum,
+                relative_filename, si->linenum,
                 ind2str[si->astnodename], (SourceLval::Timing)si->insertionpoint,
                 std::vector<uint32_t>(viable_offsets.begin(), viable_offsets.end())});
         for (uint32_t l : all_labels) {
@@ -517,8 +515,10 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple) {
     }
 
     dprintf("%lu viable duas remain\n", recent_duas.size());
+    std::string relative_filename = strip_pfx(ind2str[si->filename], src_pfx);
+    assert(relative_filename.size() > 0);
     const AttackPoint *atp = create(AttackPoint{0, 
-            ind2str[si->filename], si->linenum, AttackPoint::ATP_POINTER_RW});
+            relative_filename, si->linenum, AttackPoint::ATP_POINTER_RW});
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
 
     // every still viable dua is a bug inj opportunity at this point in trace
