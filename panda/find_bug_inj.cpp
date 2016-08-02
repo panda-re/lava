@@ -518,7 +518,7 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple) {
     std::string relative_filename = strip_pfx(ind2str[si->filename], src_pfx);
     assert(relative_filename.size() > 0);
     const AttackPoint *atp = create(AttackPoint{0, 
-            relative_filename, si->linenum, AttackPoint::ATP_POINTER_RW});
+            relative_filename, si->linenum, AttackPoint::ATP_FUNCTION_CALL});
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
 
     // every still viable dua is a bug inj opportunity at this point in trace
