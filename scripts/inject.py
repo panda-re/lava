@@ -26,7 +26,7 @@ start_time = time.time()
 project = None
 # this is how much code we add to top of any file with main fn in it
 NUM_LINES_MAIN_INSTR = 5
-debugging = True
+debugging = False
 
 # run lavatool on this file to inject any parts of this list of bugs
 # offset will be nonzero if file contains main and therefore
