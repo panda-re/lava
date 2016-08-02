@@ -39,7 +39,6 @@ extern "C" {
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
 
-std::string BuildPath;
 char resolved_path[512];
 std::string LavaPath;
 
@@ -76,7 +75,10 @@ static cl::opt<std::string> ProjectFile("project-file",
     cl::desc("Path to project.json file."),
     cl::cat(LavaCategory),
     cl::init("XXX"));
-
+static cl::opt<std::string> SourceDir("src-prefix",
+    cl::desc("Path to source directory to remove as prefix."),
+    cl::cat(LavaCategory),
+    cl::init("XXX"));
 static cl::opt<std::string> SMainInstrCorrection("main_instr_correction",
     cl::desc("Insertion line correction for post-main instr"),
     cl::cat(LavaCategory),
@@ -977,7 +979,7 @@ public:
             // we want to strip the build path so that
             // we can actually compare bug in and query files for
             // same source which will be in different directories
-            src_filename = StripPfx(FullPath(fullLoc), BuildPath);
+            src_filename = StripPfx(FullPath(fullLoc), SourceDir);
         }
         else {
             src_filename = FullPath(fullLoc);
@@ -1286,13 +1288,6 @@ int main(int argc, const char **argv) {
     MainInstrCorrection = atoi(SMainInstrCorrection.c_str());
 
     printf ("main instr correction = %d\n", MainInstrCorrection);
-
-    for (int i=0; i<argc; i++) {
-        if (0 == strcmp(argv[i], "-p")) {
-            BuildPath = std::string(argv[i+1]);
-            errs() << "BuildPath = [" << BuildPath << "]\n";
-        }
-    }
 
     std::ifstream json_file(ProjectFile);
     Json::Value root;

@@ -56,8 +56,8 @@ class SourceLval(Base):
 
 dua_viable_bytes = \
     Table('dua_viable_bytes', Base.metadata,
-          Column('object_id', BigInteger),
-          Column('index', BigInteger, ForeignKey('dua.id')),
+          Column('object_id', BigInteger, ForeignKey('dua.id')),
+          Column('index', BigInteger),
           Column('value', BigInteger, ForeignKey('labelset.id')))
 
 class Dua(Base):
@@ -102,8 +102,8 @@ class AttackPoint(Base):
 
 build_bugs = \
     Table('build_bugs', Base.metadata,
-          Column('object_id', BigInteger),
-          Column('index', BigInteger, ForeignKey('build.id')),
+          Column('object_id', BigInteger, ForeignKey('build.id')),
+          Column('index', BigInteger),
           Column('value', BigInteger, ForeignKey('bug.id')))
 
 class Bug(Base):
@@ -129,6 +129,9 @@ class LabelSet(Base):
     ptr = Column(BigInteger)
     inputfile = Column(Text)
     labels = Column(postgresql.ARRAY(Integer))
+
+    def __repr__(self):
+        return str(self.labels)
 
 class Build(Base):
     __tablename__ = 'build'

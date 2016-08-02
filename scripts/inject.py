@@ -32,23 +32,21 @@ debugging = True
 # offset will be nonzero if file contains main and therefore
 # has already been instrumented with a bunch of defs of lava_get and lava_set and so on
 def inject_bugs_into_src(bugs, filename, offset):
-    global query_build
     global bugs_build
-    global lavatool
+    global lava_tool
     global lavadb
     buglist = ','.join([str(bug.id) for bug in bugs])
-    cmd = ('{} -action=inject -bug-list={} -lava-db={} ' + \
+    cmd = ('{} -action=inject -bug-list={} -lava-db={} -src-prefix={} ' + \
            '-main_instr_correction={} {} -project-file={}').format(
-               lava_tool, buglist, lavadb, offset,
+               lava_tool, buglist, lavadb, bugs_build, offset,
                join(bugs_build, filename), project_file
            )
     return run_cmd_notimeout(cmd, None, None)
 
 # run lavatool on this file and add defns for lava_get and lava_set
 def instrument_main(filename):
-    global query_build
     global bugs_build
-    global lavatool
+    global lava_tool
     global lavadb
     filename_bug_part = bugs_build + "/" + filename
     cmd = lava_tool + ' -action=main -bug-list=\"\"' \
@@ -65,7 +63,7 @@ def get_suffix(fn):
         return "." + split[-1]
 
 # here's how to run the built program
-def run_prog(install_dir, input_file, timeout):
+def run_modified_program(install_dir, input_file, timeout):
     cmd = project['command'].format(install_dir=install_dir,input_file=input_file)
     print cmd
     envv = {}
@@ -73,26 +71,10 @@ def run_prog(install_dir, input_file, timeout):
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
     return run_cmd(cmd, install_dir, envv, timeout) # shell=True)
 
-def printable(text):
+def filter_printable(text):
     return ''.join([ '.' if c not in string.printable else c for c in text])
 
-def add_run_row(build_id, fuzz, exitcode, lines, success):
-    lines = lines.translate(None, '\'\"')
-    lines = printable(lines[0:1024])
-    conn = get_conn(project)
-    cur = conn.cursor()
-    # NB: ignoring binpath for now
-    sql = "INSERT into run (build_id, fuzz, exitcode, output_lines, success) VALUES (" +\
-        (str(build_id)) + "," + (str(fuzz)) + "," + (str(exitcode)) + ",\'" + lines + "\'," + (str(success)) + ");"
-    print sql
-    cur.execute(sql)
-    # need to do all three of these in order for the writes to db to actually happen
-    cur.close()
-    conn.commit()
-    conn.close()
-
 if __name__ == "__main__":
-
     update_db = False
     parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
     parser.add_argument('project', type=argparse.FileType('r'),
@@ -164,9 +146,7 @@ if __name__ == "__main__":
     bugs_install = join(bugs_build, 'lava-install')
     # Make sure directories and btrace is ready for bug injection.
     def run(args, **kwargs):
-        print "run(",
-        print args,
-        print ")"
+        print "run(", " ".join(args), ")"
         subprocess32.check_call(args, cwd=bugs_build,
                 stdout=sys.stdout, stderr=sys.stderr, **kwargs)
     if not os.path.exists(bugs_build):
@@ -251,7 +231,6 @@ if __name__ == "__main__":
         # NB: We won't be updating db for these bugs
 #        update_db = True
     else: assert False
-    print "bugs to inject:", bugs_to_inject
 
     # collect set of src files into which we must inject code
     src_files = set()
@@ -280,6 +259,7 @@ if __name__ == "__main__":
     print "INJECTING BUGS INTO SOURCE"
     print "%d source files: " % (len(src_files))
     print src_files
+    print main_files
     for src_file in src_files:
         print "inserting code into dua file %s" % src_file
         offset = 0
@@ -289,7 +269,9 @@ if __name__ == "__main__":
         # note: now that we are inserting many dua / atp bug parts into each source, potentially.
         # which means we can't have simple exitcodes to indicate precisely what happened
         print "exitcode = %d" % exitcode
-        if exitcode != 0:
+        if debugging:
+            print output[0]
+        if debugging or exitcode != 0:
             print output[1]
 
     # ugh -- with tshark if you *dont* do this, your bug-inj source may not build, sadly
@@ -325,7 +307,7 @@ if __name__ == "__main__":
         # first, try the original file
         print "TESTING -- ORIG INPUT"
         orig_input = join(top_dir, 'inputs', basename(bug.dua.inputfile))
-        (rv, outp) = run_prog(bugs_install, orig_input, timeout)
+        (rv, outp) = run_modified_program(bugs_install, orig_input, timeout)
         if rv != 0:
             print "***** buggy program fails on original input!"
             assert False
@@ -352,7 +334,7 @@ if __name__ == "__main__":
             print "testing with fuzzed input for {} of {} potential.  ".format(
                 bug_index + 1, len(bugs_to_inject))
             print "{} real. bug {}".format(len(real_bugs), bug.id)
-            (rv, outp) = run_prog(bugs_install, fuzzed_input, timeout)
+            (rv, outp) = run_modified_program(bugs_install, fuzzed_input, timeout)
             print "retval = %d" % rv
             print "output:"
             lines = outp[0] + " ; " + outp[1]
@@ -361,7 +343,7 @@ if __name__ == "__main__":
                 db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
                                 output=lines, success=True))
             if rv == -11 or rv == -6:
-                real_bugs.append(bug_id)
+                real_bugs.append(bug.id)
             print
         f = float(len(real_bugs)) / len(bugs_to_inject)
         print "yield {:.2f} ({} out of {}) real bugs".format(
@@ -370,6 +352,8 @@ if __name__ == "__main__":
         print "TESTING COMPLETE"
         if len(bugs_to_inject) > 1:
             print "list of real validated bugs:", real_bugs
+
+        if update_db: db.session.commit()
         # NB: at the end of testing, the fuzzed input is still in place
         # if you want to try it
     except Exception as e:
@@ -377,6 +361,7 @@ if __name__ == "__main__":
         if update_db:
             db.session.add(Run(build=build, fuzzed=None, exitcode=None,
                                output=str(e), success=False))
-        raise e
+            db.session.commit()
+        raise
 
     print "inject complete %.2f seconds" % (time.time() - start_time)
