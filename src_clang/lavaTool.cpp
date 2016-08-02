@@ -1,16 +1,37 @@
 extern "C" {
-#include <stdlib.h>
+#include <unistd.h>
 #include <libgen.h>
 }
 
 #include <json/json.h>
+#include <odb/pgsql/database.hxx>
 
-#include "includes.h"
+#include "clang/AST/AST.h"
+#include "clang/AST/ASTConsumer.h"
+#include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/Driver/Options.h"
+#include "clang/Frontend/ASTConsumers.h"
+#include "clang/Frontend/FrontendActions.h"
+#include "clang/Frontend/CompilerInstance.h"
+#include "clang/Tooling/CommonOptionsParser.h"
+#include "clang/Tooling/Tooling.h"
+#include "clang/Rewrite/Core/Rewriter.h"
+#include "llvm/Option/OptTable.h"
+#include "llvm/Support/raw_ostream.h"
+
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <map>
+#include <cstdint>
+#include <set>
+
 #include "lavaDB.h"
-
 #include "../include/lava.hxx"
 #include "../include/lava-odb.hxx"
-#include <odb/pgsql/database.hxx>
 
 #define RV_PFX "kbcieiubweuhc"
 #define RV_PFX_LEN 13
@@ -1277,9 +1298,11 @@ int main(int argc, const char **argv) {
     Json::Value root;
     json_file >> root;
 
+    odb::transaction *t = nullptr;
     if (LavaAction == LavaInjectBugs) {
         db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
                     root["db"].asString(), root["dbhost"].asString()));
+        t = new odb::transaction(db->begin());
 
         // get bug info for the injections we are supposed to be doing.
         errs() << "LavaBugList: [" << LavaBugList << "]\n";
@@ -1294,6 +1317,11 @@ int main(int argc, const char **argv) {
     errs() << "back from calling Tool.run \n";
     errs() << "num taint queries added " << num_taint_queries << "\n";
     errs() << "num atp queries added " << num_atp_queries << "\n";
+
+    if (t) {
+        t->commit();
+        delete t;
+    }
 
     return (r | returnCode);
 }

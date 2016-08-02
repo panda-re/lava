@@ -224,7 +224,7 @@ def run_cmd(cmd, cw_dir, envv, timeout):
 #            print "output = [" + line + "]"
     return (exitcode, output)
 
-def run_cmd_nto(cmd, cw_dir, envv):
+def run_cmd_notimeout(cmd, cw_dir, envv):
     return run_cmd(cmd, cw_dir, envv, 1000000)
 
 

@@ -21,16 +21,12 @@ from os.path import basename, dirname, join, abspath
 
 from lava import *
 
-
 start_time = time.time()
-
 
 project = None
 # this is how much code we add to top of any file with main fn in it
 NUM_LINES_MAIN_INSTR = 5
 debugging = True
-
-
 
 # run lavatool on this file to inject any parts of this list of bugs
 # offset will be nonzero if file contains main and therefore
@@ -41,13 +37,12 @@ def inject_bugs_into_src(bugs, filename, offset):
     global lavatool
     global lavadb
     buglist = ','.join([str(bug.id) for bug in bugs])
-    cmd = lava_tool + ' -action=inject -bug-list=\"' + buglist \
-        + '\" -lava-db=' + lavadb + ' -p ' + bugs_build \
-        + ' -main_instr_correction=' + (str(offset)) \
-        + ' ' + filename \
-        + ' ' + '-project-file=' + project_file
-    return run_cmd_nto(cmd, None, None)
-
+    cmd = ('{} -action=inject -bug-list={} -lava-db={} ' + \
+           '-main_instr_correction={} {} -project-file={}').format(
+               lava_tool, buglist, lavadb, offset,
+               join(bugs_build, filename), project_file
+           )
+    return run_cmd_notimeout(cmd, None, None)
 
 # run lavatool on this file and add defns for lava_get and lava_set
 def instrument_main(filename):
@@ -60,8 +55,7 @@ def instrument_main(filename):
         + ' -lava-db=' + lavadb + ' -p ' + bugs_build \
         + ' ' + filename_bug_part \
         + ' ' + '-project-file=' + project_file
-    run_cmd_nto(cmd, None, None)
-
+    run_cmd_notimeout(cmd, None, None)
 
 def get_suffix(fn):
     split = basename(fn).split(".")
@@ -69,7 +63,6 @@ def get_suffix(fn):
         return ""
     else:
         return "." + split[-1]
-
 
 # here's how to run the built program
 def run_prog(install_dir, input_file, timeout):
@@ -79,7 +72,6 @@ def run_prog(install_dir, input_file, timeout):
     lib_path = project['library_path'].format(install_dir=install_dir)
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
     return run_cmd(cmd, install_dir, envv, timeout) # shell=True)
-
 
 def printable(text):
     return ''.join([ '.' if c not in string.printable else c for c in text])
@@ -98,8 +90,6 @@ def add_run_row(build_id, fuzz, exitcode, lines, success):
     cur.close()
     conn.commit()
     conn.close()
-
-
 
 if __name__ == "__main__":
 
@@ -197,7 +187,6 @@ if __name__ == "__main__":
     if not os.path.exists(join(bugs_build, 'compile_commands.json')):
         # find llvm_src dir so we can figure out where clang #includes are for btrace
         llvm_src = None
-#        for line in open(os.path.realpath(os.getcwd() + "/../src_clang/config.mak")):
         config_mak = project['lava'] + "/src_clang/config.mak"
         print "config.mak = [%s]" % config_mak
         for line in open(config_mak):
@@ -207,10 +196,9 @@ if __name__ == "__main__":
                 break
         assert(not (llvm_src is None))
 
-        print "lvm_src = %s" % llvm_src
+        print "llvm_src =", llvm_src
 
         run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'), llvm_src + "/Release/lib/clang/3.6.1/include"])
-#                '/home/moyix/git/llvm/Debug+Asserts/lib/clang/3.6.1/include'])
         # also insert instr for main() fn in all files that need it
         print "Instrumenting main fn by running lavatool on %d files\n" % (len(main_files))
         for f in main_files:
@@ -230,7 +218,7 @@ if __name__ == "__main__":
 
         # ugh binutils readelf.c will not be lavaTool-able without
         # bfd.h which gets created by make.
-        run_cmd_nto(project["make"], bugs_build, None)
+        run_cmd_notimeout(project["make"], bugs_build, None)
         run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \\;"))
         try:
             run(['git', 'commit', '-m', 'Adding any make-generated source files'])
@@ -286,7 +274,7 @@ if __name__ == "__main__":
     # cleanup
     print "------------\n"
     print "CLEAN UP SRC"
-    run_cmd_nto("/usr/bin/git checkout -f", bugs_build, None)
+    run_cmd_notimeout("/usr/bin/git checkout -f", bugs_build, None)
 
     print "------------\n"
     print "INJECTING BUGS INTO SOURCE"
@@ -307,13 +295,13 @@ if __name__ == "__main__":
     # ugh -- with tshark if you *dont* do this, your bug-inj source may not build, sadly
     # it looks like their makefile doesn't understand its own dependencies, in fact
     if ('makeclean' in project) and (project['makeclean']):
-        run_cmd_nto("make clean", bugs_build, None)
+        run_cmd_notimeout("make clean", bugs_build, None)
 
     # compile
     print "------------\n"
     print "ATTEMPTING BUILD OF INJECTED BUG"
     print "build_dir = " + bugs_build
-    (rv, outp) = run_cmd_nto(project['make'], bugs_build, None)
+    (rv, outp) = run_cmd_notimeout(project['make'], bugs_build, None)
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]))
     if rv!=0:
         # build failed
@@ -323,7 +311,7 @@ if __name__ == "__main__":
     else:
         # build success
         print "build succeeded"
-        (rv, outp) = run_cmd_nto("make install", bugs_build, None)
+        (rv, outp) = run_cmd_notimeout("make install", bugs_build, None)
         assert rv == 0 # really how can this fail if build succeeds?
         print "make install succeeded"
 
