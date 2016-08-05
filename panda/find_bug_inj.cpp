@@ -645,16 +645,16 @@ int main (int argc, char **argv) {
      dead available data, attack points, and thus bug injection oppotunities
     */
     pandalog_open(plf, "r");
-    uint64_t ii=0;
+    uint64_t num_entries_read = 0;
 
     while (1) {
         // collect log entries that have same instr count (and pc).
         // these are to be considered together.
         Panda__LogEntry *ple = pandalog_read_entry();
         if (ple == NULL)  break;
-        ii ++;
-        if ((ii % 10000) == 0) {
-            printf("processed %lu pandalog entries \n", ii);
+        num_entries_read++;
+        if ((num_entries_read % 10000) == 0) {
+            printf("processed %lu pandalog entries \n", num_entries_read);
             std::cout << num_bugs_added_to_db << " added to db "
                 << num_bugs_attempted << " total attempted. "
                 << recent_duas.size() << " duas\n";
