@@ -242,11 +242,11 @@ void update_unique_taint_sets(const Panda__TaintQueryUniqueLabelSet *tquls) {
         auto &labels = ls->labels;
         uint32_t max_label = *std::max_element(
                 labels.begin(), labels.end());
-        if (liveness.size() < max_label) {
+        if (liveness.size() <= max_label) {
             liveness.resize(max_label + 1, 0);
         }
     }
-    if (debug) printf("%lu unique taint sets\n", ptr_to_labelset.size());
+    dprintf("%lu unique taint sets\n", ptr_to_labelset.size());
 }
 
 bool is_header_file(std::string filename) {
@@ -254,24 +254,24 @@ bool is_header_file(std::string filename) {
     return (filename[l-2] == '.' && filename[l-1] == 'h');
 }
 
-void taint_query_hypercall(Panda__LogEntry *ple) {
+void taint_query_pri(Panda__LogEntry *ple) {
     assert (ple != NULL);
-    Panda__TaintQueryHypercall *tqh = ple->taint_query_hypercall;
+    Panda__TaintQueryPri *tqh = ple->taint_query_pri;
     assert (tqh != NULL);
     // size of query in bytes & num tainted bytes found
     uint32_t len = tqh->len;
     uint32_t num_tainted = tqh->num_tainted;
     // entry 1 is source info
-    Panda__SrcInfo *si = tqh->src_info;
+    Panda__SrcInfoPri *si = tqh->src_info;
     // ignore duas in header files
-    if (is_header_file(ind2str[si->filename])) return;
+    if (is_header_file(std::string(si->filename))) return;
     assert (si != NULL);
     bool ddebug = false;
     // entry 2 is callstack -- ignore
     Panda__CallStack *cs = tqh->call_stack;
     assert (cs != NULL);
     uint64_t instr = ple->instr;
-    if (debug) printf("TAINT QUERY HYPERCALL len=%d num_tainted=%d\n", len, num_tainted);
+    dprintf("TAINT QUERY HYPERCALL len=%d num_tainted=%d\n", len, num_tainted);
 
     // collects set of labels on all viable bytes that are actually used in dua
     std::set<uint32_t> all_labels;
@@ -335,7 +335,7 @@ void taint_query_hypercall(Panda__LogEntry *ple) {
             // remember: labels are offsets into input file
             // NB: only do this for bytes that will actually be used in the dua
             all_labels.insert(ls->labels.begin(), ls->labels.end());
-            if (debug) printf("keeping byte @ offset %d\n", offset);
+            dprintf("keeping byte @ offset %d\n", offset);
             // add this byte to the list of ok bytes
             viable_byte[offset] = ls;
             num_viable_bytes++;
@@ -363,12 +363,17 @@ void taint_query_hypercall(Panda__LogEntry *ple) {
 
         assert(viable_offsets.size() == LAVA_MAGIC_VALUE_SIZE);
 
-        std::string relative_filename = strip_pfx(ind2str[si->filename], src_pfx);
+        std::string relative_filename = strip_pfx(std::string(si->filename), src_pfx);
         assert(relative_filename.size() > 0);
         const SourceLval *d_key = create(SourceLval{0,
                 relative_filename, si->linenum,
-                ind2str[si->astnodename], (SourceLval::Timing)si->insertionpoint,
+                std::string(si->astnodename), (SourceLval::Timing)si->insertionpoint,
                 std::vector<uint32_t>(viable_offsets.begin(), viable_offsets.end())});
+        if (debug) {
+            printf("querying labels [");
+            for (uint32_t l : all_labels) printf("%d ", l);
+            printf("]\n");
+        }
         for (uint32_t l : all_labels) {
             c_max_liveness = std::max(c_max_liveness, liveness.at(l));
         }
@@ -388,9 +393,9 @@ void taint_query_hypercall(Panda__LogEntry *ple) {
         if (debug) {
             std::cout << "discarded " << num_viable_bytes << " viable bytes "
                       << all_labels.size() << " labels "
-                      << ind2str[si->filename] << " "
+                      << std::string(si->filename) << " "
                       << si->linenum << " "
-                      << ind2str[si->astnodename] << " "
+                      << std::string(si->astnodename) << " "
                       << si->insertionpoint << "\n";
         }
     }
@@ -545,31 +550,31 @@ struct SrcFunction {
     std::string name;
 };
 
-namespace std {
-    template<>
-    struct less<Panda__DwarfCall> {
-        bool operator() (const Panda__DwarfCall &A, const Panda__DwarfCall &B) const {
-            int64_t cmp = strcmp(A.file_callee, B.file_callee);
-            if (cmp != 0) return cmp > 0;
+//namespace std {
+    //template<>
+    //struct less<Panda__DwarfCall> {
+        //bool operator() (const Panda__DwarfCall &A, const Panda__DwarfCall &B) const {
+            //int64_t cmp = strcmp(A.file_callee, B.file_callee);
+            //if (cmp != 0) return cmp > 0;
 
-            cmp = strcmp(A.function_name_callee, B.function_name_callee);
-            if (cmp != 0) return cmp > 0;
+            //cmp = strcmp(A.function_name_callee, B.function_name_callee);
+            //if (cmp != 0) return cmp > 0;
 
-            if (A.line_number_callee != B.line_number_callee)
-                return A.line_number_callee > B.line_number_callee;
+            //if (A.line_number_callee != B.line_number_callee)
+                //return A.line_number_callee > B.line_number_callee;
 
-            cmp = strcmp(A.file_callsite, B.file_callsite);
-            if (cmp != 0) return cmp > 0;
+            //cmp = strcmp(A.file_callsite, B.file_callsite);
+            //if (cmp != 0) return cmp > 0;
 
-            return A.line_number_callsite > B.line_number_callsite;
-        }
-    };
-}
-std::map<Panda__DwarfCall, std::vector<uint64_t> > dwarf_call_to_instr;
+            //return A.line_number_callsite > B.line_number_callsite;
+        //}
+    //};
+//}
+//std::map<Panda__DwarfCall, std::vector<uint64_t> > dwarf_call_to_instr;
 
 void record_call(Panda__LogEntry *ple) {
     assert(ple->dwarf_call);
-    dwarf_call_to_instr[*ple->dwarf_call].push_back(ple->instr);
+    //dwarf_call_to_instr[*ple->dwarf_call].push_back(ple->instr);
 }
 
 void record_ret(Panda__LogEntry *ple) {
@@ -660,8 +665,8 @@ int main (int argc, char **argv) {
                 << recent_duas.size() << " duas\n";
         }
 
-        if (ple->taint_query_hypercall) {
-            taint_query_hypercall(ple);
+        if (ple->taint_query_pri) {
+            taint_query_pri(ple);
         } else if (ple->tainted_branch) {
             update_liveness(ple);
         } else if (ple->attack_point) {
