@@ -219,7 +219,7 @@ if [ $reset -eq 1 ]; then
     /bin/mkdir -p $logs
     lf="$logs/dbwipe.log"  
     progress 1  "Wiping db $db & setting up anew -- logging to $lf"
-    run_remote "$dbhost" "/usr/bin/psql -d $db -f $lava/sql/lava.sql -U postgres >& $lf"
+    run_remote "$dbhost" "/usr/bin/psql -d $db -f $lava/include/lava.sql -U postgres >& $lf"
     run_remote "$dbhost" "echo dbwipe complete >> $lf"
     /bin/mkdir -p $logs
     tock
