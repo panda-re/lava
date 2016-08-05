@@ -300,20 +300,10 @@ fib_time = tock()
 print "fib complete %.2f seconds" % fib_time
 sys.stdout.flush()
 
+db = LavaDatabase(project)
 
-def sql_q(query):
-    conn = get_conn(project)
-    cur = conn.cursor()
-    cur.execute(query)
-    return cur.fetchone()
-
-
-num_dua = int(sql_q("select count(*) from dua;")[0])
-num_atp = int(sql_q("select count(*) from atp;")[0])
-num_bug = int(sql_q("select count(*) from bug;")[0])
-
-print "total dua: %d" % num_dua
-print "total atp: %d" % num_atp
-print "total bug: %d" % num_bug
+print "total dua:", db.session.query(Dua).count()
+print "total atp:", db.session.query(AttackPoint).count()
+print "total bug:", db.session.query(Bug).count()
 
 
