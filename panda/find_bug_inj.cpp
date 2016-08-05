@@ -125,47 +125,49 @@ struct eq_query<SourceModification> {
     }
 };
 
+// Returns a pointer to object and true if we just created it
+// (false if it existed already).
 template<class T, typename U = typename eq_query<T>::disabled>
-static const U* create(T no_id) {
+static std::pair<const U*, bool> create_full(T no_id) {
     static std::set<U> existing;
 
+    bool new_object = false;
     auto it = existing.find(no_id);
     if (it == existing.end()) {
-        //transaction t(db->begin());
         db->persist(no_id);
-        //t.commit();
 
-        bool success;
-        std::tie(it, success) = existing.insert(no_id);
-        assert(success);
+        std::tie(it, new_object) = existing.insert(no_id);
+        assert(new_object);
     }
-    return &*it;
+    return std::make_pair(&*it, new_object);
 }
 
 template<class T, typename U = typename eq_query<T>::enabled>
-static const T* create(T no_id) {
+static std::pair<const T*, bool> create_full(T no_id) {
     static std::set<U> existing;
 
+    bool new_object = false;
     auto it = existing.find(no_id);
     if (it == existing.end()) {
         const U *result;
-        //transaction t(db->begin());
 
-        try {
+        result = db->query_one<U>(eq_query<U>::query(no_id));
+        if (!result) {
             db->persist(no_id);
             result = &no_id;
-        } catch (const odb::object_already_persistent &e) {
-            result = db->query_one<U>(eq_query<U>::query(no_id));
-            assert(result);
+            new_object = true;
         }
 
-        //t.commit();
-
-        bool success;
+        bool success = false;
         std::tie(it, success) = existing.insert(*result);
         assert(success);
     }
-    return &*it;
+    return std::make_pair(&*it, new_object);
+}
+
+template<class T>
+static const T* create(T no_id) {
+    return create_full(no_id).first;
 }
 
 std::map<uint32_t,std::string> LoadIDB(std::string fn) {
@@ -464,8 +466,6 @@ bool is_dua_viable(const Dua &dua) {
 
 uint32_t num_bugs = 0;
 
-std::set<const SourceModification*> source_mods;
-
 uint64_t num_bugs_added_to_db = 0;
 uint64_t num_bugs_attempted = 0;
 
@@ -530,8 +530,13 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple) {
     for ( auto kvp : recent_duas ) {
         const SourceLval *dk = kvp.first;
         const Dua *dua = kvp.second;
-        const SourceModification *source_mod = create(SourceModification{0, dk, atp});
-        if (source_mods.insert(source_mod).second) {
+
+        const SourceModification *source_mod;
+        bool new_mod;
+        std::tie(source_mod, new_mod) =
+            create_full(SourceModification{0, dk, atp});
+
+        if (new_mod) {
             // this is a new bug (new src mods for both dua and atp)
             const Bug *bug = create(Bug{0, dua, atp});
             float rdf_frac = ((float)dua->instr) / ((float)instr);
