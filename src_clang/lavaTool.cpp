@@ -90,6 +90,10 @@ static cl::opt<std::string> SMainInstrCorrection("main_instr_correction",
     cl::desc("Insertion line correction for post-main instr"),
     cl::cat(LavaCategory),
     cl::init("XXX"));
+static cl::opt<bool> KT("kt",
+    cl::desc("Inject in Knob-Trigger style"),
+    cl::cat(LavaCategory),
+    cl::init(false));
 
 
 uint32_t MainInstrCorrection;
@@ -636,6 +640,92 @@ private:
   Rewriter &rewriter;
 };
 
+Insertions traditionalAttack(std::set<const Bug*> &injectable_bugs, bool malloc_style_attack){
+    Insertions inss;
+    bool first_attack = false;
+    int j = 0;
+    for (const Bug *bug : injectable_bugs) {
+        errs() << "attacking expr with bug " << j << " -- bugid=" << bug->id << "\n";
+        std::string gn = "(lava_get(" + (std::to_string(bug->id)) + "))";
+        // this is the magic value that will trigger the bug
+        uint32_t magic_value = 0x6c617661;
+        //                        if (bugs->size() > 1) {
+            // with lots of bugs we need magic value to be distinct per bug
+            magic_value -=  bug->id;
+            //                        }
+            //                        else {
+            //                        }
+        std::string magic_value_s = hex_str(magic_value);
+        // byte-swapped version of magic value
+        uint32_t magic_value_bs = __bswap_32(magic_value);
+        std::string magic_value_bs_s = hex_str(magic_value_bs);
+        // evaluates to 1 iff dua is the magic value
+        std::string magic_test = "(" + magic_value_s + "==" + gn + "||" + magic_value_bs_s + "==" + gn + ")";
+        //if (fn_name.find("malloc") != std::string::npos) {
+        if (malloc_style_attack) {
+            // nasty heuristic. for malloc, we want the lava switch 
+            // to undersize the malloc to a few bytes and hope for
+            // an overflow
+            // ... oh dear how do we compose multiple attacks on malloc? 
+            //                assert (first_attack);
+            if (first_attack) {
+                first_attack = false;
+                //                                new_expr << magic_test << " ? 1 : " << orig_expr;
+                inss.before_part = magic_test + " ? 1 : ";
+            }
+            break;
+        }
+        else {
+            // for everything else we add lava_get() to the expr and hope to break things
+            // also we test if its equal to magic value 
+            std::string plus_op = "+";
+            /*
+            if (first_attack) {
+                first_attack = false;
+                new_expr << orig_expr; 
+            }
+            */
+            inss.after_part += " " + plus_op + gn + "*" + magic_test;
+        }
+        j++;
+    }
+    return inss;
+}
+
+Insertions knobTriggerAttack(std::set<const Bug*> &injectable_bugs, bool malloc_style_attack){
+    Insertions inss;
+    bool first_attack = false;
+    int j = 0;
+    for (const Bug *bug : injectable_bugs) {
+        errs() << "attacking expr with knob-trigger bug " << j << " -- bugid=" << bug->id << "\n";
+        std::string gn_lower = " (lava_get(" + (std::to_string(bug->id)) + ") & 0x0000ffff)";
+        std::string gn_upper = "((lava_get(" + (std::to_string(bug->id)) + ") & 0xffff0000) >> 16)";
+        // this is the magic value that will trigger the bug
+        uint32_t magic_value = 0x6c617661 & 0xffff;
+        //                        if (bugs->size() > 1) {
+            // with lots of bugs we need magic value to be distinct per bug
+            magic_value -=  bug->id;
+            //                        }
+            //                        else {
+            //                        }
+        std::string magic_value_s = hex_str(magic_value);
+        // byte-swapped version of magic value
+        uint32_t magic_value_bs = __bswap_32(magic_value) >> 16;
+        std::string magic_value_bs_s = hex_str(magic_value_bs);
+        // evaluates to 1 iff dua is the magic value
+        std::string magic_test_lower = "((" + magic_value_s + "==" + gn_lower + ")||(" + magic_value_bs_s + "==" + gn_lower + "))";
+        std::string magic_test_upper = "((" + magic_value_s + "==" + gn_upper + ")||(" + magic_value_bs_s + "==" + gn_upper + "))";
+        // for everything else we add lava_get() to the expr and hope to break things
+        // also we test if its equal to magic value 
+        std::string plus_op = "+";
+
+        inss.after_part += " " + plus_op + "(" + gn_lower + "*" + magic_test_upper + ")" +
+                           " " + plus_op + "(" + gn_upper + "*" + magic_test_lower + ")";
+        j++;
+    }
+    return inss;
+}
+
 
 class ArgAtpPointHandler : public LavaMatchHandler {
 public:
@@ -667,56 +757,17 @@ public:
 
         if (LavaAction == LavaInjectBugs) {
             returnCode |= INSERTED_DUA_USE;
-            for (const Bug *bug : injectable_bugs) {
-                if (lava_get_proto.count(filename) == 0) {
-                    inss.top_of_file = "extern unsigned int lava_get(unsigned int) ;\n";
-                    lava_get_proto.insert(filename);
-                }
-                errs() << "attacking arg  with bug " << j << " -- bugid=" << bug->id << "\n";
-                std::string gn = "(lava_get(" + (std::to_string(bug->id)) + "))";
-                // this is the magic value that will trigger the bug
-                uint32_t magic_value = 0x6c617661;
-                //                        if (bugs->size() > 1) {
-                    // with lots of bugs we need magic value to be distinct per bug
-                    magic_value -=  bug->id;
-                    //                        }
-                    //                        else {
-                    //                        }
-                std::string magic_value_s = hex_str(magic_value);
-                // byte-swapped version of magic value
-                uint32_t magic_value_bs = __bswap_32(magic_value);                                        
-                std::string magic_value_bs_s = hex_str(magic_value_bs);
-                // evaluates to 1 iff dua is the magic value
-                std::string magic_test = "(" + magic_value_s + "==" + gn + "||" + magic_value_bs_s + "==" + gn + ")";
-                //if (fn_name.find("malloc") != std::string::npos) {
-                if (malloc_style_attack) {
-                    // nasty heuristic. for malloc, we want the lava switch 
-                    // to undersize the malloc to a few bytes and hope for
-                    // an overflow
-                    // ... oh dear how do we compose multiple attacks on malloc? 
-                    //                assert (first_attack);
-                    if (first_attack) {
-                        first_attack = false;
-                        //                                new_arg << magic_test << " ? 1 : " << orig_arg;
-                        arg_ins.before_part = magic_test + " ? 1 : "; 
-                    }
-                }                                
-                else {
-                    // for everything else we add lava_get() to the arg and hope to break things
-                    // also we test if its equal to magic value 
-                    // ... if arg is an lval we'll += instead
-                    std::string plus_op = "+";
-                    if (arg->isLValue()) plus_op = "+=";                        
-                    /*
-                    if (first_attack) {
-                        first_attack = false;
-                        new_arg << orig_arg; 
-                    }
-                    */
-                    new_arg << plus_op << gn << "*" << magic_test;
-                    arg_ins.after_part += " " + plus_op + gn + "*" + magic_test;
-                }
+            if (lava_get_proto.count(filename) == 0) {
+                inss.top_of_file = "extern unsigned int lava_get(unsigned int) ;\n";
+                lava_get_proto.insert(filename);
             }
+            Insertions attack_inss;
+            if (KT)
+                attack_inss = knobTriggerAttack(injectable_bugs, false /*malloc_style_attack*/);
+            else
+                attack_inss = traditionalAttack(injectable_bugs, false);
+            arg_ins.before_part = attack_inss.before_part;
+            arg_ins.after_part = attack_inss.after_part;
         }
         else if (LavaAction == LavaQueries) {
             // call attack point hypercall and return 0
@@ -789,32 +840,12 @@ TODO: add description of what type of attacks we are doing here
                 lava_get_proto.insert(filename);
             }
             errs() << new_source << "is being attacked\n";
-            uint32_t i = 0;
-            for (const Bug *bug : injectable_bugs) {
-                errs() << "attacking expression with bug " << i << " -- bugid=" << bug->id << "\n";
-                std::string gn = "(lava_get(" + (std::to_string(bug->id)) + "))";
-                // this is the magic value that will trigger the bug
-                uint32_t magic_value = 0x6c617661;
-                //                        if (bugs.size() > 1) {
-                    // with lots of bugs we need magic value to be distinct per bug
-                    magic_value -=  bug->id;
-                    //                        }
-                    //                        else {
-                    //                        }
-                std::string magic_value_s = hex_str(magic_value);
-                // byte-swapped version of magic value
-                uint32_t magic_value_bs = __bswap_32(magic_value);                                        
-                std::string magic_value_bs_s = hex_str(magic_value_bs);
-                // evaluates to 1 iff dua is the magic value
-                std::string magic_test = "(" + magic_value_s + "==" + gn + "||" + magic_value_bs_s + "==" + gn + ")";
-                // for everything else we add lava_get() to the arg and hope to break things
-                // also we test if its equal to magic value 
-                std::string plus_op = "+";
-                //if (toAttack->isLValue()) plus_op = "+=";
-                corruption << plus_op + gn + "*" + magic_test;
-                new_source << corruption;
-                i++;
-            }
+            Insertions attack_inss;
+            if (KT)
+                attack_inss = knobTriggerAttack(injectable_bugs, false /*malloc_style_attack*/);
+            else
+                attack_inss = traditionalAttack(injectable_bugs, false);
+            corruption << attack_inss.after_part;
         }
         else if (LavaAction == LavaQueries) {
             // call attack point hypercall and return 0

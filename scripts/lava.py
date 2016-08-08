@@ -236,8 +236,13 @@ lava = 0x6c617661
 
 # fuzz_offsets is a list of tainted byte offsets within file filename.
 # replace those bytes with random in a new file named new_filename
-def mutfile(filename, fuzz_offsets, new_filename, bug_id):
-    magic_val = struct.pack("<I", lava - bug_id)
+def mutfile(filename, fuzz_offsets, new_filename, bug_id, kt=False, knob=0):
+    if kt:
+        assert (knob < 2**16-1)
+        lava_lower = lava & 0xffff
+        magic_val = struct.pack("<I", (knob << 16) | (lava_lower - bug_id))
+    else:
+        magic_val = struct.pack("<I", lava - bug_id)
     # collect set of tainted offsets in file.
     file_bytes = bytearray(open(filename).read())
     # change first 4 bytes in dua to magic value

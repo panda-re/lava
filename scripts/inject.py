@@ -31,16 +31,23 @@ debugging = False
 # run lavatool on this file to inject any parts of this list of bugs
 # offset will be nonzero if file contains main and therefore
 # has already been instrumented with a bunch of defs of lava_get and lava_set and so on
-def inject_bugs_into_src(bugs, filename, offset):
+def inject_bugs_into_src(bugs, filename, offset, kt=False):
     global bugs_build
     global lava_tool
     global lavadb
     buglist = ','.join([str(bug.id) for bug in bugs])
-    cmd = ('{} -action=inject -bug-list={} -lava-db={} -src-prefix={} ' + \
-           '-main_instr_correction={} {} -project-file={}').format(
-               lava_tool, buglist, lavadb, bugs_build, offset,
-               join(bugs_build, filename), project_file
-           )
+    if kt:
+        cmd = ('{} -action=inject -kt -bug-list={} -lava-db={} -src-prefix={} ' + \
+            '-main_instr_correction={} {} -project-file={}').format(
+                lava_tool, buglist, lavadb, bugs_build, offset,
+                join(bugs_build, filename), project_file
+            )
+    else:
+        cmd = ('{} -action=inject -bug-list={} -lava-db={} -src-prefix={} ' + \
+            '-main_instr_correction={} {} -project-file={}').format(
+                lava_tool, buglist, lavadb, bugs_build, offset,
+                join(bugs_build, filename), project_file
+            )
     return run_cmd_notimeout(cmd, None, None)
 
 # run lavatool on this file and add defns for lava_get and lava_set
@@ -85,6 +92,8 @@ if __name__ == "__main__":
             help = 'Choose the next bug randomly rather than by score')
     parser.add_argument('-m', '--many', action="store", default=-1,
             help = 'Inject this many bugs (chosen randomly)')
+    parser.add_argument('-k', '--knobTrigger', metavar='int', type=int, action="store", default=-1,
+            help = 'specify a knob trigger style bug, eg -k [sizeof knob offset]')
     parser.add_argument('-l', '--buglist', action="store", default=False,
             help = 'Inject this list of bugs')
 
@@ -219,9 +228,7 @@ if __name__ == "__main__":
         update_db = True
     elif args.buglist:
         buglist = eval(args.buglist)
-        bugs_to_inject.append(
-            db.session.query(Bug).filter(Bug.id.in_(buglist)).all()
-        )
+        bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(buglist)).all()
         update_db = False
     elif args.many:
         num_bugs_to_inject = int(args.many)
@@ -265,7 +272,11 @@ if __name__ == "__main__":
         offset = 0
         if src_file in main_files:
             offset = NUM_LINES_MAIN_INSTR
-        (exitcode, output) = inject_bugs_into_src(bugs_to_inject, src_file, offset)
+
+        if args.knobTrigger != -1:
+            (exitcode, output) = inject_bugs_into_src(bugs_to_inject, src_file, offset, True)
+        else:
+            (exitcode, output) = inject_bugs_into_src(bugs_to_inject, src_file, offset)
         # note: now that we are inserting many dua / atp bug parts into each source, potentially.
         # which means we can't have simple exitcodes to indicate precisely what happened
         print "exitcode = %d" % exitcode
@@ -330,7 +341,11 @@ if __name__ == "__main__":
             fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
             print bug
             print "fuzzed = [%s]" % fuzzed_input
-            mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id)
+            if args.knobTrigger != -1:
+                print "Knob size: {}".format(args.knobTrigger)
+                mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id, True, args.knobTrigger)
+            else:
+                mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id)
             print "testing with fuzzed input for {} of {} potential.  ".format(
                 bug_index + 1, len(bugs_to_inject))
             print "{} real. bug {}".format(len(real_bugs), bug.id)

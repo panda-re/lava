@@ -10,8 +10,10 @@
 # Step I: Try injecting bugs.
 #
 # -q, -m, -t and -i: use these to turn on each of the three steps
+# -z [knobSize]: use this to make inject step use knob trigger bugs
+#                and knobSize changes how origFile is mutated
 # 
-# everything -q -m -t -i -A -M -I jsonfile
+# everything -q -m -t -i -A -M -I -z [knobSize] jsonfile
 #
 # Here is what everything consists of.
 # 
@@ -77,13 +79,14 @@ make=0
 taint=0
 inject=0
 num_trials=0
+kt=""
 demo=0
 
 # -s means skip everything up to injection
 # -i 15 means inject 15 bugs (default is 1)
 echo 
 progress 0 "Parsing args"
-while getopts  "arqmti:kd" flag
+while getopts  "arqmti:z:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -114,6 +117,11 @@ do
       inject=1
       num_trials=$OPTARG
       progress 0 "Inject step will be executed: num_trials = $num_trials"
+  fi
+  if [ "$flag" = "z" ]; then
+      knob=$OPTARG
+      kt="--knobTrigger $knob"
+      progress 0 "Inject step will be executed with knob trigger: knob = $knob"
   fi
   if [ "$flag" = "k" ]; then
       ok=1 
@@ -170,7 +178,7 @@ run_remote() {
   fi  
   #return $ret_code
 }
-        
+
 
 
 progress 1 "JSON file is $json"
@@ -301,7 +309,7 @@ if [ $inject -eq 1 ]; then
         lf="$logs/inject-$i.log"
 #        lf=`/bin/mktemp`
         progress 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many $json >& $lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many $kt $json >& $lf"
 	grep yield $lf
 #        grep Remaining $lf
 #        grep SELECTED $lf
