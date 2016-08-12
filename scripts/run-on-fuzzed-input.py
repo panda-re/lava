@@ -51,6 +51,16 @@ def confirm_bug_in_executable(install_dir):
         contains_lava = lambda line: "lava_val" in line
         return len(filter(contains_lava, output)) > 0
 
+def checkKnobRangeExpression(knobRangeStr):
+    def issafe(n):
+        return isinstance(n, int) and n > 0
+    try:
+        l = eval(knobRangeStr)
+    # Python error'd when trying to evaluate knobRangeStr
+    except:
+        return False
+    return len(l) > 0 and all(map(issafe, l))
+
 def filter_printable(text):
     return ''.join([ '.' if c not in string.printable else c for c in text])
 
@@ -63,14 +73,24 @@ if __name__ == "__main__":
             help = 'Bug id (otherwise, highest scored will be chosen)')
     parser.add_argument('-l', '--buglist', action="store", default=False,
             help = 'Inject this list of bugs')
-    parser.add_argument('-k', '--knobTrigger', metavar='int', type=int, action="store", default=-1,
-            help = 'Specify a knob trigger style bug, eg -k [sizeof knob offset]')
+    parser.add_argument('-k', '--knobTrigger', action="store", default=False,
+            help = 'Specify a knob trigger style bug with a python expression for the knob range, eg. -k \"range(1,18000, 10)\"')
     parser.add_argument('-g', '--gdb', action="store_true", default=False,
             help = 'Switch on gdb mode which will run fuzzed input under gdb and print process mappings')
 
     args = parser.parse_args()
     project = json.load(args.project)
     project_file = args.project.name
+
+    # set up knobTrigger range
+    if args.knobTrigger:
+        if not checkKnobRangeExpression(args.knobTrigger):
+            exit_error("--knobTrigger: \"{}\" is not valid python range expression".format(args.knobRange))
+        knobRange = eval(args.knobTrigger)
+        print "Testing inputs for knob offsets in range: {}".format(knobRange)
+        KT = True
+    else:
+        KT = False
 
     # Set up our globals now that we have a project
     db = LavaDatabase(project)
@@ -201,51 +221,55 @@ if __name__ == "__main__":
         print "TESTING -- FUZZED INPUTS"
         suff = get_suffix(orig_input)
         pref = orig_input[:-len(suff)] if suff != "" else orig_input
-        real_bugs = []
-        for bug_index, bug in enumerate(bugs_to_inject):
-            fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
-            print bug
-            print "fuzzed = [%s]" % fuzzed_input
-            if args.knobTrigger != -1:
-                print "Knob size: {}".format(args.knobTrigger)
-                mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id, True, args.knobTrigger)
+        # iterate through knob range or just a list of one element
+        iter_range = knobRange if KT else ["foo"]
+        for knobSize in iter_range:
+            real_bugs = []
+            for bug_index, bug in enumerate(bugs_to_inject):
+                fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
+                print bug
+                if KT:
+                    print "Knob size: {}".format(knobSize)
+                    mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id, True,knobSize)
+                else:
+                    mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id)
+                (rv, outp) = run_modified_program(bugs_install, fuzzed_input, timeout)
+                print "retval = %d" % rv
+                print "output: [{}]".format(" ;".join(outp))
+                if update_db:
+                    db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
+                                    output=lines, success=True))
+                if rv == -11 or rv == -6:
+                    real_bugs.append(bug.id)
+                    if args.gdb:
+                        gdb_py_script = join(lava_dir, "scripts/signal_analysis_gdb.py")
+                        lib_path = project['library_path'].format(install_dir=bugs_install)
+                        lib_prefix = "LD_LIBRARY_PATH={}".format(lib_path)
+                        cmd = project['command'].format(install_dir=bugs_install,input_file=fuzzed_input)
+                        # if (debug): print "cmd: " + lib_path + " " + cmd
+                        gdb_cmd = " gdb -batch -silent -x {} --args {}".format(gdb_py_script, cmd)
+                        full_cmd = lib_prefix + gdb_cmd
+                        envv = {"LD_LIBRARY_PATH": lib_path}
+                        # os.system(full_cmd)
+                        (rv, out) = run_cmd(gdb_cmd, bugs_install, envv, 10000) # shell=True)
+                        print "\n".join(out)
+                print "=================================================="
+            f = float(len(real_bugs)) / len(bugs_to_inject)
+            if KT:
+                print "{},yield {:.2f} ({} out of {}) real bugs".format(knobSize,
+                    f, len(real_bugs), len(bugs_to_inject)
+                )
             else:
-                mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id)
-            print "testing with fuzzed input for {} of {} potential.  ".format(
-                bug_index + 1, len(bugs_to_inject))
-            print "{} real. bug {}".format(len(real_bugs), bug.id)
-            (rv, outp) = run_modified_program(bugs_install, fuzzed_input, timeout)
-            print "retval = %d" % rv
-            # print "output: {}".format(" ;".join(output))
-            if update_db:
-                db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
-                                output=lines, success=True))
-            if rv == -11 or rv == -6:
-                real_bugs.append(bug.id)
-                if args.gdb:
-                    gdb_py_script = join(lava_dir, "scripts/signal_analysis_gdb.py")
-                    lib_path = project['library_path'].format(install_dir=bugs_install)
-                    lib_prefix = "LD_LIBRARY_PATH={}".format(lib_path)
-                    cmd = project['command'].format(install_dir=bugs_install,input_file=fuzzed_input)
-                    # if (debug): print "cmd: " + lib_path + " " + cmd
-                    gdb_cmd = " gdb -batch -silent -x {} --args {}".format(gdb_py_script, cmd)
-                    full_cmd = lib_prefix + gdb_cmd
-                    envv = {"LD_LIBRARY_PATH": lib_path}
-                    # os.system(full_cmd)
-                    (rv, out) = run_cmd(gdb_cmd, bugs_install, envv, 10000) # shell=True)
-                    print "\n".join(out)
-            print
-        f = float(len(real_bugs)) / len(bugs_to_inject)
-        print "yield {:.2f} ({} out of {}) real bugs".format(
-            f, len(real_bugs), len(bugs_to_inject)
-        )
-        print "TESTING COMPLETE"
-        if len(bugs_to_inject) > 1:
-            print "list of real validated bugs:", real_bugs
+                print "yield {:.2f} ({} out of {}) real bugs".format(
+                    f, len(real_bugs), len(bugs_to_inject)
+                )
+            print "TESTING COMPLETE"
+            if len(bugs_to_inject) > 1:
+                print "list of real validated bugs:", real_bugs
 
-        if update_db: db.session.commit()
-        # NB: at the end of testing, the fuzzed input is still in place
-        # if you want to try it
+            if update_db: db.session.commit()
+            # NB: at the end of testing, the fuzzed input is still in place
+            # if you want to try it
     except Exception as e:
         print "TESTING FAIL"
         if update_db:

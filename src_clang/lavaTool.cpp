@@ -323,7 +323,7 @@ bool IsArgAttackable(const Expr *arg) {
     //        errs() << "IsArgAttackable \n";
     //        arg->dump();
     const Type *t = arg->getType().getTypePtr();
-    if (t->isStructureType() || t->isEnumeralType() || t->isIncompleteType()) {
+    if (dyn_cast<OpaqueValueExpr>(arg) || t->isStructureType() || t->isEnumeralType() || t->isIncompleteType()) {
         return false;
     }
     if (QueriableType(t)) {
@@ -704,7 +704,7 @@ Insertions knobTriggerAttack(std::set<const Bug*> &injectable_bugs, bool malloc_
         uint32_t magic_value = 0x6c617661 & 0xffff;
         //                        if (bugs->size() > 1) {
             // with lots of bugs we need magic value to be distinct per bug
-            magic_value -=  bug->id;
+            magic_value = (magic_value - bug->id) % 0x10000;
             //                        }
             //                        else {
             //                        }
@@ -981,15 +981,15 @@ public:
 #endif
                 );
 
-        //Matcher.addMatcher(
-                //callExpr(
-                    //forEachArgMatcher(expr(isAttackableMatcher()).bind("arg"))).bind("ce"),
-//#if DEBUG == 1
-                //&HandlerMatcherDebug
-//#else
-                //&HandlerForArgAtpPoint
-//#endif
-//);
+        Matcher.addMatcher(
+                callExpr(
+                    forEachArgMatcher(expr(isAttackableMatcher()).bind("arg"))).bind("ce"),
+#if DEBUG == 1
+                &HandlerMatcherDebug
+#else
+                &HandlerForArgAtpPoint
+#endif
+);
 
         // an array subscript expression is composed of base[index]
         // matches all nodes of: *innerExprParent(innerExpr) = ...
@@ -1003,8 +1003,8 @@ public:
 #endif
                 );
 
-        // matches all nodes of: ... *innerExprParent(innerExpr) ...
-        // and matches all nodes of: ... base[innerExprParent(innerExpr)] ...
+        //// matches all nodes of: ... *innerExprParent(innerExpr) ...
+        //// and matches all nodes of: ... base[innerExprParent(innerExpr)] ...
         Matcher.addMatcher(
                 memReadMatcher,
 #if DEBUG == 1
