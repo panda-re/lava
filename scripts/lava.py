@@ -30,7 +30,7 @@ Base = declarative_base()
 db_user = "postgres"
 db_password = "postgrespostgres"
 
-debugging = True
+debugging = False
 
 class SourceLval(Base):
     __tablename__ = 'sourcelval'

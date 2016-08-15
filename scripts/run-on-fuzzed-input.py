@@ -8,6 +8,7 @@ import string
 import subprocess32
 import sys
 import time
+import difflib
 
 from os.path import basename, dirname, join, abspath
 
@@ -34,7 +35,8 @@ def exit_error(msg):
 # here's how to run the built program
 def run_modified_program(install_dir, input_file, timeout):
     cmd = project['command'].format(install_dir=install_dir,input_file=input_file)
-    print cmd
+    if debugging:
+        print cmd
     envv = {}
     lib_path = project['library_path'].format(install_dir=install_dir)
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
@@ -77,6 +79,8 @@ if __name__ == "__main__":
             help = 'Specify a knob trigger style bug with a python expression for the knob range, eg. -k \"range(1,18000, 10)\"')
     parser.add_argument('-g', '--gdb', action="store_true", default=False,
             help = 'Switch on gdb mode which will run fuzzed input under gdb and print process mappings')
+    parser.add_argument('-c', '--compareToQueriesBuild', action="store_true", default=False,
+            help = 'Compare the output of Knob Trigger inject build to the output of the inject build')
 
     args = parser.parse_args()
     project = json.load(args.project)
@@ -147,6 +151,7 @@ if __name__ == "__main__":
         source_root = tar_files.splitlines()[0].split(os.path.sep)[0]
 
     queries_build = join(top_dir, source_root)
+    queries_install = join(queries_build, 'lava-install')
     bugs_build = join(bugs_parent, source_root)
     bugs_install = join(bugs_build, 'lava-install')
     # Make sure directories and btrace is ready for bug injection.
@@ -186,16 +191,17 @@ if __name__ == "__main__":
     if not confirm_bug_in_executable(bugs_install):
         exit_error("A lava bug does not appear to have been injected: ".format(cmd))
 
-    for bug_index, bug in enumerate(bugs_to_inject):
-         print "------------\n"
-         print "SELECTED BUG {} : {}".format(bug_index, bug.id)#
-         print "   (%d,%d)" % (bug.dua.id, bug.atp.id)
-         print "DUA:"
-         print "   ", bug.dua
-         print "ATP:"
-         print "   ", bug.atp
-         print "max_tcn={}  max_liveness={}".format(
-             bug.dua.max_liveness, bug.dua.max_tcn)
+    bug = bugs_to_inject[0]
+    # for bug_index, bug in enumerate(bugs_to_inject):
+         # print "------------\n"
+         # print "SELECTED BUG {} : {}".format(bug_index, bug.id)#
+         # print "   (%d,%d)" % (bug.dua.id, bug.atp.id)
+         # print "DUA:"
+         # print "   ", bug.dua
+         # print "ATP:"
+         # print "   ", bug.atp
+         # print "max_tcn={}  max_liveness={}".format(
+             # bug.dua.max_liveness, bug.dua.max_tcn)
 
     try:
         # build succeeded -- testing
@@ -224,18 +230,29 @@ if __name__ == "__main__":
         # iterate through knob range or just a list of one element
         iter_range = knobRange if KT else ["foo"]
         for knobSize in iter_range:
+            print "Knob size: {}".format(knobSize)
             real_bugs = []
             for bug_index, bug in enumerate(bugs_to_inject):
                 fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
                 print bug
                 if KT:
-                    print "Knob size: {}".format(knobSize)
                     mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id, True,knobSize)
                 else:
                     mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id)
                 (rv, outp) = run_modified_program(bugs_install, fuzzed_input, timeout)
                 print "retval = %d" % rv
-                print "output: [{}]".format(" ;".join(outp))
+                # print "output: [{}]".format(" ;".join(outp))
+                if args.compareToQueriesBuild:
+                    print "DIFFING . . .",
+                    (orig_rv, orig_outp) = run_modified_program(queries_install, fuzzed_input, timeout)
+                    diff = list(difflib.ndiff(orig_outp, outp))
+                    if len(diff) < 2:
+                        print "SAME!"
+                    elif  (len(orig_outp) != 0 and orig_outp[0] == "") or (len(outp) != 0 and outp[0] == ""):
+                        print "Query/Inject Build No Output - CANCELING"
+                    else:
+                        print "DIFFERENT"
+                        print "".join(diff),
                 if update_db:
                     db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
                                     output=lines, success=True))
@@ -252,7 +269,7 @@ if __name__ == "__main__":
                         envv = {"LD_LIBRARY_PATH": lib_path}
                         # os.system(full_cmd)
                         (rv, out) = run_cmd(gdb_cmd, bugs_install, envv, 10000) # shell=True)
-                        print "\n".join(out)
+                        # print "\n".join(out)
                 print "=================================================="
             f = float(len(real_bugs)) / len(bugs_to_inject)
             if KT:
