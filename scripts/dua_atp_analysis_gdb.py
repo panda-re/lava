@@ -15,15 +15,10 @@ except:
     print "Exiting . . ."
     sys.exit(1)
 
-if not "ATP" in os.environ:
-    print "Must define ATP breakpoint locations. Exiting . . ."
+if not ("DUA" in os.environ and "ATP" in os.environ):
+    print "Must define DUA and ATP breakpoint locations. Exiting . . ."
     sys.exit(1)
-else:
-    # define dua and atp break point locations
-    # must be in format of gdb break points (ie, file : line, *address, symbol_name)
-    atp_loc = os.environ['ATP']
 
-BUG_EFFECT_COUNT = 0
 # bp_num is int
 def get_bp_hits(bp_num):
     data = gdb.execute("info b {}".format(bp_num), to_string=True)
@@ -34,6 +29,15 @@ def get_bp_hits(bp_num):
         return int(data.split(hit_str)[1].split()[0])
 
 EXIT_LOC = "exit"
+# define dua and atp break point locations
+# must be in format of gdb break points (ie, file : line, *address, symbol_name)
+dua_loc = os.environ['DUA']
+atp_loc = os.environ['ATP']
+# print
+# print "== INITIALIZING GDB PYTHON SOURCE PLUGIN =="
+# print "DUA: {}".format(dua_loc)
+# print "ATP: {}".format(atp_loc)
+# print "==========================================="
 
 def launch_debug_using_ipython():
     # run this from a gdb session in order to create a 
@@ -70,36 +74,36 @@ def launch_debug_using_ipython():
 
 def event_handler (event):
     def handle_bp_event ():
+        # import IPython; IPython.embed_kernel()
         assert (len(event.breakpoints) == 1)
         b = event.breakpoints[0]
         if b.number == 1:
+            # we are at the dua
+            print "== HIT DUA, ENABLING ATP == . . ."
+            gdb.execute("disable 1")
+            gdb.execute("enable 2")
+        elif b.number == 2:
             # we are at the attack point
-            print "== HIT ATP, RESETTING COUNT =="
+            print "== HIT DUA-ATP SEQUENCE, SUCCESS! =="
             gdb.execute("disable 2")
-            BUG_EFFECT_COUNT = 0
         elif b.location == EXIT_LOC:
             print "At program exit normal with status:"
             # status will usually be in eax variable for 32 bit systems
             # or maybe it's in $esp + 4
             gdb.execute("p $eax")
             gdb.execute("x/xw $esp+4")
-            gdb.execute("q")
-        else:
-            print "Unknown breakpoint"
+            print "DUA HITS: {}".format(get_bp_hits(1))
+            print "ATP HITS: {}".format(get_bp_hits(2))
             gdb.execute("q")
 
     def handle_sig_event ():
-        print "Instruciton Count: {}".format(BUG_EFFECT_COUNT)
-        if event.stop_signal in ["SIGSEGV"]:
-            print "Found a SIG {}".format(event.stop_signal)
-            gdb.execute("p $_siginfo._sifields._sigfault.si_addr")
-            gdb.execute("info proc mappings")
+        if -11 == event.stop_signal:
+            print "Found a seg fault"
+            print "DUA HITS: {}".format(get_bp_hits(1))
+            print "ATP HITS: {}".format(get_bp_hits(2))
             gdb.execute("q")
         else:
-            import IPython; IPython.embed_kernel()
             print "Reached unhandled signal event: {}".format(event.stop_signal)
-            print "Exiting . . ."
-            sys.exit(1)
     # print "event handler type: stop with signal{}".format(event.stop_signal)
     # print event.breakpoints
     #launch_debug_using_ipython()
@@ -108,8 +112,6 @@ def event_handler (event):
     elif isinstance(event, gdb.SignalEvent):
         handle_sig_event()
     else:
-        print event
-        sys.exit(1)
         # at a general stop event which includes catch points
         # skip
         pass
@@ -120,12 +122,17 @@ gdb.execute("set breakpoint pending on")
 gdb.execute("set pagination off")
 gdb.execute("set logging off")
 gdb.execute("set confirm off")
+# set breakpoint on dua
+gdb.execute("break " + dua_loc, to_string=True)
 
+# set breakpoint on atp, but disable it right away
+# won't be enabled until we hit the dua
 gdb.execute("break " + atp_loc, to_string=True)
+gdb.execute("disable 2")
+
 # set breakpoints on normal exit of program and SEGFAULTS
 gdb.execute("break " + EXIT_LOC, to_string=True)
-# gdb.execute("handle SIGSEGV stop")
-gdb.execute("handle all stop")
+gdb.execute("handle SIGSEGV stop")
 
 # establish callback on breakpoints
 gdb.events.stop.connect(event_handler)

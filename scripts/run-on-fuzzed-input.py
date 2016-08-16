@@ -246,10 +246,11 @@ if __name__ == "__main__":
                     print "DIFFING . . .",
                     (orig_rv, orig_outp) = run_modified_program(queries_install, fuzzed_input, timeout)
                     diff = list(difflib.ndiff(orig_outp, outp))
-                    if len(diff) < 2:
+                    if (len(diff) < 2 or
+                        not any(map(lambda line: line[0] in ["+", "-"], diff))):
                         print "SAME!"
-                    elif  (len(orig_outp) != 0 and orig_outp[0] == "") or (len(outp) != 0 and outp[0] == ""):
-                        print "Query/Inject Build No Output - CANCELING"
+                    elif all(map(lambda line: line == "", outp)):
+                        print "Inject Build Has No Output - CANCELING"
                     else:
                         print "DIFFERENT"
                         print "".join(diff),
@@ -259,6 +260,16 @@ if __name__ == "__main__":
                 if rv == -11 or rv == -6:
                     real_bugs.append(bug.id)
                     if args.gdb:
+                        with open(join(bugs_build, bug.atp.file), "r") as f:
+                            atp_iter = (i for i, line in enumerate(f) if
+                                        "lava_get({})".format(bug.id) in line)
+                            try:
+                                line_num = atp_iter.next() + 1
+                            except StopIteration:
+                                print "lava_get({}) was not in {}".format(bug.id, bug.atp.file)
+                                sys.exit(1)
+                        atp_loc = "{}:{}".format(bug.atp.file, line_num)
+                        print "setting breakpoint on {}".format(atp_loc)
                         gdb_py_script = join(lava_dir, "scripts/signal_analysis_gdb.py")
                         lib_path = project['library_path'].format(install_dir=bugs_install)
                         lib_prefix = "LD_LIBRARY_PATH={}".format(lib_path)
@@ -267,9 +278,11 @@ if __name__ == "__main__":
                         gdb_cmd = " gdb -batch -silent -x {} --args {}".format(gdb_py_script, cmd)
                         full_cmd = lib_prefix + gdb_cmd
                         envv = {"LD_LIBRARY_PATH": lib_path}
+                        envv["ATP"] = atp_loc
                         # os.system(full_cmd)
                         (rv, out) = run_cmd(gdb_cmd, bugs_install, envv, 10000) # shell=True)
-                        # print "\n".join(out)
+                        print "======gdb out======"
+                        print "\n".join(out)
                 print "=================================================="
             f = float(len(real_bugs)) / len(bugs_to_inject)
             if KT:
