@@ -33,8 +33,11 @@ def exit_error(msg):
     sys.exit(1)
 
 # here's how to run the built program
-def run_modified_program(install_dir, input_file, timeout):
+def run_modified_program(install_dir, input_file, timeout, rr=False):
     cmd = project['command'].format(install_dir=install_dir,input_file=input_file)
+    RR = "/home/ulrich/git/obj/bin/rr"
+    if rr:
+        cmd = "{} record {}".format(RR, cmd)
     if debugging:
         print cmd
     envv = {}
@@ -239,7 +242,8 @@ if __name__ == "__main__":
                     mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id, True,knobSize)
                 else:
                     mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id)
-                (rv, outp) = run_modified_program(bugs_install, fuzzed_input, timeout)
+                (rv, outp) = run_modified_program(bugs_install, fuzzed_input,
+                                                  timeout, rr=True)
                 print "retval = %d" % rv
                 # print "output: [{}]".format(" ;".join(outp))
                 if args.compareToQueriesBuild:
