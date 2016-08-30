@@ -9,6 +9,9 @@ import subprocess32
 import sys
 import time
 import difflib
+# need random to evaluate expressions for knobRange input
+# allows user to express knob randome as random samples of a particular range
+import random
 
 from os.path import basename, dirname, join, abspath
 
@@ -20,6 +23,7 @@ project = None
 # this is how much code we add to top of any file with main fn in it
 NUM_LINES_MAIN_INSTR = 5
 debugging = False
+mutfile_cache = set([])
 
 def get_suffix(fn):
     split = basename(fn).split(".")
@@ -236,12 +240,17 @@ if __name__ == "__main__":
             print "Knob size: {}".format(knobSize)
             real_bugs = []
             for bug_index, bug in enumerate(bugs_to_inject):
-                fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
-                print bug
                 if KT:
-                    mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id, True,knobSize)
+                    fuzzed_input = "{}-fuzzed-{}{}{}".format(pref, bug.id, knobSize, suff)
                 else:
-                    mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id)
+                    fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
+                print bug
+                if not fuzzed_input in mutfile_cache:
+                    if KT:
+                        mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id, True,knobSize)
+                    else:
+                        mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id)
+                    mutfile_cache.add(fuzzed_input)
                 (rv, outp) = run_modified_program(bugs_install, fuzzed_input,
                                                   timeout, rr=True)
                 print "retval = %d" % rv
@@ -273,20 +282,33 @@ if __name__ == "__main__":
                                 print "lava_get({}) was not in {}".format(bug.id, bug.atp.file)
                                 sys.exit(1)
                         atp_loc = "{}:{}".format(bug.atp.file, line_num)
+                        atp_prefix= " ATP=\"{}\"".format(atp_loc)
                         print "setting breakpoint on {}".format(atp_loc)
                         gdb_py_script = join(lava_dir, "scripts/signal_analysis_gdb.py")
                         lib_path = project['library_path'].format(install_dir=bugs_install)
                         lib_prefix = "LD_LIBRARY_PATH={}".format(lib_path)
                         cmd = project['command'].format(install_dir=bugs_install,input_file=fuzzed_input)
                         # if (debug): print "cmd: " + lib_path + " " + cmd
-                        gdb_cmd = " gdb -batch -silent -x {} --args {}".format(gdb_py_script, cmd)
-                        full_cmd = lib_prefix + gdb_cmd
+                        gdb_cmd = " gdb --batch --silent -x {} --args {}".format(gdb_py_script, cmd)
+                        full_cmd = lib_prefix + atp_prefix + gdb_cmd
                         envv = {"LD_LIBRARY_PATH": lib_path}
                         envv["ATP"] = atp_loc
-                        # os.system(full_cmd)
                         (rv, out) = run_cmd(gdb_cmd, bugs_install, envv, 10000) # shell=True)
-                        print "======gdb out======"
-                        print "\n".join(out)
+                        hasInstrCount = lambda line: "Instruction Count = " in line
+                        instr_iter = (line for line in out if hasInstrCount(line))
+                        # print "======gdb out======"
+                        # print "\n".join(out)
+                        try:
+                            count = int(instr_iter.next().split("Instruction Count = ")[1].split()[0])
+                            print "KT: {} STEP DELTA: {}".format(knobSize, count)
+                        except StopIteration:
+                            print "\"Instruction Count = \" was not in gdb output"
+                            print "[{}]".format(full_cmd)
+                            print "SKIPPING INSTRUCTION COUNTING"
+                            print "======gdb out======"
+                            print "\n".join(out)
+                            # sys.exit(1)
+                        # os.system(full_cmd)
                 print "=================================================="
             f = float(len(real_bugs)) / len(bugs_to_inject)
             if KT:
