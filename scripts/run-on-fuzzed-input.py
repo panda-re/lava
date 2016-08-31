@@ -9,9 +9,12 @@ import subprocess32
 import sys
 import time
 import difflib
+import re
+assert re
 # need random to evaluate expressions for knobRange input
 # allows user to express knob randome as random samples of a particular range
 import random
+assert random
 
 from os.path import basename, dirname, join, abspath
 
@@ -22,8 +25,12 @@ start_time = time.time()
 project = None
 # this is how much code we add to top of any file with main fn in it
 NUM_LINES_MAIN_INSTR = 5
+RR = "/home/ulrich/git/obj/bin/rr"
 debugging = False
 mutfile_cache = set([])
+trace_template = ("rr: Saving the execution of `.*?' to trace"
+                "directory `(.*?)'\.")
+trace_dir_re = re.compile(trace_template)
 
 def get_suffix(fn):
     split = basename(fn).split(".")
@@ -39,7 +46,6 @@ def exit_error(msg):
 # here's how to run the built program
 def run_modified_program(install_dir, input_file, timeout, rr=False):
     cmd = project['command'].format(install_dir=install_dir,input_file=input_file)
-    RR = "/home/ulrich/git/obj/bin/rr"
     if rr:
         cmd = "{} record {}".format(RR, cmd)
     if debugging:
@@ -47,7 +53,36 @@ def run_modified_program(install_dir, input_file, timeout, rr=False):
     envv = {}
     lib_path = project['library_path'].format(install_dir=install_dir)
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
-    return run_cmd(cmd, install_dir, envv, timeout) # shell=True)
+    print envv["LD_LIBRARY_PATH"]
+    (rc, outp) = run_cmd(cmd, install_dir, envv, 1000) # shell=True)
+    if rr:
+        # try:
+            # print "check_output()"
+            # print subprocess32.check_output((RR + " record /bin/ls").split(),
+                                            # stderr=subprocess32.STDOUT)
+        # except subprocess32.CalledProcessError:
+            # pass
+        # (proc_stdout, proc_stderr) = outp
+        # print "rc: {}".format(rc)
+        # print "stdout: {}".format(proc_stdout)
+        # print "stderr: {}".format(proc_stderr)
+        # trace_dir = trace_dir_re.match(proc_stderr).group()[0]
+        # print "RR output is goint to {}".format(trace_dir)
+        # (_, (ps_stdout, ps_stderr)) = run_cmd("{} ps {}".format(RR, trace_dir))
+        (_, (ps_stdout, ps_stderr)) = run_cmd("{} ps".format(RR), install_dir,
+                                              envv, timeout)
+        # get the third column from the second line in output which returns the 
+        # exit code
+        try:
+            rc = int(ps_stdout.split("\n")[1].split()[2])
+        except:
+            print "Couln't get return code from rr ps"
+            print "stdout: {}".format(ps_stdout)
+            print "stderr: {}".format(ps_stderr)
+            sys.exit(1)
+        return (rc, outp[1:])
+    else:
+        return (rc, outp)
 
 def confirm_bug_in_executable(install_dir):
     cmd = project['command'].format(install_dir=install_dir,input_file="foo")
@@ -241,7 +276,7 @@ if __name__ == "__main__":
             real_bugs = []
             for bug_index, bug in enumerate(bugs_to_inject):
                 if KT:
-                    fuzzed_input = "{}-fuzzed-{}{}{}".format(pref, bug.id, knobSize, suff)
+                    fuzzed_input = "{}-fuzzed-{}-{}{}".format(pref, bug.id, knobSize, suff)
                 else:
                     fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
                 print bug
@@ -289,15 +324,20 @@ if __name__ == "__main__":
                         lib_prefix = "LD_LIBRARY_PATH={}".format(lib_path)
                         cmd = project['command'].format(install_dir=bugs_install,input_file=fuzzed_input)
                         # if (debug): print "cmd: " + lib_path + " " + cmd
-                        gdb_cmd = " gdb --batch --silent -x {} --args {}".format(gdb_py_script, cmd)
-                        full_cmd = lib_prefix + atp_prefix + gdb_cmd
+                        # gdb_cmd = " gdb --batch --silent -x {} --args {}".format(gdb_py_script, cmd)
+                        rr_cmd = " {} replay -x {}".format(RR, gdb_py_script)
+                        full_cmd = lib_prefix + atp_prefix + rr_cmd
                         envv = {"LD_LIBRARY_PATH": lib_path}
                         envv["ATP"] = atp_loc
-                        (rv, out) = run_cmd(gdb_cmd, bugs_install, envv, 10000) # shell=True)
+                        (rv, out) = run_cmd(rr_cmd, bugs_install, envv, 10000) # shell=True)
+                        print "======rr out======"
+                        (rr_stdout, rr_stderr) = out
+                        print "stdout: "
+                        print rr_stdout
+                        print "stderr: "
+                        print rr_stderr
                         hasInstrCount = lambda line: "Instruction Count = " in line
-                        instr_iter = (line for line in out if hasInstrCount(line))
-                        # print "======gdb out======"
-                        # print "\n".join(out)
+                        instr_iter = (out_type for out_type in out if hasInstrCount(out_type))
                         try:
                             count = int(instr_iter.next().split("Instruction Count = ")[1].split()[0])
                             print "KT: {} STEP DELTA: {}".format(knobSize, count)

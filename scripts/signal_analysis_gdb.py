@@ -26,14 +26,24 @@ else:
     atp_loc = os.environ['ATP']
 
 BUG_EFFECT_COUNT = 0
+SIG_EVENT_COUNT = None
 record_regex = re.compile(".*?Log contains ([0-9]+) instructions\..*",
                           re.MULTILINE)
+event_regex = re.compile(".*?Current event: ([0-9]+).*", re.MULTILINE)
 
 def get_instr_count():
     data = gdb.execute("info record", to_string=True)
     m = re.search(record_regex, data)
     if m == None:
         print "coulnd't find instruction count in [info record] command"
+        print data
+    return int(m.groups()[0])
+
+def get_event_count():
+    data = gdb.execute("when", to_string=True)
+    m = re.search(event_regex, data)
+    if m == None:
+        print "coulnd't find event count in when command"
         print data
     return int(m.groups()[0])
 
@@ -82,14 +92,20 @@ EXIT_LOC = "exit"
 
 class ATP_Breakpoint(gdb.Breakpoint):
     def stop(self):
-        if (gdb.execute("info record", to_string=True) ==
-            "No record target is currently active.\n"):
-            gdb.write("Starting recording process")
-        else:
-            gdb.write("Hit ATP again.  Restarting . . .")
-            gdb.execute("record stop")
-        gdb.execute("record full")
-        return False
+        global SIG_EVENT_COUNT
+        # if (gdb.execute("info record", to_string=True) ==
+            # "No record target is currently active.\n"):
+            # gdb.write("Starting recording process")
+        # else:
+            # gdb.write("Hit ATP again.  Restarting . . .")
+            # gdb.execute("record stop")
+        # gdb.execute("record full")
+        gdb.execute("when")
+        print "!! Hit ATP !!"
+        print "Instruction Count =", SIG_EVENT_COUNT - get_event_count()
+        gdb.execute("q")
+        sys.exit(0)
+        return True
 
 class Exit_Breakpoint(gdb.Breakpoint):
     def stop(self):
@@ -97,8 +113,16 @@ class Exit_Breakpoint(gdb.Breakpoint):
         ret_code = int(ret_data.split(" = ")[1])
         print "At program exit normal with status: {}".format(ret_code)
         print "Instruction Count = {}".format(get_instr_count())
+        gdb.execute("when")
+        # print "Instruction Count = {}".format(get_instr_count())
+        ATP_Breakpoint(atp_loc)
+        # gdb.execute("set scheduler-locking on")
+        gdb.post_event(lambda s: gdb.execute("reverse-continue"))
+        gdb.post_event(lambda s: gdb.execute("reverse-continue"))
+        # gdb.execute("set scheduler-locking off")
+        # gdb.execute("reverse-continue")
         # gdb.execute("q")
-        sys.exit(1)
+        # sys.exit(1)
 
 # class GdbCommand():
     # # def __init__(self, cmd):
@@ -110,47 +134,48 @@ class Exit_Breakpoint(gdb.Breakpoint):
         # print "HERE HERE"
         # print "About to execute: [{}]".format(self.cmd)
         # gdb.execute(self.cmd)
-def _gdb_si():
-    print "_gdb_si()"
-    gdb.execute("c")
-def run_gdb_si():
-    print "run_gdb_si()"
-    # gdb.post_event(_gdb_si)
-    gdb.execute("c")
 
 def event_handler (event):
-    # def handle_bp_event (event):
-        # if (isinstance (event, gdb.BreakpointEvent)):
-            # assert (len(event.breakpoints) == 1)
-            # b = event.breakpoints[0]
-            # if b.location == EXIT_LOC:
-                # # info arg will print exit status in variable status
-                # # in format: status = [ret_code]
-                # ret_data = gdb.execute("info arg", to_string=True)
-                # ret_code = int(ret_data.split(" = ")[1])
-                # print "At program exit normal with status: {}".format(ret_code)
-                # print "Instruction Count = {}".format(get_instr_count())
-                # gdb.execute("q")
-
     def handle_sig_event (event):
         if isinstance(event, gdb.SignalEvent):
             if event.stop_signal in ["SIGSEGV", "SIGABRT"]:
                 print "Found a SIG {}".format(event.stop_signal)
-                print "Instruction Count = {}".format(get_instr_count())
                 print gdb.execute("p $_siginfo._sifields._sigfault.si_addr",
                             to_string=True)
-                print gdb.execute("info proc mappings", to_string=True)
-                gdb.execute("q")
-                sys.exit(1)
+                # print gdb.execute("info proc mappings", to_string=True)
+                gdb.execute("when")
+                # print "Instruction Count = {}".format(get_instr_count())
+                ATP_Breakpoint(atp_loc)
+                def print_fn(s):
+                    print s
+                    return True
+                # gdb.post_event(lambda s: print_fn("hello") and gdb.execute("reverse-continue"))
+                # gdb.post_event(lambda s: print_fn("hello2") and gdb.execute("reverse-continue"))
+                # gdb.post_event(lambda s: print_fn("hello2") and gdb.execute("reverse-continue"))
+                # gdb.execute("set scheduler-locking on")
+                # gdb.post_event(lambda s: gdb.execute("reverse-continue"))
+                # gdb.post_event(lambda s: gdb.execute("reverse-continue"))
+                # gdb.execute("set scheduler-locking off")
+                try:
+                    global SIG_EVENT_COUNT
+                    if SIG_EVENT_COUNT == None:
+                        SIG_EVENT_COUNT = get_event_count()
+                        print "SIG_EVENT_COUNT: {}".format(SIG_EVENT_COUNT)
+                    gdb.execute("reverse-continue")
+                    gdb.execute("reverse-continue")
+                except gdb.error:
+                    pass
+                # gdb.execute("reverse-continue")
+                # gdb.execute("q")
+                # sys.exit(1)
             else:
-                print "Instruction Count = {}".format(get_instr_count())
+                # print "Instruction Count = {}".format(get_instr_count())
                 print "Reached unhandled signal event: {}".format(event.stop_signal)
                 print "Exiting . . ."
                 gdb.execute("q")
                 sys.exit(1)
 
     # generic StopEvent handler.  We will assume that we only get here from gdb
-    # "si" command
     # def handle_stop_event (event):
         # if isinstance(event, gdb.StopEvent):
             # global BUG_EFFECT_COUNT
@@ -166,13 +191,13 @@ def event_handler (event):
                 # # thread = Thread(target=run_gdb_si)
                 # # thread.start()
 
-    if isinstance(event, gdb.BreakpointEvent):
-        handle_bp_event(event)
-    elif isinstance(event, gdb.SignalEvent):
+    if isinstance(event, gdb.SignalEvent):
         handle_sig_event(event)
-    # elif isinstance(event, gdb.StopEvent):
+    # assume we get here from beginning of rr thread stop point
+    elif isinstance(event, gdb.StopEvent):
+        gdb.execute("c")
+        # pass
         # handle_stop_event(event)
-    print "done with event handler"
 
 gdb.execute("set breakpoint pending on", to_string=True)
 gdb.execute("set pagination off", to_string=True)
@@ -186,7 +211,7 @@ gdb.execute("set height 0", to_string=True)
 gdb.execute("tty /dev/null", to_string=True)
 
 # gdb.execute("break " + atp_loc, to_string=True)
-ATP_Breakpoint(atp_loc)
+# ATP_Breakpoint(atp_loc)
 # set breakpoints on normal exit of program and SEGFAULTS
 Exit_Breakpoint(EXIT_LOC)
 # gdb.execute("break " + EXIT_LOC, to_string=True)
@@ -198,6 +223,6 @@ gdb.events.stop.connect(event_handler)
 
 # uncomment this line of code to trigger an ipython kernel session that you can
 # console into.  See launch_debug_using_ipython() for more info
-gdb.execute("r")
+# gdb.execute("c")
 # import IPython; IPython.embed_kernel()
 # gdb.execute("si")
