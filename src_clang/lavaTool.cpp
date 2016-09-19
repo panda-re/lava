@@ -94,6 +94,18 @@ static cl::opt<bool> KT("kt",
     cl::desc("Inject in Knob-Trigger style"),
     cl::cat(LavaCategory),
     cl::init(false));
+static cl::opt<bool> FN_ARG_ATP("fn_arg",
+    cl::desc("Inject in function arg style attack point"),
+    cl::cat(LavaCategory),
+    cl::init(false));
+static cl::opt<bool> MEM_WRITE_ATP("mem_write",
+    cl::desc("Inject a mem_write sytle attack point"),
+    cl::cat(LavaCategory),
+    cl::init(false));
+static cl::opt<bool> MEM_READ_ATP("mem_read",
+    cl::desc("Inject a mem_read style attack point"),
+    cl::cat(LavaCategory),
+    cl::init(false));
 
 
 uint32_t MainInstrCorrection;
@@ -322,7 +334,7 @@ bool QueriableType(const Type *lval_type) {
 bool IsArgAttackable(const Expr *arg) {
     //        errs() << "IsArgAttackable \n";
     //        arg->dump();
-    const Type *t = arg->getType().getTypePtr();
+    const Type *t = arg->IgnoreParenImpCasts()->getType().getTypePtr();
     if (dyn_cast<OpaqueValueExpr>(arg) || t->isStructureType() || t->isEnumeralType() || t->isIncompleteType()) {
         return false;
     }
@@ -741,7 +753,7 @@ public:
     */
     Insertions AttackArgInsertion(const Expr *arg, std::set<const Bug*> &injectable_bugs, std::string filename, uint32_t line) {
         //        errs() << "in ComposeAtpDuaUse\n";
-        Insertions inss;        
+        Insertions inss;
         // NB: only insert one dua use if single bug.
         // if > 1 bug we live dangerously and may have multiple attack points
         if (bugs.size() == 1 && (returnCode & INSERTED_DUA_USE)) return inss;
@@ -770,8 +782,10 @@ public:
             arg_ins.after_part = attack_inss.after_part;
         }
         else if (LavaAction == LavaQueries) {
-            // call attack point hypercall and return 0
+            if (!FN_ARG_ATP)
+                return inss;
             std::stringstream corruption;
+            // call attack point hypercall and return 0
             corruption << " + ({vm_lava_attack_point2(" << LavaMatchHandler::GetStringID(filename) << ", ";
             corruption << line << ", " << 0 << "); 0;;})";
             arg_ins.after_part = corruption.str();
@@ -794,6 +808,7 @@ public:
         toAttack->dump();
         llvm::errs() << "Arg has type ";
         toAttack->getType().dump();
+        llvm::errs() << "\n";
         if (!LavaMatchHandler::InMainFile(ce)) return;
         std::pair<std::string,uint32_t> p = LavaMatchHandler::GetFilenameAndLine(ce);
         Insertions inss;
@@ -823,7 +838,7 @@ public:
     /*
 TODO: add description of what type of attacks we are doing here
     */
-    Insertions AttackExpressionInsertion(const Expr *toAttack, const Expr *parent, const Expr *lhs,
+    Insertions AttackExpressionInsertion(const Expr *toAttack, const Expr *parent, bool memWrite,
             std::set<const Bug*> &injectable_bugs, std::string filename, uint32_t line) {
         //        errs() << "in AttackExpressionDuaUse\n";
         Insertions inss;
@@ -848,12 +863,19 @@ TODO: add description of what type of attacks we are doing here
             corruption << attack_inss.after_part;
         }
         else if (LavaAction == LavaQueries) {
-            // call attack point hypercall and return 0
-            corruption << "+ ({vm_lava_attack_point2(" << LavaMatchHandler::GetStringID(filename) << ", ";
-            corruption << line << ", " << 0 << "); 0;})";
-            new_source << corruption;
-            num_atp_queries++;
+            bool memRead = !memWrite;
+            if ((memWrite && MEM_WRITE_ATP) ||
+                (memRead && MEM_READ_ATP)) {
+                // call attack point hypercall and return 0
+                corruption << "+ ({vm_lava_attack_point2(" << LavaMatchHandler::GetStringID(filename) << ", ";
+                corruption << line << ", " << 0 << "); 0;})";
+                new_source << corruption;
+                num_atp_queries++;
+            }
         }
+
+        // we will get here if not attack was inject in knobTriggerAttack
+        // or traditionalAttack
         if (corruption.str() == "")
             return inss;
         // Insert the new addition expression, and if parent expression is
@@ -868,7 +890,7 @@ TODO: add description of what type of attacks we are doing here
         else {
             rewriter.InsertTextBefore(toAttack->getLocStart(), "(");
             rewriter.InsertTextAfterToken(toAttack->getLocEnd(), " " + corruption.str());
-            rewriter.InsertTextAfterToken(lhs->getLocEnd(), ")");
+            rewriter.InsertTextAfterToken(parent->getLocEnd(), ")");
             //rewriter.InsertTextBefore(toAttack->getLocEnd(), ")");
             //SourceRange sr = SourceRange(toAttack->getLocStart(),toAttack->getLocEnd());
             //rewriter.ReplaceText(sr, "(" + new_source.str() + ")");
@@ -879,14 +901,18 @@ TODO: add description of what type of attacks we are doing here
     virtual void run(const MatchFinder::MatchResult &Result) {
         const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("innerExpr");
         const Expr *parent = Result.Nodes.getNodeAs<Expr>("innerExprParent");
-        const Expr *lhs = Result.Nodes.getNodeAs<Expr>("innerExprParent");
+        bool memWrite = false;
+        // memwrite style attack points will have assign_expr bound to a node
+        if (Result.Nodes.getMap().find("assign_expr") != Result.Nodes.getMap().end()){
+             memWrite = true;
+        }
         if (!LavaMatchHandler::InMainFile(toAttack)) return;
         std::pair<std::string,uint32_t> p = LavaMatchHandler::GetFilenameAndLine(toAttack);
         llvm::errs() << "Have a atp pointer query point" << " at " << p.first << " " << p.second <<  "\n";
         //parent->dump();
         Insertions inss;
         std::set<const Bug*> bugs = AtBug("", p.first, p.second, true, SourceLval::NULL_TIMING, false);
-        inss = AttackExpressionInsertion(toAttack,parent, lhs, bugs, p.first, p.second);
+        inss = AttackExpressionInsertion(toAttack, parent, memWrite, bugs, p.first, p.second);
         if (inss.before_part != "" || inss.after_part != "" || inss.top_of_file != "") {
             llvm::errs() << " Injected MemoryReadWriteBug into " << LavaMatchHandler::ExprStr(parent) << "\n";
             SpitInsertions(inss);
@@ -961,10 +987,10 @@ public:
                 hasAncestor(functionDecl()), // makes sure that we are't in a global variable declaration
                 unless(hasAncestor(varDecl(isStaticLocalDeclMatcher())))); //makes sure that we aren't in an initializer of a static local variable which must be constant
 
-        StatementMatcher memWriteMatcher = 
+        StatementMatcher memWriteMatcher =
             expr(allOf(
                     memoryAccessMatcher,
-                    expr(hasParent(binaryOperator(hasOperatorName("=")))).bind("lhs")));
+                    expr(hasParent(binaryOperator(hasOperatorName("=")).bind("assign_expr"))).bind("lhs")));
 
         StatementMatcher memReadMatcher =
             allOf(
@@ -1067,8 +1093,8 @@ public:
             std::ifstream lava_funcs_file(lava_funcs_path);
             std::stringbuf temp;
             lava_funcs_file.get(temp, '\0');
-            printf("Inserting stuff from %s:\n", lava_funcs_path.c_str());
-            printf("%s", temp.str().c_str());
+            llvm::errs() << "Inserting stuff from" << lava_funcs_path << ":\n";
+            llvm::errs() << temp.str();
             new_start_of_file_src << temp.str();
             returnCode |= INSERTED_MAIN_STUFF;
         }
@@ -1126,13 +1152,18 @@ std::set<const Bug*> loadBugs(const std::set<uint32_t> &bug_ids) {
 int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
+    if (LavaAction == LavaQueries) {
+        if (!(FN_ARG_ATP || MEM_READ_ATP || MEM_WRITE_ATP)) {
+            FN_ARG_ATP = true;
+            MEM_WRITE_ATP = true;
+            MEM_READ_ATP = true;
+        }
+    }
 
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
 
-    //    printf ("main instr correction = %s\n", (char *) SMainInstrCorrection.c_str());
+    llvm::errs() << "main instr correction = " << SMainInstrCorrection.c_str() << "\n";
     MainInstrCorrection = atoi(SMainInstrCorrection.c_str());
-
-    printf ("main instr correction = %d\n", MainInstrCorrection);
 
     std::ifstream json_file(ProjectFile);
     Json::Value root;

@@ -12,8 +12,9 @@
 # -q, -m, -t and -i: use these to turn on each of the three steps
 # -z [knobSize]: use this to make inject step use knob trigger bugs
 #                and knobSize changes how origFile is mutated
+# -b [bugType] : use this to specify attact point type: [mem_write|mem_read|fn_arg]
 # 
-# everything -q -m -t -i -A -M -I -z [knobSize] jsonfile
+# everything -q -m -t -i -A -M -I -b [bug_type]-z [knobSize] jsonfile
 #
 # Here is what everything consists of.
 # 
@@ -81,12 +82,12 @@ inject=0
 num_trials=0
 kt=""
 demo=0
-
+ATP_TYPE=""
 # -s means skip everything up to injection
 # -i 15 means inject 15 bugs (default is 1)
 echo 
 progress 0 "Parsing args"
-while getopts  "arqmti:z:kd" flag
+while getopts  "arqmtb:i:z:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -122,6 +123,17 @@ do
       knob=$OPTARG
       kt="--knobTrigger $knob"
       progress 0 "Inject step will be executed with knob trigger: knob = $knob"
+  fi
+  if [ "$flag" = "b" ]; then
+      # -b [bugType] : use this to specify attact point type: [mem_write|mem_read|fn_arg]
+      ATP_TYPE="$OPTARG"
+      if [ "$ATP_TYPE" != "mem_read" -a "$ATP_TYPE" != "fn_arg" -a "$ATP_TYPE" != "mem_write" ]; then
+          echo "ATP Type ($ATP_TYPE) is not valid must specify:"
+          echo "    -b [mem_write|mem_read|fn_arg]"
+          echo "Exiting . . ."
+          exit 1
+      fi
+      progress 0 "Query step will be executed with bug type: atp = $ATP_TYPE"
   fi
   if [ "$flag" = "k" ]; then
       ok=1 
@@ -224,6 +236,7 @@ if [ $reset -eq 1 ]; then
     deldir "$sourcedir"
     deldir "$logs"
     deldir "$bugsdir"
+    deldir "$directory/$name/inputs"
     /bin/mkdir -p $logs
     lf="$logs/dbwipe.log"  
     progress 1  "Wiping db $db & setting up anew -- logging to $lf"
@@ -240,7 +253,7 @@ if [ $add_queries -eq 1 ]; then
     progress 1  "Add queries step -- btrace lavatool and fixups"
     lf="$logs/add_queries.log" 
     progress 1 "Adding queries to source -- logging to $lf"
-    run_remote "$buildhost" "$scripts/add_queries.sh $json >& $lf" 
+    run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $json >& $lf" 
     if [ "$fixupscript" != "null" ]; then
         lf="$logs/fixups.log"
         progress 1 "Fixups -- logging to $lf"

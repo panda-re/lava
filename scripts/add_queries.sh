@@ -40,11 +40,19 @@ progress() {
 set -e # Exit on error
 
 if [ $# -lt 1 ]; then
-  echo "Usage: $0 JSONfile"
+  echo "Usage: $0 [ATP_Type] JSONfile"
+elif [ $# -lt 2 ]; then
+  echo "No ATP_Type specified.  Defaulting to all."
+  ATP_TYPE=""
+  json="$(realpath $1)"
+elif [ $# -eq 2 ]; then
+  ATP_TYPE="-$1"
+  json="$(realpath $2)"
+else
+  echo "Usage: $0 [ATP_Type] JSONfile"
   exit 1
 fi
 
-json="$(realpath $1)"
 lava="$(dirname $(dirname $(realpath $0)))"
 
 directory="$(jq -r .directory $json)"
@@ -113,7 +121,8 @@ for i in $c_files; do
   $lava/src_clang/build/lavaTool -action=query \
     -lava-db="$directory/$name/lavadb" \
     -p="$source/compile_commands.json" \
-    -project-file="$json" "$i"   
+    $ATP_TYPE \
+    -project-file="$json" "$i"
 done
 
 

@@ -213,41 +213,56 @@ void vm_lava_pri_query_point2(lavaint src_filename, unsigned long linenum,
 }
 
 #if defined(__PIC__)
+#define ASM_PART __asm__ volatile ("xchgl %%ebx, %1\n\t"   \
+                                   "cpuid\n\t"             \
+                                   "xchgl %%ebx, %1"       \
+        : "=a" (phs_addr), "=r" (save)                     \
+        : "0" (phs_addr), "1" (save)                       \
+        : "ecx", "edx", "memory");
+#else
+#define ASM_PART __asm__ volatile ("cpuid"                 \
+        : "=a" (phs_addr)                                  \
+        : "0" (phs_addr)                                   \
+        : "ebx", "ecx", "edx", "memory");
+#endif
+
+#if defined(__PIC__)
 #define vm_lava_pri_query_point(fname, lineno, extra_info) \
-    do {                                             \
-    volatile PandaHypercallStruct phs;               \
-    volatile PandaHypercallStruct *phs_addr = &phs;  \
-    phs.magic = 0xabcd;                              \
-    phs.action = LAVA_PRI_QUERY_POINT;               \
-    phs.src_filename = fname;                        \
-    phs.src_linenum = lineno;                        \
-    phs.insertion_point = 0;                         \
-    volatile int save = 0;                           \
-    __asm__ volatile ("xchgl %%ebx, %1\n\t"          \
-                      "cpuid\n\t"                    \
-                      "xchgl %%ebx, %1"              \
-        : "=a" (phs_addr), "=r" (save)               \
-        : "0" (phs_addr), "1" (save)                 \
-        : "ecx", "edx", "memory");                   \
+    do {                                                   \
+    volatile PandaHypercallStruct phs;                     \
+    volatile PandaHypercallStruct *phs_addr = &phs;        \
+    phs.magic = 0xabcd;                                    \
+    phs.action = LAVA_PRI_QUERY_POINT;                     \
+    phs.src_filename = fname;                              \
+    phs.src_linenum = lineno;                              \
+    phs.insertion_point = 0;                               \
+    volatile int save = 0;                                 \
+    __asm__ volatile ("xchgl %%ebx, %1\n\t"                \
+                      "cpuid\n\t"                          \
+                      "xchgl %%ebx, %1"                    \
+        : "=a" (phs_addr), "=r" (save)                     \
+        : "0" (phs_addr), "1" (save)                       \
+        : "ecx", "edx", "memory");                         \
     } while(0)
 
 #else
 #define vm_lava_pri_query_point(fname, lineno, extra_info) \
-    do {                                             \
-    volatile PandaHypercallStruct phs;               \
-    volatile PandaHypercallStruct *phs_addr = &phs;  \
-    phs.magic = 0xabcd;                              \
-    phs.action = LAVA_PRI_QUERY_POINT;               \
-    phs.src_filename = fname;                        \
-    phs.src_linenum = lineno;                        \
-    phs.insertion_point = 0;                         \
-    phs.info = extra_info;                           \
-    __asm__ volatile ("cpuid"                        \
-        : "=a" (phs_addr)                            \
-        : "0" (phs_addr)                             \
-        : "ebx", "ecx", "edx", "memory");            \
+    do {                                                   \
+    volatile PandaHypercallStruct phs;                     \
+    volatile PandaHypercallStruct *phs_addr = &phs;        \
+    phs.magic = 0xabcd;                                    \
+    phs.action = LAVA_PRI_QUERY_POINT;                     \
+    phs.src_filename = fname;                              \
+    phs.src_linenum = lineno;                              \
+    phs.insertion_point = 0;                               \
+    phs.info = extra_info;                                 \
+    __asm__ volatile ("cpuid"                              \
+        : "=a" (phs_addr)                                  \
+        : "0" (phs_addr)                                   \
+        : "ebx", "ecx", "edx", "memory");                  \
     } while(0)
 #endif
+
 /*
 static inline void vm_lava_attack_point2(lavaint src_filename, unsigned long linenum, lavaint info) __attribute__ ((always_inline));
 static inline
