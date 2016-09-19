@@ -102,7 +102,8 @@ class ATP_Breakpoint(gdb.Breakpoint):
         # gdb.execute("record full")
         gdb.execute("when")
         print "!! Hit ATP !!"
-        print "Instruction Count =", SIG_EVENT_COUNT - get_event_count()
+        # print "Instruction Count =", SIG_EVENT_COUNT - get_event_count()
+        print "Events =", SIG_EVENT_COUNT, get_event_count()
         gdb.execute("q")
         sys.exit(0)
         return True
