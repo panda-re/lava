@@ -31,18 +31,17 @@ $(info -----------------------------------------------)
 
 #CXX := g++
 #CXXFLAGS := -fexceptions -fno-rtti -O0 -g -std=c++11 -I/usr/include/jsoncpp
-CXX := g++ 
-CXXFLAGS := -fexceptions -fno-rtti -O0 -g -std=c++11 -lpq -I/usr/include/jsoncpp -ljsoncpp -fno-omit-frame-pointer
+CXX := g++
+CXXFLAGS := -fexceptions -O0 -g -std=c++11 -I/usr/include/jsoncpp -fno-omit-frame-pointer
 
 PLUGIN_CXXFLAGS := -fpic -fexceptions
 
-LLVM_CXXFLAGS := `$(LLVM_BIN_PATH)/llvm-config --cxxflags`
-LLVM_LDFLAGS := `$(LLVM_BIN_PATH)/llvm-config --ldflags --libs --system-libs`
+LLVM_CXXFLAGS := $(filter-out -fno-exceptions,$(shell $(LLVM_BIN_PATH)/llvm-config --cxxflags))
+LLVM_LDFLAGS := $(shell $(LLVM_BIN_PATH)/llvm-config --ldflags --libs --system-libs)
 
-LLVM_LDFLAGS_NOLIBS := `$(LLVM_BIN_PATH)/llvm-config --ldflags`
-PLUGIN_LDFLAGS := -shared
+LLVM_LDFLAGS_NOLIBS := $(shell $(LLVM_BIN_PATH)/llvm-config --ldflags)
 
-OTHER_LIBS := -lpq -ljsoncpp
+OTHER_LIBS := -lpq -ljsoncpp -lodb -lodb-pgsql -L/usr/local/lib
 
 CLANG_INCLUDES := \
 	-I$(LLVM_SRC_PATH)/tools/clang/include \
@@ -78,17 +77,11 @@ all: lavatool attackpoints
 
 lavatool: make_builddir \
 	emit_build_config \
-	$(BUILDDIR)/lavaTool\
+	$(BUILDDIR)/lavaTool
 
 attackpoints: make_builddir \
 	emit_build_config \
-	$(BUILDDIR)/attackpoints\
-
-
-#all: make_builddir \
-#	emit_build_config \
-#	$(BUILDDIR)/lavaTool\
-
+	$(BUILDDIR)/attackpoints
 
 .PHONY: emit_build_config
 emit_build_config: make_builddir
@@ -98,18 +91,27 @@ emit_build_config: make_builddir
 make_builddir:
 	@test -d $(BUILDDIR) || mkdir $(BUILDDIR)
 
+%.o: %.cpp
+	$(CXX) -c -o $@ $< $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $(CXXFLAGS)
+
+%.o: %.cxx
+	$(CXX) -c -o $@ $< $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $(CXXFLAGS)
+
+%.o: %.c
+	$(CC) -c -o $@ $< $(CFLAGS)
+
 includes.h.gch: includes.h
-	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^
+	$(CXX) -c -o $@ $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^
 
-$(BUILDDIR)/lavaTool: lavaTool.cpp lavaDB.cpp includes.h.gch ../sql/lava_sql.cpp 
-	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) lavaTool.cpp lavaDB.cpp ../sql/lava_sql.cpp \
-		$(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS) -o $@
+$(BUILDDIR)/lavaTool: lavaTool.o lavaDB.o ../include/lava-odb.o
+	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
-$(BUILDDIR)/attackpoints: AttackPoints.cpp 
-	$(CXX) $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) AttackPoints.cpp  \
-		$(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS) -o $@
+../include/lava-odb.cxx: ../include/lava.hxx
+	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o ../include \
+	--generate-query --generate-schema --cxx-prologue '#include "../include/pgarray.hxx"' \
+	--sql-name-case lower $<
 
 .PHONY: clean
 clean:
-	rm -rf $(BUILDDIR)/* *~
+	rm -rf $(BUILDDIR)/* *~ *.o ../include/lava-odb.o
 

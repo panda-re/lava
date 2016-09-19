@@ -93,10 +93,8 @@ assert 'dbhost' in project
 # namespace in db for prospective bugs
 assert 'db' in project
 # process name
-assert 'proc_name' in project
-# kernel config and group for osi_linux
-assert 'kconf_file' in project
-assert 'kconf_group' in project
+#assert 'proc_name' in project
+proc_name = os.path.basename(project['command'].split()[0])
 
 assert 'panda_os_string' in project
 
@@ -171,13 +169,13 @@ def run_monitor(cmd):
     monitor.expect_exact("(qemu)")
     print monitor.before.partition("\r\n")[2]
 
-def run_console(cmd, expectation="root@debian-i386:~"):
+def run_console(cmd, expectation="root@debian-i386:~", timeout=-1):
     if debug:
         print "console cmd: [%s]" % cmd
     print Style.BRIGHT + "root@debian-i386:~#" + Style.RESET_ALL,
     console.sendline(cmd)
     try:
-        console.expect_exact(expectation)
+        console.expect_exact(expectation, timeout=timeout)
     except pexpect.TIMEOUT:
         print console.before
         raise
@@ -226,6 +224,7 @@ print "panda record complete %.2f seconds" % record_time
 sys.stdout.flush()
 
 tick()
+'''
 progress("Starting first-pass replay...")
 qemu_args = ['-replay', isoname,
         '-os', panda_os_string,
@@ -246,9 +245,12 @@ qemu_replay.expect(re.compile("saw open of file we want to taint: \[.*\] insn ([
 instr = (int (qemu_replay.match.groups()[0])) - 10000
 assert instr != 0
 qemu_replay.close()
-
 print
 progress("Starting second-pass replay, tainting from {}...".format(instr))
+'''
+
+print
+progress("Starting first and only replay, tainting on file open...")
 
 
 pandalog = "%s/%s/queries-%s.plog" % (project['directory'], project['name'], os.path.basename(isoname))
@@ -259,11 +261,15 @@ print "pandalog = [%s] " % pandalog
 qemu_args = ['-replay', isoname,
         '-pandalog', pandalog,
         '-os', panda_os_string,
-        '-panda', 'coverage:process=%s' % project['proc_name'],
+        '-panda', 'coverage:process=%s' % proc_name,
+        '-panda', 'pri',
+        '-panda', 'pri_dwarf:proc=%s,g_debugpath=%s,h_debugpath=%s' % (proc_name, installdir, installdir),
+        '-panda', 'pri_taint:hypercall',
+        '-panda', 'pri_trace',
         '-panda', 'taint2:no_tp',
         '-panda', 'tainted_branch',
-        '-panda', 'file_taint:pos,first_instr={},filename={}'.format(
-            instr, input_file_guest)]
+        '-panda', 'file_taint:pos,enable_taint_on_open=true,filename={}'.format(
+            input_file_guest)]
 
 dprint ("qemu args: [%s]" % (" ".join(qemu_args)))
 subprocess32.check_call([project['qemu']]+ qemu_args, stdout=sys.stdout, stderr=sys.stderr)
@@ -284,7 +290,7 @@ print
 if createdb_result == 0: # Created new DB; now populate
     progress("Database created. Initializing...")
     psql_args = ['psql', '-h', project['dbhost'], '-U', 'postgres',
-            '-d', project['db'], '-f', join(join(lavadir, 'sql'), 'lava.sql')]
+                 '-d', project['db'], '-f', join(join(lavadir, 'include'), 'lava.sql')]
     dprint ("psql invocation: [%s]" % (" ".join(psql_args)))
     subprocess32.check_call(psql_args, stdout=sys.stdout, stderr=sys.stderr)
 else:
@@ -303,20 +309,10 @@ fib_time = tock()
 print "fib complete %.2f seconds" % fib_time
 sys.stdout.flush()
 
+db = LavaDatabase(project)
 
-def sql_q(query):
-    conn = get_conn(project)
-    cur = conn.cursor()
-    cur.execute(query)
-    return cur.fetchone()
-
-
-num_dua = int(sql_q("select count(*) from dua;")[0])
-num_atp = int(sql_q("select count(*) from atp;")[0])
-num_bug = int(sql_q("select count(*) from bug;")[0])
-
-print "total dua: %d" % num_dua
-print "total atp: %d" % num_atp
-print "total bug: %d" % num_bug
+print "total dua:", db.session.query(Dua).count()
+print "total atp:", db.session.query(AttackPoint).count()
+print "total bug:", db.session.query(Bug).count()
 
 
