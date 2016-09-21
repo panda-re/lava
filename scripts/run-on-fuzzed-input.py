@@ -78,7 +78,7 @@ def run_modified_program(install_dir, input_file, timeout, rr=False, rr_dir=""):
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
     if rr_dir != "" and rr:
         envv["_RR_TRACE_DIR"] = dirname(rr_dir)
-    (rc, outp) = run_cmd(cmd, install_dir, envv, 1000) # shell=True)
+    (rc, outp) = run_cmd(cmd, install_dir, envv, timeout, rr=rr) # shell=True)
     if rr:
         (_, (ps_stdout, ps_stderr)) = run_cmd("{} ps {}".format(RR, rr_dir), install_dir,
                                               envv, timeout)
@@ -87,9 +87,15 @@ def run_modified_program(install_dir, input_file, timeout, rr=False, rr_dir=""):
         try:
             rc = int(ps_stdout.split("\n")[1].split()[2])
         except:
-            print "Couln't get return code from rr ps"
+            rr_env = ("_RR_TRACE_DIR={}".format(envv["_RR_TRACE_DIR"])
+                      if "_RR_TRACE_DIR" in envv
+                      else "")
+            libpath_env = "LD_LIBRARY_PATH={}".format(envv["LD_LIBRARY_PATH"])
+            print "Could not get return code from rr ps"
             print "stdout: {}".format(ps_stdout)
             print "stderr: {}".format(ps_stderr)
+            print "cmd: [{} {} {}]".format(rr_env, libpath_env, cmd)
+            print "{} ps {}".format(RR, rr_dir)
             sys.exit(1)
         return (rc, outp[1:])
     else:
