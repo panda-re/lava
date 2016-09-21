@@ -81,7 +81,7 @@ lavatool: make_builddir \
 
 attackpoints: make_builddir \
 	emit_build_config \
-	$(BUILDDIR)/attackpoints
+	$(BUILDDIR)/attackPoints
 
 .PHONY: emit_build_config
 emit_build_config: make_builddir
@@ -105,6 +105,9 @@ includes.h.gch: includes.h
 
 $(BUILDDIR)/lavaTool: lavaTool.o lavaDB.o ../include/lava-odb.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
+
+$(BUILDDIR)/attackPoints: attackPoints.o
+	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS)
 
 ../include/lava-odb.cxx: ../include/lava.hxx
 	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o ../include \

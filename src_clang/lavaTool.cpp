@@ -738,6 +738,64 @@ Insertions knobTriggerAttack(std::set<const Bug*> &injectable_bugs, bool malloc_
     return inss;
 }
 
+Insertions rangeStyleAttack(std::set<const Bug*> &injectable_bugs, uint32_t num_bits, bool malloc_style_attack){
+    assert(bugs.size() == 1);
+    assert(num_bits >= 0 && num_bits <= 7);
+    uint32_t mask = ((uint32_t) 0xffffffff) >> num_bits;
+    std::string mask_bit = hex_str(mask) + "&";
+    Insertions inss;
+    bool first_attack = false;
+    int j = 0;
+    for (const Bug *bug : injectable_bugs) {
+        errs() << "attacking expr with bug " << j << " -- bugid=" << bug->id << "\n";
+        std::string gn = "(" + mask_bit + "lava_get(" + (std::to_string(bug->id)) + "))";
+        // this is the magic value that will trigger the bug
+        uint32_t magic_value = 0x6c617661;
+        if (bugs.size() > 1) {
+            // with lots of bugs we need magic value to be distinct per bug
+            magic_value -=  bug->id;
+        }
+            //                        }
+            //                        else {
+            //                        }
+        std::string magic_value_s = mask_bit + hex_str(magic_value);
+        // byte-swapped version of magic value
+        uint32_t magic_value_bs = __bswap_32(magic_value);
+        std::string magic_value_bs_s = hex_str(magic_value_bs);
+        // evaluates to 1 iff dua is the magic value
+        std::string magic_test = "(" + magic_value_s + "==" + gn + "||" +
+                                       magic_value_bs_s + "==" + gn + ")";
+        //if (fn_name.find("malloc") != std::string::npos) {
+        if (malloc_style_attack) {
+            // nasty heuristic. for malloc, we want the lava switch 
+            // to undersize the malloc to a few bytes and hope for
+            // an overflow
+            // ... oh dear how do we compose multiple attacks on malloc? 
+            //                assert (first_attack);
+            if (first_attack) {
+                first_attack = false;
+                //                                new_expr << magic_test << " ? 1 : " << orig_expr;
+                inss.before_part = magic_test + " ? 1 : ";
+            }
+            break;
+        }
+        else {
+            // for everything else we add lava_get() to the expr and hope to break things
+            // also we test if its equal to magic value 
+            std::string plus_op = "+";
+            /*
+            if (first_attack) {
+                first_attack = false;
+                new_expr << orig_expr; 
+            }
+            */
+            inss.after_part += " " + plus_op + gn + "*" + magic_test;
+        }
+        j++;
+    }
+    return inss;
+}
+
 
 class ArgAtpPointHandler : public LavaMatchHandler {
 public:
