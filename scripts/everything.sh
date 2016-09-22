@@ -14,7 +14,7 @@
 #                and knobSize changes how origFile is mutated
 # -b [bugType] : use this to specify attact point type: [mem_write|mem_read|fn_arg]
 # 
-# everything -q -m -t -i -A -M -I -b [bug_type]-z [knobSize] jsonfile
+# everything -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
 #
 # Here is what everything consists of.
 # 
@@ -43,10 +43,14 @@
 
 #set -e # Exit on error                                                                                                                                                                                          
 
-
-if [ $# -lt 1 ]; then
-  echo "USAGE: $0 -q -m -t -i -A -M -I -b [bug_type]-z [knobSize] JSONfile"
+USAGE() {
+  echo "USAGE: $0 -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
+  echo "       . . . or just $0 -ak JSONfile"
   exit 1
+}
+
+if [ $# -lt 2 ]; then
+    USAGE
 fi
 
 
@@ -146,6 +150,10 @@ do
 done
 shift $((OPTIND -1))
 
+# if $1 is the empty string then json file was not declared and we exit
+if [ -z "$1" ]; then
+    USAGE
+fi
 json="$(realpath $1)"
 
 # how many bugs will be injected at  time
@@ -249,7 +257,7 @@ fi
 if [ $add_queries -eq 1 ]; then
     tick
     progress 1  "Add queries step -- btrace lavatool and fixups"
-    lf="$logs/add_queries.log" 
+    lf="$logs/add_queries.log"
     progress 1 "Adding queries to source -- logging to $lf"
     run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $json >& $lf" 
     if [ "$fixupscript" != "null" ]; then
