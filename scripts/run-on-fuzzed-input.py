@@ -36,6 +36,9 @@ bugs_install = None
 bugs_build = None
 top_dir = None
 args = None
+# global for stack trace option
+VERBOSE = False
+
 # this is how much code we add to top of any file with main fn in it
 NUM_LINES_MAIN_INSTR = 5
 UPDATE_DB = False
@@ -140,6 +143,17 @@ def rr_get_tick_from_event(rr_trace_dir, event_num):
         print perr
         sys.exit(1)
 
+def get_atp_line(bug, bugs_build):
+    with open(join(bugs_build, bug.atp.file), "r") as f:
+        atp_iter = (line_num for line_num, line in enumerate(f) if
+                    "lava_get({})".format(bug.id) in line)
+        try:
+            line_num = atp_iter.next() + 1
+            return line_num
+        except StopIteration:
+            exit_error("lava_get({}) was not in {}".format(bug.id,
+                                                        bug.atp.file))
+
 def do_function(inp):
     global timeout
     global queries_install
@@ -150,30 +164,31 @@ def do_function(inp):
     global args
     # real_bugs = []
     (knobSize, bug) = inp
-
-    rr_new_trace_dir = join(RR_TRACES_TOP_DIR, "rr-{}-{}".format(bug.id, knobSize))
-    os.mkdir(rr_new_trace_dir)
-    proc_name = os.path.basename(project['command'].split()[0])
-    rr_trace_dir = join(rr_new_trace_dir, "{}-{}".format(proc_name, 0))
+    run_id = ("{}-{}".format(bug.id, knobSize) if KT else "{}".format(bug.id))
+    if args.gdb:
+        rr_new_trace_dir = join(RR_TRACES_TOP_DIR, "rr-{}".format(run_id))
+        os.mkdir(rr_new_trace_dir)
+        proc_name = os.path.basename(project['command'].split()[0])
+        rr_trace_dir = join(rr_new_trace_dir, "{}-{}".format(proc_name, 0))
+    else:
+        rr_trace_dir = ""
 
     orig_input = join(top_dir, 'inputs', basename(bug.dua.inputfile))
     suff = get_suffix(orig_input)
     pref = orig_input[:-len(suff)] if suff != "" else orig_input
-    if KT:
-        fuzzed_input = "{}-fuzzed-{}-{}{}".format(pref, bug.id, knobSize, suff)
-    else:
-        fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
+
+    fuzzed_input = "{}-fuzzed-{}{}".format(pref, run_id, suff)
 
     if not fuzzed_input in mutfile_cache:
         if KT:
-            mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id, True,knobSize)
+            mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id, True, knobSize)
         else:
             mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id)
     # only run on rr if we will eventually run the program in gdb for crash
     # state information
     rr = args.gdb
     (rv, outp) = run_modified_program(bugs_install, fuzzed_input,
-                                        timeout, rr=rr, rr_dir=rr_trace_dir)
+                                      timeout, rr=rr, rr_dir=rr_trace_dir)
     # print "retval = %d" % rv
     # print "output: [{}]".format(" ;".join(outp))
     if args.compareToQueriesBuild:
@@ -197,14 +212,7 @@ def do_function(inp):
     if rv == -11 or rv == -6:
         # real_bugs.append(bug.id)
         if args.gdb:
-            with open(join(bugs_build, bug.atp.file), "r") as f:
-                atp_iter = (i for i, line in enumerate(f) if
-                            "lava_get({})".format(bug.id) in line)
-                try:
-                    line_num = atp_iter.next() + 1
-                except StopIteration:
-                    exit_error("lava_get({}) was not in {}".format(bug.id,
-                                                                   bug.atp.file))
+            line_num = get_atp_line(bug, bugs_build)
             atp_loc = "{}:{}".format(bug.atp.file, line_num)
             atp_prefix = " ATP=\"{}\"".format(atp_loc)
             gdb_py_script = join(lava_dir, "scripts/signal_analysis_gdb.py")
@@ -242,6 +250,30 @@ def do_function(inp):
             # os.system(full_cmd)
         else:
             count = -1
+        if args.stackBackTrace:
+            gdb_py_script = join(lava_dir, "scripts/stacktrace_gdb.py")
+            lib_path = project['library_path'].format(install_dir=bugs_install)
+            envv = {"LD_LIBRARY_PATH": lib_path}
+            cmd = project['command'].format(install_dir=bugs_install,input_file=fuzzed_input)
+            gdb_cmd = "gdb --batch --silent -x {} --args {}".format(gdb_py_script, cmd)
+            full_cmd = "LD_LIBRARY_PATH={} {}".format(lib_path, gdb_cmd)
+            (rc, (out, err)) = run_cmd(gdb_cmd, bugs_install, envv, 10000) # shell=True)
+            if VERBOSE:
+                print out, err
+            else:
+                prediction = "{}:{}".format(basename(bug.atp.file),
+                                         get_atp_line(bug, bugs_build))
+                print "Prediction {}".format(prediction)
+                for line in out.split("\n"):
+                    if line.startswith("#0"):
+                        actual = line.split(" at ")[1]
+                        if actual != prediction:
+                            print "Actual {}".format(actual)
+                            print "DIVERGENCE.  Exiting . . ."
+                            sys.exit(1)
+                        break
+
+
     else:
         count = -1
     return (bug.id, knobSize, rv == -6 or rv == -11, count)
@@ -264,6 +296,9 @@ if __name__ == "__main__":
             help = 'Switch on gdb mode which will run fuzzed input under gdb')
     parser.add_argument('-c', '--compareToQueriesBuild', action="store_true", default=False,
             help = 'Compare the output of Knob Trigger inject build to the output of the inject build')
+    parser.add_argument('-s', '--stackBackTrace', action="store_true", default=False,
+            help = ('Output the stack backtrace IF the input triggered a rv of '
+                    '-6 or -11'))
 
     args = parser.parse_args()
     project = json.load(args.project)
@@ -407,7 +442,7 @@ if __name__ == "__main__":
 
         # start 4 worker processes
 
-        knobSize_iter = knobRange if KT else ["foo"]
+        knobSize_iter = knobRange if KT else [None]
         ################# multiprocessing solution ###################
         # pool = multiprocessing.Pool(processes=4)
         # inp_iter = itertools.product(knobSize_iter, bugs_to_inject)
