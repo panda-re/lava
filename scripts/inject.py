@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import datetime
 import argparse
 import atexit
 import json
@@ -99,10 +100,15 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--skipInject', action="store", default=False,
             help = 'skip the inject phase and just run the bugged binary on fuzzed inputs')
 
+    parser.add_argument('-c', dest='corpus', action='store_true',
+            help = 'package up bugs as a corpus')
+
+
 
     args = parser.parse_args()
     project = json.load(args.project)
-    project_file = args.project.name
+    project_file = args.project.name 
+
 
     # Set up our globals now that we have a project
     db = LavaDatabase(project)
@@ -116,6 +122,11 @@ if __name__ == "__main__":
 
     # This should be {{directory}}/{{name}}/bugs
     bugs_top_dir = join(top_dir, 'bugs')
+
+    # only makes sense to try to package a corpus if we are injecting several bugs.
+    if args.corpus:
+        assert (args.many)
+        corpus_dir = join(top_dir, "corpus")
 
     try:
         os.makedirs(bugs_top_dir)
@@ -151,6 +162,8 @@ if __name__ == "__main__":
     else:
         tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
         source_root = tar_files.splitlines()[0].split(os.path.sep)[0]
+
+    print "source_root = " + source_root + "\n"
 
     queries_build = join(top_dir, source_root)
     bugs_build = join(bugs_parent, source_root)
@@ -238,7 +251,7 @@ if __name__ == "__main__":
         for i in range(num_bugs_to_inject):
             bugs_to_inject.append(db.next_bug_random())
         # NB: We won't be updating db for these bugs
-#        update_db = True
+        update_db = True
     else: assert False
 
     # collect set of src files into which we must inject code
@@ -339,6 +352,7 @@ if __name__ == "__main__":
         suff = get_suffix(orig_input)
         pref = orig_input[:-len(suff)] if suff != "" else orig_input
         real_bugs = []
+        fuzzed_inputs = []
         for bug_index, bug in enumerate(bugs_to_inject):
             fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
             print bug
@@ -361,6 +375,7 @@ if __name__ == "__main__":
                                 output=lines, success=True))
             if rv == -11 or rv == -6:
                 real_bugs.append(bug.id)
+                fuzzed_inputs.append(fuzzed_input)
             print
         f = float(len(real_bugs)) / len(bugs_to_inject)
         print "yield {:.2f} ({} out of {}) real bugs".format(
@@ -373,6 +388,43 @@ if __name__ == "__main__":
         if update_db: db.session.commit()
         # NB: at the end of testing, the fuzzed input is still in place
         # if you want to try it
+        
+        if args.corpus:
+            # package up a corpus
+            subprocess32.check_call(["mkdir", "-p", corpus_dir])
+            print "created corpus dir " + corpus_dir + "\n"
+            # original bugs src dir
+            bd = join(bugs_parent, source_root)
+            # directory for this corpus
+            corpname = "lava-corpus-" + ((datetime.datetime.now()).strftime("%Y-%m-%d-%H-%M-%S"))
+            corpdir = join(corpus_dir,corpname)
+            subprocess32.check_call(["mkdir", corpdir])
+            # subdir with trigger inputs
+            inputsdir = join(corpdir, "inputs")
+            subprocess32.check_call(["mkdir", inputsdir])
+            # subdir with src -- note we can't create it or copytree will fail!
+            srcdir = join(corpdir, "src")        
+            # copy src
+            shutil.copytree(bd, srcdir)
+            # copy over the inputs as well
+            for fuzzed_input in fuzzed_inputs:
+                (dc, fi) = os.path.split(fuzzed_input)
+                shutil.copy(fuzzed_input, inputsdir)
+            # clean up before tar
+            os.chdir(srcdir)
+            subprocess32.check_call(["make", "distclean"])
+            shutil.rmtree(join(srcdir, ".git"))
+            shutil.rmtree(join(srcdir, "lava-install"))
+            os.remove(join(srcdir, "compile_commands.json"))
+            os.remove(join(srcdir, "btrace.log"))
+            tarball = join(srcdir + ".tgz")
+            os.chdir(corpdir)
+            cmd = "/bin/tar czvf " + tarball + " src"
+            subprocess32.check_call(cmd.split())
+            print "created corpus tarball " + tarball + "\n";
+
+            
+
     except Exception as e:
         print "TESTING FAIL"
         if update_db:
