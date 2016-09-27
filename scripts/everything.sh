@@ -210,7 +210,7 @@ scripts="$lava/scripts"
 python="/usr/bin/python"
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
 sourcedir="$directory/$name/$source"
-bugsdir="$directory/$name/bugs/$source"
+bugsdir="$directory/$name/bugs"
 logs="$directory/$name/logs"
 
 /bin/mkdir -p $logs
@@ -221,23 +221,19 @@ if [ $reset -eq 1 ]; then
     dbexists=$(psql -tAc "SELECT 1 from pg_database where datname='$db'" -U postgres)
     echo "dbexists $dbexists"    
     if [ -z $dbexists ]; then
-        progress 0 "No db -- creating $db"
-        run_remote "$dbhost" "createdb -U postgres $db"
+        progress 0 "No db -- creating $db for first time"
     else
-        if [ $dbexists -eq 1 ]; then
-            progress 0 "database $db already exists"
-        else 
-            progess 0 "wtf"
-            exit 1111
-        fi
+        progress 0 "database $db already exists. removing"
+        run_remote "$dbhost" "dropdb -U postgres $db"
     fi
+    run_remote "$dbhost" "createdb -U postgres $db"
     deldir "$sourcedir"
     deldir "$logs"
     deldir "$bugsdir"
     deldir "$directory/$name/inputs"
     /bin/mkdir -p $logs
     lf="$logs/dbwipe.log"  
-    progress 1  "Wiping db $db & setting up anew -- logging to $lf"
+    progress 1  "Setting up lava dab -- logging to $lf"
     run_remote "$dbhost" "/usr/bin/psql -d $db -f $lava/include/lava.sql -U postgres >& $lf"
     run_remote "$dbhost" "echo dbwipe complete >> $lf"
     /bin/mkdir -p $logs
