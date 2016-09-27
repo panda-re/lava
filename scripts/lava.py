@@ -180,12 +180,13 @@ class LavaDatabase(object):
         return self.uninjected()[random.randrange(0, count)]
 
 class Command(object):
-    def __init__(self, cmd, cwd, envv): #  **popen_kwargs):
+    def __init__(self, cmd, cwd, envv, rr=False): #  **popen_kwargs):
         self.cmd = cmd
         self.cwd = cwd
         self.envv = envv
         self.process = None
         self.output = "no output"
+        self.rr = rr
 #        self.popen_kwargs = popen_kwargs
 
     def run(self, timeout):
@@ -203,9 +204,13 @@ class Command(object):
         if thread.is_alive():
             if debugging:
                 print 'Terminating process cmd=[%s] due to timeout' % self.cmd
-            self.process.terminate()
-            os.killpg(self.process.pid, signal.SIGTERM)
-            self.process.kill()
+            if not self.rr:
+                self.process.terminate()
+                os.killpg(self.process.pid, signal.SIGTERM)
+                self.process.kill()
+            else:
+                self.process.send_signal(signal.SIGINT)
+                os.killpg(self.process.pid, signal.SIGINT)
             print "terminated"
             thread.join(1)
             self.returncode = -9
@@ -214,8 +219,8 @@ class Command(object):
 
 
 
-def run_cmd(cmd, cw_dir, envv, timeout):
-    p = Command(cmd, cw_dir, envv)
+def run_cmd(cmd, cw_dir, envv, timeout, rr=False):
+    p = Command(cmd, cw_dir, envv, rr=rr)
     p.run(timeout)
 #    p = subprocess32.Popen(cmd.split(), cwd=cw_dir, env=envv, stdout=subprocess32.PIPE, stderr=subprocess32.PIPE)
     output = p.output
