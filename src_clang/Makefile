@@ -106,6 +106,8 @@ includes.h.gch: includes.h
 $(BUILDDIR)/lavaTool: lavaTool.o lavaDB.o ../include/lava-odb.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
+lavaTool.o: ../include/lava-odb.cxx
+
 $(BUILDDIR)/attackPoints: attackPoints.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS)
 
