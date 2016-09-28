@@ -261,7 +261,6 @@ print "pandalog = [%s] " % pandalog
 qemu_args = ['-replay', isoname,
         '-pandalog', pandalog,
         '-os', panda_os_string,
-        '-panda', 'coverage:process=%s' % proc_name,
         '-panda', 'pri',
         '-panda', 'pri_dwarf:proc=%s,g_debugpath=%s,h_debugpath=%s' % (proc_name, installdir, installdir),
         '-panda', 'pri_taint:hypercall',

@@ -1,9 +1,9 @@
 #!/bin/bash
 #
 # A script to run all of lava.
-# 
+#
 # Lava consists of three main steps.
-# 
+#
 # Step Q: Add taint and attack point queries to source.
 # Step M: Make the source with the queries
 # Step T: Use panda & fbi to populate db with prospective bugs
@@ -13,20 +13,20 @@
 # -z [knobSize]: use this to make inject step use knob trigger bugs
 #                and knobSize changes how origFile is mutated
 # -b [bugType] : use this to specify attact point type: [mem_write|mem_read|fn_arg]
-# 
+#
 # everything -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
 #
 # Here is what everything consists of.
-# 
+#
 # Erases postgres db for this target.
-# Uses lavatool to inject queries. 
-# Compiles resulting program. 
+# Uses lavatool to inject queries.
+# Compiles resulting program.
 # Runs that program under PANDA taint analysis
 # Runs fbi on resulting pandalog and populates postgres db with prospective bugs to inject
 # Tries injecting a single bug.
 #
 # Json file required params
-# 
+#
 # lava:        directory of lava repository
 # db:          database name
 # tarfile:     tar file of source
@@ -37,11 +37,11 @@
 # pandahost:   what remote host to run panda on
 # dbhost:      host with postgres on it
 # testinghost: what host to test injected bugs on
-# fixupscript: script to run after add_query to fix up src before make 
+# fixupscript: script to run after add_query to fix up src before make
 #
- 
 
-#set -e # Exit on error                                                                                                                                                                                          
+
+#set -e # Exit on error
 
 USAGE() {
   echo "USAGE: $0 -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
@@ -56,12 +56,12 @@ fi
 
 
 progress() {
-  echo  
+  echo
   if [ $1 -eq 1 ]; then
       date
   fi
-  echo -e "\e[32m[everything]\e[0m \e[1m$2\e[0m" 
-}   
+  echo -e "\e[32m[everything]\e[0m \e[1m$2\e[0m"
+}
 
 
 # start timer
@@ -73,8 +73,8 @@ function tick() {
 function tock() {
     ns=$(date +%s%N)
     END=$(echo "scale=2; $ns/1000000000" | bc)
-    time_diff=$(echo "scale=2; $END-$START" | bc)   
-}  
+    time_diff=$(echo "scale=2; $END-$START" | bc)
+}
 
 # defaults
 ok=0
@@ -89,7 +89,7 @@ demo=0
 ATP_TYPE=""
 # -s means skip everything up to injection
 # -i 15 means inject 15 bugs (default is 1)
-echo 
+echo
 progress 0 "Parsing args"
 while getopts  "arqmtb:i:z:kd" flag
 do
@@ -140,7 +140,7 @@ do
       progress 0 "Query step will be executed with bug type: atp = $ATP_TYPE"
   fi
   if [ "$flag" = "k" ]; then
-      ok=1 
+      ok=1
       progress 0 "-k: Okaying through deletes"
   fi
   if [ "$flag" = "d" ]; then
@@ -167,7 +167,7 @@ fi
 deldir () {
   deldir=$1
   progress 0 "Deleteing $deldir.  Type ok to go ahead."
-  if [[ $ok -eq 0 ]] 
+  if [[ $ok -eq 0 ]]
   then
       # they have to actually type 'ok'
       read ans
@@ -175,7 +175,7 @@ deldir () {
       ans=ok
   fi
   if [[ "$ans" = "ok" ]]
-  then 
+  then
       echo "...deleting"
       rm -rf $deldir
   else
@@ -183,7 +183,7 @@ deldir () {
       exit
   fi
 }
-  
+
 run_remote() {
   remote_machine=$1
   command=$2
@@ -193,7 +193,7 @@ run_remote() {
   if [ $ret_code != 0 ]; then
     echo "exit code was $ret_code"
     exit $ret_code
-  fi  
+  fi
   #return $ret_code
 }
 
@@ -206,7 +206,7 @@ db="$(jq -r .db $json)"
 tarfile="$(jq -r .tarfile $json)"
 directory="$(jq -r .directory $json)"
 name="$(jq -r .name $json)"
-inputs=`jq -r '.inputs' $json  | jq 'join (" ")' | sed 's/\"//g' ` 
+inputs=`jq -r '.inputs' $json  | jq 'join (" ")' | sed 's/\"//g' `
 buildhost="$(jq -r .buildhost $json)"
 pandahost="$(jq -r .pandahost $json)"
 dbhost="$(jq -r .dbhost $json)"
@@ -224,17 +224,17 @@ logs="$directory/$name/logs"
 /bin/mkdir -p $logs
 
 
-if [ $reset -eq 1 ]; then 
+if [ $reset -eq 1 ]; then
     tick
-    dbexists=$(psql -tAc "SELECT 1 from pg_database where datname='$db'" -U postgres)
-    echo "dbexists $dbexists"    
+    dbexists=$(psql -tAc "SELECT 1 from pg_database where datname='$db'" -U postgres -h "$dbhost")
+    echo "dbexists $dbexists"
     if [ -z $dbexists ]; then
         progress 0 "No db -- creating $db"
-        run_remote "$dbhost" "createdb -U postgres $db"
+        createdb -U postgres -h "$dbhost" $db
     else
         if [ $dbexists -eq 1 ]; then
             progress 0 "database $db already exists"
-        else 
+        else
             progess 0 "wtf"
             exit 1111
         fi
@@ -244,9 +244,9 @@ if [ $reset -eq 1 ]; then
     deldir "$bugsdir"
     deldir "$directory/$name/inputs"
     /bin/mkdir -p $logs
-    lf="$logs/dbwipe.log"  
+    lf="$logs/dbwipe.log"
     progress 1  "Wiping db $db & setting up anew -- logging to $lf"
-    run_remote "$dbhost" "/usr/bin/psql -d $db -f $lava/include/lava.sql -U postgres >& $lf"
+    /usr/bin/psql -h "$dbhost" -d $db -f $lava/include/lava.sql -U postgres >& $lf
     run_remote "$dbhost" "echo dbwipe complete >> $lf"
     /bin/mkdir -p $logs
     tock
@@ -259,7 +259,7 @@ if [ $add_queries -eq 1 ]; then
     progress 1  "Add queries step -- btrace lavatool and fixups"
     lf="$logs/add_queries.log"
     progress 1 "Adding queries to source -- logging to $lf"
-    run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $json >& $lf" 
+    run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $json >& $lf"
     if [ "$fixupscript" != "null" ]; then
         lf="$logs/fixups.log"
         progress 1 "Fixups -- logging to $lf"
@@ -272,15 +272,15 @@ if [ $add_queries -eq 1 ]; then
 fi
 
 
-if [ $make -eq 1 ]; then 
+if [ $make -eq 1 ]; then
     tick
     progress 1 "Make step -- making 32-bit version with queries"
-    lf="$logs/make.log"    
+    lf="$logs/make.log"
     run_remote "$buildhost" "cd $sourcedir && $makecmd  >& $lf"
     run_remote "$buildhost" "cd $sourcedir && make install   &>> $lf"
     tock
-    echo "make complete $time_diff seconds" 
-    run_remote "$buildhost" "echo make complete $time_diff seconds &>> $lf" 
+    echo "make complete $time_diff seconds"
+    run_remote "$buildhost" "echo make complete $time_diff seconds &>> $lf"
 
 fi
 
@@ -292,20 +292,9 @@ do
 done
 
 
-if [ $taint -eq 1 ]; then 
+if [ $taint -eq 1 ]; then
     tick
     progress 1 "Taint step -- running panda and fbi"
-#    run_remote "$pandahost" "rm -rf $directory"
-#    run_remote "$pandahost" "mkdir -p $directory"
-#    for f in `ls $directory | grep -v qcow` 
-#    do
-#	run_remote "$pandahost" "rm -rf $directory/$f"
-#	$(scp  -r $directory/$f $pandahost:$directory)
-#    done
-
-#    echo "scp -r $directory $pandahost:$directory"
-#    upone=$( realpath $directory/.. )
-#    $( scp -r $directory $pandahost:$upone )
     for input in $inputs
     do
         i=`echo $input | sed 's/\//-/g'`
@@ -313,7 +302,7 @@ if [ $taint -eq 1 ]; then
         progress 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
         run_remote "$pandahost" "$python $scripts/bug_mining.py $json $input >& $lf"
         echo -n "Num Bugs in db: "
-        run_remote "$dbhost" "/usr/bin/psql -d $db -U postgres -c 'select count(*) from bug' | head -3 | tail -1"
+        /usr/bin/psql -h "$dbhost" -d $db -U postgres -c 'select count(*) from bug' | head -3 | tail -1
     done
     tock
     echo "bug_mining complete $time_diff seconds"
@@ -321,28 +310,14 @@ fi
 
 
 na=1
-if [ $inject -eq 1 ]; then 
+if [ $inject -eq 1 ]; then
     progress 1 "Injecting step -- $num_trials trials"
     for i in `seq $num_trials`
-    do    
+    do
         lf="$logs/inject-$i.log"
-#        lf=`/bin/mktemp`
         progress 1 "Trial $i -- injecting $many bugs logging to $lf"
         run_remote "$testinghost" "$python $scripts/inject.py -m $many $kt $json >& $lf"
-	grep yield $lf
-#        grep Remaining $lf
-#        grep SELECTED $lf
-#        grep retval "$lf"
-#        bn=`grep SELECTED $lf | awk '{print $3}'`
-#        echo bug number $bn
-#        nlf="$logs/inject-$bn.log"
-#        echo move $lf $nlf
-#        /bin/mv $lf $nlf
-#        a=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and exitcode != -11 and exitcode != -6" | head -3  | tail -1 `
-#        b=`psql -d $db -U postgres -c "select count(*) from run where fuzz=true and (exitcode = -11 or exitcode = -6)" | head -3  | tail -1 `
-#        y=`bc <<< "scale=3; $b/($a+$b)"`
-#        t=`bc <<< "$a + $b"`
-#        echo "Runs: $t  a=$a b=$b  Yield: $y"
+    grep yield $lf
     done
 fi
 
