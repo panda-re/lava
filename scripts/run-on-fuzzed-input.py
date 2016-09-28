@@ -299,6 +299,9 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--stackBackTrace', action="store_true", default=False,
             help = ('Output the stack backtrace IF the input triggered a rv of '
                     '-6 or -11'))
+    parser.add_argument('-nl', '--noLock', action="store_true", default=False,
+            help = ('No need to take lock on bugs dir'))
+
 
     args = parser.parse_args()
     project = json.load(args.project)
@@ -339,25 +342,30 @@ if __name__ == "__main__":
     candidate = 0
     bugs_lock = None
     while bugs_parent == "":
-        candidate_path = join(bugs_top_dir, str(candidate))
-        lock = lockfile.LockFile(candidate_path)
-        try:
-            lock.acquire(timeout=-1)
+        candidate_path = join(bugs_top_dir, str(candidate))        
+        if args.noLock:
+            # just use 0 always
             bugs_parent = join(candidate_path)
-            bugs_lock = lock
-        except lockfile.AlreadyLocked:
-            print "Can\'t acquire lock on bug folder"
-            bugs_parent = ""
-            sys.exit(1)
-            candidate += 1
+        else:
+            lock = lockfile.LockFile(candidate_path)
+            try:
+                lock.acquire(timeout=-1)
+                bugs_parent = join(candidate_path)
+                bugs_lock = lock
+            except lockfile.AlreadyLocked:
+                print "Can\'t acquire lock on bug folder"
+                bugs_parent = ""
+                sys.exit(1)
+                candidate += 1
 
     print "Using dir", bugs_parent
 
-    # release bug lock.  who cares if another process
-    # could theoretically modify this directory
-    bugs_lock.release()
-    # atexit.register(bugs_lock.release)
-    # for sig in [signal.SIGINT, signal.SIGTERM]:
+    if (not args.noLock):
+        # release bug lock.  who cares if another process
+        # could theoretically modify this directory
+        bugs_lock.release()
+        # atexit.register(bugs_lock.release)
+        # for sig in [signal.SIGINT, signal.SIGTERM]:
         # signal.signal(sig, lambda s, f: sys.exit(-1))
 
     try:
