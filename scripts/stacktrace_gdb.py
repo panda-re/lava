@@ -65,6 +65,7 @@ def event_handler (event):
                             to_string=True)
                 print gdb.execute("info proc mappings", to_string=True)
                 gdb.execute("bt")
+                gdb.execute("p/x $eip")
                 gdb.execute("q")
             else:
                 # print "Instruction Count = {}".format(get_instr_count())

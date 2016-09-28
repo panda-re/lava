@@ -259,7 +259,7 @@ def do_function(inp):
             full_cmd = "LD_LIBRARY_PATH={} {}".format(lib_path, gdb_cmd)
             (rc, (out, err)) = run_cmd(gdb_cmd, bugs_install, envv, 10000) # shell=True)
             if VERBOSE:
-                print out, err
+                print out.split("\n")[-2], err
             else:
                 prediction = "{}:{}".format(basename(bug.atp.file),
                                          get_atp_line(bug, bugs_build))
