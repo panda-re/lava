@@ -82,6 +82,38 @@ def run_modified_program(install_dir, input_file, timeout):
 def filter_printable(text):
     return ''.join([ '.' if c not in string.printable else c for c in text])
 
+
+def check_bug(bugid, jsonfile, runonfuzzedinput):
+    p = subprocess32.Popen([runonfuzzedinput, "-nl", "-l", "[%d]" % bugid, "-s", jsonfile], stdout=subprocess32.PIPE, stderr=subprocess32.PIPE)
+    (outp,errs) = p.communicate()
+
+
+#    outp = subprocess32.check_output([runonfuzzedinput, "-l", "[%d]" % bugid, "-s", jsonfile])
+    for line in outp.split("\n"):
+        foo = re.search("DIVERGENCE", line)
+        if foo:
+            # this means there was a crash but its not on the line we expected
+            print "divergence"
+            return False
+        foo = re.search("False", line)
+        if foo:
+            # this means there wasnt even a crash
+            print "doesnt crash"
+            return False
+    return True
+
+
+def get_atp_line(bug, bugs_build):
+    with open(join(bugs_build, bug.atp.file), "r") as f:
+        atp_iter = (line_num for line_num, line in enumerate(f) if
+                    "lava_get({})".format(bug.id) in line)
+        try:
+            line_num = atp_iter.next() + 1
+            return line_num
+        except StopIteration:
+            exit_error("lava_get({}) was not in {}".format(bug.id,
+                                                        bug.atp.file))
+
 if __name__ == "__main__":
     update_db = False
     parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
@@ -103,6 +135,8 @@ if __name__ == "__main__":
     parser.add_argument('-c', dest='corpus', action='store_true',
             help = 'package up bugs as a corpus')
 
+    parser.add_argument('-nl', '--noLock', action="store_true", default=False,
+            help = ('No need to take lock on bugs dir'))
 
 
     args = parser.parse_args()
@@ -139,20 +173,25 @@ if __name__ == "__main__":
     bugs_lock = None
     while bugs_parent == "":
         candidate_path = join(bugs_top_dir, str(candidate))
-        lock = lockfile.LockFile(candidate_path)
-        try:
-            lock.acquire(timeout=-1)
+        if args.noLock:
+            # just use 0 always
             bugs_parent = join(candidate_path)
-            bugs_lock = lock
-        except lockfile.AlreadyLocked:
-            candidate += 1
+        else:
+            lock = lockfile.LockFile(candidate_path)
+            try:
+                lock.acquire(timeout=-1)
+                bugs_parent = join(candidate_path)
+                bugs_lock = lock
+            except lockfile.AlreadyLocked:
+                candidate += 1
 
     print "Using dir", bugs_parent
 
-    atexit.register(bugs_lock.release)
-    for sig in [signal.SIGINT, signal.SIGTERM]:
-        signal.signal(sig, lambda s, f: sys.exit(0))
-
+    if (not args.noLock):
+        atexit.register(bugs_lock.release)
+        for sig in [signal.SIGINT, signal.SIGTERM]:
+            signal.signal(sig, lambda s, f: sys.exit(0))
+            
     try:
         os.mkdir(bugs_parent)
     except: pass
@@ -407,9 +446,33 @@ if __name__ == "__main__":
             # copy src
             shutil.copytree(bd, srcdir)
             # copy over the inputs as well
-            for fuzzed_input in fuzzed_inputs:
-                (dc, fi) = os.path.split(fuzzed_input)
-                shutil.copy(fuzzed_input, inputsdir)
+            predictions = {}
+            for bug_index, bug in enumerate(bugs_to_inject):
+                if not (bug.id in real_bugs): 
+                    continue
+                print "validating bug %d" % bug.id
+                # make sure this bug actually works and
+                # triggers at the attack point as expected
+                if (check_bug(bug.id, sys.argv[-1], project['lava'] + "/scripts/run-on-fuzzed-input.py")): 
+                    print "  -- works and triggers in the right place"
+                    prediction = "{}:{}".format(basename(bug.atp.file),
+                                                get_atp_line(bug, bugs_build))
+                    print prediction
+                    if prediction in predictions:
+                        print "... but we already have a bug for that attack point"
+                    else:
+                        fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
+                        (dc, fi) = os.path.split(fuzzed_input)
+                        shutil.copy(fuzzed_input, inputsdir)                        
+                        predictions[prediction] = fi
+                else:
+                    print "  -- either doesnt work or triggers in wrong place"
+            print "Answer key:"
+            ans = open(join(corpdir, "ans"), "w")
+            for prediction in predictions:
+                print "ANSWER  [%s] [%s]" % (prediction, predictions[prediction])
+                ans.write("%s %s\n" % (prediction, predictions[prediction]))
+            ans.close()
             # clean up before tar
             os.chdir(srcdir)
             subprocess32.check_call(["make", "distclean"])
@@ -422,8 +485,10 @@ if __name__ == "__main__":
             cmd = "/bin/tar czvf " + tarball + " src"
             subprocess32.check_call(cmd.split())
             print "created corpus tarball " + tarball + "\n";
-
-            
+            build = open(join(corpdir, "build"), "w")
+            build.write("%s\n" % project['configure'])
+            build.write("%s\n" % project['make'])
+            build.close()
 
     except Exception as e:
         print "TESTING FAIL"
