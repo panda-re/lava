@@ -96,15 +96,16 @@ struct Dua {
     float max_liveness;
 
     uint64_t instr;     // instr count
+    bool fake_dua;      // true iff this dua is fake (corresponds to untainted bytes)
 
 #pragma db index("DuaUniq") unique members(lval, inputfile, instr)
 
     bool operator<(const Dua &other) const {
          return std::tie(lval, viable_bytes, labels, inputfile, max_tcn,
-                 max_cardinality, max_liveness, instr) <
+                         max_cardinality, max_liveness, instr, fake_dua) <
              std::tie(other.lval, other.viable_bytes, other.labels, other.inputfile,
                      other.max_tcn, other.max_cardinality, other.max_liveness,
-                     other.instr);
+                      other.instr, other.fake_dua);
     }
 
     operator std::string() const {
@@ -124,7 +125,9 @@ struct Dua {
         std::copy(dua.labels.begin(), dua.labels.end(),
                 std::ostream_iterator<uint32_t>(os, ","));
         os << "}," << dua.max_liveness << "," << dua.max_tcn;
-        os << "," << dua.max_cardinality << "," << dua.instr << "]";
+        os << "," << dua.max_cardinality << "," << dua.instr;
+        os << "," << (fake_dua ? "fake" : "real");
+        os << "]";
         return os;
     }
 

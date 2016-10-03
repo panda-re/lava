@@ -51,11 +51,14 @@ extern "C" {
 
 // number of bytes in lava magic value used to trigger bugs
 #define LAVA_MAGIC_VALUE_SIZE 4
+// special flag to indicate untainted byte that we want to use for fake dua                                                                          
+#define FAKE_DUA_BYTE_FLAG 777
 
 std::string inputfile;
 std::string src_pfx;
 // Map LavaDB string indices to actual strings.
 std::map<uint32_t,std::string> ind2str;
+int num_fake_bugs = 0;
 
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
@@ -347,12 +350,32 @@ void taint_query_pri(Panda__LogEntry *ple) {
     }
     dprintf("%u viable bytes in lval  %lu labels\n",
             num_viable_bytes, all_labels.size());
-
+    // three possibilities at this point
+    // 1. this is a dua which we can use to make bugs,
+    // 2. it's a non-dua which has enough untainted parts to make a non-bug
+    // 3. or its neither and we truly discard.
+    bool is_dua = false;
+    bool is_non_dua = false;
     // we need # of unique labels to be at least 4 since
     // that's how big our 'lava' key is
-    //    printf("num_viable = %d\n", num_viable);
     if ((num_viable_bytes == LAVA_MAGIC_VALUE_SIZE)
-            && (all_labels.size() == LAVA_MAGIC_VALUE_SIZE)) {
+        && (all_labels.size() == LAVA_MAGIC_VALUE_SIZE)) is_dua = true;
+    else {
+        if (len - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
+            is_non_dua = true;
+            // must recompute viable_byte 
+            viable_offset.erase();
+            viable_byte.erase();
+            uint32_t count = 0;
+            for (uint32_t i=0; i<tqh->n_taint_query; i++) {
+                Panda__TaintQuery *tq = tqh->taint_query[i];
+                uint32_t offset = tq->offset;
+                // if tainted, its not viable...
+                viable_byte[offset] = (tq->ptr) ? 0 : FAKE_DUA_BYTE_FLAG;
+            }                
+        }
+    }
+    if (is_dua || is_non_dua) {
         // keeping track of dead, uncomplicated data extents we have
         // encountered so far in the trace
         assert (si->has_insertionpoint);
@@ -362,9 +385,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
         for (uint32_t i = 0; i < viable_byte.size(); i++) {
             if (viable_byte[i] != nullptr) viable_offsets.insert(i);
         }
-
         assert(viable_offsets.size() == LAVA_MAGIC_VALUE_SIZE);
-
         std::string relative_filename = strip_pfx(std::string(si->filename), src_pfx);
         assert(relative_filename.size() > 0);
         const SourceLval *d_key = create(SourceLval{0,
@@ -383,7 +404,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
         const Dua *dua = create(Dua{0, d_key, viable_byte,
                 std::vector<uint32_t>(all_labels.begin(), all_labels.end()),
                 inputfile, c_max_tcn, c_max_card, c_max_liveness,
-                ple->instr});
+                    ple->instr}, is_non_dua);
         dprintf("OK DUA.\n");
         if (debug) {
             if (recent_duas.count(d_key)==0) printf("new dua key\n");
