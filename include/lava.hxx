@@ -126,7 +126,7 @@ struct Dua {
                 std::ostream_iterator<uint32_t>(os, ","));
         os << "}," << dua.max_liveness << "," << dua.max_tcn;
         os << "," << dua.max_cardinality << "," << dua.instr;
-        os << "," << (fake_dua ? "fake" : "real");
+        os << "," << (dua.fake_dua ? "fake" : "real");
         os << "]";
         return os;
     }

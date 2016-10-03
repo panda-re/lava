@@ -364,14 +364,13 @@ void taint_query_pri(Panda__LogEntry *ple) {
         if (len - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
             is_non_dua = true;
             // must recompute viable_byte 
-            viable_offset.erase();
-            viable_byte.erase();
+            viable_byte.clear();
             uint32_t count = 0;
             for (uint32_t i=0; i<tqh->n_taint_query; i++) {
                 Panda__TaintQuery *tq = tqh->taint_query[i];
                 uint32_t offset = tq->offset;
                 // if tainted, its not viable...
-                viable_byte[offset] = (tq->ptr) ? 0 : FAKE_DUA_BYTE_FLAG;
+                viable_byte[offset] = (const LabelSet *) ((uint64_t)((tq->ptr) ? 0 : FAKE_DUA_BYTE_FLAG));
             }                
         }
     }
@@ -404,7 +403,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
         const Dua *dua = create(Dua{0, d_key, viable_byte,
                 std::vector<uint32_t>(all_labels.begin(), all_labels.end()),
                 inputfile, c_max_tcn, c_max_card, c_max_liveness,
-                    ple->instr}, is_non_dua);
+                    ple->instr, is_non_dua});
         dprintf("OK DUA.\n");
         if (debug) {
             if (recent_duas.count(d_key)==0) printf("new dua key\n");
