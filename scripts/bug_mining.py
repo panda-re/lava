@@ -96,6 +96,10 @@ assert 'db' in project
 #assert 'proc_name' in project
 proc_name = os.path.basename(project['command'].split()[0])
 
+chaff = False
+if 'chaff' in project:
+    chaff = True
+
 assert 'panda_os_string' in project
 
 panda_os_string = project['panda_os_string']
@@ -256,14 +260,16 @@ progress("Starting first and only replay, tainting on file open...")
 pandalog = "%s/%s/queries-%s.plog" % (project['directory'], project['name'], os.path.basename(isoname))
 print "pandalog = [%s] " % pandalog
 
-
+pri_taint_args = "hypercall"
+if chaff:
+    pri_taint_args += ",log_untainted"
 
 qemu_args = ['-replay', isoname,
         '-pandalog', pandalog,
         '-os', panda_os_string,
         '-panda', 'pri',
         '-panda', 'pri_dwarf:proc=%s,g_debugpath=%s,h_debugpath=%s' % (proc_name, installdir, installdir),
-        '-panda', 'pri_taint:hypercall,log_untainted',
+        '-panda', 'pri_taint:' + pri_taint_args,
         '-panda', 'pri_trace',
         '-panda', 'taint2:no_tp',
         '-panda', 'tainted_branch',
