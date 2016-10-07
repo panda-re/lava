@@ -304,7 +304,8 @@ void taint_query_pri(Panda__LogEntry *ple) {
     // otherwise it is a ptr to a taint set.
 
     // Make vector of length max_offset and fill w/ zeroes.
-    std::vector<const LabelSet*> viable_byte(max_offset + 1, nullptr);
+//    std::vector<const LabelSet*> viable_byte(max_offset + 1, nullptr);
+    std::vector<const LabelSet*> viable_byte(len, nullptr);
 
     if (ddebug) printf("max_offset = %d\n", max_offset);
     if (ddebug) printf("considering taint queries on %lu bytes\n", tqh->n_taint_query);
@@ -344,10 +345,14 @@ void taint_query_pri(Panda__LogEntry *ple) {
             // add this byte to the list of ok bytes
             viable_byte[offset] = ls;
             num_viable_bytes++;
+            if (num_viable_bytes == LAVA_MAGIC_VALUE_SIZE) {
+                break;
+            }
         }
         // we can stop examining query when we have enough viable bytes
         if (num_viable_bytes >= LAVA_MAGIC_VALUE_SIZE) break;
     }
+
     dprintf("%u viable bytes in lval  %lu labels\n",
             num_viable_bytes, all_labels.size());
     // three possibilities at this point
@@ -359,19 +364,29 @@ void taint_query_pri(Panda__LogEntry *ple) {
     // we need # of unique labels to be at least 4 since
     // that's how big our 'lava' key is
     if ((num_viable_bytes == LAVA_MAGIC_VALUE_SIZE)
-        && (all_labels.size() == LAVA_MAGIC_VALUE_SIZE)) is_dua = true;
+        && (all_labels.size() == LAVA_MAGIC_VALUE_SIZE)) {
+        is_dua = true;
+    }
     else {
         if (len - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
-            is_non_dua = true;
+            printf ("not enough taint -- what about non-taint?\n");
+            printf ("max_offset=%d\n", max_offset);
             // must recompute viable_byte 
-            viable_byte.clear();
+            for (uint32_t i=0; i<len; i++) viable_byte[i] = nullptr;
             uint32_t count = 0;
             for (uint32_t i=0; i<tqh->n_taint_query; i++) {
                 Panda__TaintQuery *tq = tqh->taint_query[i];
                 uint32_t offset = tq->offset;
-                // if tainted, its not viable...
-                viable_byte[offset] = (const LabelSet *) ((uint64_t)((tq->ptr) ? 0 : FAKE_DUA_BYTE_FLAG));
-            }                
+                // if tainted, its not viable non-bug-wise
+                if (!tq->ptr) {
+                    viable_byte[offset] = (const LabelSet *) ((uint64_t)FAKE_DUA_BYTE_FLAG);
+                    count ++;
+                    if (count == LAVA_MAGIC_VALUE_SIZE) {
+                        is_non_dua = true;
+                        break;
+                    }
+                }
+            }    
         }
     }
     if (is_dua || is_non_dua) {
@@ -384,7 +399,6 @@ void taint_query_pri(Panda__LogEntry *ple) {
         for (uint32_t i = 0; i < viable_byte.size(); i++) {
             if (viable_byte[i] != nullptr) viable_offsets.insert(i);
         }
-        assert(viable_offsets.size() == LAVA_MAGIC_VALUE_SIZE);
         std::string relative_filename = strip_pfx(std::string(si->filename), src_pfx);
         assert(relative_filename.size() > 0);
         const SourceLval *d_key = create(SourceLval{0,
