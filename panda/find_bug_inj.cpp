@@ -71,6 +71,10 @@ uint32_t max_card = 0;
 uint32_t max_tcn = 0;
 uint32_t max_lval = 0;
 
+uint32_t num_potential_bugs = 0;
+uint32_t num_potential_nonbugs = 0;
+
+
 // These map pointer values in the PANDA taint run to the sets they refer to.
 typedef uint64_t Ptr;
 std::map<Ptr, const LabelSet*> ptr_to_labelset;
@@ -369,26 +373,32 @@ void taint_query_pri(Panda__LogEntry *ple) {
     }
     else {
         if (len - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
-            printf ("not enough taint -- what about non-taint?\n");
-            printf ("max_offset=%d\n", max_offset);
+//            printf ("not enough taint -- what about non-taint?\n");
+//            printf ("tqh->n_taint_query=%d\n", (int) tqh->n_taint_query);
+//            printf ("len=%d num_tainted=%d\n",len, num_tainted);
+//            printf ("max_offset=%d\n", max_offset);
             // must recompute viable_byte 
-            for (uint32_t i=0; i<len; i++) viable_byte[i] = nullptr;
-            uint32_t count = 0;
+            for (uint32_t i=0; i<len; i++) 
+                viable_byte[i] = create(LabelSet{0, FAKE_DUA_BYTE_FLAG, "/hi/patrick",
+                            std::vector<uint32_t>()});
+            uint32_t count = len;
             for (uint32_t i=0; i<tqh->n_taint_query; i++) {
                 Panda__TaintQuery *tq = tqh->taint_query[i];
                 uint32_t offset = tq->offset;
                 // if tainted, its not viable non-bug-wise
-                if (!tq->ptr) {
-                    viable_byte[offset] = (const LabelSet *) ((uint64_t)FAKE_DUA_BYTE_FLAG);
-                    count ++;
-                    if (count == LAVA_MAGIC_VALUE_SIZE) {
-                        is_non_dua = true;
-                        break;
-                    }
+                if (tq->ptr) {
+                    viable_byte[offset] = nullptr;
+                    count --;
                 }
-            }    
+            }
+//            printf ("count = %d\n", count);
+            if (count >= LAVA_MAGIC_VALUE_SIZE) {
+                is_non_dua = true;
+//                printf ("Found non dua!\n");
+            }
         }
     }
+//    printf ("is_dua=%d is_non_dua=%d\n", is_dua, is_non_dua);
     if (is_dua || is_non_dua) {
         // keeping track of dead, uncomplicated data extents we have
         // encountered so far in the trace
@@ -576,6 +586,10 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple) {
             float rdf_frac = ((float)dua->instr) / ((float)instr);
             dprintf("i1=%lu i2=%lu rdf_frac=%f\n", dua->instr, instr, rdf_frac);
             num_bugs_added_to_db++;
+            if (dua->fake_dua) 
+                num_potential_nonbugs++;
+            else
+                num_potential_bugs++;
         }
         else dprintf("not a new bug\n");
         num_bugs_attempted ++;
@@ -720,4 +734,8 @@ int main (int argc, char **argv) {
     std::cout << num_bugs_added_to_db << " added to db " << num_bugs_attempted << " total attempted\n";
     pandalog_close();
     t.commit();
+
+    std::cout << num_potential_bugs << " potential bugs\n";
+    std::cout << num_potential_nonbugs << " potential non bugs\n";
+
 }
