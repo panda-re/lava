@@ -71,15 +71,16 @@ class Dua(Base):
     max_cardinality = Column(Integer)
     max_liveness = Column(Float)
     instr = Column(BigInteger)
+    fake_dua = Column(Boolean)
 
     lval = relationship("SourceLval")
     viable_bytes = relationship("LabelSet", secondary=dua_viable_bytes)
 
     def __str__(self):
-        return 'DUA[{}](lval={}, labels={}, viable={}, input={}, instr={})'.format(
+        return 'DUA[{}](lval={}, labels={}, viable={}, input={}, instr={}, fake_dua={})'.format(
             self.id, self.lval, self.labels, self.viable_bytes, self.inputfile,
-            self.instr
-        )
+            self.instr, self.fake_dua
+            )
 
 class AttackPoint(Base):
     __tablename__ = 'attackpoint'
@@ -169,15 +170,48 @@ class LavaDatabase(object):
         self.session = self.Session()
 
     def uninjected(self):
-        # No builds for a bug (~Bug.builds.any()) means uninjected.
         return self.session.query(Bug).filter(~Bug.builds.any())
 
-    def next_bug(self):
-        return self.uninjected().order_by(Bug.id).first()
+    # returns uninjected (not yet in the build table) possibly fake bugs
+    def uninjected2(self, fake):
+        thejoin = self.session.query(Bug).filter(~Bug.builds.any()).join(Bug.dua).join(Bug.atp).join(Dua.lval)
+        return thejoin.filter(Dua.fake_dua == fake) 
 
-    def next_bug_random(self):
-        count = self.uninjected().count()
-        return self.uninjected()[random.randrange(0, count)]
+    def next_bug_random(self, fake):        
+        count = self.uninjected(fake).count()
+        return self.uninjected(fake)[random.randrange(0, count)]
+
+    # collect num bugs AND num non-bugs
+    # with some hairy constraints
+    # we need no two bugs or non-bugs to have same file/line attack point
+    # that allows us to easily evaluate systems which say there is a bug at file/line.
+    # further, we require that no two bugs or non-bugs have same file/line dua
+    # because otherwise the db might give us all the same dua
+    def competition_bugs_and_non_bugs(self, num):
+        bugs_and_non_bugs = []
+        fileline = set()
+        bugs = self.uninjected2(False)
+        def get_bugs_non_bugs(fake, limit):
+            items = self.uninjected2(fake)
+            for item in items:
+                dfl = (item.dua.lval.file, item.dua.lval.line)
+                afl = (item.atp.file, item.atp.line)            
+                if (dfl in fileline) or (afl in fileline):
+                    continue
+                if fake:
+                    print "non-bug",
+                else:
+                    print "bug    ",
+                print ' dua_fl={} atp_fl={}'.format(str(dfl), str(afl))
+                fileline.add(dfl)
+                fileline.add(afl)
+                bugs_and_non_bugs.append(item)
+                if (len(bugs_and_non_bugs) == limit):
+                    break
+        get_bugs_non_bugs(False, num)
+        get_bugs_non_bugs(True, 2*num)
+        return bugs_and_non_bugs
+            
 
 class Command(object):
     def __init__(self, cmd, cwd, envv, rr=False): #  **popen_kwargs):
