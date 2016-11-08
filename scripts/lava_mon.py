@@ -1,4 +1,5 @@
 import os
+import os.path
 import re
 import glob
 import time
@@ -7,6 +8,7 @@ import sys
 import curses
 import subprocess32 as sb
 import getpass
+from stat import *
 
 from lava import *
 
@@ -52,21 +54,25 @@ plog = (project['pandahost'], "%s/%s/queries-%s-%s.iso.plog" % (project['directo
 def wait_for_file(hostfile):
     (host, filename) = hostfile
     while True:        
-        p = sb.Popen("ssh %s ls %s" % (host, filename), shell=True, stdout=sb.PIPE, stderr=sb.PIPE)        
-        x = p.communicate()
-        if p.returncode == 0:
+        if os.path.isfile(filename):
             return
+#        p = sb.Popen("ssh %s ls %s" % (host, filename), shell=True, stdout=sb.PIPE, stderr=sb.PIPE)        
+#        x = p.communicate()
+#        if p.returncode == 0:
+#            return
         time.sleep(0.1)
 
 # returns contents of this file on this host
 # but assumes it is there.
 def get_file(hostfile):    
     (host, filen) = hostfile
-    p = sb.Popen("ssh %s cat %s" % (host, filen), shell=True, stdout=sb.PIPE, stderr=sb.PIPE)
-    x = p.communicate()
-    if p.returncode == 0:
-        # stdout
-        return x[0]
+    if os.path.isfile(filen):
+        return open(filen).read()
+#    p = sb.Popen("ssh %s cat %s" % (host, filen), shell=True, stdout=sb.PIPE, stderr=sb.PIPE)
+#    x = p.communicate()
+#    if p.returncode == 0:
+#        # stdout
+#        return x[0]
     return None
 
 
@@ -269,14 +275,21 @@ def monitor_lava(stdscr):
 
     # figure out how big plog is
     (host, plogfilename) = plog
-    outp = sb.check_output(['ssh', host, 'stat', plogfilename])
-    for line in outp.split('\n'):
-        foo = re.search("Size:\s*([0-9]+)  ", line)
-        if foo:
-            b = int(foo.groups()[0])
-            if foo:
-                mon.addstr(v3+1, 48, " plog: %d" % b)
-                mon.refresh()
+    assert os.path.isfile(plogfilename)
+    plogsize = os.stat(plogfilename).ST_SIZE
+    mon.addstr(v3+1, 48, " plog: %d" % plogsize)
+    mon.refresh()
+    
+   
+#    outp = sb.check_output(['ssh', host, 'stat', plogfilename])
+#    for line in outp.split('\n'):
+#        foo = re.search("Size:\s*([0-9]+)  ", line)
+#        if foo:
+#            b = int(foo.groups()[0])
+#            if foo:
+#                mon.addstr(v3+1, 48, " plog: %d" % b)
+#                mon.refresh()
+ 
     time.sleep(0.11)
     update_elapsed_time(mon)
     
