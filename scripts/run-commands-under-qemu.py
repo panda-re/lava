@@ -111,7 +111,8 @@ if not os.path.exists(join(installdir, input_file_base)):
 
 #iso_base = "/nas/ulrich/dwarf_tshark_capture2/wireshark-1.2.1"
 #isoname = '{}-{}.iso'.format(iso_base, input_file_base)
-isoname = 'tmp'
+##isoname = 'tmp.iso'
+isoname = os.path.join(panda_log_loc, project['name']) + ".iso"
 progress("Creaing ISO {}...".format(isoname))
 
 with open(os.devnull, "w") as DEVNULL:
@@ -137,6 +138,8 @@ qemu_args = [project['qcow'], '-loadvm', project['snapshot'],
         '-monitor', 'unix:' + monitor_path + ',server,nowait',
         '-serial', 'unix:' + serial_path + ',server,nowait',
         '-vnc', ':' + str(new_vnc_display)]
+
+print ' '.join(qemu_args)
 
 print
 progress("Running qemu with args:")
@@ -191,23 +194,30 @@ def run_console_timeout(cmd, expectation="root@debian-i386:~", timeout=-1):
 
 # Make sure monitor/console are in right state.
 monitor.expect_exact("(qemu)")
-console.sendline("")
+console.sendline("\n\n")
 console.expect_exact("root@debian-i386:~#")
 
 progress("Inserting CD...")
 run_monitor("change ide1-cd0 {}".format(isoname))
-time.sleep(5)
+time.sleep(1)
 run_console("mkdir -p {}".format(installdir))
+time.sleep(1)
 # Make sure cdrom didn't automount
 run_console("umount /dev/cdrom")
+time.sleep(1)
 # Make sure guest path mirrors host path
 run_console("mount /dev/cdrom {}".format(installdir))
+time.sleep(1)
 run_console("ls {}/lib".format(installdir))
-
+run_console("df")
+run_console("df")
+run_console("df")
 
 progress("Beginning recording queries...")
 
 run_monitor("begin_record {}".format(panda_log_name))
+
+time.sleep(1)
 
 progress("Running command inside guest. Panda log to: {}".format(panda_log_name))
 input_file_guest = join(installdir, input_file_base)
@@ -220,14 +230,17 @@ if project['library_path'] != "":
 env_string = " ".join(["{}={}".format(pipes.quote(k), pipes.quote(env[k])) for k in env])
 
 # run command
+progress("Running command " + project['command'] + " on guest")
 run_console(env_string + " " + project['command'].format(
     install_dir=installdir,
     input_file=input_file_guest), expectation)
+
+time.sleep(1)
 
 progress("Ending recording...")
 run_monitor("end_record")
 
 monitor.sendline("quit")
 shutil.rmtree(tempdir)
-os.remove(isoname)
+#os.remove(isoname)
 
