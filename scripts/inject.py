@@ -84,7 +84,9 @@ def filter_printable(text):
 
 
 def check_bug(bugid, jsonfile, runonfuzzedinput):
-    p = subprocess32.Popen([runonfuzzedinput, "-nl", "-l", "[%d]" % bugid, "-s", jsonfile], stdout=subprocess32.PIPE, stderr=subprocess32.PIPE)
+    cmds = [runonfuzzedinput, "-nl", "-l", "[%d]" % bugid, "-s", jsonfile]
+    print " ".join(cmds)
+    p = subprocess32.Popen(cmds, stdout=subprocess32.PIPE, stderr=subprocess32.PIPE)
     (outp,errs) = p.communicate()
 
 
@@ -133,7 +135,7 @@ if __name__ == "__main__":
             help = 'skip the inject phase and just run the bugged binary on fuzzed inputs')
 
     parser.add_argument('-c', dest='corpus', action='store_true',
-            help = 'package up bugs as a corpus')
+            help = 'package up bugs as a competition corpus')
 
     parser.add_argument('-nl', '--noLock', action="store_true", default=False,
             help = ('No need to take lock on bugs dir'))
@@ -286,10 +288,14 @@ if __name__ == "__main__":
         update_db = False
     elif args.many:
         num_bugs_to_inject = int(args.many)
-        print "Injecting %d bugs" % num_bugs_to_inject
-        for i in range(num_bugs_to_inject):
-            bugs_to_inject.append(db.next_bug_random())
-        # NB: We won't be updating db for these bugs
+        if args.corpus:
+            # competition
+            bugs_to_inject = db.competition_bugs_and_non_bugs(num_bugs_to_inject)
+        else:
+            # demo, I guess
+            print "Injecting %d bugs" % num_bugs_to_inject
+            for i in range(num_bugs_to_inject):
+                bugs_to_inject.append(db.next_bug_random())
         update_db = True
     else: assert False
 
@@ -299,7 +305,12 @@ if __name__ == "__main__":
 
     for bug_index, bug in enumerate(bugs_to_inject):
          print "------------\n"
-         print "SELECTED BUG {} : {}".format(bug_index, bug.id)#
+         print "SELECTED "
+         if bug.dua.fake_dua:
+             print "NON-BUG" 
+         else:
+             print "BUG" 
+         print " {} : {}".format(bug_index, bug.id)#
  ####        if not args.randomize: print "   score=%d " % score
          print "   (%d,%d)" % (bug.dua.id, bug.atp.id)
          print "DUA:"
@@ -412,9 +423,18 @@ if __name__ == "__main__":
             if update_db:
                 db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
                                 output=lines, success=True))
-            if rv == -11 or rv == -6:
-                real_bugs.append(bug.id)
-                fuzzed_inputs.append(fuzzed_input)
+            if bug.dua.fake_dua == False:
+                # this really is supposed to be a bug
+                # we should see a seg fault or something
+                if rv == -11 or rv == -6:
+                    real_bugs.append(bug.id)
+                    fuzzed_inputs.append(fuzzed_input)
+            else:
+                # this really is supposed to be a non-bug
+                # we should see a 0
+                assert (rv == 0)
+
+                    
             print
         f = float(len(real_bugs)) / len(bugs_to_inject)
         print "yield {:.2f} ({} out of {}) real bugs".format(
