@@ -10,13 +10,13 @@ CXXFLAGS=$(CFLAGS) -std=c++14
 
 all: fbi
 
-%.o: %.cpp
+%.o: %.cpp Makefile
 	clang++ -c -o $@ $< $(CXXFLAGS)
 
-%.o: %.cxx
+%.o: %.cxx Makefile
 	clang++ -c -o $@ $< $(CXXFLAGS)
 
-%.o: %.c
+%.o: %.c Makefile
 	clang -c -o $@ $< $(CFLAGS)
 
 fbi_sources=find_bug_inj.cpp \

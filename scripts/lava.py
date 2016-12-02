@@ -178,9 +178,9 @@ class LavaDatabase(object):
     # returns uninjected (not yet in the build table) possibly fake bugs
     def uninjected2(self, fake):
         thejoin = self.session.query(Bug).filter(~Bug.builds.any()).join(Bug.dua).join(Bug.atp).join(Dua.lval)
-        return thejoin.filter(Dua.fake_dua == fake) 
+        return thejoin.filter(Dua.fake_dua == fake)
 
-    def next_bug_random(self, fake):        
+    def next_bug_random(self, fake):
         count = self.uninjected(fake).count()
         return self.uninjected(fake)[random.randrange(0, count)]
 
@@ -214,7 +214,6 @@ class LavaDatabase(object):
         get_bugs_non_bugs(False, num)
         get_bugs_non_bugs(True, 2*num)
         return bugs_and_non_bugs
-            
 
 class Command(object):
     def __init__(self, cmd, cwd, envv, rr=False): #  **popen_kwargs):

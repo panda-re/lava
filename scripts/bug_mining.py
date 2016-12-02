@@ -302,7 +302,7 @@ else:
 
 print
 progress("Calling the FBI on queries.plog...")
-fbi_args = [join(lavadir, 'panda', 'fbi'), project_file, sourcedir, pandalog, input_file_base]
+fbi_args = [join(lavadir, 'fbi', 'fbi'), project_file, sourcedir, pandalog, input_file_base]
 dprint ("fbi invocation: [%s]" % (" ".join(fbi_args)))
 subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
 

@@ -19,8 +19,8 @@ extern "C" {
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "plog.h"
-#include "plog_print.h"
+#include "panda/plog.h"
+#include "panda/plog_print.h"
 }
 
 #include <json/json.h>
@@ -84,6 +84,10 @@ std::vector<float> liveness;
 
 // Map from source lval to most recent DUA incarnation.
 std::map<const SourceLval*, const Dua*> recent_duas;
+
+// Map from label to duas that are tainted by that label.
+// So when we update liveness, we know what duas might be invalidated.
+std::map<uint32_t, std::set<const Dua *> > dua_dependencies;
 
 // Templated query to ensure uniqueness across runs.
 // Here's what this means. Some of our datatypes are dependent on input file.
@@ -276,6 +280,52 @@ inline void merge_into(InputIt first, InputIt last, std::vector<T> &dest) {
             first, last, std::back_inserter(dest));
 }
 
+template<class T>
+uint32_t count_nonzero(std::vector<T> arr) {
+    uint32_t count = 0;
+    for (T t : arr) { if (t != 0) count++; }
+    return count;
+}
+
+// get still-viable offsets for a dua.
+inline std::vector<uint32_t> get_viable_offsets(const Dua *dua) {
+    const auto &viable_bytes = dua->viable_bytes;
+    dprintf("checking viability of dua: currently %u viable bytes\n",
+            count_nonzero(viable_bytes));
+
+    // NB: we have already checked dua for viability wrt tcn & card at induction
+    // these do not need re-checking as they are to be captured at dua siphon point
+    std::vector<uint32_t> viable_offsets;
+    viable_offsets.reserve(LAVA_MAGIC_VALUE_SIZE);
+    for (uint32_t i = 0; i < viable_bytes.size(); i++) {
+        const LabelSet *ls = viable_bytes[i];
+        if (ls) {
+            bool byte_viable = true;
+            // determine if liveness for this offset is still low enough
+            for (auto l : ls->labels) {
+                if (liveness[l] > max_liveness) {
+                    dprintf("byte offset is nonviable b/c label %d has liveness %.3f\n",
+                            l, liveness[l]);
+                    byte_viable = false;
+                    break;
+                }
+            }
+            if (byte_viable) viable_offsets.push_back(i);
+            // Once we know we have at least 4 viable bytes, we can stop
+            if (viable_offsets.size() >= LAVA_MAGIC_VALUE_SIZE) break;
+        }
+    }
+    dprintf("%s\ndua has %lu viable bytes\n", std::string(*dua).c_str(),
+            viable_offsets.size());
+    // dua is viable iff it has more than one viable byte
+    return viable_offsets;
+}
+
+// determine if this dua is viable at all.
+inline bool is_dua_viable(const Dua *dua) {
+    return get_viable_offsets(dua).size() == LAVA_MAGIC_VALUE_SIZE;
+}
+
 void taint_query_pri(Panda__LogEntry *ple) {
     assert (ple != NULL);
     Panda__TaintQueryPri *tqh = ple->taint_query_pri;
@@ -326,7 +376,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
     bool is_fake_dua = false;
     uint32_t num_viable_bytes = 0;
     // optimization. don't need to check each byte if we don't have enough.
-    if (num_tainted < LAVA_MAGIC_VALUE_SIZE) {
+    if (num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
         for (uint32_t i = 0; i < tqh->n_taint_query; i++) {
             Panda__TaintQuery *tq = tqh->taint_query[i];
             uint32_t offset = tq->offset;
@@ -359,19 +409,17 @@ void taint_query_pri(Panda__LogEntry *ple) {
                 num_viable_bytes++;
             }
         }
-    }
 
-    dprintf("%u viable bytes in lval  %lu labels\n",
-            num_viable_bytes, all_labels.size());
-    // three possibilities at this point
-    // 1. this is a dua which we can use to make bugs,
-    // 2. it's a non-dua which has enough untainted parts to make a fake bug
-    // 3. or its neither and we truly discard.
-    // we need # of unique labels to be at least 4 since
-    // that's how big our 'lava' key is
-    if ((num_viable_bytes >= LAVA_MAGIC_VALUE_SIZE)
-        && (all_labels.size() >= LAVA_MAGIC_VALUE_SIZE)) {
-        is_dua = true;
+        dprintf("%u viable bytes in lval  %lu labels\n",
+                num_viable_bytes, all_labels.size());
+        // three possibilities at this point
+        // 1. this is a dua which we can use to make bugs,
+        // 2. it's a non-dua which has enough untainted parts to make a fake bug
+        // 3. or its neither and we truly discard.
+        if ((num_viable_bytes >= LAVA_MAGIC_VALUE_SIZE)
+            && (all_labels.size() >= LAVA_MAGIC_VALUE_SIZE)) {
+            is_dua = true;
+        }
     } else if (len - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
         dprintf("not enough taint -- what about non-taint?\n");
         dprintf("tqh->n_taint_query=%d\n", (int) tqh->n_taint_query);
@@ -395,6 +443,8 @@ void taint_query_pri(Panda__LogEntry *ple) {
         is_fake_dua = true;
     }
 
+    // we need # of unique labels to be at least 4 since
+    // that's how big our 'lava' key is
     dprintf("is_dua=%d is_fake_dua=%d\n", is_dua, is_fake_dua);
     if (is_dua || is_fake_dua) {
         // keeping track of uncomplicated data extents we have
@@ -417,6 +467,9 @@ void taint_query_pri(Panda__LogEntry *ple) {
         // tainted lval we just considered was deemed viable
         const Dua *dua = create(Dua{0, lval, viable_byte, all_labels,
                 inputfile, c_max_tcn, c_max_card, ple->instr, is_fake_dua});
+        for (uint32_t l : all_labels) {
+            dua_dependencies[l].insert(dua);
+        }
 
         dprintf("OK DUA.\n");
         if (debug) {
@@ -460,55 +513,38 @@ void update_liveness(Panda__LogEntry *ple) {
             ptr_to_labelset.at(tq->ptr)->labels;
         merge_into(cur_labels.begin(), cur_labels.end(), all_labels);
     }
+
+    // For each label, look at all duas tainted by that label.
+    // If they aren't viable anymore, erase them from recent_duas list and
+    // also erase them from dependency tracker.
     for (uint32_t l : all_labels) {
         liveness.at(l)++;
-    }
-}
 
-template<class T>
-uint32_t count_nonzero(std::vector<T> arr) {
-    uint32_t count = 0;
-    for (T t : arr) { if (t != 0) count++; }
-    return count;
-}
-
-// get still-viable offsets for a dua.
-inline std::vector<uint32_t> get_viable_offsets(const Dua *dua, int max_size) {
-    const auto &viable_bytes = dua->viable_bytes;
-    dprintf("checking viability of dua: currently %u viable bytes\n",
-            count_nonzero(viable_bytes));
-
-    // NB: we have already checked dua for viability wrt tcn & card at induction
-    // these do not need re-checking as they are to be captured at dua siphon point
-    std::vector<uint32_t> viable_offsets;
-    for (uint32_t i = 0; i < viable_bytes.size(); i++) {
-        const LabelSet *ls = viable_bytes[i];
-        if (ls) {
-            bool byte_viable = true;
-            // determine if liveness for this offset is still low enough
-            for (auto l : ls->labels) {
-                if (liveness.at(l) > max_liveness) {
-                    dprintf("byte offset is nonviable b/c label %d has liveness %.3f\n",
-                            l, liveness[l]);
-                    byte_viable = false;
-                    break;
+        dprintf("checking viability of %lu duas\n", recent_duas.size());
+        std::vector<const Dua *> non_viable_duas;
+        auto it_duas = dua_dependencies.find(l);
+        if (it_duas != dua_dependencies.end()) {
+            for (const Dua *dua : it_duas->second) {
+                // is this dua still viable?
+                if (!is_dua_viable(dua)) {
+                    dprintf("%s\n ** DUA not viable\n", std::string(*dua).c_str());
+                    recent_duas.erase(dua->lval);
+                    non_viable_duas.push_back(dua);
                 }
             }
-            if (byte_viable) viable_offsets.push_back(i);
-            // Once we know we have at least 4 viable bytes, we can stop
-            if (viable_offsets.size() >= max_size) break;
+        }
+
+        dprintf("%lu non-viable duas \n", non_viable_duas.size());
+        // discard non-viable duas
+        for (const Dua *dua : non_viable_duas) {
+            for (uint32_t depend_label : dua->all_labels) {
+                auto it_depend = dua_dependencies.find(l);
+                if (it_depend != dua_dependencies.end()) {
+                    dua_dependencies.erase(it_depend);
+                }
+            }
         }
     }
-    dprintf("%s\ndua has %lu viable bytes\n", std::string(*dua).c_str(),
-            viable_offsets.size());
-    // dua is viable iff it has more than one viable byte
-    return viable_offsets;
-}
-
-// determine if this dua is viable at all.
-inline bool is_dua_viable(const Dua *dua) {
-    return get_viable_offsets(dua, LAVA_MAGIC_VALUE_SIZE).size() ==
-        LAVA_MAGIC_VALUE_SIZE;
 }
 
 uint32_t num_bugs = 0;
@@ -548,24 +584,6 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple) {
         return;
     }
 
-    std::vector<const SourceLval*> non_viable_duas;
-    dprintf("checking viability of %lu duas\n", recent_duas.size());
-    // collect list of nonviable duas
-    for (auto kvp : recent_duas) {
-        const SourceLval *lval = kvp.first;
-        const Dua *dua = kvp.second;
-        // is this dua still viable?
-        if (!is_dua_viable(dua)) {
-            dprintf("%s\n ** DUA not viable\n", std::string(*dua).c_str());
-            non_viable_duas.push_back(lval);
-        }
-    }
-    dprintf("%lu non-viable duas \n", non_viable_duas.size());
-    // discard non-viable duas
-    for (auto lval : non_viable_duas) {
-        recent_duas.erase(lval);
-    }
-
     dprintf("%lu viable duas remain\n", recent_duas.size());
     std::string relative_filename = strip_pfx(ind2str[si->filename], src_pfx);
     assert(relative_filename.size() > 0);
@@ -579,13 +597,12 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple) {
         const Dua *dua = kvp.second;
 
         // Need to select bytes now.
-        std::vector<uint32_t> selected_bytes =
-            get_viable_offsets(dua, LAVA_MAGIC_VALUE_SIZE);
+        std::vector<uint32_t> selected_bytes = get_viable_offsets(dua);
 
         const SourceModification *source_mod;
         bool is_new_mod;
         std::tie(source_mod, is_new_mod) =
-            create_full(SourceModification{0, lval, selected_bytes, atp});
+            create_full(SourceModification(lval, selected_bytes, atp));
 
         if (is_new_mod) {
             float c_max_liveness = 0.0;

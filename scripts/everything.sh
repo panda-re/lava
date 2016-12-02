@@ -232,9 +232,9 @@ if [ $reset -eq 1 ]; then
         progress 0 "No db -- creating $db for first time"
     else
         progress 0 "database $db already exists. removing"
-        run_remote "$dbhost" "dropdb -U postgres $db"
+        run_remote "$dbhost" "dropdb -U postgres $db -h localhost"
     fi
-    run_remote "$dbhost" "createdb -U postgres $db"
+    run_remote "$dbhost" "createdb -U postgres $db -h localhost"
     deldir "$sourcedir"
     deldir "$logs"
     deldir "$bugsdir"
@@ -242,7 +242,7 @@ if [ $reset -eq 1 ]; then
     /bin/mkdir -p $logs
     lf="$logs/dbwipe.log"  
     progress 1  "Setting up lava dab -- logging to $lf"
-    run_remote "$dbhost" "/usr/bin/psql -d $db -f $lava/include/lava.sql -U postgres >& $lf"
+    run_remote "$dbhost" "/usr/bin/psql -d $db -f $lava/include/lava.sql -U postgres -h localhost >& $lf"
     run_remote "$dbhost" "echo dbwipe complete >> $lf"
     /bin/mkdir -p $logs
     tock

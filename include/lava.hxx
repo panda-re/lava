@@ -192,20 +192,31 @@ struct Bug {
 #pragma db object
 struct SourceModification {
 #pragma db id auto
-    unsigned long id;
+    unsigned long id = 0;
 
 #pragma db not_null
-    const SourceLval* lval;
+    const SourceLval* lval = nullptr;
     std::vector<uint32_t> selected_bytes;
+    uint64_t selected_bytes_hash = 0;
 
 #pragma db not_null
-    const AttackPoint* atp;
+    const AttackPoint* atp = nullptr;
 
 #pragma db index("SourceModificationUniq") unique members(atp, lval, selected_bytes)
 
+    SourceModification() {}
+    SourceModification(const SourceLval *_lval, std::vector<uint32_t> _bytes,
+            const AttackPoint* _atp)
+        : lval(_lval), selected_bytes(_bytes), atp(_atp) {
+        selected_bytes_hash = 0;
+        for (size_t i = 0; i < selected_bytes.size(); i++) {
+            selected_bytes_hash ^= (selected_bytes[i] + 1) << (16 * (i % 4));
+        }
+    }
+
     bool operator<(const SourceModification &other) const {
-         return std::tie(atp, lval, selected_bytes) <
-             std::tie(other.atp, other.lval, other.selected_bytes);
+         return std::tie(atp, lval, selected_bytes_hash) <
+             std::tie(other.atp, other.lval, other.selected_bytes_hash);
     }
 };
 

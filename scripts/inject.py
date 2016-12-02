@@ -280,7 +280,7 @@ if __name__ == "__main__":
         print "Remaining to inj:", db.uninjected().count()
         print "Using strategy: random"
 #        (bug_id, dua_id, atp_id, inj) = next_bug_random(project, True)
-        bugs_to_inject.append(db.next_bug_random())
+        bugs_to_inject.append(db.next_bug_random(False))
         update_db = True
     elif args.buglist:
         buglist = eval(args.buglist)
@@ -295,7 +295,7 @@ if __name__ == "__main__":
             # demo, I guess
             print "Injecting %d bugs" % num_bugs_to_inject
             for i in range(num_bugs_to_inject):
-                bugs_to_inject.append(db.next_bug_random())
+                bugs_to_inject.append(db.next_bug_random(False))
         update_db = True
     else: assert False
 
