@@ -1,15 +1,15 @@
 /* PANDABEGINCOMMENT
- * 
+ *
  * Authors:
  *  Tim Leek               tleek@ll.mit.edu
  *  Ryan Whelan            rwhelan@ll.mit.edu
  *  Joshua Hodosh          josh.hodosh@ll.mit.edu
  *  Michael Zhivich        mzhivich@ll.mit.edu
  *  Brendan Dolan-Gavitt   brendandg@gatech.edu
- * 
- * This work is licensed under the terms of the GNU GPL, version 2. 
-  * See the COPYING file in the top-level directory. 
- * 
+ *
+ * This work is licensed under the terms of the GNU GPL, version 2.
+  * See the COPYING file in the top-level directory.
+ *
 PANDAENDCOMMENT */
 // This needs to be defined before anything is included in order to get
 // the PRIx64 macro
@@ -57,7 +57,7 @@ void uninit_plugin(void *);
 
 }
 
-using namespace std; 
+using namespace std;
 
 #define MAX_STRLEN 4096
 typedef uint64_t Instr;
@@ -70,7 +70,7 @@ struct DdTrackerInfo {
     target_ulong start_addr;
     uint32_t size;
     DdTrackerType type;
-};    
+};
 
 struct Slot {
     target_ulong pc;
@@ -79,7 +79,7 @@ struct Slot {
     Instr end;
 };
 
-set<Slot> slots;   
+set<Slot> slots;
 
 
 
@@ -91,7 +91,7 @@ struct InstrInterval {
     InstrInterval(const Instr i1, const Instr i2) {
         interval = make_pair(i1, i2);
     }
-    
+
     Instr start () const {
         return interval.first;
     }
@@ -102,7 +102,7 @@ struct InstrInterval {
 
     // returns true iff other is wholly contained in this one
     bool subsumes(InstrInterval &other_interval) {
-        if (other_interval.start() >= start() 
+        if (other_interval.start() >= start()
             && other_interval.end() <= end())
             return true;
         return false;
@@ -134,7 +134,7 @@ struct InstrInterval {
             return end() < other.end();
         return (start() < other.start());
     }
-            
+
 
 };
 
@@ -151,7 +151,7 @@ struct InstrIntervalSet {
                 return;
             }
         }
-        // construct interval that contains new_ii plus every other interval 
+        // construct interval that contains new_ii plus every other interval
         // that intersects with it
         InstrInterval ii_intersection = new_ii;
         vector<InstrInterval> to_remove;
@@ -179,8 +179,8 @@ struct InstrIntervalSet {
             ss << ii.str() << ",";
         }
         return ss.str();
-    }        
-    
+    }
+
 };
 
 
@@ -229,7 +229,7 @@ void spit_ddtracker_info(DdTrackerInfo &info) {
 }
 
 static inline uint32_t
-new_ddtracker_label(CPUState *env, target_ulong pc, target_ulong start_addr, 
+new_ddtracker_label(CPUState *env, target_ulong pc, target_ulong start_addr,
                     uint32_t size, DdTrackerType typ) {
     uint32_t l = next_label;
     next_label ++;
@@ -242,33 +242,33 @@ new_ddtracker_label(CPUState *env, target_ulong pc, target_ulong start_addr,
     info->type = typ;
     printf ("ddtim[%d]\n", l);
     spit_ddtracker_info(*info);
-    ddtim[l] = info;    
+    ddtim[l] = info;
     return l;
 }
 
 static inline uint32_t
-new_alloc_label(CPUState *env, target_ulong pc, target_ulong start_addr, 
+new_alloc_label(CPUState *env, target_ulong pc, target_ulong start_addr,
                 uint32_t size) {
     return new_ddtracker_label(env, pc, start_addr, size, DDS_ALLOC);
 }
 
-static inline uint32_t 
-new_free_label(CPUState *env, target_ulong pc, target_ulong start_addr, 
+static inline uint32_t
+new_free_label(CPUState *env, target_ulong pc, target_ulong start_addr,
                uint32_t size) {
     return new_ddtracker_label(env, pc, start_addr, size, DDS_FREE);
 }
 
-static inline uint32_t 
+static inline uint32_t
 new_read_label(CPUState *env, target_ulong pc, target_ulong start_addr,
                uint32_t size) {
     return new_ddtracker_label(env, pc, start_addr, size, DDS_READ);
 }
 
-static inline uint32_t 
-new_write_label(CPUState *env, target_ulong pc, target_ulong start_addr, 
+static inline uint32_t
+new_write_label(CPUState *env, target_ulong pc, target_ulong start_addr,
                 uint32_t size) {
     return new_ddtracker_label(env, pc, start_addr, size, DDS_WRITE);
-}    
+}
 
 static inline void
 label_it(CPUState *env, target_ulong start_addr, uint32_t size, uint32_t l) {
@@ -282,14 +282,14 @@ label_it(CPUState *env, target_ulong start_addr, uint32_t size, uint32_t l) {
     }
 }
 
-static inline void 
+static inline void
 label_alloc(CPUState *env, target_ulong pc, target_ulong start_addr,
             uint32_t size) {
     uint32_t l = new_alloc_label(env, pc, start_addr, size);
     label_it(env, start_addr, size, l);
     // do we also want to label EAX since we know it contains a ptr?
 }
-    
+
 // map from object start addr to size in bytes
 void add_object(target_ulong start_addr, uint32_t size) {
     objects[start_addr] = size;
@@ -322,7 +322,7 @@ void remove_object(target_ulong start_addr, uint32_t size) {
 
 bool right_asid(CPUState *env) {
     return (panda_current_asid(env) == asid_of_interest);
-}    
+}
 
 uint32_t first_label;
 
@@ -423,8 +423,8 @@ void record_slot(target_ulong pc, target_ulong va, Instr i1, Instr i2) {
     for (Instr i=i1; i<=i2; i++) dds_count[i] ++;
 }
 
-// free or write both kill and provides us with dd slot. if data is written 
-// or freed at instr i then everything between last (write, free, or read) and 
+// free or write both kill and provides us with dd slot. if data is written
+// or freed at instr i then everything between last (write, free, or read) and
 // there is a slot.  Right?
 void kill(CPUState *env, target_ulong pc, target_ulong start_addr, uint32_t size, uint32_t label) {
     printf (" kill addr=0x%x size=%d label=%d\n", start_addr, size, label);
@@ -445,7 +445,7 @@ void kill(CPUState *env, target_ulong pc, target_ulong start_addr, uint32_t size
         // apply the new label
         dynamic_setup_stuff();
         taint2_label_ram(pa, label);
-    }        
+    }
 }
 
 void realloc_enter(CPUState *env, target_ulong pc, uint8_t *args) {
@@ -458,7 +458,7 @@ void realloc_exit(CPUState *env, target_ulong pc, uint8_t *args) {
     dynamic_setup_stuff();
     if (!right_asid(env)) return;
     uint32_t old_ptr = *((uint32_t *) args);
-    uint32_t new_size = *((uint32_t *) (args + 4));    
+    uint32_t new_size = *((uint32_t *) (args + 4));
     if (new_size == 0) return;
     printf ("ddslots realloc old_ptr=0x%x new_size=%d\n", old_ptr, new_size);
     if (old_ptr == 0) {
@@ -483,7 +483,7 @@ void realloc_exit(CPUState *env, target_ulong pc, uint8_t *args) {
     // keep track of objects
     remove_object(old_ptr, old_size);
     add_object(old_ptr, new_size);
-}        
+}
 
 void mmap_enter(CPUState *env, target_ulong pc, uint8_t *args) {
     in_mmap = true;
@@ -496,7 +496,7 @@ void mmap_exit(CPUState *env, target_ulong pc, uint8_t *args) {
     if (!right_asid(env)) return;
     uint32_t length = *((uint32_t *) (args + 4));
     uint32_t ptr = EAX;
-    printf ("ddslots mmap ptr=0x%x length=%d\n", ptr, length);    
+    printf ("ddslots mmap ptr=0x%x length=%d\n", ptr, length);
 }
 
 void munmap_enter(CPUState *env, target_ulong pc, uint8_t *args) {
@@ -556,9 +556,9 @@ void asprintf_exit(CPUState *env, target_ulong pc, uint8_t *args) {
     if (rv == -1) return;
     uint32_t numbytes = EAX;
     // error?
-    if (numbytes == -1) return;    
+    if (numbytes == -1) return;
     printf ("ddslots asprintf p=0x%x numbytes=%d\n", p, numbytes);
-    // NB: add 1 to numbytes because asprintf returns the number of bytes 
+    // NB: add 1 to numbytes because asprintf returns the number of bytes
     // written but doesn't includie the '\0'
     dds_alloc(env, pc, p, numbytes+1);
 }
@@ -609,10 +609,10 @@ void strndup_exit(CPUState *env, target_ulong pc, uint8_t *args) {
 
 // DISABLED!
 // ok you'd think that a read or write of untainted data was a problem
-// if its a read then wasn't there a previous write?  
-// if its a write then wasn't there a previous read?  
+// if its a read then wasn't there a previous write?
+// if its a write then wasn't there a previous read?
 // well, this seems to break down early in program execution when the
-// loader is setting things up, at least.  
+// loader is setting things up, at least.
 void check_all_tainted(CPUState *env, target_ulong start_vaddr, target_ulong size) {
 #if 0
     target_ulong end_vaddr = start_vaddr + size;
@@ -625,7 +625,7 @@ void check_all_tainted(CPUState *env, target_ulong start_vaddr, target_ulong siz
     }
 #endif
 }
-    
+
 bool ignore_rw() {
     return (in_malloc
             || in_calloc
@@ -635,11 +635,11 @@ bool ignore_rw() {
             || in_munmap
             || in_asprintf
             || in_strdup
-            || in_strndup); 
+            || in_strndup);
 }
 
 // before virtual mem write
-int vwrite (CPUState *env, target_ulong pc, target_ulong addr, target_ulong size, 
+int vwrite (CPUState *env, target_ulong pc, target_ulong addr, target_ulong size,
             void *buf) {
     dynamic_setup_stuff();
     if (!right_asid(env)) return 0;
@@ -650,16 +650,16 @@ int vwrite (CPUState *env, target_ulong pc, target_ulong addr, target_ulong size
     printf ("vwrite addr=0x%x size=%d\n", addr, size);
     check_all_tainted(env, addr, size);
     // make sure this is a write to a heap object we know about
-//    if (!resolve_object(addr) 
+//    if (!resolve_object(addr)
 //        || !resolve_object(addr+size-1)) {
 //        cout << "** write overflow detected
     uint32_t label = new_write_label(env, pc, addr, size);
-    kill(env, pc, addr, size, label);    
+    kill(env, pc, addr, size, label);
     return 0;
 }
 
 // before read of virtual memory
-int vread(CPUState *env, target_ulong pc, target_ulong addr, 
+int vread(CPUState *env, target_ulong pc, target_ulong addr,
            target_ulong size) {
     dynamic_setup_stuff();
     if (!right_asid(env)) return 0;
@@ -691,12 +691,12 @@ Instr start_instr;
 
 
 // this is keeping track of instr intervals for this asid
-int before_bb(CPUState *env, TranslationBlock *tb) { 
+int before_bb(CPUState *env, TranslationBlock *tb) {
     target_ulong asid = panda_current_asid(env);
     Instr instr = rr_get_guest_instr_count();
     if (last_asid != asid) {
         cout << "asid changed to 0x" << hex << asid << dec << "\n";
-        // asid changed 
+        // asid changed
         if (asid == asid_of_interest) {
             // start of an interval of interest
             start_instr = instr;
@@ -714,7 +714,7 @@ int before_bb(CPUState *env, TranslationBlock *tb) {
     return 0;
 }
 
-int after_bb(CPUState *env, TranslationBlock *tb) { 
+int after_bb(CPUState *env, TranslationBlock *tb) {
     dynamic_setup_stuff();
     if (EAX == 0x88e8480) {
         Instr instr = rr_get_guest_instr_count();
@@ -723,7 +723,7 @@ int after_bb(CPUState *env, TranslationBlock *tb) {
     return 0;
 }
 
-#endif       
+#endif
 
 bool init_plugin(void *self) {
     printf ("Initializing ddslots (dead-data slots) plugin\n");
@@ -740,7 +740,7 @@ bool init_plugin(void *self) {
     // make taint2 api available and turn on taint
     assert(init_taint2_api());
     // virt mem read and write callbacks
-    panda_cb pcb;    
+    panda_cb pcb;
     pcb.virt_mem_before_write = vwrite;
     panda_register_callback(self, PANDA_CB_VIRT_MEM_BEFORE_WRITE, pcb);
     pcb.virt_mem_before_read = vread;
@@ -765,15 +765,15 @@ bool init_plugin(void *self) {
     libfi_add_callback((char *) "glibc", (char *) "plt!asprintf",  /*enter=*/0, 2, asprintf_exit);
     libfi_add_callback((char *) "glibc", (char *) "plt!vasprintf", /*enter=*/1, 2, asprintf_enter);
     libfi_add_callback((char *) "glibc", (char *) "plt!vasprintf", /*enter=*/0, 2, asprintf_exit);
-    libfi_add_callback((char *) "glibc", (char *) "plt!strdup",    /*enter=*/1, 2, strdup_enter);    
-    libfi_add_callback((char *) "glibc", (char *) "plt!strdup",    /*enter=*/0, 2, strdup_exit);    
+    libfi_add_callback((char *) "glibc", (char *) "plt!strdup",    /*enter=*/1, 2, strdup_enter);
+    libfi_add_callback((char *) "glibc", (char *) "plt!strdup",    /*enter=*/0, 2, strdup_exit);
     libfi_add_callback((char *) "glibc", (char *) "plt!free",      /*enter=*/1, 1, free_enter);
     libfi_add_callback((char *) "glibc", (char *) "plt!free",      /*enter=*/0, 1, free_exit);
     libfi_add_callback((char *) "glibc", (char *) "plt!mmap",      /*enter=*/1, 2, mmap_enter);
     libfi_add_callback((char *) "glibc", (char *) "plt!mmap64",    /*enter=*/0, 2, mmap_exit);
     libfi_add_callback((char *) "glibc", (char *) "plt!munmap",    /*enter=*/1, 1, munmap_enter);
     libfi_add_callback((char *) "glibc", (char *) "plt!munmap",    /*enter=*/0, 1, munmap_exit);
-#endif 
+#endif
     return true;
 }
 
@@ -781,8 +781,8 @@ void uninit_plugin(void *self) {
 
 #if defined(TARGET_I386) && !defined(TARGET_X86_64)
     cout << instr_intervals.str() << "\n";
-    for (Instr i=0; i<max_instr; i++) 
-        if (dds_count[i] != 0) 
+    for (Instr i=0; i<max_instr; i++)
+        if (dds_count[i] != 0)
             printf ("dds_count %" PRId64 " %d\n", i, dds_count[i]);
 #endif
     cout << "ddslots uninit\n";

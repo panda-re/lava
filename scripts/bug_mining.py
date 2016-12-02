@@ -270,7 +270,6 @@ qemu_args = ['-replay', isoname,
         '-panda', 'pri',
         '-panda', 'pri_dwarf:proc=%s,g_debugpath=%s,h_debugpath=%s' % (proc_name, installdir, installdir),
         '-panda', 'pri_taint:' + pri_taint_args,
-        '-panda', 'pri_trace',
         '-panda', 'taint2:no_tp',
         '-panda', 'tainted_branch',
         '-panda', 'file_taint:pos,enable_taint_on_open=true,filename={}'.format(
