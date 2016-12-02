@@ -5,7 +5,10 @@ includes.h.gch
 btrace.log
 .*.swp
 ~*
-panda/fbi
 *.pyc
 /tags
 /include/lava-odb.*xx
+.gdb_history
+fbi/fbi
+fbi/panda.mak
+/include/lava.sql
