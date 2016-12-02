@@ -444,23 +444,17 @@ Insertions ComposeDuaSiphoning(Llval &llval, std::set<const Bug*> &injectable_bu
         uint32_t i = 0;
         std::string gn = LavaGlobal(bug->id);
         siphon << "int " << gn << " = 0;\n";
-        uint32_t o = 0;
         std::string lval_base;
         if (llval.is_ptr)
             lval_base = llval.name;
         else
             lval_base = "&(" + llval.name + ")";
-        for ( const LabelSet *ptr : bug->dua->viable_bytes ) {
-            // 0 means this offset of the lval is either untainted or not-viable for use by lava
-            if (ptr != 0) {
-                siphon << LavaGlobal(bug->id)
-                       << " |= ((unsigned char *) "
-                       << lval_base << ")[" << o << "] << (" << i << "*8);";
-                i ++;
-            }
+        for ( uint32_t offset : bug->selected_bytes ) {
+            siphon << LavaGlobal(bug->id)
+                   << " |= ((unsigned char *) "
+                   << lval_base << ")[" << offset << "] << (" << i << "*8);";
+            i ++;
             // we don't need more than 4 bytes of dua
-            if (i == 4) break;
-            o ++;
         }
         siphon << "lava_set(" << (std::to_string(bug->id)) << "," << gn << ");\n";
     }

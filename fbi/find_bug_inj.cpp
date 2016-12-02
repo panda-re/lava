@@ -19,8 +19,8 @@ extern "C" {
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "pandalog.h"
-#include "pandalog_print.h"
+#include "plog.h"
+#include "plog_print.h"
 }
 
 #include <json/json.h>
@@ -51,7 +51,7 @@ extern "C" {
 
 // number of bytes in lava magic value used to trigger bugs
 #define LAVA_MAGIC_VALUE_SIZE 4
-// special flag to indicate untainted byte that we want to use for fake dua                                                                          
+// special flag to indicate untainted byte that we want to use for fake dua
 #define FAKE_DUA_BYTE_FLAG 777
 
 std::string inputfile;
@@ -107,8 +107,7 @@ struct eq_query<SourceLval> {
         return q::file == no_id.file &&
             q::line == no_id.line &&
             q::ast_name == no_id.ast_name &&
-            q::timing == no_id.timing &&
-            q::selected_bytes == no_id.selected_bytes;
+            q::timing == no_id.timing;
     }
 };
 
@@ -128,7 +127,9 @@ struct eq_query<SourceModification> {
     typedef SourceModification enabled;
     static const auto query(const SourceModification &no_id) {
         typedef odb::query<SourceModification> q;
-        return q::atp == no_id.atp->id && q::lval == no_id.lval->id;
+        return q::atp == no_id.atp->id &&
+            q::lval == no_id.lval->id &&
+            q::selected_bytes == no_id.selected_bytes;
     }
 };
 
@@ -263,40 +264,49 @@ bool is_header_file(std::string filename) {
     return (filename[l-2] == '.' && filename[l-1] == 'h');
 }
 
+template<typename T, class InputIt>
+inline void merge_into(InputIt first, InputIt last, std::vector<T> &dest) {
+    // Make empty array and swap with all_labels.
+    std::vector<T> prev_dest;
+    prev_dest.swap(dest);
+
+    dest.reserve(prev_dest.size() + (last - first));
+    std::set_union(
+            prev_dest.begin(), prev_dest.end(),
+            first, last, std::back_inserter(dest));
+}
+
 void taint_query_pri(Panda__LogEntry *ple) {
     assert (ple != NULL);
     Panda__TaintQueryPri *tqh = ple->taint_query_pri;
     assert (tqh != NULL);
     // size of query in bytes & num tainted bytes found
-    uint32_t len = tqh->len;
+    // bdg: don't try handle lvals that are bigger than our max lval
+    uint32_t len = std::min(tqh->len, max_lval);
     uint32_t num_tainted = tqh->num_tainted;
     // entry 1 is source info
     Panda__SrcInfoPri *si = tqh->src_info;
     // ignore duas in header files
     if (is_header_file(std::string(si->filename))) return;
     assert (si != NULL);
-    bool ddebug = false;
     // entry 2 is callstack -- ignore
     Panda__CallStack *cs = tqh->call_stack;
     assert (cs != NULL);
     uint64_t instr = ple->instr;
     dprintf("TAINT QUERY HYPERCALL len=%d num_tainted=%d\n", len, num_tainted);
 
-    // collects set of labels on all viable bytes that are actually used in dua
-    std::set<uint32_t> all_labels;
+    // collects set (as sorted vec) of labels on all viable bytes
+    std::vector<uint32_t> all_labels;
     // keep track of min / max for each of these measures over all bytes
     // in this queried lval
-    float c_max_liveness = 0.0;
     uint32_t c_max_tcn = 0, c_max_card = 0;
 
     // consider all bytes in this extent that were queried and found to be tainted
     // collect "ok" bytes, which have low enough taint compute num and card,
     // and also aren't tainted by too-live input bytes
-    uint32_t max_offset = 0;
     // go through and deal with new unique taint sets first
     for (uint32_t i=0; i<tqh->n_taint_query; i++) {
         Panda__TaintQuery *tq = tqh->taint_query[i];
-        max_offset = std::max(tq->offset, max_offset);
         if (tq->unique_label_set) {
             // collect new unique taint label sets
             update_unique_taint_sets(tq->unique_label_set);
@@ -307,133 +317,113 @@ void taint_query_pri(Panda__LogEntry *ple) {
     // viable_byte[i] is 0 if it is NOT viable
     // otherwise it is a ptr to a taint set.
 
-    // Make vector of length max_offset and fill w/ zeroes.
-//    std::vector<const LabelSet*> viable_byte(max_offset + 1, nullptr);
+    // Make vector of length len and fill w/ zeroes.
     std::vector<const LabelSet*> viable_byte(len, nullptr);
 
-    if (ddebug) printf("max_offset = %d\n", max_offset);
-    if (ddebug) printf("considering taint queries on %lu bytes\n", tqh->n_taint_query);
-    // bdg: don't try handle lvals that are bigger than our max lval
-    // NB: must do this *after* dealing with unique taint sets
-    if (max_offset + 1 > max_lval) return;
+    dprintf("considering taint queries on %lu bytes\n", tqh->n_taint_query);
 
+    bool is_dua = false;
+    bool is_fake_dua = false;
     uint32_t num_viable_bytes = 0;
-    for (uint32_t i=0; i<tqh->n_taint_query; i++) {
-        Panda__TaintQuery *tq = tqh->taint_query[i];
-        uint32_t offset = tq->offset;
-        if (ddebug) printf("considering offset = %d\n", offset);
-        const LabelSet *ls = ptr_to_labelset.at(tq->ptr);
+    // optimization. don't need to check each byte if we don't have enough.
+    if (num_tainted < LAVA_MAGIC_VALUE_SIZE) {
+        for (uint32_t i = 0; i < tqh->n_taint_query; i++) {
+            Panda__TaintQuery *tq = tqh->taint_query[i];
+            uint32_t offset = tq->offset;
+            dprintf("considering offset = %d\n", offset);
+            const LabelSet *ls = ptr_to_labelset.at(tq->ptr);
 
-        // flag for tracking *why* we discarded a byte
-        // check tcn and cardinality of taint set first
-        uint32_t current_byte_not_ok = 0;
-        current_byte_not_ok |= (tq->tcn > max_tcn) << CBNO_TCN_BIT;
-        current_byte_not_ok |= (ls->labels.size() > max_card) << CBNO_CRD_BIT;
-        if (current_byte_not_ok && debug) {
-            // discard this byte
-            printf("discarding byte -- here's why: %x\n", current_byte_not_ok);
-            if (current_byte_not_ok & (1<<CBNO_TCN_BIT)) printf("** tcn too high\n");
-            if (current_byte_not_ok & (1<<CBNO_CRD_BIT)) printf("** card too high\n");
-        }
-        else {
-            if (ddebug) printf("retaining byte\n");
-            // this byte is ok to retain.
-            // keep track of highest tcn, liveness, and card for any viable byte for this lval
-            c_max_tcn = std::max(tq->tcn, c_max_tcn);
-            c_max_card = std::max((uint32_t) ls->labels.size(), c_max_card);
-            // collect set of labels on all ok bytes for this extent
-            // remember: labels are offsets into input file
-            // NB: only do this for bytes that will actually be used in the dua
-            all_labels.insert(ls->labels.begin(), ls->labels.end());
-            dprintf("keeping byte @ offset %d\n", offset);
-            // add this byte to the list of ok bytes
-            viable_byte[offset] = ls;
-            num_viable_bytes++;
-            if (num_viable_bytes == LAVA_MAGIC_VALUE_SIZE) {
-                break;
+            // flag for tracking *why* we discarded a byte
+            // check tcn and cardinality of taint set first
+            uint32_t current_byte_not_ok = 0;
+            current_byte_not_ok |= (tq->tcn > max_tcn) << CBNO_TCN_BIT;
+            current_byte_not_ok |= (ls->labels.size() > max_card) << CBNO_CRD_BIT;
+            if (current_byte_not_ok && debug) {
+                // discard this byte
+                dprintf("discarding byte -- here's why: %x\n", current_byte_not_ok);
+                if (current_byte_not_ok & (1<<CBNO_TCN_BIT)) printf("** tcn too high\n");
+                if (current_byte_not_ok & (1<<CBNO_CRD_BIT)) printf("** card too high\n");
+            } else {
+                dprintf("retaining byte\n");
+                // this byte is ok to retain.
+                // keep track of highest tcn, liveness, and card for any viable byte for this lval
+                c_max_tcn = std::max(tq->tcn, c_max_tcn);
+                c_max_card = std::max((uint32_t) ls->labels.size(), c_max_card);
+                // collect set of labels on all ok bytes for this extent
+                // remember: labels are offsets into input file
+                // NB: only do this for bytes that will actually be used in the dua
+                merge_into(ls->labels.begin(), ls->labels.end(), all_labels);
+                dprintf("keeping byte @ offset %d\n", offset);
+                // add this byte to the list of ok bytes
+                viable_byte[offset] = ls;
+                num_viable_bytes++;
             }
         }
-        // we can stop examining query when we have enough viable bytes
-        if (num_viable_bytes >= LAVA_MAGIC_VALUE_SIZE) break;
     }
 
     dprintf("%u viable bytes in lval  %lu labels\n",
             num_viable_bytes, all_labels.size());
     // three possibilities at this point
     // 1. this is a dua which we can use to make bugs,
-    // 2. it's a non-dua which has enough untainted parts to make a non-bug
+    // 2. it's a non-dua which has enough untainted parts to make a fake bug
     // 3. or its neither and we truly discard.
-    bool is_dua = false;
-    bool is_non_dua = false;
     // we need # of unique labels to be at least 4 since
     // that's how big our 'lava' key is
-    if ((num_viable_bytes == LAVA_MAGIC_VALUE_SIZE)
-        && (all_labels.size() == LAVA_MAGIC_VALUE_SIZE)) {
+    if ((num_viable_bytes >= LAVA_MAGIC_VALUE_SIZE)
+        && (all_labels.size() >= LAVA_MAGIC_VALUE_SIZE)) {
         is_dua = true;
-    }
-    else {
-        if (len - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
-//            printf ("not enough taint -- what about non-taint?\n");
-//            printf ("tqh->n_taint_query=%d\n", (int) tqh->n_taint_query);
-//            printf ("len=%d num_tainted=%d\n",len, num_tainted);
-//            printf ("max_offset=%d\n", max_offset);
-            // must recompute viable_byte 
-            for (uint32_t i=0; i<len; i++) 
-                viable_byte[i] = create(LabelSet{0, FAKE_DUA_BYTE_FLAG, "/hi/patrick",
-                            std::vector<uint32_t>()});
-            uint32_t count = len;
-            for (uint32_t i=0; i<tqh->n_taint_query; i++) {
-                Panda__TaintQuery *tq = tqh->taint_query[i];
-                uint32_t offset = tq->offset;
-                // if tainted, its not viable non-bug-wise
-                if (tq->ptr) {
-                    viable_byte[offset] = nullptr;
-                    count --;
-                }
-            }
-//            printf ("count = %d\n", count);
-            if (count >= LAVA_MAGIC_VALUE_SIZE) {
-                is_non_dua = true;
-//                printf ("Found non dua!\n");
+    } else if (len - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
+        dprintf("not enough taint -- what about non-taint?\n");
+        dprintf("tqh->n_taint_query=%d\n", (int) tqh->n_taint_query);
+        dprintf("len=%d num_tainted=%d\n",len, num_tainted);
+        viable_byte.assign(viable_byte.size(), nullptr);
+        uint32_t count = 0;
+        for (uint32_t i = 0; i < tqh->n_taint_query; i++) {
+            Panda__TaintQuery *tq = tqh->taint_query[i];
+            uint32_t offset = tq->offset;
+            // if untainted, we can guarantee that we can use the untainted
+            // bytes to produce a bug that definitely won't trigger.
+            // so we create a fake, empty labelset.
+            if (!tq->ptr) {
+                count++;
+                viable_byte[offset] = create(LabelSet{0,
+                        FAKE_DUA_BYTE_FLAG, "/hi/patrick",
+                        std::vector<uint32_t>()});
             }
         }
+        assert(count >= LAVA_MAGIC_VALUE_SIZE);
+        is_fake_dua = true;
     }
-//    printf ("is_dua=%d is_non_dua=%d\n", is_dua, is_non_dua);
-    if (is_dua || is_non_dua) {
-        // keeping track of dead, uncomplicated data extents we have
+
+    dprintf("is_dua=%d is_fake_dua=%d\n", is_dua, is_fake_dua);
+    if (is_dua || is_fake_dua) {
+        // keeping track of uncomplicated data extents we have
         // encountered so far in the trace
-        assert (si->has_insertionpoint);
-        // this is set of lval offsets that will be used to construct the dua
-        // and thus is part of what determines the precise src mods
-        std::set<uint32_t> viable_offsets;
-        for (uint32_t i = 0; i < viable_byte.size(); i++) {
-            if (viable_byte[i] != nullptr) viable_offsets.insert(i);
-        }
+        // NB: we don't know liveness info yet. defer byte selection until later.
+        assert(si->has_insertionpoint);
+
         std::string relative_filename = strip_pfx(std::string(si->filename), src_pfx);
         assert(relative_filename.size() > 0);
-        const SourceLval *d_key = create(SourceLval{0,
-                relative_filename, si->linenum,
-                std::string(si->astnodename), (SourceLval::Timing)si->insertionpoint,
-                std::vector<uint32_t>(viable_offsets.begin(), viable_offsets.end())});
+
+        const SourceLval *lval = create(SourceLval{0,
+                relative_filename, si->linenum, std::string(si->astnodename),
+                (SourceLval::Timing)si->insertionpoint});
+
         if (debug) {
             printf("querying labels [");
             for (uint32_t l : all_labels) printf("%d ", l);
             printf("]\n");
         }
-        for (uint32_t l : all_labels) {
-            c_max_liveness = std::max(c_max_liveness, liveness.at(l));
-        }
         // tainted lval we just considered was deemed viable
-        const Dua *dua = create(Dua{0, d_key, viable_byte,
-                std::vector<uint32_t>(all_labels.begin(), all_labels.end()),
-                inputfile, c_max_tcn, c_max_card, c_max_liveness,
-                    ple->instr, is_non_dua});
+        const Dua *dua = create(Dua{0, lval, viable_byte, all_labels,
+                inputfile, c_max_tcn, c_max_card, ple->instr, is_fake_dua});
+
         dprintf("OK DUA.\n");
         if (debug) {
-            if (recent_duas.count(d_key)==0) printf("new dua key\n");
-            else printf("previously observed dua key\n");
+            if (recent_duas.count(lval)==0) printf("new lval\n");
+            else printf("previously observed lval\n");
         }
-        recent_duas[d_key] = dua;
+        recent_duas[lval] = dua;
     }
     else {
         if (debug) {
@@ -447,7 +437,6 @@ void taint_query_pri(Panda__LogEntry *ple) {
     }
 }
 
-
 // update liveness measure for each of taint labels (file bytes) associated with a byte in lval that was queried
 void update_liveness(Panda__LogEntry *ple) {
     assert (ple != NULL);
@@ -455,6 +444,7 @@ void update_liveness(Panda__LogEntry *ple) {
     assert (tb != NULL);
     dprintf("TAINTED BRANCH\n");
 
+    std::vector<uint32_t> all_labels;
     for (uint32_t i=0; i<tb->n_taint_query; i++) {
         Panda__TaintQuery *tq = tb->taint_query[i];
         assert (tq);
@@ -463,10 +453,15 @@ void update_liveness(Panda__LogEntry *ple) {
             update_unique_taint_sets(tq->unique_label_set);
         }
         if (debug) { spit_tq(tq); printf("\n"); }
-        // this tells us what byte in the extent this query was for
-        for ( uint32_t l : ptr_to_labelset.at(tq->ptr)->labels ) {
-            liveness.at(l)++;
-        }
+
+        // This should be O(mn) for m sets, n elems each.
+        // though we should have n >> m in our worst case.
+        const std::vector<uint32_t> &cur_labels =
+            ptr_to_labelset.at(tq->ptr)->labels;
+        merge_into(cur_labels.begin(), cur_labels.end(), all_labels);
+    }
+    for (uint32_t l : all_labels) {
+        liveness.at(l)++;
     }
 }
 
@@ -477,35 +472,43 @@ uint32_t count_nonzero(std::vector<T> arr) {
     return count;
 }
 
-// determine if this dua is viable
-bool is_dua_viable(const Dua &dua) {
+// get still-viable offsets for a dua.
+inline std::vector<uint32_t> get_viable_offsets(const Dua *dua, int max_size) {
+    const auto &viable_bytes = dua->viable_bytes;
     dprintf("checking viability of dua: currently %u viable bytes\n",
-            count_nonzero(dua.viable_bytes));
+            count_nonzero(viable_bytes));
 
     // NB: we have already checked dua for viability wrt tcn & card at induction
     // these do not need re-checking as they are to be captured at dua siphon point
-    // Note, also, that we are only checking the 4 or so bytes that were previously deemed viable
-    uint32_t num_viable = 0;
-    bool viable = false;
-    for (const LabelSet *ls : dua.viable_bytes) {
+    std::vector<uint32_t> viable_offsets;
+    for (uint32_t i = 0; i < viable_bytes.size(); i++) {
+        const LabelSet *ls = viable_bytes[i];
         if (ls) {
-            num_viable++;
+            bool byte_viable = true;
             // determine if liveness for this offset is still low enough
             for (auto l : ls->labels) {
                 if (liveness.at(l) > max_liveness) {
                     dprintf("byte offset is nonviable b/c label %d has liveness %.3f\n",
                             l, liveness[l]);
-                    num_viable--;
+                    byte_viable = false;
                     break;
                 }
             }
-            if ((viable = (num_viable == LAVA_MAGIC_VALUE_SIZE)))
-                break;
+            if (byte_viable) viable_offsets.push_back(i);
+            // Once we know we have at least 4 viable bytes, we can stop
+            if (viable_offsets.size() >= max_size) break;
         }
     }
-    dprintf("%s\ndua has %u viable bytes\n", std::string(dua).c_str(), num_viable);
+    dprintf("%s\ndua has %lu viable bytes\n", std::string(*dua).c_str(),
+            viable_offsets.size());
     // dua is viable iff it has more than one viable byte
-    return viable;
+    return viable_offsets;
+}
+
+// determine if this dua is viable at all.
+inline bool is_dua_viable(const Dua *dua) {
+    return get_viable_offsets(dua, LAVA_MAGIC_VALUE_SIZE).size() ==
+        LAVA_MAGIC_VALUE_SIZE;
 }
 
 uint32_t num_bugs = 0;
@@ -549,49 +552,61 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple) {
     dprintf("checking viability of %lu duas\n", recent_duas.size());
     // collect list of nonviable duas
     for (auto kvp : recent_duas) {
-        const SourceLval *dk = kvp.first;
+        const SourceLval *lval = kvp.first;
         const Dua *dua = kvp.second;
         // is this dua still viable?
-        if (!is_dua_viable(*dua)) {
+        if (!is_dua_viable(dua)) {
             dprintf("%s\n ** DUA not viable\n", std::string(*dua).c_str());
-            non_viable_duas.push_back(dk);
+            non_viable_duas.push_back(lval);
         }
     }
     dprintf("%lu non-viable duas \n", non_viable_duas.size());
     // discard non-viable duas
-    for (auto dk : non_viable_duas) {
-        recent_duas.erase(dk);
+    for (auto lval : non_viable_duas) {
+        recent_duas.erase(lval);
     }
 
     dprintf("%lu viable duas remain\n", recent_duas.size());
     std::string relative_filename = strip_pfx(ind2str[si->filename], src_pfx);
     assert(relative_filename.size() > 0);
-    const AttackPoint *atp = create(AttackPoint{0, 
+    const AttackPoint *atp = create(AttackPoint{0,
             relative_filename, si->linenum, AttackPoint::ATP_FUNCTION_CALL});
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
 
     // every still viable dua is a bug inj opportunity at this point in trace
     for ( auto kvp : recent_duas ) {
-        const SourceLval *dk = kvp.first;
+        const SourceLval *lval = kvp.first;
         const Dua *dua = kvp.second;
 
-        const SourceModification *source_mod;
-        bool new_mod;
-        std::tie(source_mod, new_mod) =
-            create_full(SourceModification{0, dk, atp});
+        // Need to select bytes now.
+        std::vector<uint32_t> selected_bytes =
+            get_viable_offsets(dua, LAVA_MAGIC_VALUE_SIZE);
 
-        if (new_mod) {
+        const SourceModification *source_mod;
+        bool is_new_mod;
+        std::tie(source_mod, is_new_mod) =
+            create_full(SourceModification{0, lval, selected_bytes, atp});
+
+        if (is_new_mod) {
+            float c_max_liveness = 0.0;
+            for (uint32_t offset : selected_bytes) {
+                for (uint32_t l : dua->viable_bytes[offset]->labels) {
+                    c_max_liveness = std::max(c_max_liveness, liveness.at(l));
+                }
+            }
+
             // this is a new bug (new src mods for both dua and atp)
-            const Bug *bug = create(Bug{0, dua, atp});
-            float rdf_frac = ((float)dua->instr) / ((float)instr);
-            dprintf("i1=%lu i2=%lu rdf_frac=%f\n", dua->instr, instr, rdf_frac);
+            const Bug *bug = create(Bug{0,
+                    dua, selected_bytes, atp, c_max_liveness});
+            // float rdf_frac = ((float)dua->instr) / ((float)instr);
+            // dprintf("i1=%lu i2=%lu rdf_frac=%f\n", dua->instr, instr, rdf_frac);
             num_bugs_added_to_db++;
-            if (dua->fake_dua) 
+            if (dua->fake_dua) {
                 num_potential_nonbugs++;
-            else
+            } else {
                 num_potential_bugs++;
-        }
-        else dprintf("not a new bug\n");
+            }
+        } else dprintf("not a new bug\n");
         num_bugs_attempted ++;
     }
 }

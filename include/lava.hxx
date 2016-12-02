@@ -13,8 +13,10 @@
 #include <algorithm>
 #include <iterator>
 
+// This garbage makes the ORM map integer-vectors to INTEGER[] type in Postgres
+// instead of making separate tables. Important for uniqueness constraints to
+// work!
 #pragma db map type("INTEGER\\[\\]") as("TEXT") to("(?)::INTEGER[]") from("(?)::TEXT")
-
 typedef std::vector<uint32_t> uint32_t_vec;
 #pragma db value(uint32_t_vec) type("INTEGER[]")
 
@@ -33,21 +35,17 @@ struct SourceLval { // was DuaKey
         BEFORE_OCCURRENCE = 1,
         AFTER_OCCURRENCE = 2
     } timing;
-    std::vector<uint32_t> selected_bytes;
 
-#pragma db index("SourceLvalUniq") unique members(file, line, ast_name, timing, selected_bytes)
+#pragma db index("SourceLvalUniq") unique members(file, line, ast_name, timing)
 
     bool operator<(const SourceLval &other) const {
-        return std::tie(file, line, ast_name, timing, selected_bytes) <
-            std::tie(other.file, other.line, other.ast_name, other.timing,
-                    other.selected_bytes);
+        return std::tie(file, line, ast_name, timing) <
+            std::tie(other.file, other.line, other.ast_name, other.timing);
     }
 
     friend std::ostream &operator<<(std::ostream &os, const SourceLval &m) {
-        os << "Lval [" << m.file << ":" << m.line << "]{";
-        std::copy(m.selected_bytes.begin(), m.selected_bytes.end(),
-                std::ostream_iterator<uint32_t>(os, ","));
-        os << "} \"" << m.ast_name << "\"";
+        os << "Lval [" << m.file << ":" << m.line << " ";
+        os << "\"" << m.ast_name << "\"]";
         return os;
     }
 };
@@ -81,8 +79,7 @@ struct Dua {
     // Labelset for each byte, in sequence, at shoveling point.
     std::vector<const LabelSet*> viable_bytes;
 
-    // Labels that taint dua (union of all labelsets)
-    std::vector<uint32_t> labels;
+    std::vector<uint32_t> all_labels;
 
     // Inputfile used when this dua appeared.
     std::string inputfile;
@@ -91,9 +88,6 @@ struct Dua {
     uint32_t max_tcn;
     // max cardinality of taint set for lval
     uint32_t max_cardinality;
-    // max liveness of any label in any taint set for dua
-    // NB: this is at observation time.
-    float max_liveness;
 
     uint64_t instr;     // instr count
     bool fake_dua;      // true iff this dua is fake (corresponds to untainted bytes)
@@ -101,11 +95,11 @@ struct Dua {
 #pragma db index("DuaUniq") unique members(lval, inputfile, instr)
 
     bool operator<(const Dua &other) const {
-         return std::tie(lval, viable_bytes, labels, inputfile, max_tcn,
-                         max_cardinality, max_liveness, instr, fake_dua) <
-             std::tie(other.lval, other.viable_bytes, other.labels, other.inputfile,
-                     other.max_tcn, other.max_cardinality, other.max_liveness,
-                      other.instr, other.fake_dua);
+         return std::tie(lval, viable_bytes, inputfile, max_tcn,
+                         max_cardinality, instr, fake_dua) <
+             std::tie(other.lval, other.viable_bytes, other.inputfile,
+                     other.max_tcn, other.max_cardinality, other.instr,
+                     other.fake_dua);
     }
 
     operator std::string() const {
@@ -122,9 +116,9 @@ struct Dua {
             *it++ = ls ? ls->ptr : 0;
         }
         os << "}]," << "{";
-        std::copy(dua.labels.begin(), dua.labels.end(),
+        std::copy(dua.all_labels.begin(), dua.all_labels.end(),
                 std::ostream_iterator<uint32_t>(os, ","));
-        os << "}," << dua.max_liveness << "," << dua.max_tcn;
+        os << "}," << dua.max_tcn;
         os << "," << dua.max_cardinality << "," << dua.instr;
         os << "," << (dua.fake_dua ? "fake" : "real");
         os << "]";
@@ -143,7 +137,8 @@ struct AttackPoint {
 
     enum Type {
         ATP_FUNCTION_CALL,
-        ATP_POINTER_RW
+        ATP_POINTER_RW,
+        ATP_LARGE_BUFFER_AVAIL
     } type;
 
 #pragma db index("AttackPointUniq") unique members(file, line, type)
@@ -178,13 +173,18 @@ struct Bug {
 
 #pragma db not_null
     const Dua* dua;
+    std::vector<uint32_t> selected_bytes;
+
 #pragma db not_null
     const AttackPoint* atp;
 
-#pragma db index("BugUniq") unique members(atp, dua)
+    float max_liveness;
+
+#pragma db index("BugUniq") unique members(atp, dua, selected_bytes)
 
     bool operator<(const Bug &other) const {
-         return std::tie(atp, dua) < std::tie(other.atp, other.dua);
+         return std::tie(atp, dua, selected_bytes) <
+             std::tie(other.atp, other.dua, other.selected_bytes);
     }
 };
 
@@ -196,13 +196,16 @@ struct SourceModification {
 
 #pragma db not_null
     const SourceLval* lval;
+    std::vector<uint32_t> selected_bytes;
+
 #pragma db not_null
     const AttackPoint* atp;
 
-#pragma db index("SourceModificationUniq") unique members(atp, lval)
+#pragma db index("SourceModificationUniq") unique members(atp, lval, selected_bytes)
 
     bool operator<(const SourceModification &other) const {
-         return std::tie(atp, lval) < std::tie(other.atp, other.lval);
+         return std::tie(atp, lval, selected_bytes) <
+             std::tie(other.atp, other.lval, other.selected_bytes);
     }
 };
 

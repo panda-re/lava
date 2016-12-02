@@ -54,6 +54,17 @@ class SourceLval(Base):
             timing_strs[self.timing]
         )
 
+class LabelSet(Base):
+    __tablename__ = 'labelset'
+
+    id = Column(BigInteger, primary_key=True)
+    ptr = Column(BigInteger)
+    inputfile = Column(Text)
+    labels = Column(postgresql.ARRAY(Integer))
+
+    def __repr__(self):
+        return str(self.labels)
+
 dua_viable_bytes = \
     Table('dua_viable_bytes', Base.metadata,
           Column('object_id', BigInteger, ForeignKey('dua.id')),
@@ -65,11 +76,10 @@ class Dua(Base):
 
     id = Column(BigInteger, primary_key=True)
     lval_id = Column('lval', BigInteger, ForeignKey('sourcelval.id'))
-    labels = Column(postgresql.ARRAY(Integer))
+    all_labels = Column(postgresql.ARRAY(Integer))
     inputfile = Column(Text)
     max_tcn = Column(Integer)
     max_cardinality = Column(Integer)
-    max_liveness = Column(Float)
     instr = Column(BigInteger)
     fake_dua = Column(Boolean)
 
@@ -93,6 +103,7 @@ class AttackPoint(Base):
     # enum Type {
     ATP_FUNCTION_CALL = 0
     ATP_POINTER_RW = 1
+    ATP_LARGE_BUFFER_AVAIL = 2
     # } type;
 
     def __str__(self):
@@ -117,22 +128,14 @@ class Bug(Base):
     dua = relationship("Dua")
     atp = relationship("AttackPoint")
 
+    selected_bytes = Column(postgresql.ARRAY(Integer))
+    max_liveness = Column(Float)
+
     builds = relationship("Build", secondary=build_bugs,
                           back_populates="bugs")
 
     def __str__(self):
         return 'Bug[{}](dua={}, atp={})'.format(self.id, self.dua, self.atp)
-
-class LabelSet(Base):
-    __tablename__ = 'labelset'
-
-    id = Column(BigInteger, primary_key=True)
-    ptr = Column(BigInteger)
-    inputfile = Column(Text)
-    labels = Column(postgresql.ARRAY(Integer))
-
-    def __repr__(self):
-        return str(self.labels)
 
 class Build(Base):
     __tablename__ = 'build'

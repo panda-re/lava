@@ -318,7 +318,7 @@ if __name__ == "__main__":
          print "ATP:"
          print "   ", bug.atp
          print "max_tcn={}  max_liveness={}".format(
-             bug.dua.max_liveness, bug.dua.max_tcn)
+             bug.max_liveness, bug.dua.max_tcn)
          src_files.add(bug.dua.lval.file)
          src_files.add(bug.atp.file)
 
