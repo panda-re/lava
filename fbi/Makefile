@@ -30,7 +30,8 @@ fbi_sources=find_bug_inj.cpp \
 
 ../include/lava-odb.cxx: ../include/lava.hxx
 	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o ../include \
-	--generate-query --generate-schema --cxx-prologue '#include "../include/pgarray.hxx"' \
+	--generate-query --generate-schema --generate-prepared \
+	--cxx-prologue '#include "../include/pgarray.hxx"' \
 	--sql-name-case lower $<
 
 fbi_objs=$(addsuffix .o,$(basename $(fbi_sources)))

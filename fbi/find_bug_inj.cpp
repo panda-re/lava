@@ -66,7 +66,7 @@ std::unique_ptr<odb::pgsql::database> db;
 bool debug = false;
 #define dprintf(...) if (debug) { printf(__VA_ARGS__); }
 
-float max_liveness = 0.0;
+uint64_t max_liveness = 0.0;
 uint32_t max_card = 0;
 uint32_t max_tcn = 0;
 uint32_t max_lval = 0;
@@ -80,7 +80,7 @@ typedef uint64_t Ptr;
 std::map<Ptr, const LabelSet*> ptr_to_labelset;
 
 // Liveness for each input byte.
-std::vector<float> liveness;
+std::vector<uint64_t> liveness;
 
 // Map from source lval to most recent DUA incarnation.
 std::map<const SourceLval*, const Dua*> recent_duas;
@@ -105,35 +105,53 @@ struct eq_query {
 
 template<>
 struct eq_query<SourceLval> {
-    typedef SourceLval enabled;
-    static const auto query(const SourceLval &no_id) {
+    static constexpr const char *name = "sourcelval-value";
+
+    typedef SourceLval Params;
+
+    static const auto query(const Params *param) {
         typedef odb::query<SourceLval> q;
-        return q::file == no_id.file &&
-            q::line == no_id.line &&
-            q::ast_name == no_id.ast_name &&
-            q::timing == no_id.timing;
+        return q::file == q::_ref(param->file) &&
+            q::line == q::_ref(param->line) &&
+            q::ast_name == q::_ref(param->ast_name) &&
+            q::timing == q::_ref(param->timing);
     }
 };
 
 template<>
 struct eq_query<AttackPoint> {
-    typedef AttackPoint enabled;
-    static const auto query(const AttackPoint &no_id) {
+    static constexpr const char *name = "attackpoint-value";
+
+    typedef AttackPoint Params;
+
+    static const auto query(const Params *param) {
         typedef odb::query<AttackPoint> q;
-        return q::file == no_id.file &&
-            q::line == no_id.line &&
-            q::type == no_id.type;
+        return q::file == q::_ref(param->file) &&
+            q::line == q::_ref(param->line) &&
+            q::type == q::_ref(param->type);
     }
 };
 
 template<>
 struct eq_query<SourceModification> {
     typedef SourceModification enabled;
-    static const auto query(const SourceModification &no_id) {
+    static constexpr const char *name = "sourcemod-value";
+
+    struct Params {
+        unsigned long atp;
+        unsigned long lval;
+        uint64_t selected_bytes_hash;
+
+        Params(const SourceModification &no_id) :
+            atp(no_id.atp->id), lval(no_id.lval->id),
+            selected_bytes_hash(no_id.selected_bytes_hash) {}
+    };
+
+    static const auto query(const Params *param) {
         typedef odb::query<SourceModification> q;
-        return q::atp == no_id.atp->id &&
-            q::lval == no_id.lval->id &&
-            q::selected_bytes == no_id.selected_bytes;
+        return q::atp == q::_ref(param->atp) &&
+            q::lval == q::_ref(param->lval) &&
+            q::selected_bytes_hash == q::_ref(param->selected_bytes_hash);
     }
 };
 
@@ -154,16 +172,24 @@ static std::pair<const U*, bool> create_full(T no_id) {
     return std::make_pair(&*it, new_object);
 }
 
-template<class T, typename U = typename eq_query<T>::enabled>
+template<class T, typename P = typename eq_query<T>::Params>
 static std::pair<const T*, bool> create_full(T no_id) {
-    static std::set<U> existing;
+    static std::set<T> existing;
 
     bool new_object = false;
     auto it = existing.find(no_id);
     if (it == existing.end()) {
-        const U *result;
+        P *param;
+        odb::prepared_query<T> pq(db->lookup_query<T>(eq_query<T>::name, param));
+        if (!pq) {
+            std::unique_ptr<P> param_ptr(new P(no_id));
+            param = param_ptr.get();
+            pq = db->prepare_query<T>(eq_query<T>::name, eq_query<T>::query(param));
+            db->cache_query(pq, std::move(param_ptr));
+        }
+        *param = P(no_id);
 
-        result = db->query_one<U>(eq_query<U>::query(no_id));
+        const T *result = pq.execute_one();
         if (!result) {
             db->persist(no_id);
             result = &no_id;
@@ -457,7 +483,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
 
         const SourceLval *lval = create(SourceLval{0,
                 relative_filename, si->linenum, std::string(si->astnodename),
-                (SourceLval::Timing)si->insertionpoint});
+                (SourceLval::Timing)si->insertionpoint, len});
 
         if (debug) {
             printf("querying labels [");
@@ -605,7 +631,7 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple) {
             create_full(SourceModification(lval, selected_bytes, atp));
 
         if (is_new_mod) {
-            float c_max_liveness = 0.0;
+            uint64_t c_max_liveness = 0.0;
             for (uint32_t offset : selected_bytes) {
                 for (uint32_t l : dua->viable_bytes[offset]->labels) {
                     c_max_liveness = std::max(c_max_liveness, liveness.at(l));
@@ -716,7 +742,7 @@ int main (int argc, char **argv) {
     ind2str = LoadIDB(lavadb);
     printf("%d strings in lavadb\n", (int) ind2str.size());
 
-    max_liveness = root["max_liveness"].asFloat();
+    max_liveness = root["max_liveness"].asUInt();
     printf("maximum liveness score of %.2f\n", max_liveness);
     max_card = root["max_cardinality"].asUInt();
     printf("max card of taint set returned by query = %d\n", max_card);
@@ -730,6 +756,7 @@ int main (int argc, char **argv) {
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
                 root["db"].asString(), root["dbhost"].asString()));
     transaction t(db->begin());
+    //t.tracer(odb::stderr_full_tracer);
     /*
      re-read pandalog, this time focusing on taint queries.  Look for
      dead available data, attack points, and thus bug injection oppotunities

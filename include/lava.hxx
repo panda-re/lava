@@ -36,6 +36,8 @@ struct SourceLval { // was DuaKey
         AFTER_OCCURRENCE = 2
     } timing;
 
+    uint32_t len_bytes;
+
 #pragma db index("SourceLvalUniq") unique members(file, line, ast_name, timing)
 
     bool operator<(const SourceLval &other) const {
@@ -178,7 +180,7 @@ struct Bug {
 #pragma db not_null
     const AttackPoint* atp;
 
-    float max_liveness;
+    uint64_t max_liveness;
 
 #pragma db index("BugUniq") unique members(atp, dua, selected_bytes)
 
@@ -202,7 +204,7 @@ struct SourceModification {
 #pragma db not_null
     const AttackPoint* atp = nullptr;
 
-#pragma db index("SourceModificationUniq") unique members(atp, lval, selected_bytes)
+#pragma db index("SourceModificationUniq") unique members(atp, lval, selected_bytes_hash)
 
     SourceModification() {}
     SourceModification(const SourceLval *_lval, std::vector<uint32_t> _bytes,
