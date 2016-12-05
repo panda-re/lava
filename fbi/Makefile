@@ -1,5 +1,8 @@
 include panda.mak
 
+CXX ?= clang++
+CC ?= clang
+
 LDFLAGS= -L/usr/local/lib -lprotobuf-c -lz -lpq -ljsoncpp -lodb-pgsql -lodb
 CFLAGS= -I$(PANDA_SRC_PATH)/panda/include \
 		-I$(PANDA_BUILD_DIR)/i386-softmmu \
@@ -11,13 +14,13 @@ CXXFLAGS=$(CFLAGS) -std=c++14
 all: fbi
 
 %.o: %.cpp Makefile
-	clang++ -c -o $@ $< $(CXXFLAGS)
+	$(CXX) -c -o $@ $< $(CXXFLAGS)
 
 %.o: %.cxx Makefile
-	clang++ -c -o $@ $< $(CXXFLAGS)
+	$(CXX) -c -o $@ $< $(CXXFLAGS)
 
 %.o: %.c Makefile
-	clang -c -o $@ $< $(CFLAGS)
+	$(CC) -c -o $@ $< $(CFLAGS)
 
 fbi_sources=find_bug_inj.cpp \
 			../src_clang/lavaDB.cpp \
@@ -33,7 +36,7 @@ fbi_sources=find_bug_inj.cpp \
 fbi_objs=$(addsuffix .o,$(basename $(fbi_sources)))
 
 fbi: $(fbi_objs)
-	clang++ -o $@ $^ $(LDFLAGS)
+	$(CXX) -o $@ $^ $(LDFLAGS)
 
 clean:
 	rm $(fbi_objs) fbi
