@@ -30,11 +30,13 @@ fbi_sources=find_bug_inj.cpp \
 			$(PANDA_BUILD_DIR)/i386-softmmu/plog.pb-c.c \
 			../include/lava-odb.cxx
 
-../include/lava-odb.cxx: ../include/lava.hxx
+../include/%-odb.cxx ../include/%-odb.hxx: ../include/%.hxx Makefile
 	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o ../include \
 	--generate-query --generate-schema --generate-prepared \
 	--cxx-prologue '#include "../include/pgarray.hxx"' \
 	--sql-name-case lower $<
+
+find_bug_inj.o: ../include/lava-odb.hxx ../include/lava.hxx
 
 fbi_objs=$(addsuffix .o,$(basename $(fbi_sources)))
 

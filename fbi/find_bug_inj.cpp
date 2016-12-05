@@ -165,7 +165,7 @@ static std::pair<const U*, bool> create_full(T no_id) {
     auto it = existing.find(no_id);
     if (it == existing.end()) {
         // This should always hit session cache.
-        U *result = db->load<U>(db->persist(no_id));
+        const U *result = db->load<U>(db->persist(no_id));
         it = existing.insert(it, std::make_pair(no_id, result));
         new_object = true;
     }
