@@ -159,22 +159,22 @@ struct eq_query<SourceModification> {
 // (false if it existed already).
 template<class T, typename U = typename eq_query<T>::disabled>
 static std::pair<const U*, bool> create_full(T no_id) {
-    static std::set<U> existing;
+    static std::map<U, const U*> existing;
 
     bool new_object = false;
     auto it = existing.find(no_id);
     if (it == existing.end()) {
-        db->persist(no_id);
-
-        std::tie(it, new_object) = existing.insert(no_id);
-        assert(new_object);
+        // This should always hit session cache.
+        U *result = db->load<U>(db->persist(no_id));
+        it = existing.insert(it, std::make_pair(no_id, result));
+        new_object = true;
     }
-    return std::make_pair(&*it, new_object);
+    return std::make_pair(it->second, new_object);
 }
 
 template<class T, typename P = typename eq_query<T>::Params>
 static std::pair<const T*, bool> create_full(T no_id) {
-    static std::set<T> existing;
+    static std::map<T, const T*> existing;
 
     bool new_object = false;
     auto it = existing.find(no_id);
@@ -191,16 +191,14 @@ static std::pair<const T*, bool> create_full(T no_id) {
 
         const T *result = pq.execute_one();
         if (!result) {
-            db->persist(no_id);
-            result = &no_id;
+            result = db->load<T>(db->persist(no_id));
             new_object = true;
         }
 
         bool success = false;
-        std::tie(it, success) = existing.insert(*result);
-        assert(success);
+        it = existing.insert(it, std::make_pair(no_id, result));
     }
-    return std::make_pair(&*it, new_object);
+    return std::make_pair(it->second, new_object);
 }
 
 template<class T>
