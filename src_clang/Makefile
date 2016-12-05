@@ -118,5 +118,5 @@ $(BUILDDIR)/attackPoints: attackPoints.o
 
 .PHONY: clean
 clean:
-	rm -rf $(BUILDDIR)/* *~ *.o ../include/lava-odb.o
+	rm -rf $(BUILDDIR)/* *~ *.o ../include/lava-odb.o ../include/lava-odb.*xx
 

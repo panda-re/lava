@@ -22,6 +22,8 @@ all: fbi
 %.o: %.c Makefile
 	$(CC) -c -o $@ $< $(CFLAGS)
 
+find_bug_inj.o: ../include/lava-odb.cxx
+
 fbi_sources=find_bug_inj.cpp \
 			../src_clang/lavaDB.cpp \
 			$(PANDA_SRC_PATH)/panda/src/plog.c \
@@ -40,4 +42,5 @@ fbi: $(fbi_objs)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 clean:
-	rm $(fbi_objs) fbi
+	rm -f $(fbi_objs) fbi
+	rm -f ../include/lava-odb.*xx
