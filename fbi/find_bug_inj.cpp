@@ -271,11 +271,12 @@ void update_unique_taint_sets(const Panda__TaintQueryUniqueLabelSet *tquls) {
     }
     // maintain mapping from ptr (uint64_t) to actual set of taint labels
     Ptr p = tquls->ptr;
-    if (ptr_to_labelset.count(p) == 0) {
+    auto it = ptr_to_labelset.find(p);
+    if (it == ptr_to_labelset.end()) {
         const LabelSet *ls = create(LabelSet{0, p, inputfile,
                 std::vector<uint32_t>(tquls->label,
                         tquls->label + tquls->n_label)});
-        ptr_to_labelset[p] = ls;
+        ptr_to_labelset.insert(it, std::make_pair(p, ls));
 
         auto &labels = ls->labels;
         uint32_t max_label = *std::max_element(
@@ -293,15 +294,20 @@ bool is_header_file(std::string filename) {
 }
 
 template<typename T, class InputIt>
-inline void merge_into(InputIt first, InputIt last, std::vector<T> &dest) {
+inline void merge_into(InputIt first, InputIt last, size_t size, std::vector<T> &dest) {
     // Make empty array and swap with all_labels.
     std::vector<T> prev_dest;
     prev_dest.swap(dest);
 
-    dest.reserve(prev_dest.size() + (last - first));
+    dest.reserve(prev_dest.size() + size);
     std::set_union(
             prev_dest.begin(), prev_dest.end(),
             first, last, std::back_inserter(dest));
+}
+
+template<typename T, class InputIt>
+inline void merge_into(InputIt first, InputIt last, std::vector<T> &dest) {
+    merge_into(first, last, last - first, dest);
 }
 
 template<class T>
@@ -541,31 +547,35 @@ void update_liveness(Panda__LogEntry *ple) {
     // For each label, look at all duas tainted by that label.
     // If they aren't viable anymore, erase them from recent_duas list and
     // also erase them from dependency tracker.
+    std::vector<const Dua *> duas_to_check;
     for (uint32_t l : all_labels) {
         liveness.at(l)++;
 
         dprintf("checking viability of %lu duas\n", recent_duas.size());
-        std::vector<const Dua *> non_viable_duas;
         auto it_duas = dua_dependencies.find(l);
         if (it_duas != dua_dependencies.end()) {
-            for (const Dua *dua : it_duas->second) {
-                // is this dua still viable?
-                if (!is_dua_viable(dua)) {
-                    dprintf("%s\n ** DUA not viable\n", std::string(*dua).c_str());
-                    recent_duas.erase(dua->lval);
-                    non_viable_duas.push_back(dua);
-                }
-            }
+            std::set<const Dua *> &depends = it_duas->second;
+            merge_into(depends.begin(), depends.end(), depends.size(), duas_to_check);
         }
+    }
 
-        dprintf("%lu non-viable duas \n", non_viable_duas.size());
-        // discard non-viable duas
-        for (const Dua *dua : non_viable_duas) {
-            for (uint32_t depend_label : dua->all_labels) {
-                auto it_depend = dua_dependencies.find(l);
-                if (it_depend != dua_dependencies.end()) {
-                    dua_dependencies.erase(it_depend);
-                }
+    std::vector<const Dua *> non_viable_duas;
+    for (const Dua *dua : duas_to_check) {
+        // is this dua still viable?
+        if (!is_dua_viable(dua)) {
+            dprintf("%s\n ** DUA not viable\n", std::string(*dua).c_str());
+            recent_duas.erase(dua->lval);
+            non_viable_duas.push_back(dua);
+        }
+    }
+
+    dprintf("%lu non-viable duas \n", non_viable_duas.size());
+    // discard non-viable duas
+    for (const Dua *dua : non_viable_duas) {
+        for (uint32_t l : dua->all_labels) {
+            auto it_depend = dua_dependencies.find(l);
+            if (it_depend != dua_dependencies.end()) {
+                dua_dependencies.erase(it_depend);
             }
         }
     }
