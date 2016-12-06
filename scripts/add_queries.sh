@@ -96,7 +96,7 @@ llvm_src=$(grep LLVM_SRC_PATH $lava/src_clang/config.mak | cut -d' ' -f3)
 
 
 progress "Creating compile_commands.json..."
-$lava/btrace/sw-btrace-to-compiledb $llvm_src/Release/lib/clang/3.6.1/include
+$lava/btrace/sw-btrace-to-compiledb $llvm_src/Release/lib/clang/3.6.2/include
 git add compile_commands.json
 git commit -m 'Add compile_commands.json.'
 

@@ -243,7 +243,7 @@ if __name__ == "__main__":
 
         print "llvm_src =", llvm_src
 
-        run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'), llvm_src + "/Release/lib/clang/3.6.1/include"])
+        run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'), llvm_src + "/Release/lib/clang/3.6.2/include"])
         # also insert instr for main() fn in all files that need it
         print "Instrumenting main fn by running lavatool on %d files\n" % (len(main_files))
         for f in main_files:
