@@ -187,8 +187,13 @@ deldir () {
 run_remote() {
   remote_machine=$1
   command=$2
-  echo "ssh $remote_machine $command"
-  ssh $remote_machine $command
+  if [ "$remote_machine" == "localhost" ]; then
+    echo "$command"
+    bash -c "$command"
+  else
+    echo "ssh $remote_machine $command"
+    ssh $remote_machine $command
+  fi
   ret_code=$?
   if [ $ret_code != 0 ]; then
     echo "exit code was $ret_code"
