@@ -906,7 +906,7 @@ TODO: add description of what type of attacks we are doing here
                 inss.top_of_file = "extern unsigned int lava_get(unsigned int) ;\n";
                 lava_get_proto.insert(filename);
             }
-            errs() << new_source << "is being attacked\n";
+            errs() << new_source.str() << "is being attacked\n";
             Insertions attack_inss;
             if (KT)
                 attack_inss = knobTriggerAttack(injectable_bugs, false /*malloc_style_attack*/);
@@ -921,7 +921,7 @@ TODO: add description of what type of attacks we are doing here
                 // call attack point hypercall and return 0
                 corruption << "+ ({vm_lava_attack_point2(" << LavaMatchHandler::GetStringID(filename) << ", ";
                 corruption << line << ", " << 0 << "); 0;})";
-                new_source << corruption;
+                new_source << corruption.str();
                 num_atp_queries++;
             }
         }
