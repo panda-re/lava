@@ -143,7 +143,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     project = json.load(args.project)
-    project_file = args.project.name 
+    project_file = args.project.name
 
 
     # Set up our globals now that we have a project
@@ -193,7 +193,7 @@ if __name__ == "__main__":
         atexit.register(bugs_lock.release)
         for sig in [signal.SIGINT, signal.SIGTERM]:
             signal.signal(sig, lambda s, f: sys.exit(0))
-            
+
     try:
         os.mkdir(bugs_parent)
     except: pass
@@ -307,9 +307,9 @@ if __name__ == "__main__":
          print "------------\n"
          print "SELECTED "
          if bug.dua.fake_dua:
-             print "NON-BUG" 
+             print "NON-BUG"
          else:
-             print "BUG" 
+             print "BUG"
          print " {} : {}".format(bug_index, bug.id)#
  ####        if not args.randomize: print "   score=%d " % score
          print "   (%d,%d)" % (bug.dua.id, bug.atp.id)
@@ -409,9 +409,9 @@ if __name__ == "__main__":
             print "fuzzed = [%s]" % fuzzed_input
             if args.knobTrigger != -1:
                 print "Knob size: {}".format(args.knobTrigger)
-                mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id, True, args.knobTrigger)
+                mutfile(orig_input, bug.dua.all_labels, fuzzed_input, bug.id, True, args.knobTrigger)
             else:
-                mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id)
+                mutfile(orig_input, bug.dua.all_labels, fuzzed_input, bug.id)
             print "testing with fuzzed input for {} of {} potential.  ".format(
                 bug_index + 1, len(bugs_to_inject))
             print "{} real. bug {}".format(len(real_bugs), bug.id)
@@ -434,7 +434,7 @@ if __name__ == "__main__":
                 # we should see a 0
                 assert (rv == 0)
 
-                    
+
             print
         f = float(len(real_bugs)) / len(bugs_to_inject)
         print "yield {:.2f} ({} out of {}) real bugs".format(
@@ -447,7 +447,7 @@ if __name__ == "__main__":
         if update_db: db.session.commit()
         # NB: at the end of testing, the fuzzed input is still in place
         # if you want to try it
-        
+
         if args.corpus:
             # package up a corpus
             subprocess32.check_call(["mkdir", "-p", corpus_dir])
@@ -462,18 +462,18 @@ if __name__ == "__main__":
             inputsdir = join(corpdir, "inputs")
             subprocess32.check_call(["mkdir", inputsdir])
             # subdir with src -- note we can't create it or copytree will fail!
-            srcdir = join(corpdir, "src")        
+            srcdir = join(corpdir, "src")
             # copy src
             shutil.copytree(bd, srcdir)
             # copy over the inputs as well
             predictions = {}
             for bug_index, bug in enumerate(bugs_to_inject):
-                if not (bug.id in real_bugs): 
+                if not (bug.id in real_bugs):
                     continue
                 print "validating bug %d" % bug.id
                 # make sure this bug actually works and
                 # triggers at the attack point as expected
-                if (check_bug(bug.id, sys.argv[-1], project['lava'] + "/scripts/run-on-fuzzed-input.py")): 
+                if (check_bug(bug.id, sys.argv[-1], project['lava'] + "/scripts/run-on-fuzzed-input.py")):
                     print "  -- works and triggers in the right place"
                     prediction = "{}:{}".format(basename(bug.atp.file),
                                                 get_atp_line(bug, bugs_build))
@@ -483,7 +483,7 @@ if __name__ == "__main__":
                     else:
                         fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
                         (dc, fi) = os.path.split(fuzzed_input)
-                        shutil.copy(fuzzed_input, inputsdir)                        
+                        shutil.copy(fuzzed_input, inputsdir)
                         predictions[prediction] = fi
                 else:
                     print "  -- either doesnt work or triggers in wrong place"

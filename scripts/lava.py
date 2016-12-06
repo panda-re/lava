@@ -41,8 +41,6 @@ class SourceLval(Base):
     ast_name = Column(Text)
     timing = Column(Integer)
 
-    selected_bytes = Column(postgresql.ARRAY(Integer))
-
     NULL_TIMING = 0
     BEFORE_OCCURRENCE = 1
     AFTER_OCCURRENCE = 2
@@ -88,7 +86,7 @@ class Dua(Base):
 
     def __str__(self):
         return 'DUA[{}](lval={}, labels={}, viable={}, input={}, instr={}, fake_dua={})'.format(
-            self.id, self.lval, self.labels, self.viable_bytes, self.inputfile,
+            self.id, self.lval, self.all_labels, self.viable_bytes, self.inputfile,
             self.instr, self.fake_dua
             )
 
@@ -181,8 +179,8 @@ class LavaDatabase(object):
         return thejoin.filter(Dua.fake_dua == fake)
 
     def next_bug_random(self, fake):
-        count = self.uninjected(fake).count()
-        return self.uninjected(fake)[random.randrange(0, count)]
+        count = self.uninjected2(fake).count()
+        return self.uninjected2(fake)[random.randrange(0, count)]
 
     # collect num bugs AND num non-bugs
     # with some hairy constraints
