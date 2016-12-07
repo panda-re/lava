@@ -139,7 +139,9 @@ def main():
     progress("Checking for clang " + LLVM_VERSION + " in " + LLVM_DIR)
     if not os.path.isdir(LLVM_DIR):
         get_clang = os.path.join(LAVA_DIR, "scripts/get-clang.sh")
-        os.chdir(os.path.dirname(LLVM_DIR))
+        if not os.path.isdir(BUILD_DIR):
+            os.mkdir(BUILD_DIR)
+        os.chdir(BUILD_DIR)
         lava_system("{}".format(get_clang))
 
     os.chdir(LAVA_DIR)
