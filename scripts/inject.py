@@ -222,8 +222,14 @@ if __name__ == "__main__":
         run(['git', 'add', '-A', '.'])
         run(['git', 'commit', '-m', 'Unmodified source.'])
     if not os.path.exists(join(bugs_build, 'btrace.log')):
-        run(shlex.split(project['configure']) + ['--prefix=' + bugs_install])
-        run([join(lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
+        (rc, (out, err)) = docker_run_cmd_notimeout(project['configure'] + ' --prefix=' + bugs_install,
+                                                    bugs_build,
+                                                    None)
+        print "config out", out, err
+        (rc, (out, err)) = docker_run_cmd_notimeout(join(lava_dir, 'btrace', 'sw-btrace') + " " +
+                                                    project['make'],
+                                                    bugs_build, None)
+        print "make out", out, err
 
     lavadb = join(top_dir, 'lavadb')
 
@@ -252,18 +258,21 @@ if __name__ == "__main__":
             run(['git', 'add', f])
         run(['git', 'add', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json and instrument main.'])
-        run(shlex.split(project['make']))
+        docker_run_cmd_notimeout(" ".join(shlex.split(project['make'])),
+                                 bugs_build, None)
+
         try:
             run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \\;"))
         except subprocess32.CalledProcessError:
             pass
         run(['git', 'commit', '-m', 'Add compile_commands.json and instrument main.'])
         if not os.path.exists(bugs_install):
-            run(project['install'], shell=True)
+            docker_run_cmd_notimeout(project['install'], bugs_build, None)
 
         # ugh binutils readelf.c will not be lavaTool-able without
         # bfd.h which gets created by make.
-        run_cmd_notimeout(project["make"], bugs_build, None)
+        # run_cmd_notimeout(project["make"], bugs_build, None)
+        docker_run_cmd_notimeout(project["make"], bugs_build, None)
         run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \\;"))
         try:
             run(['git', 'commit', '-m', 'Adding any make-generated source files'])
@@ -353,7 +362,7 @@ if __name__ == "__main__":
     # ugh -- with tshark if you *dont* do this, your bug-inj source may not build, sadly
     # it looks like their makefile doesn't understand its own dependencies, in fact
     if ('makeclean' in project) and (project['makeclean']):
-        run_cmd_notimeout("make clean", bugs_build, None)
+        docker_run_cmd_notimeout("make clean", bugs_build, None)
 
     # compile
     print "------------\n"
@@ -369,7 +378,7 @@ if __name__ == "__main__":
     else:
         # build success
         print "build succeeded"
-        (rv, outp) = run_cmd_notimeout("make install", bugs_build, None)
+        (rv, outp) = docker_run_cmd_notimeout("make install", bugs_build, None)
         assert rv == 0 # really how can this fail if build succeeds?
         print "make install succeeded"
 

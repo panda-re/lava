@@ -244,6 +244,8 @@ if [ $reset -eq 1 ]; then
     deldir "$logs"
     deldir "$bugsdir"
     deldir "$directory/$name/inputs"
+    # remove all plog files in the directory
+    rm -f "$directory/$name/*.plog"
     /bin/mkdir -p $logs
     lf="$logs/dbwipe.log"  
     progress 1  "Setting up lava dab -- logging to $lf"
