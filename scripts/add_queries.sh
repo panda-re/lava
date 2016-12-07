@@ -26,7 +26,18 @@
 # and run the bug_mining.py script (which uses PANDA to trace taint).
 #
 
-
+run_docker() {
+  dname=$1
+  command=$2
+  echo "docker exec $dname $command"
+  docker exec -ti $dname /bin/bash -c "$command"
+  ret_code=$?
+  if [ $ret_code != 0 ]; then
+    echo "exit code was $ret_code"
+    exit $ret_code
+  fi
+  #return $ret_code
+}
 
 ns=$(date +%s%N)
 START=$(echo "scale=2; $ns/1000000000" | bc)
@@ -57,6 +68,12 @@ lava="$(dirname $(dirname $(realpath $0)))"
 
 directory="$(jq -r .directory $json)"
 name="$(jq -r .name $json)"
+dockername="$(jq -r .docker $json)"
+if [ "$dockername" = "null" ]; then
+    echo "Require a dockername in json file"
+    echo "Exiting . . ."
+    exit 1
+fi
 
 progress "Entering $directory/$name."
 mkdir -p "$directory/$name"
@@ -82,13 +99,13 @@ git commit -m 'Unmodified source.'
 
 progress "Configuring..."
 mkdir -p lava-install
-$(jq -r .configure $json) --prefix=$(pwd)/lava-install
+run_docker "$dockername" "cd  '$directory/$name/$source' && $(jq -r .configure $json) --prefix=$(pwd)/lava-install"
 
 progress "Making with btrace..."
-$lava/btrace/sw-btrace $(jq -r .make $json)
+run_docker "$dockername" "cd '$directory/$name/$source' && '$lava/btrace/sw-btrace' $(jq -r .make $json)"
 
 progress "Installing..."
-$(jq -r .install $json)
+run_docker "$dockername" "cd '$directory/$name/$source' && $(jq -r .install $json)"
 
 
 # figure out where llvm is

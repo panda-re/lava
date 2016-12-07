@@ -368,7 +368,7 @@ if __name__ == "__main__":
     print "------------\n"
     print "ATTEMPTING BUILD OF INJECTED BUG"
     print "build_dir = " + bugs_build
-    (rv, outp) = run_cmd_notimeout(project['make'], bugs_build, None)
+    (rv, outp) = docker_run_cmd_notimeout(project['make'], bugs_build, None)
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]))
     if rv!=0:
         # build failed

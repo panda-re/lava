@@ -226,7 +226,7 @@ class Command(object):
     def run(self, timeout):
         def target():
 #            print "Thread started"
-            self.process = subprocess32.Popen(self.cmd.split(), cwd=self.cwd, env=self.envv, \
+            self.process = subprocess32.Popen(shlex.split(self.cmd), cwd=self.cwd, env=self.envv, \
                                                 stdout=subprocess32.PIPE, \
                                                 stderr=subprocess32.PIPE, \
                                                 preexec_fn=os.setsid) # , **popen_kwargs)
@@ -268,6 +268,19 @@ def run_cmd(cmd, cw_dir, envv, timeout, rr=False):
 
 def run_cmd_notimeout(cmd, cw_dir, envv):
     return run_cmd(cmd, cw_dir, envv, 1000000)
+def docker_run_cmd_notimeout(cmd, cw_dir, envv):
+    if (cw_dir != None):
+        docker_command = "cd {} && {}".format(cw_dir, cmd)
+    else:
+        docker_command = "{}".format(cmd)
+
+    name = os.environ['USER']
+    home = os.environ['HOME']
+    dockername = name + '_lava32'
+
+    return run_cmd("docker exec -ti {} /bin/bash -c \"{}\"".format(dockername, docker_command),
+                   None, envv, 1000000)
+
 
 
 lava = 0x6c617661

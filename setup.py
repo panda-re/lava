@@ -20,6 +20,7 @@ try:
     LAVA_CONFS = dict(def_lines)
     PANDA_DIR = LAVA_CONFS["PANDA_SRC_PATH"]
     LLVM_DIR = LAVA_CONFS["LLVM_SRC_PATH"]
+    BUILD_DIR = os.path.dirname(LLVM_DIR)
 except:
     PANDA_DIR = os.path.abspath(os.path.join(LAVA_DIR, "../panda"))
     BUILD_DIR = os.path.join(os.environ["HOME"], "build")

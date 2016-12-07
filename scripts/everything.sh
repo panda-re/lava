@@ -202,6 +202,18 @@ run_remote() {
   #return $ret_code
 }
 
+run_docker() {
+  dname=$1
+  command=$2
+  echo "docker exec $dname $command"
+  docker exec -ti $dname /bin/bash -c "$command"
+  ret_code=$?
+  if [ $ret_code != 0 ]; then
+    echo "exit code was $ret_code"
+    exit $ret_code
+  fi
+  #return $ret_code
+}
 
 
 progress 1 "JSON file is $json"
@@ -218,6 +230,7 @@ dbhost="$(jq -r .dbhost $json)"
 testinghost="$(jq -r .testinghost $json)"
 fixupscript="$(jq -r .fixupscript $json)"
 makecmd="$(jq -r .make $json)"
+dockername="$(jq -r .docker $json)"
 
 scripts="$lava/scripts"
 python="/usr/bin/python"
@@ -258,15 +271,20 @@ fi
 
 
 if [ $add_queries -eq 1 ]; then
+    if [ "$dockername" = "null" ]; then
+        echo "Require a dockername in json file"
+        echo "Exiting . . ."
+        exit 1
+    fi
     tick
     progress 1  "Add queries step -- btrace lavatool and fixups"
     lf="$logs/add_queries.log"
     progress 1 "Adding queries to source -- logging to $lf"
-    run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $json >& $lf"
+    $scripts/add_queries.sh $ATP_TYPE $json >& $lf
     if [ "$fixupscript" != "null" ]; then
         lf="$logs/fixups.log"
         progress 1 "Fixups -- logging to $lf"
-        run_remote "$buildhost" "$fixupscript"
+        $fixupscript
     else
         progress 1 "No fixups"
     fi
@@ -279,11 +297,11 @@ if [ $make -eq 1 ]; then
     tick
     progress 1 "Make step -- making 32-bit version with queries"
     lf="$logs/make.log"
-    run_remote "$buildhost" "cd $sourcedir && $makecmd  >& $lf"
-    run_remote "$buildhost" "cd $sourcedir && make install   &>> $lf"
+    run_docker "$dockername" "cd $sourcedir && $makecmd  >& $lf"
+    run_docker "$dockername" "cd $sourcedir && make install   &>> $lf"
     tock
     echo "make complete $time_diff seconds"
-    run_remote "$buildhost" "echo make complete $time_diff seconds &>> $lf"
+    run_docker "$dockername" "echo make complete $time_diff seconds &>> $lf"
 
 fi
 
@@ -319,7 +337,7 @@ if [ $inject -eq 1 ]; then
     do
         lf="$logs/inject-$i.log"
         progress 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many $kt $json >& $lf"
+        $python $scripts/inject.py -m $many $kt $json >& $lf
     grep yield $lf
     done
 fi
