@@ -225,7 +225,7 @@ class Command(object):
     def run(self, timeout):
         def target():
 #            print "Thread started"
-            self.process = subprocess32.Popen(self.cmd.split(), cwd=self.cwd, env=self.envv, \
+            self.process = subprocess32.Popen(shlex.split(self.cmd), cwd=self.cwd, env=self.envv, \
                                                 stdout=subprocess32.PIPE, \
                                                 stderr=subprocess32.PIPE, \
                                                 preexec_fn=os.setsid) # , **popen_kwargs)
