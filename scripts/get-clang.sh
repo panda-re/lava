@@ -25,9 +25,5 @@ popd
 
 popd
 
-./configure --enable-optimized --disable-assertions --enable-targets=x86,arm --enable-shared --enable-pic --host=x86_64-linux-gnu --build=x86_64-linux-gnu
+./configure --enable-optimized --disable-assertions --enable-targets=x86,arm --enable-shared --enable-pic --host=$(gcc -dumpmachine) --build=$(gcc -dumpmachine)
 REQUIRES_RTTI=1 make -j $(nproc)
-#mkdir $llvm_version-build
-#cd $llvm_version-build
-#$cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release ../$llvm_version
-#make -j

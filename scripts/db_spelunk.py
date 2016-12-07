@@ -31,7 +31,6 @@ def get_interval(i, partition):
 
 def spelunk(json_filename, counts, totals):
     project = json.load(open(json_filename))
-    db_host = project['dbhost']
     db = project['db']
     runs = get_runs(project)
     builds = get_builds(project)

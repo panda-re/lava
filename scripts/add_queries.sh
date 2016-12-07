@@ -44,16 +44,16 @@ if [ $# -lt 1 ]; then
 elif [ $# -lt 2 ]; then
   echo "No ATP_Type specified.  Defaulting to all."
   ATP_TYPE=""
-  json="$(realpath $1)"
+  json="$(readlink -f $1)"
 elif [ $# -eq 2 ]; then
   ATP_TYPE="-$1"
-  json="$(realpath $2)"
+  json="$(readlink -f $2)"
 else
   echo "Usage: $0 [ATP_Type] JSONfile"
   exit 1
 fi
 
-lava="$(dirname $(dirname $(realpath $0)))"
+lava="$(dirname $(dirname $(readlink -f $0)))"
 
 directory="$(jq -r .directory $json)"
 name="$(jq -r .name $json)"
@@ -70,7 +70,7 @@ source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
 if [ -e "$source" ]; then
   rm -rf "$source"
 fi
-tar xf "$tarfile"
+tar --no-same-owner -xf "$tarfile"
 
 progress "Entering $source."
 cd "$source"

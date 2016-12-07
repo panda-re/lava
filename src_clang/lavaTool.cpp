@@ -1231,7 +1231,7 @@ int main(int argc, const char **argv) {
     odb::transaction *t = nullptr;
     if (LavaAction == LavaInjectBugs) {
         db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
-                    root["db"].asString(), root["dbhost"].asString()));
+                    root["db"].asString()));
         t = new odb::transaction(db->begin());
 
         // get bug info for the injections we are supposed to be doing.

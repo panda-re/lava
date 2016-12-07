@@ -1,22 +1,50 @@
 FROM m4mbr3/lava32
 
-MAINTAINER ricky
-
-WORKDIR /home/lava
-COPY sources.list /etc/apt/
+RUN echo deb http://httpredir.debian.org/debian wheezy-backports main >> /etc/apt/sources.list
 RUN apt-get update
-RUN apt-get install -y --force-yes gcc bzip2 bison flex libglib2.0-dev \
-libpcap-dev make gdb python-pip python-dev build-essential libpq-dev bc \
-realpath jq
-RUN pip install --upgrade pip
-COPY requirements.txt /tmp/
-RUN pip install -r /tmp/requirements.txt
+RUN apt-get install -y bc jq git build-essential python python-colorama
+RUN apt-get install -y libjsoncpp-dev
 
-#RUN wget https://www.wireshark.org/download/src/all-versions/wireshark-1.8.2.tar.bz2
-#RUN tar -xvf wireshark-1.8.2.tar.bz2
-#WORKDIR wireshark-1.8.2
-#RUN ./configure --disable-warnings-as-errors --enable-editcap=no \
-#--enable-capinfos=no --enable-mergecap=no --enable-text2pcap=no \
-#--enable-dftest=no --enable-randpkt=no --enable-airpcap=no \
-#--enable-dumpcap=no --enable-rawshark=no --enable-wireshark=no
-#RUN make -j32
+ENV release 3.6.2
+ENV llvm_version llvm-${release}
+
+RUN wget http://llvm.org/releases/$release/$llvm_version.src.tar.xz
+RUN tar -xJf $llvm_version.src.tar.xz
+
+RUN mv $llvm_version.src $llvm_version
+RUN cd $llvm_version
+
+
+WORKDIR /$llvm_version/tools
+ENV clang_version cfe-$release
+RUN wget http://llvm.org/releases/$release/$clang_version.src.tar.xz
+RUN tar -xJf $clang_version.src.tar.xz
+RUN mv $clang_version.src clang
+
+WORKDIR /$llvm_version/tools/clang/tools
+RUN wget http://llvm.org/releases/$release/clang-tools-extra-$release.src.tar.xz
+RUN tar -xJf clang-tools-extra-$release.src.tar.xz
+RUN mv clang-tools-extra-$release.src extra
+
+WORKDIR /$llvm_version
+RUN ./configure --enable-optimized --disable-assertions --enable-targets=x86,arm --enable-shared --enable-pic --host=i486-linux-gnu --build=i486-linux-gnu
+RUN REQUIRES_RTTI=1 make -j $(nproc)
+
+RUN apt-get install -y libpq-dev
+
+WORKDIR /
+RUN wget http://codesynthesis.com/download/odb/2.4/odb_2.4.0-1_i386.deb
+RUN dpkg -i odb_2.4.0-1_i386.deb
+RUN wget http://codesynthesis.com/download/odb/2.4/libodb-2.4.0.tar.gz
+RUN tar xf libodb-2.4.0.tar.gz
+WORKDIR /libodb-2.4.0
+RUN ./configure --enable-shared && make -j $(nproc) && make install
+WORKDIR /
+RUN wget http://codesynthesis.com/download/odb/2.4/libodb-pgsql-2.4.0.tar.gz
+RUN tar xf libodb-pgsql-2.4.0.tar.gz
+WORKDIR /libodb-pgsql-2.4.0
+RUN ./configure --enable-shared && make -j $(nproc) && make install
+
+RUN apt-get -y install python-sqlalchemy python-psycopg2 \
+    python-pexpect python-psutil python-numpy python-argparse python-pip python-dev
+RUN pip install subprocess32 lockfile

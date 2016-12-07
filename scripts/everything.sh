@@ -190,6 +190,13 @@ run_remote() {
   if [ "$remote_machine" == "localhost" ]; then
     echo "$command"
     bash -c "$command"
+  elif [ "$remote_machine" == "docker" ]; then
+    echo docker run -v /var/run/postgresql:/var/run/postgresql -v "$HOME/.pgpass:/root/.pgpass" -v "$directory:$directory" -v "$lava:$lava" -v "$tarfiledir:$tarfiledir" lava32 bash -c "$command"
+    docker run --rm \
+        -v /var/run/postgresql:/var/run/postgresql \
+        -v "$HOME/.pgpass:/root/.pgpass" \
+        -v "$directory:$directory" -v "$lava:$lava" -v "$tarfiledir:$tarfiledir" \
+        lava32 bash -c "$command"
   else
     echo "ssh $remote_machine $command"
     ssh $remote_machine $command
@@ -209,13 +216,14 @@ progress 1 "JSON file is $json"
 lava="$(jq -r .lava $json)"
 db="$(jq -r .db $json)"
 tarfile="$(jq -r .tarfile $json)"
+tarfiledir="$(dirname $tarfile)"
 directory="$(jq -r .directory $json)"
 name="$(jq -r .name $json)"
 inputs=`jq -r '.inputs' $json  | jq 'join (" ")' | sed 's/\"//g' `
-buildhost="$(jq -r .buildhost $json)"
+buildhost="$(jq -r '.buildhost // "docker"' $json)"
 pandahost="$(jq -r .pandahost $json)"
-dbhost="$(jq -r .dbhost $json)"
-testinghost="$(jq -r .testinghost $json)"
+dbhost="$(jq -r '.dbhost // "localhost"' $json)"
+testinghost="$(jq -r '.testinghost // "docker"' $json)"
 fixupscript="$(jq -r .fixupscript $json)"
 makecmd="$(jq -r .make $json)"
 
@@ -237,9 +245,9 @@ if [ $reset -eq 1 ]; then
         progress 0 "No db -- creating $db for first time"
     else
         progress 0 "database $db already exists. removing"
-        run_remote "$dbhost" "dropdb -U postgres $db -h localhost"
+        run_remote "$dbhost" "dropdb -U postgres $db"
     fi
-    run_remote "$dbhost" "createdb -U postgres $db -h localhost"
+    run_remote "$dbhost" "createdb -U postgres $db"
     deldir "$sourcedir"
     deldir "$logs"
     deldir "$bugsdir"
@@ -247,15 +255,14 @@ if [ $reset -eq 1 ]; then
     # remove all plog files in the directory
     rm -f "$directory/$name/*.plog"
     /bin/mkdir -p $logs
-    lf="$logs/dbwipe.log"  
-    progress 1  "Setting up lava dab -- logging to $lf"
-    run_remote "$dbhost" "/usr/bin/psql -d $db -f $lava/include/lava.sql -U postgres -h localhost >& $lf"
+    lf="$logs/dbwipe.log"
+    progress 1  "Setting up lava db -- logging to $lf"
+    run_remote "$dbhost" "/usr/bin/psql -d $db -f $lava/include/lava.sql -U postgres >& $lf"
     run_remote "$dbhost" "echo dbwipe complete >> $lf"
     /bin/mkdir -p $logs
     tock
     echo "reset complete $time_diff seconds"
 fi
-
 
 if [ $add_queries -eq 1 ]; then
     tick

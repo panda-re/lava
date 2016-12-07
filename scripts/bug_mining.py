@@ -88,8 +88,6 @@ assert 'name' in project
 assert 'tarfile' in project
 # if needed, what to set LD_LIBRARY_PATH to
 assert 'library_path' in project
-# network name of host where postgres is running
-assert 'dbhost' in project
 # namespace in db for prospective bugs
 assert 'db' in project
 # process name
@@ -286,15 +284,14 @@ sys.stdout.flush()
 tick()
 
 progress("Trying to create database {}...".format(project['name']))
-createdb_args = ['createdb', '-h', project['dbhost'],
-        '-U', 'postgres', project['db']]
+createdb_args = ['createdb', '-U', 'postgres', project['db']]
 createdb_result = subprocess32.call(createdb_args, stdout=sys.stdout, stderr=sys.stderr)
 
 print
 if createdb_result == 0: # Created new DB; now populate
     progress("Database created. Initializing...")
-    psql_args = ['psql', '-h', project['dbhost'], '-U', 'postgres',
-                 '-d', project['db'], '-f', join(join(lavadir, 'include'), 'lava.sql')]
+    psql_args = ['psql', '-U', 'postgres', '-d', project['db'],
+                 '-f', join(join(lavadir, 'include'), 'lava.sql')]
     dprint ("psql invocation: [%s]" % (" ".join(psql_args)))
     subprocess32.check_call(psql_args, stdout=sys.stdout, stderr=sys.stderr)
 else:

@@ -162,9 +162,8 @@ class LavaDatabase(object):
     def __init__(self, project):
         self.project = project
         self.engine = create_engine(
-            "postgresql+psycopg2://{}:{}@{}/{}".format(
-                "postgres", project['dbpassword'], project['dbhost'],
-                project['db']
+            "postgresql+psycopg2://{}:{}@/{}".format(
+                "postgres", project['dbpassword'], project['db']
             )
         )
         self.Session = sessionmaker(bind=self.engine)
