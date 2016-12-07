@@ -62,7 +62,7 @@ def lava_system(cmd):
 
 def main():
     progress("Installing LAVA apt-get dependencies")
-    # lava_system("sudo apt-get -y install {}".format(" ".join(LAVA_DEPS)))
+    lava_system("sudo apt-get -y install {}".format(" ".join(LAVA_DEPS)))
 
     progress("In LAVA dir at {}".format(LAVA_DIR))
     # check to make sure we are not running as root/sudo
