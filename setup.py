@@ -83,6 +83,15 @@ def main():
     # if not run python scripts/build-docker.py
     progress("Checking that lava32 docker is properly built")
     lava_system("docker build -t lava32 {}/docker/".format(LAVA_DIR))
+    lava_system("docker run --rm -v {0}:{0} -w {0}/btrace lava32 bash compile.sh".format(LAVA_DIR))
+
+    # Compile lavaTool inside the docker container.
+    progress("Creating $LAVA_DIR/src_clang/config.mak")
+    with open("src_clang/config.mak", "w") as f:
+        LLVM_DOCKER_DIR = '/llvm-{}'.format(LLVM_VERSION)
+        f.write(LLVM_MAK.format(LLVM_BUILD_PATH=LLVM_DOCKER_DIR,
+                                LLVM_SRC_PATH=LLVM_DOCKER_DIR))
+    lava_system("docker run --rm -v {0}:{0} lava32 make -B -C {0}/src_clang -j{1}".format(LAVA_DIR, cpu_count()))
 
     # ensure /etc/apt/sources.list has all of the deb-src lines uncommented
     patch_sources = os.path.join(LAVA_DIR, "scripts/patch-sources.py")
@@ -128,32 +137,15 @@ def main():
                  " {}".format(os.environ["HOME"]))
         os.chdir(LAVA_DIR)
 
-    # check for clang in LLVM_DIR
-    progress("Checking for clang " + LLVM_VERSION + " in " + LLVM_DIR)
-    if not os.path.isdir(LLVM_DIR):
-        get_clang = os.path.join(LAVA_DIR, "scripts/get-clang.sh")
-        if not os.path.isdir(BUILD_DIR):
-            os.makedirs(BUILD_DIR)
-        os.chdir(BUILD_DIR)
-        lava_system("{}".format(get_clang))
-
-    os.chdir(LAVA_DIR)
-    progress("Checking for libexec folder in $LAVA_DIR")
-    if not os.path.isdir(os.path.join(LAVA_DIR, "libexec")):
-        lava_system("btrace/compile.sh")
-
     ############## Beginning .mak file stuff ######################
     # I think this would be useful, but i'm seperating it out
     # in case anyone thinks it's a bad idea
     # the idea is that if someone wants llvm and panda installed in certain
     # locations, they can make their lava.mak ahead of time
     # then setup.py will parse it and configure the environmet to those specs
-    progress("Creatgin for $LAVA_DIR/src_clang/config.mak")
-    with open("src_clang/config.mak", "w") as f:
-        f.write(LLVM_MAK.format(LLVM_BUILD_PATH=LLVM_DIR,
-                                LLVM_SRC_PATH=LLVM_DIR))
+    os.chdir(LAVA_DIR)
 
-    progress("Creating for $LAVA_DIR/fbi/panda.mak")
+    progress("Creating $LAVA_DIR/fbi/panda.mak")
     with open(os.path.join(LAVA_DIR, "fbi/panda.mak"), "w") as f:
         f.write(PANDA_MAK.format(PANDA_DIR=PANDA_DIR))
 
@@ -166,17 +158,10 @@ def main():
     ############## End .mak file stuff ######################
     progress("Making each component of lava, fbi and lavaTool")
     progress("Compiling fbi")
-    os.chdir(os.path.join(LAVA_DIR, "fbi"))
-    lava_system("make clean")
-    os.chdir(os.path.join(LAVA_DIR, "src_clang"))
-    lava_system("make clean")
 
     os.chdir(os.path.join(LAVA_DIR, "fbi"))
-    lava_system("make -j {}".format(cpu_count()))
-    os.chdir(os.path.join(LAVA_DIR, "src_clang"))
-    lava_system("make -j {}".format(cpu_count()))
+    lava_system("make -B -j {}".format(cpu_count()))
     os.chdir(LAVA_DIR)
-
 
     return 0
 
