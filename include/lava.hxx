@@ -80,6 +80,7 @@ struct Dua {
 
     // Labelset for each byte, in sequence, at shoveling point.
     std::vector<const LabelSet*> viable_bytes;
+    std::vector<uint32_t> byte_tcn;
 
     std::vector<uint32_t> all_labels;
 
@@ -137,11 +138,17 @@ struct AttackPoint {
     std::string file;
     uint32_t line;
 
+    std::string ast_name;
+
     enum Type {
         ATP_FUNCTION_CALL,
         ATP_POINTER_RW,
         ATP_LARGE_BUFFER_AVAIL
     } type;
+
+    // Selected byte range for LARGE_BUFFER type.
+    uint32_t range_low;
+    uint32_t range_high;
 
 #pragma db index("AttackPointUniq") unique members(file, line, type)
 
@@ -157,13 +164,13 @@ struct AttackPoint {
     }
 
     friend std::ostream &operator<<(std::ostream &os, const AttackPoint &m) {
+        constexpr const char *names[3] = {
+            "ATP_FUNCTION_CALL",
+            "ATP_POINTER_RW",
+            "ATP_LARGE_BUFFER_AVAIL"
+        };
         os << "ATP [" << m.file << ":" << m.line << "] {";
-        if (m.type == ATP_POINTER_RW) {
-            os << "ATP_POINTER_RW";
-        } else if (m.type == ATP_FUNCTION_CALL) {
-            os << "ATP_FUNCTION_CALL";
-        } else assert(false);
-        os << "}";
+        os << names[m.type] << "}";
         return os;
     }
 };

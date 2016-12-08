@@ -318,7 +318,7 @@ uint32_t count_nonzero(std::vector<T> arr) {
 }
 
 // get still-viable offsets for a dua.
-inline std::vector<uint32_t> get_viable_offsets(const Dua *dua) {
+inline std::vector<uint32_t> get_dua_dead_offsets(const Dua *dua) {
     const auto &viable_bytes = dua->viable_bytes;
     dprintf("checking viability of dua: currently %u viable bytes\n",
             count_nonzero(viable_bytes));
@@ -351,10 +351,49 @@ inline std::vector<uint32_t> get_viable_offsets(const Dua *dua) {
     return viable_offsets;
 }
 
+struct Range {
+    uint32_t low;
+    uint32_t high;
+    inline uint32_t size() const { return high - low; }
+    inline bool empty() const { return high <= low; }
+};
+inline Range get_dua_exploit_pad(const Dua *dua) {
+    // Each is a range of offsets with large run of DUA bytes.
+    std::vector<Range> runs;
+    Range current_run{0, 0};
+    const auto &viable_bytes = dua->viable_bytes;
+    for (uint32_t i = 0; i < viable_bytes.size(); i++) {
+        const LabelSet *ls = viable_bytes[i];
+        if (ls && ls->labels.size() == 1 && dua->byte_tcn[i] == 0) {
+            if (current_run.empty()) {
+                current_run = Range{i, i + 1};
+            } else {
+                current_run.high++;
+            }
+        } else {
+            if (!current_run.empty()) {
+                runs.push_back(current_run);
+            }
+            current_run = Range{0, 0};
+        }
+    }
+    if (!current_run.empty()) {
+        runs.push_back(current_run);
+    }
+
+    auto it = std::max_element(runs.begin(), runs.end(),
+            [](const Range &run1, const Range &run2) {
+        return run1.size() < run2.size();
+    });
+    return it == runs.end() ? Range{0, 0} : *it;
+}
+
 // determine if this dua is viable at all.
 inline bool is_dua_viable(const Dua *dua) {
-    return get_viable_offsets(dua).size() == LAVA_MAGIC_VALUE_SIZE;
+    return get_dua_dead_offsets(dua).size() == LAVA_MAGIC_VALUE_SIZE;
 }
+
+void find_bug_inj_opportunities(const AttackPoint *atp);
 
 void taint_query_pri(Panda__LogEntry *ple) {
     assert (ple != NULL);
@@ -399,6 +438,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
 
     // Make vector of length len and fill w/ zeroes.
     std::vector<const LabelSet*> viable_byte(len, nullptr);
+    std::vector<uint32_t> byte_tcn(len, 0);
 
     dprintf("considering taint queries on %lu bytes\n", tqh->n_taint_query);
 
@@ -412,6 +452,8 @@ void taint_query_pri(Panda__LogEntry *ple) {
             uint32_t offset = tq->offset;
             dprintf("considering offset = %d\n", offset);
             const LabelSet *ls = ptr_to_labelset.at(tq->ptr);
+
+            byte_tcn[offset] = tq->tcn;
 
             // flag for tracking *why* we discarded a byte
             // check tcn and cardinality of taint set first
@@ -495,10 +537,21 @@ void taint_query_pri(Panda__LogEntry *ple) {
             printf("]\n");
         }
         // tainted lval we just considered was deemed viable
-        const Dua *dua = create(Dua{0, lval, viable_byte, all_labels,
+        const Dua *dua = create(Dua{0, lval, viable_byte, byte_tcn, all_labels,
                 inputfile, c_max_tcn, c_max_card, ple->instr, is_fake_dua});
         for (uint32_t l : all_labels) {
             dua_dependencies[l].insert(dua);
+        }
+
+        if (len > 20) {
+            Range range = get_dua_exploit_pad(dua);
+            if (range.size() > 20) {
+                const AttackPoint *pad_atp = create(AttackPoint{0,
+                        relative_filename, si->linenum, std::string(si->astnodename),
+                        AttackPoint::ATP_LARGE_BUFFER_AVAIL,
+                        range.low, range.high});
+                find_bug_inj_opportunities(pad_atp);
+            }
         }
 
         dprintf("OK DUA.\n");
@@ -549,7 +602,7 @@ void update_liveness(Panda__LogEntry *ple) {
     // also erase them from dependency tracker.
     std::vector<const Dua *> duas_to_check;
     for (uint32_t l : all_labels) {
-        liveness.at(l)++;
+        liveness[l]++;
 
         dprintf("checking viability of %lu duas\n", recent_duas.size());
         auto it_duas = dua_dependencies.find(l);
@@ -602,36 +655,14 @@ def collect_bugs(attack_point):
   iterate over all currently viable duas and
   look for bug inj opportunities
 */
-void find_bug_inj_opportunities(Panda__LogEntry *ple) {
-    assert (ple != NULL);
-    uint64_t instr = ple->instr;
-    Panda__AttackPoint *pleatp = ple->attack_point;
-    assert (pleatp != NULL);
-    Panda__SrcInfo *si = pleatp->src_info;
-    // ignore duas in header files
-    if (is_header_file(ind2str[si->filename])) return;
-
-    assert (si != NULL);
-    dprintf("ATTACK POINT\n");
-    if (recent_duas.size() == 0) {
-        dprintf("no duas yet -- discarding attack point\n");
-        return;
-    }
-
-    dprintf("%lu viable duas remain\n", recent_duas.size());
-    std::string relative_filename = strip_pfx(ind2str[si->filename], src_pfx);
-    assert(relative_filename.size() > 0);
-    const AttackPoint *atp = create(AttackPoint{0,
-            relative_filename, si->linenum, AttackPoint::ATP_FUNCTION_CALL});
-    dprintf("@ATP: %s\n", std::string(*atp).c_str());
-
+void find_bug_inj_opportunities(const AttackPoint *atp) {
     // every still viable dua is a bug inj opportunity at this point in trace
     for ( auto kvp : recent_duas ) {
         const SourceLval *lval = kvp.first;
         const Dua *dua = kvp.second;
 
         // Need to select bytes now.
-        std::vector<uint32_t> selected_bytes = get_viable_offsets(dua);
+        std::vector<uint32_t> selected_bytes = get_dua_dead_offsets(dua);
 
         const SourceModification *source_mod;
         bool is_new_mod;
@@ -649,8 +680,6 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple) {
             // this is a new bug (new src mods for both dua and atp)
             const Bug *bug = create(Bug{0,
                     dua, selected_bytes, atp, c_max_liveness});
-            // float rdf_frac = ((float)dua->instr) / ((float)instr);
-            // dprintf("i1=%lu i2=%lu rdf_frac=%f\n", dua->instr, instr, rdf_frac);
             num_bugs_added_to_db++;
             if (dua->fake_dua) {
                 num_potential_nonbugs++;
@@ -660,6 +689,31 @@ void find_bug_inj_opportunities(Panda__LogEntry *ple) {
         } else dprintf("not a new bug\n");
         num_bugs_attempted ++;
     }
+}
+
+void attack_point_ptr_rw(Panda__LogEntry *ple) {
+    assert (ple != NULL);
+    Panda__AttackPoint *pleatp = ple->attack_point;
+    assert (pleatp != NULL);
+    Panda__SrcInfo *si = pleatp->src_info;
+    // ignore duas in header files
+    if (is_header_file(ind2str[si->filename])) return;
+
+    assert (si != NULL);
+    dprintf("ATTACK POINT\n");
+    if (recent_duas.size() == 0) {
+        dprintf("no duas yet -- discarding attack point\n");
+        return;
+    }
+
+    dprintf("%lu viable duas remain\n", recent_duas.size());
+    std::string relative_filename = strip_pfx(ind2str[si->filename], src_pfx);
+    assert(relative_filename.size() > 0);
+    const AttackPoint *atp = create(AttackPoint{0,
+            relative_filename, si->linenum, ind2str[si->astnodename],
+            AttackPoint::ATP_POINTER_RW, 0, 0});
+    dprintf("@ATP: %s\n", std::string(*atp).c_str());
+    find_bug_inj_opportunities(atp);
 }
 
 struct SrcFunction {
@@ -790,7 +844,7 @@ int main (int argc, char **argv) {
         } else if (ple->tainted_branch) {
             update_liveness(ple);
         } else if (ple->attack_point) {
-            find_bug_inj_opportunities(ple);
+            attack_point_ptr_rw(ple);
         } else if (ple->dwarf_call) {
             record_call(ple);
         } else if (ple->dwarf_ret) {
