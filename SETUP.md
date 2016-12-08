@@ -1,6 +1,9 @@
 # LAVA Installation Guide
 
-## Update package manager
+## Docker installation
+    sudo apt-get install docker.io
+
+## If that doesn’t work:
     sudo apt-get update
     sudo apt-get upgrade //optional
 
@@ -14,6 +17,8 @@
 
     sudo apt-get update
 
+    sudo apt-get install docker-engine
+    sudo service docker start
 NB: Change the distribution version name accordingly
 
 
@@ -24,20 +29,15 @@ NB: Change the distribution version name accordingly
     sudo pip install --upgrade pip
     sudo pip install colorama
 
-## Docker installation
-    sudo apt-get install linux-image-extra-$(uname -r) linux-image-extra-virtual
-    sudo apt-get install docker-engine
-    sudo service docker start
-
 ## Grant docker usage for non-root
     sudo usermod -a -G docker $USER
-    (logout and re-login)
+    su - $USER
     docker ps //test
 
 ## Clone the repository
     git clone git@bitbucket.org:moyix/lava.git
 
-    or 
+    or
 
     git clone https://$YOUR_USERNAME@bitbucket.org/moyix/lava.git
 
