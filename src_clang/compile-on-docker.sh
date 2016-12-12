@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-LAVA_DIR="$( cd ../"$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )"
+LAVA_DIR="$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )")"
 
 docker run \
     --rm -v $LAVA_DIR:$LAVA_DIR lava32 \

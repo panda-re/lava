@@ -154,6 +154,7 @@ if __name__ == "__main__":
     # This is top-level directory for our LAVA stuff.
     top_dir = join(project['directory'], project['name'])
     lava_dir = dirname(dirname(abspath(sys.argv[0])))
+    project['lava'] = lava_dir
     lava_tool = join(lava_dir, 'src_clang', 'build', 'lavaTool')
 
     # This should be {{directory}}/{{name}}/bugs
