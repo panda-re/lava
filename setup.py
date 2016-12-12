@@ -1,11 +1,12 @@
 #!/usr/bin/python
 
+import argparse
 import sys
 import os
 import colorama
 from multiprocessing import cpu_count
 
-LLVM_VERSION="3.6.2"
+LLVM_VERSION = "3.6.2"
 
 LAVA_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 os.chdir(LAVA_DIR)
@@ -63,10 +64,16 @@ def is_package_installed(pkg):
     if (os.path.isfile(os.path.join("/usr/bin", pkg)) or
         os.path.isfile(os.path.join("/bin", pkg))):
         return True
-    rc = os.system("dpkg -s {}".format(pkg))
+    rc = os.system("dpkg -s {} > /dev/null".format(pkg))
     return rc == 0
 
 def main():
+    parser = argparse.ArgumentParser(description='Setup LAVA')
+    parser.add_argument('-s', '--skip_docker_build', action='store_true', default = False,
+            help = 'Whether or not to skip building docker image')
+    args = parser.parse_args()
+    IGNORE_DOCKER = args.skip_docker_build
+
     progress("Installing LAVA apt-get dependencies")
     if not all(map(is_package_installed, LAVA_DEPS)):
         lava_system("sudo apt-get -y install {}".format(" ".join(LAVA_DEPS)))
@@ -81,9 +88,10 @@ def main():
 
     # check that user has the LAVA build docker vm build
     # if not run python scripts/build-docker.py
-    progress("Checking that lava32 docker is properly built")
-    lava_system("docker build -t lava32 {}/docker/".format(LAVA_DIR))
-    lava_system("docker run --rm -v {0}:{0} -w {0}/btrace lava32 bash compile.sh".format(LAVA_DIR))
+    if not IGNORE_DOCKER:
+        progress("Checking that lava32 docker is properly built")
+        lava_system("docker build -t lava32 {}/docker/".format(LAVA_DIR))
+        lava_system("docker run --rm -v {0}:{0} -w {0}/btrace lava32 bash compile.sh".format(LAVA_DIR))
 
     # Compile lavaTool inside the docker container.
     progress("Creating $LAVA_DIR/src_clang/config.mak")
