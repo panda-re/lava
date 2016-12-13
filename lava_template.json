@@ -1,0 +1,36 @@
+{
+    "pandahost": "{PANDA_HOST}",
+
+    "panda_os_string": "linux-32-lava32",
+    "qemu": "{PANDA_BUILD_DIR}/i386-softmmu/qemu-system-i386",
+	"qcow": "{QCOW}",
+	"snapshot": "root",
+
+	"directory": "{DIRECTORY}",
+    "name": "{NAME}",
+    "tarfile": "{TAR_FILE}",
+	
+	"library_path": "{install_dir}/lib",
+    "configure": "./configure",
+    "make": "{MAKE}",
+    "makeclean": true,
+	"install": "make install",
+	"command": "cmd using {INPUT_FILE}",
+
+	"dbhost": "{DB_HOST}",
+	"db": "{DB_NAME}",
+
+    "dbpassword": "postgrespostgres",
+
+    "timeout": 5,
+	"max_liveness": 10,
+	"max_cardinality": 10000,
+	"max_tcn": 10,
+	"max_lval_size": 100,
+
+    "main_file": [ "{MAIN_FILE}" ],
+
+    "inputs": [ "{INPUT}" ],
+
+	"comment": "sed -r -i.bak 's/^.*\\((tstatbuf|s[tb])\\)(->|\\.)__pad.*$//' src/*.c"
+}

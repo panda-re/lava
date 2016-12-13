@@ -213,7 +213,8 @@ run_remote() {
 
 progress 1 "JSON file is $json"
 
-lava="$(jq -r .lava $json)"
+#lava="$(jq -r .lava $json)"
+lava="$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )")"
 db="$(jq -r .db $json)"
 tarfile="$(jq -r .tarfile $json)"
 tarfiledir="$(dirname $tarfile)"
@@ -253,8 +254,9 @@ if [ $reset -eq 1 ]; then
     deldir "$logs"
     deldir "$bugsdir"
     deldir "$directory/$name/inputs"
+    deldir "$directory/$name/*rr-*"
     # remove all plog files in the directory
-    rm -f "$directory/$name/*.plog"
+    deldir "$directory/$name/*.plog"
     /bin/mkdir -p $logs
     lf="$logs/dbwipe.log"
     progress 1  "Setting up lava db -- logging to $lf"
