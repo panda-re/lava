@@ -221,11 +221,12 @@ directory="$(jq -r .directory $json)"
 name="$(jq -r .name $json)"
 inputs=`jq -r '.inputs' $json  | jq 'join (" ")' | sed 's/\"//g' `
 buildhost="$(jq -r '.buildhost // "docker"' $json)"
-pandahost="$(jq -r .pandahost $json)"
+pandahost="$(jq -r '.pandahost // "localhost"' $json)"
 dbhost="$(jq -r '.dbhost // "localhost"' $json)"
 testinghost="$(jq -r '.testinghost // "docker"' $json)"
 fixupscript="$(jq -r .fixupscript $json)"
 makecmd="$(jq -r .make $json)"
+container="$(jq -r .docker $json)"
 
 scripts="$lava/scripts"
 python="/usr/bin/python"
@@ -239,14 +240,14 @@ logs="$directory/$name/logs"
 
 if [ $reset -eq 1 ]; then
     tick
-    dbexists=$(psql -tAc "SELECT 1 from pg_database where datname='$db'" -U postgres -h "$dbhost")
-    echo "dbexists $dbexists"
-    if [ -z $dbexists ]; then
-        progress 0 "No db -- creating $db for first time"
-    else
-        progress 0 "database $db already exists. removing"
-        run_remote "$dbhost" "dropdb -U postgres $db"
-    fi
+#    dbexists=$(psql -tAc "SELECT 1 from pg_database where datname='$db'" -U postgres -h "$dbhost")
+#    echo "dbexists $dbexists"
+#    if [ -z $dbexists ]; then
+#        progress 0 "No db -- creating $db for first time"
+#    else
+#        progress 0 "database $db already exists. removing"
+    run_remote "$dbhost" "dropdb -U postgres $db || true"
+#    fi
     run_remote "$dbhost" "createdb -U postgres $db"
     deldir "$sourcedir"
     deldir "$logs"
@@ -279,6 +280,8 @@ if [ $add_queries -eq 1 ]; then
     fi
     tock
     echo "add queries complete $time_diff seconds"
+    sudo chown -R $USER $sourcedir
+    sudo chgrp -R $USER $sourcedir
 fi
 
 
@@ -291,7 +294,8 @@ if [ $make -eq 1 ]; then
     tock
     echo "make complete $time_diff seconds"
     run_remote "$buildhost" "echo make complete $time_diff seconds &>> $lf"
-
+    sudo chown -R $USER $sourcedir
+    sudo chgrp -R $USER $sourcedir
 fi
 
 inputs_dir="$directory/$name/inputs"
