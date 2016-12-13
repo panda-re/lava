@@ -105,7 +105,7 @@ class AttackPoint(Base):
     # } type;
 
     def __str__(self):
-        type_strs = ["ATP_FUNCTION_CALL", "ATP_POINTER_RW"]
+        type_strs = ["ATP_FUNCTION_CALL", "ATP_POINTER_RW", "ATP_LARGE_BUFFER_AVAIL"]
         return 'ATP[{}](loc={}:{}, type={})'.format(
             self.id, self.file, self.line, type_strs[self.typ]
         )
