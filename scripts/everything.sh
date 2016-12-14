@@ -41,7 +41,7 @@
 #
 
 
-#set -e # Exit on error
+set -e # Exit on error
 
 USAGE() {
   echo "USAGE: $0 -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
@@ -187,15 +187,23 @@ deldir () {
 run_remote() {
   remote_machine=$1
   command=$2
+  docker_map_args="-v $lava:$lava -v $tarfiledir:$tarfiledir"
+  if [[ "$directory" = "$tarfiledir"* ]]; then true; else
+    docker_map_args="$docker_map_args -v $directory:$directory"
+  fi
   if [ "$remote_machine" == "localhost" ]; then
     echo "$command"
     bash -c "$command"
   elif [ "$remote_machine" == "docker" ]; then
-    echo docker run -v /var/run/postgresql:/var/run/postgresql -v "$HOME/.pgpass:/root/.pgpass" -v "$directory:$directory" -v "$lava:$lava" -v "$tarfiledir:$tarfiledir" lava32 bash -c "$command"
+    echo docker run lava32 bash -c "$command"
     docker run --rm \
+        -e "HTTP_PROXY=$HTTP_PROXY" \
+        -e "HTTPS_PROXY=$HTTPS_PROXY" \
+        -e "http_proxy=$http_proxy" \
+        -e "https_proxy=$https_proxy" \
         -v /var/run/postgresql:/var/run/postgresql \
-        -v "$HOME/.pgpass:/root/.pgpass" \
-        -v "$directory:$directory" -v "$lava:$lava" -v "$tarfiledir:$tarfiledir" \
+        -v "$HOME/.pgpass:$HOME/.pgpass" \
+        $docker_map_args \
         lava32 bash -c "$command"
   else
     echo "ssh $remote_machine $command"
