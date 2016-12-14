@@ -229,6 +229,13 @@ struct SourceModification {
     }
 };
 
+#pragma db view object(SourceModification) \
+    query((?) + "ORDER BY" + SourceModification::lval)
+struct SourceModificationLazy {
+    unsigned long id;
+    unsigned long lval;
+};
+
 #pragma db object
 struct Build {
 #pragma db id auto

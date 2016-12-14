@@ -29,6 +29,7 @@ extern "C" {
 #include <fstream>
 #include <map>
 #include <set>
+#include <unordered_set>
 #include <vector>
 #include <sstream>
 #include <algorithm>
@@ -662,20 +663,22 @@ void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp) {
     if (!is_new_atp) {
         // This means that all bug opportunities here might be repeats: same
         // atp/lval combo. Let's head that off at the pass.
-        typedef odb::query<SourceModification> q;
+        typedef odb::query<SourceModificationLazy> q;
         unsigned long *param;
-        odb::prepared_query<SourceModification> pq(db->lookup_query<SourceModification>("atp-shortcut", param));
+        odb::prepared_query<SourceModificationLazy> pq(
+                db->lookup_query<SourceModificationLazy>("atp-shortcut", param));
         if (!pq) {
             std::unique_ptr<unsigned long> param_ptr(new unsigned long);
             param = param_ptr.get();
-            pq = db->prepare_query<SourceModification>("atp-shortcut", q::atp->id == q::_ref(*param));
+            pq = db->prepare_query<SourceModificationLazy>("atp-shortcut",
+                    q::atp == q::_ref(*param));
             db->cache_query(pq, std::move(param_ptr));
         }
         *param = atp->id;
 
         auto result = pq.execute();
         for (auto it = result.begin(); it != result.end(); it++) {
-            skip_lval_ids.insert(it.id());
+            skip_lval_ids.insert(skip_lval_ids.end(), it->lval);
         }
     }
     // every still viable dua is a bug inj opportunity at this point in trace
