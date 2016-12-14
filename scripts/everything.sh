@@ -209,7 +209,7 @@ run_remote() {
         -v /etc/shadow:/etc/shadow:ro \
         -v /etc/gshadow:/etc/gshadow:ro \
         $docker_map_args \
-        lava32 bash -c "trap '' PIPE; su -l phulin -c \"$command\""
+        lava32 bash -c "trap '' PIPE; su -l $(whoami) -c \"$command\""
   else
     echo "ssh $remote_machine $command"
     ssh $remote_machine $command
