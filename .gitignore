@@ -15,4 +15,6 @@ btrace.log
 /fbi/lava-odb.*xx
 /fbi/lava.sql
 /src_clang/build
+/src_clang/lava-odb.*xx
+/src_clang/lava.sql
 /lava.mak
