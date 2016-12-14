@@ -11,9 +11,41 @@ import sys
 from multiprocessing import cpu_count
 from os.path import join, isfile, isdir, dirname, abspath
 
-subprocess.check_call(['sudo', 'apt-get', 'install', '-y', 'python-colorama'])
+def command_exited_nonzero(cmd):
+    try:
+        with open(os.devnull, 'w') as devnull:
+            subprocess.check_output(cmd,
+                                    shell=True,
+                                    stderr=devnull)
+        return False
+    except subprocess.CalledProcessError:
+        return True
+
+
+def is_package_installed(pkg):
+    if pkg == "docker.io":
+        return os.path.isfile("/usr/bin/docker")
+    if (os.path.isfile(os.path.join("/usr/bin", pkg)) or
+        os.path.isfile(os.path.join("/bin", pkg))):
+        return True
+    if command_exited_nonzero("dpkg -s {}".format(pkg)):
+        # maybe it is a python package
+        try:
+            python_pkg = pkg.split("python-")[1]
+            return not command_exited_nonzero("python -c \"import {}\"".format(python_pkg))
+        # pkg is not a string of "python-{}"
+        except IndexError:
+            return False
+    else:
+        return True
+
+
+if not is_package_installed("python-colorama"):
+    subprocess.check_call(['sudo', 'apt-get', 'install', '-y', 'python-colorama'])
 from colorama import Fore, Style
 
+# this is set to denote user is already in docker group
+ALREADY_IN_DOCKER_GROUP = False
 LLVM_VERSION = "3.6.2"
 
 LAVA_DIR = dirname(abspath(sys.argv[0]))
@@ -80,6 +112,10 @@ def run(cmd):
         error("[{}] cmd did not execute properly.")
         raise
 
+def user_in_docker(username):
+    # grep exits with 0 if pattern found, 1 otherwise
+    return not command_exited_nonzero("groups {} | grep docker".format(username))
+
 DOCKER_MAP_DIRS = [LAVA_DIR, os.environ['HOME']]
 DOCKER_MAP_FILES = ['/etc/passwd', '/etc/group', '/etc/shadow', '/etc/gshadow']
 map_dirs_dedup = []
@@ -103,10 +139,15 @@ env_var_args = sum([['-e', '{}={}'.format(k, v)] for k, v in env_map.iteritems()
 def run_docker(cmd):
     cmd, cmd_args = cmd_to_list(cmd)
     # Have to be sudo in case we just installed docker and don't have the group yet.
-    cmd_args = ['sudo', 'docker', 'run', '--rm'] + map_dirs_args + \
-        map_files_args + env_var_args + ['lava32', 'su', '-l', getpass.getuser(), '-c', cmd]
+    if ALREADY_IN_DOCKER_GROUP:
+        cmd_args = ['docker', 'run', '--rm'] + map_dirs_args + \
+            map_files_args + env_var_args + ['lava32', 'su', '-l', getpass.getuser(), '-c', cmd]
+    else:
+        cmd_args = ["sudo", 'docker', 'run', '--rm'] + map_dirs_args + \
+            map_files_args + env_var_args + ['lava32', 'su', '-l', getpass.getuser(), '-c', cmd]
     try:
         progress("Running in docker [{}] . . . ".format(cmd))
+        print "[{}]".format(" ".join(cmd_args))
         subprocess.check_call(cmd_args)
     except subprocess.CalledProcessError:
         error("[{}] cmd did not execute properly.")
@@ -125,7 +166,8 @@ def main():
         error("sudo/root privileges detected. Run as user!\nUSAGE: {}".format(sys.argv[0]))
 
     progress("Installing LAVA apt-get dependencies")
-    run(['sudo', 'apt-get', '-y', 'install'] + LAVA_DEPS)
+    if not all(map(is_package_installed, LAVA_DEPS)):
+        run(['sudo', 'apt-get', '-y', 'install'] + LAVA_DEPS)
 
     # set up postgres authentication.
     if not isfile(join(os.environ['HOME'], '.pgpass')):
@@ -147,13 +189,20 @@ def main():
         run("sudo service postgresql reload")
 
     # check that user has docker install and docker privileges
-    run(['sudo', 'usermod', '-a', '-G', 'docker', getpass.getuser()])
+    progress("Checking if user is in docker group")
+    global ALREADY_IN_DOCKER_GROUP
+    ALREADY_IN_DOCKER_GROUP = user_in_docker(getpass.getuser())
+    if not ALREADY_IN_DOCKER_GROUP:
+        run(['sudo', 'usermod', '-a', '-G', 'docker', getpass.getuser()])
 
     # check that user has the LAVA build docker vm build
     # if not run python scripts/build-docker.py
     if not IGNORE_DOCKER:
         progress("Checking that lava32 docker is properly built")
-        run(['sudo', 'docker', 'build', '-t', 'lava32', join(LAVA_DIR, 'docker')])
+        if ALREADY_IN_DOCKER_GROUP:
+            run(['docker', 'build', '-t', 'lava32', join(LAVA_DIR, 'docker')])
+        else:
+            run(["sudo", 'docker', 'build', '-t', 'lava32', join(LAVA_DIR, 'docker')])
         compile_cmd = ['cd', join(LAVA_DIR, 'btrace'), '&&', 'bash', 'compile.sh']
         run_docker(['bash', '-c', subprocess.list2cmdline(compile_cmd)])
 
@@ -215,7 +264,8 @@ def main():
     progress("Finished installing ODB libraries")
 
     progress("Installing python dependencies.")
-    run("sudo pip install subprocess32")
+    if command_exited_nonzero("python -c \"import {}\"".format("subprocess32")):
+        run("sudo pip install subprocess32")
 
     ############## Beginning .mak file stuff ######################
     # I think this would be useful, but i'm seperating it out

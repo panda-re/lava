@@ -2,7 +2,7 @@ FROM m4mbr3/lava32
 
 RUN echo deb http://httpredir.debian.org/debian wheezy-backports main >> /etc/apt/sources.list
 RUN apt-get update
-RUN apt-get install -y bc jq git build-essential python python-colorama
+RUN apt-get install -y bc jq git build-essential python python-colorama zsh
 RUN apt-get install -y libjsoncpp-dev
 
 ENV release 3.6.2
