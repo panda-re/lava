@@ -3,7 +3,9 @@
 import argparse
 import getpass
 import os
+import re
 import shlex
+import stat
 import subprocess
 import sys
 from multiprocessing import cpu_count
@@ -123,6 +125,25 @@ def main():
 
     progress("Installing LAVA apt-get dependencies")
     run(['sudo', 'apt-get', '-y', 'install'] + LAVA_DEPS)
+
+    # set up postgres authentication.
+    if not isfile(join(os.environ['HOME'], '.pgpass')):
+        postgres_depends = subprocess.check_output(['dpkg-query', '-W', '-f', '${depends}', 'postgresql']).splitlines()
+        postgres_pkg = [d for d in postgres_depends if re.match(r'postgresql-[0-9]+.[0-9]+', d)][0]
+        postgres_version = postgres_pkg.replace('postgresql-', '')
+        pg_hba = "/etc/postgresql/{}/main/pg_hba.conf".format(postgres_version)
+        progress('Please enter a password for the postgres database.')
+        postgres_password = getpass.getpass()
+        run(['sudo', 'sed', '-i.bak', '-E', r's/^(local\s+all\s+postgres\s+)md5$/\1peer/', pg_hba])
+        run("sudo service postgresql reload")
+        password_sql = "ALTER USER postgres WITH PASSWORD '{}';".format(postgres_password)
+        run(['sudo', '-u', 'postgres', 'psql', '-c', password_sql])
+        pgpass = join(os.environ['HOME'], '.pgpass')
+        with open(pgpass, 'w') as f:
+            f.write('*:*:*:postgres:{}'.format(postgres_password))
+        os.chmod(pgpass, stat.S_IRUSR | stat.S_IWUSR)
+        run(['sudo', 'sed', '-i.bak', '-E', r's/^(local\s+all\s+postgres\s+)peer$/\1md5/', pg_hba])
+        run("sudo service postgresql reload")
 
     # check that user has docker install and docker privileges
     run(['sudo', 'usermod', '-a', '-G', 'docker', getpass.getuser()])
