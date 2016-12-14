@@ -220,6 +220,8 @@ if __name__ == "__main__":
             '-C', bugs_parent], stderr=sys.stderr)
     if not os.path.exists(join(bugs_build, '.git')):
         run(['git', 'init'])
+        run(['git', 'config', 'user.name', 'LAVA'])
+        run(['git', 'config', 'user.email', 'nobody@nowhere'])
         run(['git', 'add', '-A', '.'])
         run(['git', 'commit', '-m', 'Unmodified source.'])
     if not os.path.exists(join(bugs_build, 'btrace.log')):

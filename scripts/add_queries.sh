@@ -76,6 +76,8 @@ cd "$source"
 
 progress "Creating git repo."
 git init
+git config user.name LAVA
+git config user.email "nobody@nowhere"
 git add -A .
 git commit -m 'Unmodified source.'
 
