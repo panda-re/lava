@@ -3,10 +3,13 @@
 import argparse
 import sys
 import os
-import colorama
 import subprocess
 from multiprocessing import cpu_count
 from os.path import join, isfile, isdir, dirname, abspath
+
+subprocess.check_call(['sudo', 'apt-get', 'install', '-y', 'python-colorama'])
+
+import colorama
 
 LLVM_VERSION = "3.6.2"
 
