@@ -8,7 +8,7 @@ CC ?= clang
 LDFLAGS= -L/usr/local/lib -lprotobuf-c -lz -lpq -ljsoncpp -lodb-pgsql -lodb
 CFLAGS= -I$(PANDA_SRC_PATH)/panda/include \
 		-I$(PANDA_BUILD_DIR)/i386-softmmu \
-		-I../include \
+		-I../include -I../src_clang \
 		-D PLOG_READER -O2 -g \
 		-I/usr/include/jsoncpp -D LAVA -D PANDA_LAVA \
 		-I/usr/lib/odb/x86_64-linux-gnu/include

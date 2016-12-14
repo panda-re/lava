@@ -34,8 +34,8 @@ extern "C" {
 #include <set>
 
 #include "lavaDB.h"
-#include "../include/lava.hxx"
-#include "../include/lava-odb.hxx"
+#include "lava.hxx"
+#include "lava-odb.hxx"
 
 #define RV_PFX "kbcieiubweuhc"
 #define RV_PFX_LEN 13

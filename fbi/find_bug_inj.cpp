@@ -37,11 +37,11 @@ extern "C" {
 #include <cstdint>
 #include <cstdio>
 #include <cassert>
-#include "../src_clang/lavaDB.h"
+#include "lavaDB.h"
 
-#include "../include/pgarray.hxx"
-#include "../include/lava.hxx"
-#include "../include/lava-odb.hxx"
+#include "pgarray.hxx"
+#include "lava.hxx"
+#include "lava-odb.hxx"
 #include <odb/pgsql/database.hxx>
 #include <odb/session.hxx>
 

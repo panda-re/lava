@@ -74,7 +74,7 @@ CLANG_LIBS := -Wl,--start-group \
 
 BUILDDIR := build
 
-.PHONY: all
+.PHONY: all lavatool attackpoints
 all: lavatool attackpoints
 
 lavatool: make_builddir \
@@ -108,13 +108,13 @@ $(BUILDDIR)/includes.h.gch: includes.h
 $(BUILDDIR)/lavaTool: $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
-$(BUILDDIR)/lavaTool.o: $(BUILDDIR)/lava-odb.hxx
+$(BUILDDIR)/lavaTool.o: lava-odb.hxx
 
 $(BUILDDIR)/attackPoints: $(BUILDDIR)/attackPoints.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS)
 
-$(BUILDDIR)/%-odb.cxx $(BUILDDIR)/%-odb.hxx: ../include/%.hxx Makefile
-	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o "$(BUILDDIR)" \
+%-odb.cxx %-odb.hxx: ../include/%.hxx Makefile
+	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o . \
 	--generate-query --generate-schema --generate-prepared \
 	--cxx-prologue '#include "../include/pgarray.hxx"' \
 	--sql-name-case lower $<
