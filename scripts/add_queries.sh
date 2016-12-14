@@ -26,8 +26,6 @@
 # and run the bug_mining.py script (which uses PANDA to trace taint).
 #
 
-
-
 ns=$(date +%s%N)
 START=$(echo "scale=2; $ns/1000000000" | bc)
 
@@ -68,9 +66,10 @@ progress "Untarring $tarfile..."
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
 
 if [ -e "$source" ]; then
-  rm -rf "$source"
+  progress "Deleting $directory/$name/$source..."
+  rm -rf "$directory/$name/$source"
 fi
-tar --no-same-owner -xf "$tarfile"
+tar xf "$tarfile"
 
 progress "Entering $source."
 cd "$source"

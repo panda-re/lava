@@ -40,6 +40,7 @@
 # fixupscript: script to run after add_query to fix up src before make
 #
 
+trap '' PIPE
 
 set -e # Exit on error
 
@@ -203,8 +204,12 @@ run_remote() {
         -e "https_proxy=$https_proxy" \
         -v /var/run/postgresql:/var/run/postgresql \
         -v "$HOME/.pgpass:$HOME/.pgpass" \
+        -v /etc/passwd:/etc/passwd:ro \
+        -v /etc/group:/etc/group:ro \
+        -v /etc/shadow:/etc/shadow:ro \
+        -v /etc/gshadow:/etc/gshadow:ro \
         $docker_map_args \
-        lava32 bash -c "$command"
+        lava32 bash -c "trap '' PIPE; su -l phulin -c \"$command\""
   else
     echo "ssh $remote_machine $command"
     ssh $remote_machine $command

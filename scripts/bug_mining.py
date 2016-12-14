@@ -15,25 +15,24 @@ Second is input file you want to run, under panda, to get taint info.
 
 
 
+from __future__ import print_function
 
-import re
 import os
-import socket
 import sys
 import tempfile
 import subprocess32
+from subprocess32 import PIPE
 import shutil
 import time
 import pipes
 import json
-import psycopg2
-from colorama import Fore, Back, Style
-from pexpect import spawn, fdpexpect
+from colorama import Fore, Style
+from pexpect import spawn
 import pexpect
 from os.path import dirname, abspath, join
 import psutil
 
-from lava import *
+from lava import LavaDatabase, Dua, Bug, AttackPoint
 
 debug = True
 
@@ -50,13 +49,14 @@ def tock():
 
 def dprint(msg):
     if debug:
-        print msg
+        print(msg)
 
 def progress(msg):
-    print Fore.RED + msg + Fore.RESET
+    print('')
+    print(Fore.GREEN + '[bug_mining.py] ' + Fore.RESET + Style.BRIGHT + msg + Style.RESET_ALL)
 
 if len(sys.argv) < 3:
-    print >>sys.stderr, "Usage: python project.json inputfile"
+    print("Usage: python project.json inputfile", file=sys.stderr)
     sys.exit(1)
 
 
@@ -65,7 +65,7 @@ tick()
 project_file = abspath(sys.argv[1])
 input_file = abspath(sys.argv[2])
 
-print "bug_mining.py %s %s" % (project_file, input_file)
+print("bug_mining.py %s %s" % (project_file, input_file))
 
 input_file_base = os.path.basename(input_file)
 project = json.load(open(project_file, "r"))
@@ -113,9 +113,9 @@ tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']])
 sourcedir = tar_files.splitlines()[0].split(os.path.sep)[0]
 sourcedir = abspath(sourcedir)
 
-print
+print('')
 isoname = '{}-{}.iso'.format(sourcedir, input_file_base)
-progress("Creaing ISO {}...".format(isoname))
+progress("Creating ISO {}...".format(isoname))
 installdir = join(sourcedir, 'lava-install')
 shutil.copy(input_file, join(installdir, input_file_base))
 subprocess32.check_call(['genisoimage', '-RJ', '-max-iso9660-filenames',
@@ -147,16 +147,24 @@ qemu_args = [project['qcow'], '-loadvm', project['snapshot'],
         '-serial', 'unix:' + serial_path + ',server,nowait',
         '-vnc', ':' + str(new_vnc_display)]
 
-print
+print('')
 progress("Running qemu with args:")
-print project['qemu'], " ".join(qemu_args)
-print
+print(project['qemu'], " ".join(qemu_args))
+print('')
 
 os.mkfifo(monitor_path)
 os.mkfifo(serial_path)
+monitor_wait = subprocess32.Popen(['inotifywait', '-e', 'open', monitor_path],
+                                  stdout=PIPE, stderr=PIPE)
+serial_wait = subprocess32.Popen(['inotifywait', '-e', 'open', serial_path],
+                                 stdout=PIPE, stderr=PIPE)
 qemu = spawn(project['qemu'], qemu_args)
 qemu.logfile = sys.stdout
-time.sleep(1)
+
+try:
+    monitor_wait.communicate(timeout=15)
+    serial_wait.communicate(timeout=15)
+except subprocess32.TimeoutExpired: pass
 
 monitor = spawn("socat", ["stdin", "unix-connect:" + monitor_path])
 monitor.logfile = open(os.path.join(tempdir, 'monitor.txt'), 'w')
@@ -165,24 +173,24 @@ console.logfile = open(os.path.join(tempdir, 'console.txt'), 'w')
 
 def run_monitor(cmd):
     if debug:
-        print "monitor cmd: [%s]" % cmd
-    print Style.BRIGHT + "(qemu)" + Style.RESET_ALL,
+        print("monitor cmd: [%s]" % cmd)
+    print(Style.BRIGHT + "(qemu)" + Style.RESET_ALL,)
     monitor.sendline(cmd)
     monitor.expect_exact("(qemu)")
-    print monitor.before.partition("\r\n")[2]
+    print(monitor.before.partition("\r\n")[2])
 
 def run_console(cmd, expectation="root@debian-i386:~", timeout=-1):
     if debug:
-        print "console cmd: [%s]" % cmd
-    print Style.BRIGHT + "root@debian-i386:~#" + Style.RESET_ALL,
+        print("console cmd: [%s]" % cmd)
+    print(Style.BRIGHT + "root@debian-i386:~#" + Style.RESET_ALL,)
     console.sendline(cmd)
     try:
         console.expect_exact(expectation, timeout=timeout)
     except pexpect.TIMEOUT:
-        print console.before
+        print(console.before)
         raise
 
-    print console.before.partition("\n")[2]
+    print(console.before.partition("\n")[2])
 
 # Make sure monitor/console are in right state.
 monitor.expect_exact("(qemu)")
@@ -222,41 +230,16 @@ console.close()
 shutil.rmtree(tempdir)
 
 record_time = tock()
-print "panda record complete %.2f seconds" % record_time
+print("panda record complete %.2f seconds" % record_time)
 sys.stdout.flush()
 
 tick()
-'''
-progress("Starting first-pass replay...")
-qemu_args = ['-replay', isoname,
-        '-os', panda_os_string,
-        '-panda', 'taint2:no_tp',
-        '-panda', 'file_taint:notaint,filename=' + input_file_guest]
-
-
-dprint ("qemu args: [%s]" % (" ".join(qemu_args)))
-
-qemu_replay = spawn(project['qemu'], qemu_args)
-qemu_replay.logfile_read = sys.stdout
-# trying to match this: saw open of file we want to taint: [/mnt/bash] insn 10022563
-qemu_replay.expect(re.compile("saw open of file we want to taint: \[.*\] insn ([0-9]+)"), timeout=1000)
-
-#after_progress = qemu_replay.before.rpartition(os.path.basename(isoname) + ":")[2]
-#instr = int(after_progress.strip().split()[0])
-
-instr = (int (qemu_replay.match.groups()[0])) - 10000
-assert instr != 0
-qemu_replay.close()
-print
-progress("Starting second-pass replay, tainting from {}...".format(instr))
-'''
-
-print
+print('')
 progress("Starting first and only replay, tainting on file open...")
 
 
 pandalog = "%s/%s/queries-%s.plog" % (project['directory'], project['name'], os.path.basename(isoname))
-print "pandalog = [%s] " % pandalog
+print("pandalog = [%s] " % pandalog)
 
 pri_taint_args = "hypercall"
 if chaff:
@@ -278,7 +261,7 @@ subprocess32.check_call([project['qemu']]+ qemu_args, stdout=sys.stdout, stderr=
 
 
 replay_time = tock()
-print "taint analysis complete %.2f seconds" % replay_time
+print("taint analysis complete %.2f seconds" % replay_time)
 sys.stdout.flush()
 
 tick()
@@ -287,7 +270,7 @@ progress("Trying to create database {}...".format(project['name']))
 createdb_args = ['createdb', '-U', 'postgres', project['db']]
 createdb_result = subprocess32.call(createdb_args, stdout=sys.stdout, stderr=sys.stderr)
 
-print
+print('')
 if createdb_result == 0: # Created new DB; now populate
     progress("Database created. Initializing...")
     psql_args = ['psql', '-U', 'postgres', '-d', project['db'],
@@ -297,23 +280,23 @@ if createdb_result == 0: # Created new DB; now populate
 else:
     progress("Database already exists.")
 
-print
+print('')
 progress("Calling the FBI on queries.plog...")
 fbi_args = [join(lavadir, 'fbi', 'fbi'), project_file, sourcedir, pandalog, input_file_base]
 dprint ("fbi invocation: [%s]" % (" ".join(fbi_args)))
 subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
 
-print
+print('')
 progress("Found Bugs, Injectable!!")
 
 fib_time = tock()
-print "fib complete %.2f seconds" % fib_time
+print("fib complete %.2f seconds" % fib_time)
 sys.stdout.flush()
 
 db = LavaDatabase(project)
 
-print "total dua:", db.session.query(Dua).count()
-print "total atp:", db.session.query(AttackPoint).count()
-print "total bug:", db.session.query(Bug).count()
+print("total dua:", db.session.query(Dua).count())
+print("total atp:", db.session.query(AttackPoint).count())
+print("total bug:", db.session.query(Bug).count())
 
 
