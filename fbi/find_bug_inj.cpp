@@ -334,7 +334,7 @@ inline std::vector<uint32_t> get_dua_dead_offsets(const Dua *dua) {
             // determine if liveness for this offset is still low enough
             for (auto l : ls->labels) {
                 if (liveness[l] > max_liveness) {
-                    dprintf("byte offset is nonviable b/c label %d has liveness %.3f\n",
+                    dprintf("byte offset is nonviable b/c label %d has liveness %lu\n",
                             l, liveness[l]);
                     byte_viable = false;
                     break;
@@ -393,7 +393,7 @@ inline bool is_dua_viable(const Dua *dua) {
     return get_dua_dead_offsets(dua).size() == LAVA_MAGIC_VALUE_SIZE;
 }
 
-void find_bug_inj_opportunities(const AttackPoint *atp);
+void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp);
 
 void taint_query_pri(Panda__LogEntry *ple) {
     assert (ple != NULL);
@@ -546,11 +546,13 @@ void taint_query_pri(Panda__LogEntry *ple) {
         if (len > 20) {
             Range range = get_dua_exploit_pad(dua);
             if (range.size() > 20) {
-                const AttackPoint *pad_atp = create(AttackPoint{0,
+                const AttackPoint *pad_atp;
+                bool is_new_atp;
+                std::tie(pad_atp, is_new_atp) = create_full(AttackPoint{0,
                         relative_filename, si->linenum, std::string(si->astnodename),
                         AttackPoint::ATP_LARGE_BUFFER_AVAIL,
                         range.low, range.high});
-                find_bug_inj_opportunities(pad_atp);
+                find_bug_inj_opportunities(pad_atp, is_new_atp);
             }
         }
 
@@ -655,10 +657,32 @@ def collect_bugs(attack_point):
   iterate over all currently viable duas and
   look for bug inj opportunities
 */
-void find_bug_inj_opportunities(const AttackPoint *atp) {
+void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp) {
+    std::set<unsigned long> skip_lval_ids;
+    if (!is_new_atp) {
+        // This means that all bug opportunities here might be repeats: same
+        // atp/lval combo. Let's head that off at the pass.
+        typedef odb::query<SourceModification> q;
+        unsigned long *param;
+        odb::prepared_query<SourceModification> pq(db->lookup_query<SourceModification>("atp-shortcut", param));
+        if (!pq) {
+            std::unique_ptr<unsigned long> param_ptr(new unsigned long);
+            param = param_ptr.get();
+            pq = db->prepare_query<SourceModification>("atp-shortcut", q::atp->id == q::_ref(*param));
+            db->cache_query(pq, std::move(param_ptr));
+        }
+        *param = atp->id;
+
+        auto result = pq.execute();
+        for (auto it = result.begin(); it != result.end(); it++) {
+            skip_lval_ids.insert(it.id());
+        }
+    }
     // every still viable dua is a bug inj opportunity at this point in trace
     for ( auto kvp : recent_duas ) {
         const SourceLval *lval = kvp.first;
+        if (skip_lval_ids.find(lval->id) != skip_lval_ids.end()) continue;
+
         const Dua *dua = kvp.second;
 
         // Need to select bytes now.
@@ -709,11 +733,13 @@ void attack_point_ptr_rw(Panda__LogEntry *ple) {
     dprintf("%lu viable duas remain\n", recent_duas.size());
     std::string relative_filename = strip_pfx(ind2str[si->filename], src_pfx);
     assert(relative_filename.size() > 0);
-    const AttackPoint *atp = create(AttackPoint{0,
+    const AttackPoint *atp;
+    bool is_new_atp;
+    std::tie(atp, is_new_atp) = create_full(AttackPoint{0,
             relative_filename, si->linenum, ind2str[si->astnodename],
             AttackPoint::ATP_POINTER_RW, 0, 0});
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
-    find_bug_inj_opportunities(atp);
+    find_bug_inj_opportunities(atp, is_new_atp);
 }
 
 struct SrcFunction {
@@ -805,7 +831,7 @@ int main (int argc, char **argv) {
     printf("%d strings in lavadb\n", (int) ind2str.size());
 
     max_liveness = root["max_liveness"].asUInt();
-    printf("maximum liveness score of %.2f\n", max_liveness);
+    printf("maximum liveness score of %lu\n", max_liveness);
     max_card = root["max_cardinality"].asUInt();
     printf("max card of taint set returned by query = %d\n", max_card);
     max_tcn = root["max_tcn"].asUInt();
