@@ -1,10 +1,11 @@
 #!/usr/bin/python
 
 import argparse
-import sys
+import getpass
 import os
-import subprocess
 import shlex
+import subprocess
+import sys
 from multiprocessing import cpu_count
 from os.path import join, isfile, isdir, dirname, abspath
 
@@ -100,7 +101,7 @@ def run_docker(cmd):
     cmd, cmd_args = cmd_to_list(cmd)
     # Have to be sudo in case we just installed docker and don't have the group yet.
     cmd_args = ['sudo', 'docker', 'run', '--rm'] + map_dirs_args + \
-        map_files_args + env_var_args + ['lava32', 'su', '-l', 'phulin', '-c', cmd]
+        map_files_args + env_var_args + ['lava32', 'su', '-l', getpass.getuser(), '-c', cmd]
     try:
         progress("Running in docker [{}] . . . ".format(cmd))
         subprocess.check_call(cmd_args)
@@ -124,7 +125,7 @@ def main():
     run(['sudo', 'apt-get', '-y', 'install'] + LAVA_DEPS)
 
     # check that user has docker install and docker privileges
-    run(['sudo', 'usermod', '-a', '-G', 'docker', os.environ['USER']])
+    run(['sudo', 'usermod', '-a', '-G', 'docker', getpass.getuser()])
 
     # check that user has the LAVA build docker vm build
     # if not run python scripts/build-docker.py
