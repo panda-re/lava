@@ -9,6 +9,10 @@ btrace.log
 /tags
 /include/lava-odb.*xx
 .gdb_history
-fbi/fbi
-fbi/panda.mak
+/fbi/fbi
+/fbi/panda.mak
 /include/lava.sql
+/fbi/lava-odb.*xx
+/fbi/lava.sql
+/src_clang/build
+/lava.mak

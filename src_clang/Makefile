@@ -114,7 +114,7 @@ $(BUILDDIR)/attackPoints: $(BUILDDIR)/attackPoints.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS)
 
 $(BUILDDIR)/%-odb.cxx $(BUILDDIR)/%-odb.hxx: ../include/%.hxx Makefile
-	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o . \
+	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o "$(BUILDDIR)" \
 	--generate-query --generate-schema --generate-prepared \
 	--cxx-prologue '#include "../include/pgarray.hxx"' \
 	--sql-name-case lower $<
