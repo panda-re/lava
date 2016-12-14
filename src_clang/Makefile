@@ -28,11 +28,13 @@ $(info Using LLVM_BUILD_PATH = $(LLVM_BUILD_PATH))
 $(info Using LLVM_BIN_PATH = $(LLVM_BIN_PATH))
 $(info -----------------------------------------------)
 
+VPATH=.:../src_clang:$(PANDA_SRC_PATH)/panda/src:$(PANDA_BUILD_DIR)/i386-softmmu
 
 #CXX := g++
 #CXXFLAGS := -fexceptions -fno-rtti -O0 -g -std=c++11 -I/usr/include/jsoncpp
 CXX := g++
-CXXFLAGS := -fexceptions -O0 -g -std=c++11 -I/usr/include/jsoncpp -fno-omit-frame-pointer
+CXXFLAGS := -fexceptions -O2 -g -std=c++11 -I/usr/include/jsoncpp -fno-omit-frame-pointer
+CXXFLAGS += -I../include
 
 PLUGIN_CXXFLAGS := -fpic -fexceptions
 
@@ -91,32 +93,33 @@ emit_build_config: make_builddir
 make_builddir:
 	@test -d $(BUILDDIR) || mkdir $(BUILDDIR)
 
-%.o: %.cpp
+$(BUILDDIR)/%.o: %.cpp
 	$(CXX) -c -o $@ $< $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $(CXXFLAGS)
 
-%.o: %.cxx
+$(BUILDDIR)/%.o: %.cxx
 	$(CXX) -c -o $@ $< $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $(CXXFLAGS)
 
-%.o: %.c
+$(BUILDDIR)/%.o: %.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-includes.h.gch: includes.h
+$(BUILDDIR)/includes.h.gch: includes.h
 	$(CXX) -c -o $@ $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^
 
-$(BUILDDIR)/lavaTool: lavaTool.o lavaDB.o ../include/lava-odb.o
+$(BUILDDIR)/lavaTool: $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
-lavaTool.o: ../include/lava-odb.cxx
+$(BUILDDIR)/lavaTool.o: lava-odb.hxx
 
-$(BUILDDIR)/attackPoints: attackPoints.o
+$(BUILDDIR)/attackPoints: $(BUILDDIR)/attackPoints.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS)
 
-../include/lava-odb.cxx: ../include/lava.hxx
-	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o ../include \
-	--generate-query --generate-schema --cxx-prologue '#include "../include/pgarray.hxx"' \
+$(BUILDDIR)/%-odb.cxx $(BUILDDIR)/%-odb.hxx: ../include/%.hxx Makefile
+	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o . \
+	--generate-query --generate-schema --generate-prepared \
+	--cxx-prologue '#include "../include/pgarray.hxx"' \
 	--sql-name-case lower $<
 
 .PHONY: clean
 clean:
-	rm -rf $(BUILDDIR)/* *~ *.o ../include/lava-odb.o ../include/lava-odb.*xx
+	rm -rf $(BUILDDIR)/* *~ *.o lava-odb.*xx lava.sql
 
