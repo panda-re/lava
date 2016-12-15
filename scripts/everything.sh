@@ -34,8 +34,7 @@
 # name:        a name for this project (used to create directories)
 # inputs:      a list of inputs that will be used to find potential bugs (think coverage)
 # buildhost:   what remote host to build source on
-# pandahost:   what remote host to run panda on
-# dbhost:      host with postgres on it
+# pandahost:   what remote host to run panda and postgres on
 # testinghost: what host to test injected bugs on
 # fixupscript: script to run after add_query to fix up src before make
 #
@@ -236,7 +235,6 @@ name="$(jq -r .name $json)"
 inputs=`jq -r '.inputs' $json  | jq 'join (" ")' | sed 's/\"//g' `
 buildhost="$(jq -r '.buildhost // "docker"' $json)"
 pandahost="$(jq -r '.pandahost // "localhost"' $json)"
-dbhost="$(jq -r '.dbhost // "localhost"' $json)"
 testinghost="$(jq -r '.testinghost // "docker"' $json)"
 fixupscript="$(jq -r .fixupscript $json)"
 makecmd="$(jq -r .make $json)"
@@ -254,15 +252,8 @@ logs="$directory/$name/logs"
 
 if [ $reset -eq 1 ]; then
     tick
-#    dbexists=$(psql -tAc "SELECT 1 from pg_database where datname='$db'" -U postgres -h "$dbhost")
-#    echo "dbexists $dbexists"
-#    if [ -z $dbexists ]; then
-#        progress 0 "No db -- creating $db for first time"
-#    else
-#        progress 0 "database $db already exists. removing"
-    run_remote "$dbhost" "dropdb -U postgres $db || true"
-#    fi
-    run_remote "$dbhost" "createdb -U postgres $db"
+    run_remote "$pandahost" "dropdb -U postgres $db || true"
+    run_remote "$pandahost" "createdb -U postgres $db"
     deldir "$sourcedir"
     deldir "$logs"
     deldir "$bugsdir"
@@ -273,8 +264,8 @@ if [ $reset -eq 1 ]; then
     /bin/mkdir -p $logs
     lf="$logs/dbwipe.log"
     progress 1  "Setting up lava db -- logging to $lf"
-    run_remote "$dbhost" "/usr/bin/psql -d $db -f $lava/fbi/lava.sql -U postgres >& $lf"
-    run_remote "$dbhost" "echo dbwipe complete >> $lf"
+    run_remote "$pandahost" "/usr/bin/psql -d $db -f $lava/fbi/lava.sql -U postgres >& $lf"
+    run_remote "$pandahost" "echo dbwipe complete >> $lf"
     /bin/mkdir -p $logs
     tock
     echo "reset complete $time_diff seconds"
@@ -331,7 +322,7 @@ if [ $taint -eq 1 ]; then
         progress 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
         run_remote "$pandahost" "$python $scripts/bug_mining.py $json $input >& $lf"
         echo -n "Num Bugs in db: "
-        /usr/bin/psql -h "$dbhost" -d $db -U postgres -c 'select count(*) from bug' | head -3 | tail -1
+        run_remote "$pandahost" "/usr/bin/psql -d $db -U postgres -c 'select count(*) from bug' | head -3 | tail -1"
     done
     tock
     echo "bug_mining complete $time_diff seconds"

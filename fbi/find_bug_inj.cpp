@@ -854,7 +854,7 @@ int main (int argc, char **argv) {
     src_pfx = std::string(argv[2]);
 
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
-                root["db"].asString(), root["dbhost"].asString()));
+                root["db"].asString()));
     transaction t(db->begin());
     //t.tracer(odb::stderr_full_tracer);
     /*
