@@ -47,6 +47,7 @@ from colorama import Fore, Style
 # this is set to denote user is already in docker group
 ALREADY_IN_DOCKER_GROUP = False
 LLVM_VERSION = "3.6.2"
+DOCKER_NAME = "lava32"
 
 LAVA_DIR = dirname(abspath(sys.argv[0]))
 os.chdir(LAVA_DIR)
@@ -141,10 +142,10 @@ def run_docker(cmd):
     # Have to be sudo in case we just installed docker and don't have the group yet.
     if ALREADY_IN_DOCKER_GROUP:
         cmd_args = ['docker', 'run', '--rm'] + map_dirs_args + \
-            map_files_args + env_var_args + ['lava32', 'su', '-l', getpass.getuser(), '-c', cmd]
+            map_files_args + env_var_args + [DOCKER_NAME, 'su', '-l', getpass.getuser(), '-c', cmd]
     else:
         cmd_args = ["sudo", 'docker', 'run', '--rm'] + map_dirs_args + \
-            map_files_args + env_var_args + ['lava32', 'su', '-l', getpass.getuser(), '-c', cmd]
+            map_files_args + env_var_args + [DOCKER_NAME, 'su', '-l', getpass.getuser(), '-c', cmd]
     try:
         progress("Running in docker [{}] . . . ".format(cmd))
         print "[{}]".format(" ".join(cmd_args))
@@ -198,11 +199,11 @@ def main():
     # check that user has the LAVA build docker vm build
     # if not run python scripts/build-docker.py
     if not IGNORE_DOCKER:
-        progress("Checking that lava32 docker is properly built")
+        progress("Checking that {} docker is properly built".format(DOCKER_NAME))
         if ALREADY_IN_DOCKER_GROUP:
-            run(['docker', 'build', '-t', 'lava32', join(LAVA_DIR, 'docker')])
+            run(['docker', 'build', '-t', DOCKER_NAME, join(LAVA_DIR, 'docker')])
         else:
-            run(["sudo", 'docker', 'build', '-t', 'lava32', join(LAVA_DIR, 'docker')])
+            run(["sudo", 'docker', 'build', '-t', DOCKER_NAME, join(LAVA_DIR, 'docker')])
         compile_cmd = ['cd', join(LAVA_DIR, 'btrace'), '&&', 'bash', 'compile.sh']
         run_docker(['bash', '-c', subprocess.list2cmdline(compile_cmd)])
 

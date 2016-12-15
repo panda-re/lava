@@ -195,7 +195,7 @@ run_remote() {
     echo "$command"
     bash -c "$command"
   elif [ "$remote_machine" == "docker" ]; then
-    echo docker run lava32 bash -c "$command"
+    echo docker run $dockername bash -c "$command"
     docker run --rm \
         -e "HTTP_PROXY=$HTTP_PROXY" \
         -e "HTTPS_PROXY=$HTTPS_PROXY" \
@@ -208,7 +208,7 @@ run_remote() {
         -v /etc/shadow:/etc/shadow:ro \
         -v /etc/gshadow:/etc/gshadow:ro \
         $docker_map_args \
-        lava32 bash -c "trap '' PIPE; su -l $(whoami) -c \"$command\""
+        $dockername bash -c "trap '' PIPE; su -l $(whoami) -c \"$command\""
   else
     echo "ssh $remote_machine $command"
     ssh $remote_machine $command
@@ -224,6 +224,7 @@ run_remote() {
 
 
 progress 1 "JSON file is $json"
+dockername="lava32"
 
 #lava="$(jq -r .lava $json)"
 lava="$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )")"
