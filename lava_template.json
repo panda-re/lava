@@ -17,9 +17,7 @@
 	"install": "make install",
 	"command": "cmd using {INPUT_FILE}",
 
-	"dbhost": "{DB_HOST}",
 	"db": "{DB_NAME}",
-
     "dbpassword": "postgrespostgres",
 
     "timeout": 5,
