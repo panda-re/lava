@@ -173,6 +173,12 @@ static std::pair<const U*, bool> create_full(T no_id) {
     return std::make_pair(it->second, new_object);
 }
 
+template<>
+std::pair<const Bug*, bool> create_full(Bug no_id) {
+    db->persist(no_id);
+    return std::make_pair(nullptr, true);
+}
+
 template<class T, typename P = typename eq_query<T>::Params>
 static std::pair<const T*, bool> create_full(T no_id) {
     static std::map<T, const T*> existing;
@@ -705,8 +711,7 @@ void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp) {
             }
 
             // this is a new bug (new src mods for both dua and atp)
-            const Bug *bug = create(Bug{0,
-                    dua, selected_bytes, atp, c_max_liveness});
+            create(Bug{0, dua, selected_bytes, atp, c_max_liveness});
             num_bugs_added_to_db++;
             if (dua->fake_dua) {
                 num_potential_nonbugs++;
