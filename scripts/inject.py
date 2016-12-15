@@ -258,9 +258,9 @@ if __name__ == "__main__":
         run(shlex.split(project['make']))
         try:
             run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \\;"))
+            run(['git', 'commit', '-m', 'Adding source files'])
         except subprocess32.CalledProcessError:
             pass
-        run(['git', 'commit', '-m', 'Add compile_commands.json and instrument main.'])
         if not os.path.exists(bugs_install):
             run(project['install'], shell=True)
 
@@ -425,7 +425,7 @@ if __name__ == "__main__":
 #                print lines
             if update_db:
                 db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
-                                output=lines, success=True))
+                                output=lines.encode('string-escape'), success=True))
             if bug.dua.fake_dua == False:
                 # this really is supposed to be a bug
                 # we should see a seg fault or something
