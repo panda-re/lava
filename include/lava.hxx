@@ -98,9 +98,9 @@ struct Dua {
 #pragma db index("DuaUniq") unique members(lval, inputfile, instr)
 
     bool operator<(const Dua &other) const {
-         return std::tie(lval, viable_bytes, inputfile, max_tcn,
+         return std::tie(lval->id, viable_bytes, inputfile, max_tcn,
                          max_cardinality, instr, fake_dua) <
-             std::tie(other.lval, other.viable_bytes, other.inputfile,
+             std::tie(other.lval->id, other.viable_bytes, other.inputfile,
                      other.max_tcn, other.max_cardinality, other.instr,
                      other.fake_dua);
     }
@@ -192,8 +192,8 @@ struct Bug {
 #pragma db index("BugUniq") unique members(atp, dua, selected_bytes)
 
     bool operator<(const Bug &other) const {
-         return std::tie(atp, dua, selected_bytes) <
-             std::tie(other.atp, other.dua, other.selected_bytes);
+         return std::tie(atp->id, dua->id, selected_bytes) <
+             std::tie(other.atp->id, other.dua->id, other.selected_bytes);
     }
 };
 
@@ -224,8 +224,8 @@ struct SourceModification {
     }
 
     bool operator<(const SourceModification &other) const {
-         return std::tie(atp, lval, selected_bytes_hash) <
-             std::tie(other.atp, other.lval, other.selected_bytes_hash);
+         return std::tie(atp->id, lval->id, selected_bytes_hash) <
+             std::tie(other.atp->id, other.lval->id, other.selected_bytes_hash);
     }
 };
 
@@ -267,8 +267,8 @@ struct Run {
     bool success;           // true unless python script failed somehow.
 
     bool operator<(const Run &other) const {
-        return std::tie(build, fuzzed, exitcode, output, success) <
-            std::tie(other.build, other.fuzzed, other.exitcode,
+        return std::tie(build->id, fuzzed->id, exitcode, output, success) <
+            std::tie(other.build->id, other.fuzzed->id, other.exitcode,
                     other.output, other.success);
     }
 };
@@ -306,10 +306,10 @@ struct Call {
 #pragma db index("CallUniq") unique members(call_instr, ret_instr, called_function, callsite_file, callsite_line)
 
     bool operator<(const Call &other) const {
-        return std::tie(call_instr, ret_instr, called_function,
+        return std::tie(call_instr, ret_instr, called_function->id,
                 callsite_file, callsite_line) <
             std::tie(other.call_instr, other.ret_instr,
-                    other.called_function, other.callsite_file,
+                    other.called_function->id, other.callsite_file,
                     other.callsite_line);
     }
 };
