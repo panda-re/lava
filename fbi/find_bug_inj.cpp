@@ -665,7 +665,7 @@ def collect_bugs(attack_point):
   look for bug inj opportunities
 */
 void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp) {
-    std::set<unsigned long> skip_lval_ids;
+    std::vector<unsigned long> skip_lval_ids;
     if (!is_new_atp) {
         // This means that all bug opportunities here might be repeats: same
         // atp/lval combo. Let's head that off at the pass.
@@ -683,17 +683,21 @@ void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp) {
         *param = atp->id;
 
         auto result = pq.execute();
+        skip_lval_ids.reserve(result.size());
         for (auto it = result.begin(); it != result.end(); it++) {
-            skip_lval_ids.insert(skip_lval_ids.end(), it->lval);
+            skip_lval_ids.push_back(it->lval);
         }
     }
     // every still viable dua is a bug inj opportunity at this point in trace
-    for ( auto kvp : recent_duas ) {
+    // NB: recent_duas sorted by SourceMod and therefore by lval id!
+    auto skip_it = skip_lval_ids.begin();
+    for ( const auto &kvp : recent_duas ) {
         const SourceLval *lval = kvp.first;
-        if (skip_lval_ids.find(lval->id) != skip_lval_ids.end()) continue;
+        unsigned long lval_id = lval->id;
+        while (skip_it != skip_lval_ids.end() && *skip_it < lval_id) skip_it++;
+        if (skip_it != skip_lval_ids.end() && *skip_it == lval_id) continue;
 
         const Dua *dua = kvp.second;
-
         // Need to select bytes now.
         std::vector<uint32_t> selected_bytes = get_dua_dead_offsets(dua);
 

@@ -223,9 +223,10 @@ struct SourceModification {
         }
     }
 
+    // NB: MUST order by lval id first to enable faster algorithm in FBI.
     bool operator<(const SourceModification &other) const {
-         return std::tie(atp->id, lval->id, selected_bytes_hash) <
-             std::tie(other.atp->id, other.lval->id, other.selected_bytes_hash);
+         return std::tie(lval->id, atp->id, selected_bytes_hash) <
+             std::tie(other.lval->id, other.atp->id, other.selected_bytes_hash);
     }
 };
 
