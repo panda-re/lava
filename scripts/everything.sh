@@ -177,7 +177,7 @@ deldir () {
   if [[ "$ans" = "ok" ]]
   then
       echo "...deleting"
-      rm -rf $deldir
+      rm -rf $deldir || true
   else
       echo "exiting"
       exit
@@ -252,8 +252,6 @@ logs="$directory/$name/logs"
 
 if [ $reset -eq 1 ]; then
     tick
-    run_remote "$pandahost" "dropdb -U postgres $db || true"
-    run_remote "$pandahost" "createdb -U postgres $db"
     deldir "$sourcedir"
     deldir "$logs"
     deldir "$bugsdir"
@@ -280,14 +278,12 @@ if [ $add_queries -eq 1 ]; then
     if [ "$fixupscript" != "null" ]; then
         lf="$logs/fixups.log"
         progress 1 "Fixups -- logging to $lf"
-        run_remote "$buildhost" "$fixupscript"
+        run_remote "$buildhost" "( $fixupscript ) >& $lf"
     else
         progress 1 "No fixups"
     fi
     tock
     echo "add queries complete $time_diff seconds"
-    sudo chown -R $USER $sourcedir
-    sudo chgrp -R $USER $sourcedir
 fi
 
 
@@ -300,8 +296,6 @@ if [ $make -eq 1 ]; then
     tock
     echo "make complete $time_diff seconds"
     run_remote "$buildhost" "echo make complete $time_diff seconds &>> $lf"
-    sudo chown -R $USER $sourcedir
-    sudo chgrp -R $USER $sourcedir
 fi
 
 inputs_dir="$directory/$name/inputs"
