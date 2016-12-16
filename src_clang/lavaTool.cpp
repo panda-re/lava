@@ -806,9 +806,6 @@ public:
     Insertions AttackArgInsertion(const Expr *arg, std::set<const Bug*> &injectable_bugs, std::string filename, uint32_t line) {
         //        errs() << "in ComposeAtpDuaUse\n";
         Insertions inss;
-        // Nothing to do if we're not at an attack point
-        if (injectable_bugs.empty())
-            return inss;
         // NB: only insert one dua use if single bug.
         // if > 1 bug we live dangerously and may have multiple attack points
         if (bugs.size() == 1 && (returnCode & INSERTED_DUA_USE)) return inss;
@@ -823,6 +820,9 @@ public:
         Insertions arg_ins;
 
         if (LavaAction == LavaInjectBugs) {
+            // Nothing to do if we're not at an attack point
+            if (injectable_bugs.empty())
+                return inss;
             returnCode |= INSERTED_DUA_USE;
             if (lava_get_proto.count(filename) == 0) {
                 inss.top_of_file = "extern unsigned int lava_get(unsigned int) ;\n";
