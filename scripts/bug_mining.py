@@ -199,13 +199,12 @@ console.expect_exact("root@debian-i386:~#")
 
 progress("Inserting CD...")
 run_monitor("change ide1-cd0 {}".format(isoname))
-time.sleep(5)
 
 run_console("mkdir -p {}".format(installdir))
+
 # Make sure cdrom didn't automount
-run_console("umount /dev/cdrom")
 # Make sure guest path mirrors host path
-run_console("mount /dev/cdrom {}".format(installdir))
+run_console("while ! mount /dev/cdrom '{}'; do sleep 0.3; umount /dev/cdrom; done".format(installdir))
 
 # Use the ISO name as the replay name.
 progress("Beginning recording queries...")
