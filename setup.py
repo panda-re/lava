@@ -137,6 +137,8 @@ ENV_VARS = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']
 env_map = { k: os.environ[k] for k in ENV_VARS if k in os.environ }
 env_var_args = sum([['-e', '{}={}'.format(k, v)] for k, v in env_map.iteritems()], [])
 
+ALREADY_IN_DOCKER_GROUP = user_in_docker(getpass.getuser())
+
 def run_docker(cmd):
     cmd, cmd_args = cmd_to_list(cmd)
     # Have to be sudo in case we just installed docker and don't have the group yet.
@@ -191,8 +193,6 @@ def main():
 
     # check that user has docker install and docker privileges
     progress("Checking if user is in docker group")
-    global ALREADY_IN_DOCKER_GROUP
-    ALREADY_IN_DOCKER_GROUP = user_in_docker(getpass.getuser())
     if not ALREADY_IN_DOCKER_GROUP:
         run(['sudo', 'usermod', '-a', '-G', 'docker', getpass.getuser()])
 
