@@ -170,12 +170,12 @@ class LavaDatabase(object):
         self.session = self.Session()
 
     def uninjected(self):
-        return self.session.query(Bug).filter(~Bug.builds.any())
+        return self.session.query(Bug).filter(~Bug.builds.any()).join(Bug.atp).filter(
+            AttackPoint.typ == AttackPoint.ATP_POINTER_RW)
 
     # returns uninjected (not yet in the build table) possibly fake bugs
     def uninjected2(self, fake):
-        thejoin = self.session.query(Bug).filter(~Bug.builds.any()).join(Bug.dua).join(Bug.atp).join(Dua.lval)
-        return thejoin.filter(Dua.fake_dua == fake)
+        return self.uninjected().join(Bug.dua).join(Dua.lval).filter(Dua.fake_dua == fake)
 
     def next_bug_random(self, fake):
         count = self.uninjected2(fake).count()
