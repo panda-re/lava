@@ -166,7 +166,7 @@ fi
 
 deldir () {
   deldir=$1
-  progress 0 "Deleteing $deldir.  Type ok to go ahead."
+  progress 0 "Deleting $deldir.  Type ok to go ahead."
   if [[ $ok -eq 0 ]]
   then
       # they have to actually type 'ok'
