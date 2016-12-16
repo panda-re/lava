@@ -200,11 +200,11 @@ void vm_lava_pri_query_point(lavaint ast_node){
 }
 */
 static inline
-void vm_lava_attack_point2(lavaint src_filename, unsigned long linenum, lavaint info) {
+void vm_lava_attack_point2(lavaint ast_loc_id, unsigned long linenum, lavaint info) {
   volatile PandaHypercallStruct phs = {0};
   phs.magic = 0xabcd;
   phs.action = LAVA_ATTACK_POINT;
-  phs.src_filename = src_filename;
+  phs.src_filename = ast_loc_id;
   phs.src_linenum = linenum;
   phs.info = info;
   phs.insertion_point = 0;  // this signals that there isnt an insertion point
@@ -240,13 +240,13 @@ void vm_lava_pri_query_point2(lavaint src_filename, unsigned long linenum,
 #endif
 
 #if defined(__PIC__)
-#define vm_lava_pri_query_point(fname, lineno, extra_info) \
+#define vm_lava_pri_query_point(ast_loc_id, lineno, extra_info) \
     do {                                                   \
     volatile PandaHypercallStruct phs;                     \
     volatile PandaHypercallStruct *phs_addr = &phs;        \
     phs.magic = 0xabcd;                                    \
     phs.action = LAVA_PRI_QUERY_POINT;                     \
-    phs.src_filename = fname;                              \
+    phs.src_filename = ast_loc_id;                         \
     phs.src_linenum = lineno;                              \
     phs.insertion_point = 0;                               \
     volatile int save = 0;                                 \
@@ -259,13 +259,13 @@ void vm_lava_pri_query_point2(lavaint src_filename, unsigned long linenum,
     } while(0)
 
 #else
-#define vm_lava_pri_query_point(fname, lineno, extra_info) \
+#define vm_lava_pri_query_point(ast_loc_id, lineno, extra_info) \
     do {                                                   \
     volatile PandaHypercallStruct phs;                     \
     volatile PandaHypercallStruct *phs_addr = &phs;        \
     phs.magic = 0xabcd;                                    \
     phs.action = LAVA_PRI_QUERY_POINT;                     \
-    phs.src_filename = fname;                              \
+    phs.src_filename = ast_loc_id;                         \
     phs.src_linenum = lineno;                              \
     phs.insertion_point = 0;                               \
     phs.info = extra_info;                                 \

@@ -112,8 +112,11 @@ struct eq_query<SourceLval> {
 
     static const auto query(const Params *param) {
         typedef odb::query<SourceLval> q;
-        return q::file == q::_ref(param->file) &&
-            q::line == q::_ref(param->line) &&
+        return q::loc.filename == q::_ref(param->loc.filename) &&
+            q::loc.begin.line == q::_ref(param->loc.begin.line) &&
+            q::loc.begin.column == q::_ref(param->loc.begin.column) &&
+            q::loc.end.line == q::_ref(param->loc.end.line) &&
+            q::loc.end.column == q::_ref(param->loc.end.column) &&
             q::ast_name == q::_ref(param->ast_name) &&
             q::timing == q::_ref(param->timing);
     }
@@ -127,8 +130,11 @@ struct eq_query<AttackPoint> {
 
     static const auto query(const Params *param) {
         typedef odb::query<AttackPoint> q;
-        return q::file == q::_ref(param->file) &&
-            q::line == q::_ref(param->line) &&
+        return q::loc.filename == q::_ref(param->loc.filename) &&
+            q::loc.begin.line == q::_ref(param->loc.begin.line) &&
+            q::loc.begin.column == q::_ref(param->loc.begin.column) &&
+            q::loc.end.line == q::_ref(param->loc.end.line) &&
+            q::loc.end.column == q::_ref(param->loc.end.column) &&
             q::type == q::_ref(param->type);
     }
 };
@@ -531,11 +537,11 @@ void taint_query_pri(Panda__LogEntry *ple) {
         // NB: we don't know liveness info yet. defer byte selection until later.
         assert(si->has_insertionpoint);
 
-        std::string relative_filename = strip_pfx(std::string(si->filename), src_pfx);
-        assert(relative_filename.size() > 0);
+        LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
+        ast_loc.filename = strip_pfx(ast_loc.filename, src_pfx);
+        assert(ast_loc.filename.size() > 0);
 
-        const SourceLval *lval = create(SourceLval{0,
-                relative_filename, si->linenum, std::string(si->astnodename),
+        const SourceLval *lval = create(SourceLval{0, ast_loc, si->astnodename,
                 (SourceLval::Timing)si->insertionpoint, len});
 
         if (debug) {
@@ -556,7 +562,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
                 const AttackPoint *pad_atp;
                 bool is_new_atp;
                 std::tie(pad_atp, is_new_atp) = create_full(AttackPoint{0,
-                        relative_filename, si->linenum, std::string(si->astnodename),
+                        ast_loc, std::string(si->astnodename),
                         AttackPoint::ATP_LARGE_BUFFER_AVAIL,
                         range.low, range.high});
                 find_bug_inj_opportunities(pad_atp, is_new_atp);
@@ -743,13 +749,14 @@ void attack_point_ptr_rw(Panda__LogEntry *ple) {
     }
 
     dprintf("%lu viable duas remain\n", recent_duas.size());
-    std::string relative_filename = strip_pfx(ind2str[si->filename], src_pfx);
-    assert(relative_filename.size() > 0);
+    LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
+    ast_loc.filename = strip_pfx(ast_loc.filename, src_pfx);
+    assert(ast_loc.filename.size() > 0);
     const AttackPoint *atp;
     bool is_new_atp;
     std::tie(atp, is_new_atp) = create_full(AttackPoint{0,
-            relative_filename, si->linenum, ind2str[si->astnodename],
-            AttackPoint::ATP_POINTER_RW, 0, 0});
+            ast_loc, ind2str[si->astnodename],
+            (AttackPoint::Type)pleatp->info, 0, 0});
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
     find_bug_inj_opportunities(atp, is_new_atp);
 }

@@ -147,6 +147,10 @@ struct Insertions {
     std::string after_part;   // stuff to insert right after the thing under inspection
 };
 
+Loc::Loc(const FullSourceLoc &full_loc)
+    : line(full_loc.getExpansionLineNumber()),
+    column(full_loc.getExpansionColumnNumber()) {}
+
 std::set<std::string> lava_get_proto;
 std::set<std::string> lava_set_proto;
 
@@ -188,7 +192,7 @@ bool InFieldBlackList(std::string field_name) {
 }
 // is this lvalname / line / filename, etc a bug inj point?
 // if so, return the vector of bugs that are injectable at this point
-std::set<const Bug*> AtBug(std::string lvalname, std::string filename, uint32_t line, bool atAttackPoint,
+std::set<const Bug*> AtBug(std::string lvalname, LavaASTLoc loc, bool atAttackPoint,
                     SourceLval::Timing insertion_point, bool is_retval ) {
     //                errs() << "atbug : lvalname=" << lvalname << " filename=" << filename << " line=" << line << " atAttackPoint=" << atAttackPoint << " insertion_point=" << insertion_point<< " \n";
     std::set<const Bug*> injectable_bugs;
@@ -198,12 +202,11 @@ std::set<const Bug*> AtBug(std::string lvalname, std::string filename, uint32_t 
         if (atAttackPoint) {
             // this is where we'll use the dua.  only need to match the file and line
             assert (insertion_point == -1);
-            atbug = (filename == bug->atp->file && line == bug->atp->line + MainInstrCorrection);
+            atbug = (loc == bug->atp->loc.adjust_line(MainInstrCorrection));
         } else {
             // this is the dua siphon -- need to match most every part of dua
             // if dua is a retval, the one in the db wont match this one but verify prefix
-            atbug = (filename == bug->dua->lval->file
-                    && (line + 1) == (bug->dua->lval->line + MainInstrCorrection)
+            atbug = (loc.adjust_line(1) == bug->dua->lval->loc.adjust_line(MainInstrCorrection)
                     && ((is_retval
                             && (0 == strncmp(lvalname.c_str(), bug->dua->lval->ast_name.c_str(), RV_PFX_LEN)))
                         || lvalname == bug->dua->lval->ast_name)
@@ -225,7 +228,7 @@ std::set<const Bug*> AtBug(std::string lvalname, std::string filename, uint32_t 
 }
 
 
-std::set<std::string> gatherDuas(std::string filename, uint32_t line) {
+std::set<std::string> gatherDuas(LavaASTLoc loc) {
     std::set<std::string> duas;
     for ( const Bug *bug : bugs ) {
         //                        errs() << bug->str() << "\n";
@@ -233,7 +236,7 @@ std::set<std::string> gatherDuas(std::string filename, uint32_t line) {
         //if (filename == bug->dua->lval->file && line == (bug->dua->lval->line + MainInstrCorrection)){
         // we are inserting dua siphon in unmodified source, but dua is gathered
         // from source with an injected lava header at the top of each file, so add one to line count
-        if (filename == bug->dua->lval->file && (line+1) == (bug->dua->lval->line + MainInstrCorrection)){
+        if (loc.adjust_line(1) == bug->dua->lval->loc.adjust_line(MainInstrCorrection)) {
             //                errs() << "found injectable bug @ line " << line << "\n";
             duas.insert(bug->dua->lval->ast_name);
         }
@@ -514,21 +517,21 @@ public:
         return src_filename != "" && sm.isInMainFile(s->getLocStart());
     }
 
-    std::pair<std::string,uint32_t> GetFilenameAndLine(const Stmt *s){
+    LavaASTLoc GetASTLoc(const Stmt *s){
         SourceManager &sm = rewriter.getSourceMgr();
-        FullSourceLoc fullLoc(s->getLocStart(), sm);
+        FullSourceLoc fullLocStart(s->getLocStart(), sm);
+        FullSourceLoc fullLocEnd(s->getLocEnd(), sm);
         std::string src_filename;
         if (LavaAction == LavaInjectBugs) {
             // we want to strip the build path so that 
             // we can actually compare bug in and query files for
             // same source which will be in different directories
-            src_filename = StripPfx(FullPath(fullLoc), SourceDir);
+            src_filename = StripPfx(FullPath(fullLocStart), SourceDir);
         }
         else {
-            src_filename = FullPath(fullLoc);
+            src_filename = FullPath(fullLocStart);
         }
-        uint32_t src_line = fullLoc.getExpansionLineNumber(); 
-        return std::make_pair(src_filename, src_line);
+        return LavaASTLoc(src_filename, fullLocStart, fullLocEnd);
     }
 
 private:
@@ -564,13 +567,11 @@ public:
   PriQueryPointSimpleHandler(Rewriter &rewriter, std::map<std::string,uint32_t> &StringIDs) :
       rewriter(rewriter), StringIDs(StringIDs), LavaMatchHandler(rewriter, StringIDs)  {}
 
-    Insertions ComposePriDuaQuery(const Stmt *stmt, std::string filename, uint32_t line) {
+    Insertions ComposePriDuaQuery(const Stmt *stmt, LavaASTLoc ast_loc) {
         Insertions inss;
-        std::stringstream ast_node, before, after;
-        ast_node << filename << line << LavaMatchHandler::ExprStr(stmt);
-        before << "; vm_lava_pri_query_point(" << LavaMatchHandler::GetStringID(ast_node.str());
-        before << ", " << line << ", ";
-        before << SourceLval::BEFORE_OCCURRENCE << "); ";
+        std::stringstream before, after;
+        before << "; vm_lava_pri_query_point(" << LavaMatchHandler::GetStringID(ast_loc);
+        before << ", " << ast_loc.begin.line << ", " << SourceLval::BEFORE_OCCURRENCE << "); ";
 
 
         inss.before_part = before.str();
@@ -580,20 +581,20 @@ public:
     virtual void run(const MatchFinder::MatchResult &Result) {
         const Stmt *toSiphon;
         toSiphon = Result.Nodes.getNodeAs<Stmt>("stmt");
-        std::pair<std::string,uint32_t> p = LavaMatchHandler::GetFilenameAndLine(toSiphon);
+        LavaASTLoc p = LavaMatchHandler::GetASTLoc(toSiphon);
         if (!LavaMatchHandler::InMainFile(toSiphon)) return;
         llvm::errs() << "Have a pri SIMPLE query point!\n";
 
         Insertions inss;
         std::string top_of_file;
         if (LavaAction == LavaQueries) {
-            inss = ComposePriDuaQuery(toSiphon, p.first, p.second);
+            inss = ComposePriDuaQuery(toSiphon, p);
             if (inss.before_part != "" || inss.after_part != "")
                 num_taint_queries += 1;
             top_of_file = inss.top_of_file;
         }
         else if (LavaAction == LavaInjectBugs){
-            std::set<std::string> duas = gatherDuas(p.first, p.second);
+            std::set<std::string> duas = gatherDuas(p);
             std::stringstream dua_src_before;
             std::stringstream dua_src_after;
             for ( auto dua : duas ) {
@@ -601,26 +602,25 @@ public:
                 Llval llval = { dua, "", "", NULL, true };
                 assert (llval.name.length() > 0);
                 std::set<const Bug*> injectable_bugs = 
-                    AtBug(llval.name, p.first, p.second, /*atAttackPoint=*/false,
+                    AtBug(llval.name, p, /*atAttackPoint=*/false,
                           SourceLval::BEFORE_OCCURRENCE, /*is_retval=*/ false);
                 // NOTE: if injecting multiple bugs the same dua will need to be instrumented more than once        
                 if (!injectable_bugs.empty()) {
                     errs() << "PriQueryHandler: injecting a dua siphon for " << 
-                        injectable_bugs.size() << " bugs " << p.first << 
-                        " : " << p.second << " : " << llval.name << "\n"; 
+                        injectable_bugs.size() << " bugs " << p << " : " << llval.name << "\n"; 
                 }
                 else {
                     errs() << "PriQueryHandlerSimple: No bugs for this dua. Something went wrong . . .\n";
                 }
                 // for dua siphoning, we want to insert *either* before or after.
                 // based on the bug
-                inss = ComposeDuaSiphoning(llval, injectable_bugs, p.first);
+                inss = ComposeDuaSiphoning(llval, injectable_bugs, p);
                 top_of_file = inss.top_of_file != "" ?
                               inss.top_of_file : top_of_file;
                 dua_src_before << inss.after_part;
-                injectable_bugs =  AtBug(llval.name, p.first, p.second,false,
+                injectable_bugs =  AtBug(llval.name, p,false,
                         SourceLval::AFTER_OCCURRENCE, false);
-                inss = ComposeDuaSiphoning(llval, injectable_bugs, p.first);
+                inss = ComposeDuaSiphoning(llval, injectable_bugs, p);
                 top_of_file = inss.top_of_file != "" ?
                               inss.top_of_file : top_of_file;
                 dua_src_after << inss.after_part;
@@ -803,7 +803,7 @@ public:
       so we instead just add another copy of the call with one
       of the arg perturbed by global.  :)
     */
-    Insertions AttackArgInsertion(const Expr *arg, std::set<const Bug*> &injectable_bugs, std::string filename, uint32_t line) {
+    Insertions AttackArgInsertion(const Expr *arg, std::set<const Bug*> &injectable_bugs, LavaASTLoc ast_loc) {
         //        errs() << "in ComposeAtpDuaUse\n";
         Insertions inss;
         // NB: only insert one dua use if single bug.
@@ -824,9 +824,9 @@ public:
             if (injectable_bugs.empty())
                 return inss;
             returnCode |= INSERTED_DUA_USE;
-            if (lava_get_proto.count(filename) == 0) {
+            if (lava_get_proto.count(ast_loc.filename) == 0) {
                 inss.top_of_file = "extern unsigned int lava_get(unsigned int) ;\n";
-                lava_get_proto.insert(filename);
+                lava_get_proto.insert(ast_loc.filename);
             }
             Insertions attack_inss;
             if (KT)
@@ -841,8 +841,8 @@ public:
                 return inss;
             std::stringstream corruption;
             // call attack point hypercall and return 0
-            corruption << " + ({vm_lava_attack_point2(" << LavaMatchHandler::GetStringID(filename) << ", ";
-            corruption << line << ", " << 0 << "); 0;;})";
+            corruption << " + ({vm_lava_attack_point2(" << LavaMatchHandler::GetStringID(ast_loc) << ", ";
+            corruption << 0 << ", " << AttackPoint::ATP_FUNCTION_CALL << "); 0;;})";
             arg_ins.after_part = corruption.str();
             num_atp_queries++;
         }
@@ -865,10 +865,10 @@ public:
         toAttack->getType().dump();
         llvm::errs() << "\n";
         if (!LavaMatchHandler::InMainFile(ce)) return;
-        std::pair<std::string,uint32_t> p = LavaMatchHandler::GetFilenameAndLine(ce);
+        LavaASTLoc p = LavaMatchHandler::GetASTLoc(ce);
         Insertions inss;
-        std::set<const Bug*> bugs = AtBug("", p.first, p.second, true, SourceLval::NULL_TIMING, false);
-        inss = AttackArgInsertion(toAttack, bugs, p.first, p.second);
+        std::set<const Bug*> bugs = AtBug("", p, true, SourceLval::NULL_TIMING, false);
+        inss = AttackArgInsertion(toAttack, bugs, p);
         if (inss.before_part != "" || inss.after_part != "" || inss.top_of_file != "") {
             llvm::errs() << " Injected FunctionArgBug into " << LavaMatchHandler::ExprStr(ce) << "\n";
             SpitInsertions(inss);
@@ -894,7 +894,7 @@ public:
 TODO: add description of what type of attacks we are doing here
     */
     Insertions AttackExpressionInsertion(const Expr *toAttack, const Expr *parent, bool memWrite,
-            std::set<const Bug*> &injectable_bugs, std::string filename, uint32_t line) {
+            std::set<const Bug*> &injectable_bugs, LavaASTLoc ast_loc) {
         //        errs() << "in AttackExpressionDuaUse\n";
         Insertions inss;
         std::stringstream new_source, corruption;
@@ -905,9 +905,9 @@ TODO: add description of what type of attacks we are doing here
             returnCode |= INSERTED_DUA_USE;
             // if > 1 bug we live dangerously and may have multiple attack points
             // NB: only insert one dua use if single bug.
-            if (lava_get_proto.count(filename) == 0) {
+            if (lava_get_proto.count(ast_loc) == 0) {
                 inss.top_of_file = "extern unsigned int lava_get(unsigned int) ;\n";
-                lava_get_proto.insert(filename);
+                lava_get_proto.insert(ast_loc);
             }
             errs() << new_source.str() << "is being attacked\n";
             Insertions attack_inss;
@@ -922,8 +922,8 @@ TODO: add description of what type of attacks we are doing here
             if ((memWrite && MEM_WRITE_ATP) ||
                 (memRead && MEM_READ_ATP)) {
                 // call attack point hypercall and return 0
-                corruption << "+ ({vm_lava_attack_point2(" << LavaMatchHandler::GetStringID(filename) << ", ";
-                corruption << line << ", " << 0 << "); 0;})";
+                corruption << "+ ({vm_lava_attack_point2(" << LavaMatchHandler::GetStringID(ast_loc) << ", ";
+                corruption << 0 << ", " << AttackPoint::ATP_POINTER_RW << "); 0;})";
                 new_source << corruption.str();
                 num_atp_queries++;
             }
@@ -962,12 +962,12 @@ TODO: add description of what type of attacks we are doing here
              memWrite = true;
         }
         if (!LavaMatchHandler::InMainFile(toAttack)) return;
-        std::pair<std::string,uint32_t> p = LavaMatchHandler::GetFilenameAndLine(toAttack);
-        llvm::errs() << "Have a atp pointer query point" << " at " << p.first << " " << p.second <<  "\n";
+        LavaASTLoc p = LavaMatchHandler::GetASTLoc(toAttack);
+        //llvm::errs() << "Have a atp pointer query point" << " at " << p.first << " " << p.second <<  "\n";
         //parent->dump();
         Insertions inss;
-        std::set<const Bug*> bugs = AtBug("", p.first, p.second, true, SourceLval::NULL_TIMING, false);
-        inss = AttackExpressionInsertion(toAttack, parent, memWrite, bugs, p.first, p.second);
+        std::set<const Bug*> bugs = AtBug("", p, true, SourceLval::NULL_TIMING, false);
+        inss = AttackExpressionInsertion(toAttack, parent, memWrite, bugs, p);
         if (inss.before_part != "" || inss.after_part != "" || inss.top_of_file != "") {
             llvm::errs() << " Injected MemoryReadWriteBug into " << LavaMatchHandler::ExprStr(parent) << "\n";
             SpitInsertions(inss);

@@ -264,7 +264,7 @@ if [ $reset -eq 1 ]; then
     lf="$logs/dbwipe.log"
     progress 1  "Setting up lava db -- logging to $lf"
     run_remote "$pandahost" "dropdb -U postgres $db >& $lf || true"
-    run_remote "$pandahost" "createdb -U postgres $db >>& $lf || true"
+    run_remote "$pandahost" "createdb -U postgres $db 2>&1 >> $lf || true"
     run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres >& $lf"
     run_remote "$pandahost" "echo dbwipe complete >> $lf"
     /bin/mkdir -p $logs

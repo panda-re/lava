@@ -20,14 +20,88 @@
 typedef std::vector<uint32_t> uint32_t_vec;
 #pragma db value(uint32_t_vec) type("INTEGER[]")
 
+namespace clang { class FullSourceLoc; }
+#pragma db value
+struct Loc {
+    unsigned line;
+    unsigned column;
+
+    Loc() {}
+    Loc(unsigned line, unsigned column) : line(line), column(column) {}
+    Loc(const clang::FullSourceLoc &full_loc);
+
+    friend std::ostream &operator<<(std::ostream &os, const Loc &loc) {
+        os << loc.line << ":" << loc.column;
+    }
+
+    Loc adjust_line(unsigned line_offset) const {
+        return Loc(line + line_offset, column);
+    }
+
+    bool operator==(const Loc &other) const {
+        return line == other.line && column == other.column;
+    }
+
+    bool operator<(const Loc &other) const {
+        return std::tie(line, column) < std::tie(other.line, other.column);
+    }
+};
+
+#pragma db value
+struct LavaASTLoc {
+    std::string filename;
+    Loc begin;
+    Loc end;
+
+    LavaASTLoc() {}
+    LavaASTLoc(std::string filename, Loc begin, Loc end) :
+        filename(filename), begin(begin), end(end) {}
+
+    explicit LavaASTLoc(std::string serialized) {
+        std::vector<std::string> components;
+        std::istringstream iss(serialized);
+        for (std::string item; std::getline(iss, item, ':');) {
+            components.push_back(item);
+        }
+        filename = components[0];
+        begin = Loc(std::stol(components[1]), std::stol(components[2]));
+        end = Loc(std::stol(components[3]), std::stol(components[4]));
+    }
+    operator std::string() const {
+        std::stringstream os;
+        os << *this;
+        return os.str();
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const LavaASTLoc &loc) {
+        os << loc.filename << ":" << loc.begin << ":" << loc.end;
+    }
+
+    LavaASTLoc adjust_line(unsigned line_offset) const {
+        return LavaASTLoc(filename,
+                begin.adjust_line(line_offset),
+                end.adjust_line(line_offset));
+    }
+
+    bool operator==(const LavaASTLoc &other) const {
+        return std::tie(filename, begin, end)
+            == std::tie(other.filename, other.begin, other.end);
+    }
+
+    bool operator<(const LavaASTLoc &other) const {
+        return std::tie(filename, begin, end)
+            < std::tie(other.filename, other.begin, other.end);
+    }
+};
+
 #pragma db object
 struct SourceLval { // was DuaKey
 #pragma db id auto
     unsigned long id;
 
-    std::string file;
-    uint32_t line;
-    std::string ast_name;   // AST node definition.
+    LavaASTLoc loc;
+
+    std::string ast_name;
 
     // When did we see taint?
     enum Timing {
@@ -38,15 +112,15 @@ struct SourceLval { // was DuaKey
 
     uint32_t len_bytes;
 
-#pragma db index("SourceLvalUniq") unique members(file, line, ast_name, timing)
+#pragma db index("SourceLvalUniq") unique members(loc, ast_name, timing)
 
     bool operator<(const SourceLval &other) const {
-        return std::tie(file, line, ast_name, timing) <
-            std::tie(other.file, other.line, other.ast_name, other.timing);
+        return std::tie(loc, ast_name, timing) <
+            std::tie(other.loc, other.ast_name, other.timing);
     }
 
     friend std::ostream &operator<<(std::ostream &os, const SourceLval &m) {
-        os << "Lval [" << m.file << ":" << m.line << " ";
+        os << "Lval [" << m.loc.filename << " " << m.loc.begin << " ";
         os << "\"" << m.ast_name << "\"]";
         return os;
     }
@@ -135,8 +209,7 @@ struct AttackPoint {
 #pragma db id auto
     unsigned long id;
 
-    std::string file;
-    uint32_t line;
+    LavaASTLoc loc;
 
     std::string ast_name;
 
@@ -150,11 +223,11 @@ struct AttackPoint {
     uint32_t range_low;
     uint32_t range_high;
 
-#pragma db index("AttackPointUniq") unique members(file, line, type)
+#pragma db index("AttackPointUniq") unique members(loc, type, range_low, range_high)
 
     bool operator<(const AttackPoint &other) const {
-        return std::tie(file, line, type) <
-            std::tie(other.file, other.line, other.type);
+        return std::tie(loc, type) <
+            std::tie(other.loc, other.type);
     }
 
     operator std::string() const {
@@ -169,7 +242,7 @@ struct AttackPoint {
             "ATP_POINTER_RW",
             "ATP_LARGE_BUFFER_AVAIL"
         };
-        os << "ATP [" << m.file << ":" << m.line << "] {";
+        os << "ATP [" << m.loc.filename << " " << m.loc.begin << "] {";
         os << names[m.type] << "}";
         return os;
     }
@@ -279,15 +352,14 @@ struct SourceFunction {
 #pragma db id auto
     unsigned long id;
 
-    std::string file;       // Definition filename
-    uint32_t line;          // Definition line
+    LavaASTLoc loc;
     std::string name;       // Function name
 
-#pragma db index("SourceFunctionUniq") unique members(file, line, name)
+#pragma db index("SourceFunctionUniq") unique members(loc, name)
 
     bool operator<(const SourceFunction &other) const {
-        return std::tie(file, line, name) <
-            std::tie(other.file, other.line, other.name);
+        return std::tie(loc, name) <
+            std::tie(other.loc, other.name);
     }
 };
 
