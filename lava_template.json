@@ -18,9 +18,7 @@
 	"command": "$CMD",
 
 	"db": "$DB_NAME",
-    "dbpassword": "postgrespostgres",
 
-    "timeout": 5,
 	"max_liveness": 10,
 	"max_cardinality": 10000,
 	"max_tcn": 10,

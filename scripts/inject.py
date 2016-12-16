@@ -149,7 +149,7 @@ if __name__ == "__main__":
     # Set up our globals now that we have a project
     db = LavaDatabase(project)
 
-    timeout = project['timeout']
+    timeout = project.get('timeout', 5)
 
     # This is top-level directory for our LAVA stuff.
     top_dir = join(project['directory'], project['name'])
