@@ -167,7 +167,7 @@ if __name__ == "__main__":
 
     try:
         os.makedirs(bugs_top_dir)
-    except: pass
+    except Exception: pass
 
     # This is where we're going to do our injection. We need to make sure it's
     # not being used by another inject.py.
@@ -197,7 +197,7 @@ if __name__ == "__main__":
 
     try:
         os.mkdir(bugs_parent)
-    except: pass
+    except Exception: pass
 
     if 'source_root' in project:
         source_root = project['source_root']

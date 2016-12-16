@@ -195,8 +195,8 @@ run_remote() {
     echo "$command"
     bash -c "$command"
   elif [ "$remote_machine" == "docker" ]; then
-    echo docker run $dockername bash -c "$command"
-    docker run --rm \
+    echo docker run $dockername sh -c "$command"
+    docker run --rm -it \
         -e "HTTP_PROXY=$HTTP_PROXY" \
         -e "HTTPS_PROXY=$HTTPS_PROXY" \
         -e "http_proxy=$http_proxy" \
@@ -208,7 +208,7 @@ run_remote() {
         -v /etc/shadow:/etc/shadow:ro \
         -v /etc/gshadow:/etc/gshadow:ro \
         $docker_map_args \
-        $dockername bash -c "trap '' PIPE; su -l $(whoami) -c \"$command\""
+        $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"$command\""
   else
     echo "ssh $remote_machine $command"
     ssh $remote_machine $command
