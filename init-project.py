@@ -88,7 +88,7 @@ def main():
     json_configs["MAIN_FILE"] = main_file
     json_configs["INPUT"] = input_file
     json_configs["LIB_PATH"] = "{install_dir}/lib"
-    json_configs["COMMENT"] = "sed -r -i.bak 's/^.*\\((tstatbuf|s[tb])\\)(->|\\.)__pad.*$//' src/*.c"
+    json_configs["COMMENT"] = "sed -r -i.bak 's/^.*\\\\((tstatbuf|s[tb])\\\\)(->|\\\\.)__pad.*$//' src/*.c"
 
     # write out json file
     out_json = join(PROJ_HOME, "{}.json".format(name))
