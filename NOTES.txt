@@ -1,2 +1,2 @@
-Fix SQLAlchemy schema.
-Make lava.py use both PTR_RW and FUNCTION_CALL atp's.
+Fix SQLAlchemy schema. - DONE
+Make lava.py use both PTR_RW and FUNCTION_CALL atp's. - TODO
