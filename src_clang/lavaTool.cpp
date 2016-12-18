@@ -206,7 +206,7 @@ std::set<const Bug*> AtBug(std::string lvalname, LavaASTLoc loc, bool atAttackPo
         } else {
             // this is the dua siphon -- need to match most every part of dua
             // if dua is a retval, the one in the db wont match this one but verify prefix
-            atbug = (loc.adjust_line(1) == bug->dua->lval->loc.adjust_line(MainInstrCorrection)
+            atbug = (loc == bug->dua->lval->loc.adjust_line(MainInstrCorrection)
                     && ((is_retval
                             && (0 == strncmp(lvalname.c_str(), bug->dua->lval->ast_name.c_str(), RV_PFX_LEN)))
                         || lvalname == bug->dua->lval->ast_name)
@@ -232,11 +232,8 @@ std::set<std::string> gatherDuas(LavaASTLoc loc) {
     std::set<std::string> duas;
     for ( const Bug *bug : bugs ) {
         //                        errs() << bug->str() << "\n";
-        // this is the dua siphon -- gather all unique dua names at this file name and line number
-        //if (filename == bug->dua->lval->file && line == (bug->dua->lval->line + MainInstrCorrection)){
-        // we are inserting dua siphon in unmodified source, but dua is gathered
-        // from source with an injected lava header at the top of each file, so add one to line count
-        if (loc.adjust_line(1) == bug->dua->lval->loc.adjust_line(MainInstrCorrection)) {
+        // this is the dua siphon -- gather all unique dua names at this `loc`
+        if (loc == bug->dua->lval->loc.adjust_line(MainInstrCorrection)) {
             //                errs() << "found injectable bug @ line " << line << "\n";
             duas.insert(bug->dua->lval->ast_name);
         }

@@ -106,7 +106,7 @@ def check_bug(bugid, jsonfile, runonfuzzedinput):
 
 
 def get_atp_line(bug, bugs_build):
-    with open(join(bugs_build, bug.atp.file), "r") as f:
+    with open(join(bugs_build, bug.atp.loc_filename), "r") as f:
         atp_iter = (line_num for line_num, line in enumerate(f) if
                     "lava_get({})".format(bug.id) in line)
         try:
@@ -114,7 +114,7 @@ def get_atp_line(bug, bugs_build):
             return line_num
         except StopIteration:
             exit_error("lava_get({}) was not in {}".format(bug.id,
-                                                        bug.atp.file))
+                                                        bug.atp.loc_filename))
 
 if __name__ == "__main__":
     update_db = False
@@ -322,8 +322,8 @@ if __name__ == "__main__":
          print "   ", bug.atp
          print "max_tcn={}  max_liveness={}".format(
              bug.max_liveness, bug.dua.max_tcn)
-         src_files.add(bug.dua.lval.file)
-         src_files.add(bug.atp.file)
+         src_files.add(bug.dua.lval.loc_filename)
+         src_files.add(bug.atp.loc_filename)
 
     # cleanup
     print "------------\n"
@@ -478,7 +478,7 @@ if __name__ == "__main__":
                 # triggers at the attack point as expected
                 if (check_bug(bug.id, sys.argv[-1], project['lava'] + "/scripts/run-on-fuzzed-input.py")):
                     print "  -- works and triggers in the right place"
-                    prediction = "{}:{}".format(basename(bug.atp.file),
+                    prediction = "{}:{}".format(basename(bug.atp.loc_filename),
                                                 get_atp_line(bug, bugs_build))
                     print prediction
                     if prediction in predictions:

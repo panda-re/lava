@@ -36,8 +36,11 @@ class SourceLval(Base):
     __tablename__ = 'sourcelval'
 
     id = Column(Integer, primary_key=True)
-    file = Column(Text)
-    line = Column(Integer)
+    loc_filename = Column(Text)
+    loc_begin_line = Column(Integer)
+    loc_begin_column = Column(Integer)
+    loc_end_line = Column(Integer)
+    loc_end_column = Column(Integer)
     ast_name = Column(Text)
     timing = Column(Integer)
 
@@ -48,7 +51,7 @@ class SourceLval(Base):
     def __str__(self):
         timing_strs = ["NULL", "BEFORE", "AFTER"]
         return 'Lval[{}](loc={}:{}, ast="{}", timing={})'.format(
-            self.id, self.file, self.line, self.ast_name,
+            self.id, self.loc_filename, self.loc_begin_line, self.ast_name,
             timing_strs[self.timing]
         )
 
@@ -94,8 +97,11 @@ class AttackPoint(Base):
     __tablename__ = 'attackpoint'
 
     id = Column(BigInteger, primary_key=True)
-    file = Column(Text)
-    line = Column(Integer)
+    loc_filename = Column(Text)
+    loc_begin_line = Column(Integer)
+    loc_begin_column = Column(Integer)
+    loc_end_line = Column(Integer)
+    loc_end_column = Column(Integer)
     typ = Column('type', Integer)
 
     # enum Type {
@@ -107,7 +113,7 @@ class AttackPoint(Base):
     def __str__(self):
         type_strs = ["ATP_FUNCTION_CALL", "ATP_POINTER_RW", "ATP_LARGE_BUFFER_AVAIL"]
         return 'ATP[{}](loc={}:{}, type={})'.format(
-            self.id, self.file, self.line, type_strs[self.typ]
+            self.id, self.loc_filename, self.loc_begin_line, type_strs[self.typ]
         )
 
 build_bugs = \
@@ -194,8 +200,8 @@ class LavaDatabase(object):
         def get_bugs_non_bugs(fake, limit):
             items = self.uninjected2(fake)
             for item in items:
-                dfl = (item.dua.lval.file, item.dua.lval.line)
-                afl = (item.atp.file, item.atp.line)            
+                dfl = (item.dua.lval.loc_filename, item.dua.lval.loc_begin_line)
+                afl = (item.atp.loc_filename, item.atp.loc_begin_line)
                 if (dfl in fileline) or (afl in fileline):
                     continue
                 if fake:
