@@ -862,7 +862,7 @@ public:
         toAttack->getType().dump();
         llvm::errs() << "\n";
         if (!LavaMatchHandler::InMainFile(ce)) return;
-        LavaASTLoc p = LavaMatchHandler::GetASTLoc(ce);
+        LavaASTLoc p = LavaMatchHandler::GetASTLoc(toAttack);
         Insertions inss;
         std::set<const Bug*> bugs = AtBug("", p, true, SourceLval::NULL_TIMING, false);
         inss = AttackArgInsertion(toAttack, bugs, p);
