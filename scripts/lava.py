@@ -177,7 +177,8 @@ class LavaDatabase(object):
 
     def uninjected(self):
         return self.session.query(Bug).filter(~Bug.builds.any()).join(Bug.atp).filter(
-            AttackPoint.typ == AttackPoint.ATP_POINTER_RW)
+            AttackPoint.typ == AttackPoint.ATP_POINTER_RW or
+            AttackPoint.typ == AttackPoint.ATP_FUNCTION_CALL)
 
     # returns uninjected (not yet in the build table) possibly fake bugs
     def uninjected2(self, fake):
