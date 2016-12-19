@@ -2,8 +2,9 @@ FROM m4mbr3/lava32
 
 RUN echo deb http://httpredir.debian.org/debian wheezy-backports main >> /etc/apt/sources.list
 RUN apt-get update
-RUN apt-get install -y bc jq git build-essential python python-colorama zsh
-RUN apt-get install -y libjsoncpp-dev
+RUN apt-get install -y bc jq git build-essential python python-colorama zsh \
+    libjsoncpp-dev python-sqlalchemy python-psycopg2 \
+    python-pexpect python-psutil python-numpy python-argparse python-pip python-dev
 
 ENV release 3.6.2
 ENV llvm_version llvm-${release}
@@ -13,7 +14,6 @@ RUN tar -xJf $llvm_version.src.tar.xz
 
 RUN mv $llvm_version.src $llvm_version
 RUN cd $llvm_version
-
 
 WORKDIR /$llvm_version/tools
 ENV clang_version cfe-$release
@@ -45,6 +45,4 @@ RUN tar xf libodb-pgsql-2.4.0.tar.gz
 WORKDIR /libodb-pgsql-2.4.0
 RUN ./configure --enable-shared && make -j $(nproc) && make install
 
-RUN apt-get -y install python-sqlalchemy python-psycopg2 \
-    python-pexpect python-psutil python-numpy python-argparse python-pip python-dev
 RUN pip install subprocess32 lockfile
