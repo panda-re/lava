@@ -35,6 +35,7 @@ import psutil
 from lava import LavaDatabase, Dua, Bug, AttackPoint
 
 debug = True
+qemu_use_rr = False
 
 start_time = 0
 
@@ -142,14 +143,16 @@ if new_vnc_display == None:
 
 monitor_path = os.path.join(tempdir, 'monitor')
 serial_path = os.path.join(tempdir, 'serial')
-qemu_args = [project['qcow'], '-loadvm', project['snapshot'],
+qemu_args = [project['qemu'], project['qcow'], '-loadvm', project['snapshot'],
         '-monitor', 'unix:' + monitor_path + ',server,nowait',
         '-serial', 'unix:' + serial_path + ',server,nowait',
         '-vnc', ':' + str(new_vnc_display)]
+if qemu_use_rr:
+    qemu_args = ['rr', 'record'] + qemu_args
 
 print('')
 progress("Running qemu with args:")
-print(project['qemu'], " ".join(qemu_args))
+print(subprocess32.list2cmdline(qemu_args))
 print('')
 
 os.mkfifo(monitor_path)
@@ -158,8 +161,7 @@ monitor_wait = subprocess32.Popen(['inotifywait', '-e', 'open', monitor_path],
                                   stdout=PIPE, stderr=PIPE)
 serial_wait = subprocess32.Popen(['inotifywait', '-e', 'open', serial_path],
                                  stdout=PIPE, stderr=PIPE)
-qemu = spawn(project['qemu'], qemu_args)
-qemu.logfile = sys.stdout
+qemu = subprocess32.Popen(qemu_args, stderr=subprocess32.STDOUT)
 
 try:
     monitor_wait.communicate(timeout=15)
@@ -226,6 +228,7 @@ run_monitor("end_record")
 monitor.sendline("quit")
 monitor.close()
 console.close()
+qemu.wait(timeout=10)
 shutil.rmtree(tempdir)
 
 record_time = tock()
@@ -244,7 +247,7 @@ pri_taint_args = "hypercall"
 if chaff:
     pri_taint_args += ",log_untainted"
 
-qemu_args = ['-replay', isoname,
+qemu_args = [project['qemu'], '-replay', isoname,
         '-pandalog', pandalog,
         '-os', panda_os_string,
         '-panda', 'pri',
@@ -254,10 +257,11 @@ qemu_args = ['-replay', isoname,
         '-panda', 'tainted_branch',
         '-panda', 'file_taint:pos,enable_taint_on_open=true,filename={}'.format(
             input_file_guest)]
+if qemu_use_rr:
+    qemu_args = ['rr', 'record'] + qemu_args
 
 dprint ("qemu args: [%s]" % (" ".join(qemu_args)))
-subprocess32.check_call([project['qemu']]+ qemu_args, stdout=sys.stdout, stderr=sys.stderr)
-
+subprocess32.check_call(qemu_args, stderr=subprocess32.STDOUT)
 
 replay_time = tock()
 print("taint analysis complete %.2f seconds" % replay_time)
