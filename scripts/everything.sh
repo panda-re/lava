@@ -298,7 +298,6 @@ if [ $make -eq 1 ]; then
     run_remote "$buildhost" "cd $sourcedir && make install   &>> $lf"
     tock
     echo "make complete $time_diff seconds"
-    run_remote "$buildhost" "echo make complete $time_diff seconds &>> $lf"
 fi
 
 inputs_dir="$directory/$name/inputs"

@@ -45,4 +45,7 @@ RUN tar xf libodb-pgsql-2.4.0.tar.gz
 WORKDIR /libodb-pgsql-2.4.0
 RUN ./configure --enable-shared && make -j $(nproc) && make install
 
+RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/usr-local-lib.conf
+RUN ldconfig
+
 RUN pip install subprocess32 lockfile
