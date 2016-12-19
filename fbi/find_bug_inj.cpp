@@ -536,6 +536,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
         // encountered so far in the trace
         // NB: we don't know liveness info yet. defer byte selection until later.
         assert(si->has_insertionpoint);
+        assert(si->has_ast_loc_id);
 
         LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
         ast_loc.filename = strip_pfx(ast_loc.filename, src_pfx);
@@ -749,6 +750,7 @@ void attack_point_ptr_rw(Panda__LogEntry *ple) {
     }
 
     dprintf("%lu viable duas remain\n", recent_duas.size());
+    assert(si->has_ast_loc_id);
     LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
     ast_loc.filename = strip_pfx(ast_loc.filename, src_pfx);
     assert(ast_loc.filename.size() > 0);
