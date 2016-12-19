@@ -9,11 +9,7 @@ First is a json project file.  The set of asserts below
 indicate the required json fields and their meaning.
 
 Second is input file you want to run, under panda, to get taint info.  
-
-
 '''
-
-
 
 from __future__ import print_function
 
@@ -174,17 +170,13 @@ console = spawn("socat", ["stdin", "unix-connect:" + serial_path])
 console.logfile = open(os.path.join(tempdir, 'console.txt'), 'w')
 
 def run_monitor(cmd):
-    if debug:
-        print("monitor cmd: [%s]" % cmd)
-    print(Style.BRIGHT + "(qemu)" + Style.RESET_ALL,)
+    print(Style.BRIGHT + "(qemu) " + cmd + Style.RESET_ALL)
     monitor.sendline(cmd)
     monitor.expect_exact("(qemu)")
     print(monitor.before.partition("\r\n")[2])
 
 def run_console(cmd, expectation="root@debian-i386:~", timeout=-1):
-    if debug:
-        print("console cmd: [%s]" % cmd)
-    print(Style.BRIGHT + "root@debian-i386:~#" + Style.RESET_ALL,)
+    print(Style.BRIGHT + "root@debian-i386:~# " + cmd + Style.RESET_ALL)
     console.sendline(cmd)
     try:
         console.expect_exact(expectation, timeout=timeout)
@@ -228,7 +220,10 @@ run_monitor("end_record")
 monitor.sendline("quit")
 monitor.close()
 console.close()
-qemu.wait(timeout=10)
+try:
+    qemu.wait(timeout=3)
+except subprocess32.TimeoutExpired:
+    qemu.terminate()
 shutil.rmtree(tempdir)
 
 record_time = tock()
@@ -257,11 +252,15 @@ qemu_args = [project['qemu'], '-replay', isoname,
         '-panda', 'tainted_branch',
         '-panda', 'file_taint:pos,enable_taint_on_open=true,filename={}'.format(
             input_file_guest)]
-if qemu_use_rr:
-    qemu_args = ['rr', 'record'] + qemu_args
 
 dprint ("qemu args: [%s]" % (" ".join(qemu_args)))
-subprocess32.check_call(qemu_args, stderr=subprocess32.STDOUT)
+try:
+    subprocess32.check_call(qemu_args, stderr=subprocess32.STDOUT)
+except subprocess32.CalledProcessError:
+    if qemu_use_rr:
+        qemu_args = ['rr', 'record', project['qemu'], '-replay', isoname]
+        subprocess32.run(qemu_args)
+    else: raise
 
 replay_time = tock()
 print("taint analysis complete %.2f seconds" % replay_time)
