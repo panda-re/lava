@@ -25,22 +25,26 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import relationship, sessionmaker
 
+from .composite import Composite
+
 Base = declarative_base()
 
-db_user = "postgres"
-db_password = "postgrespostgres"
-
 debugging = False
+
+class Loc(Composite):
+    column = Integer
+    line = Integer
+
+class ASTLoc(Composite):
+    filename = Text
+    begin = Loc
+    end = Loc
 
 class SourceLval(Base):
     __tablename__ = 'sourcelval'
 
     id = Column(Integer, primary_key=True)
-    loc_filename = Column(Text)
-    loc_begin_line = Column(Integer)
-    loc_begin_column = Column(Integer)
-    loc_end_line = Column(Integer)
-    loc_end_column = Column(Integer)
+    loc = ASTLoc.composite('loc')
     ast_name = Column(Text)
     timing = Column(Integer)
 
@@ -48,10 +52,11 @@ class SourceLval(Base):
     BEFORE_OCCURRENCE = 1
     AFTER_OCCURRENCE = 2
 
+
     def __str__(self):
         timing_strs = ["NULL", "BEFORE", "AFTER"]
         return 'Lval[{}](loc={}:{}, ast="{}", timing={})'.format(
-            self.id, self.loc_filename, self.loc_begin_line, self.ast_name,
+            self.id, self.loc.filename, self.loc.begin.line, self.ast_name,
             timing_strs[self.timing]
         )
 
@@ -97,11 +102,7 @@ class AttackPoint(Base):
     __tablename__ = 'attackpoint'
 
     id = Column(BigInteger, primary_key=True)
-    loc_filename = Column(Text)
-    loc_begin_line = Column(Integer)
-    loc_begin_column = Column(Integer)
-    loc_end_line = Column(Integer)
-    loc_end_column = Column(Integer)
+    loc = ASTLoc.composite('loc')
     typ = Column('type', Integer)
 
     # enum Type {
