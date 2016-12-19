@@ -1,23 +1,13 @@
+from __future__ import print_function
 
 import struct
-import sys
 import random
-import psycopg2
-import shutil
 import subprocess32
-import argparse
-import json
 import os
 import shlex
-import lockfile
 import signal
-import atexit
-from os.path import basename, dirname, join, abspath
 
 import threading
-import signal
-import subprocess32
-import random
 
 from sqlalchemy import Table, Column, ForeignKey, create_engine
 from sqlalchemy.types import Integer, Text, Float, BigInteger, Boolean
@@ -198,7 +188,6 @@ class LavaDatabase(object):
     def competition_bugs_and_non_bugs(self, num):
         bugs_and_non_bugs = []
         fileline = set()
-        bugs = self.uninjected2(False)
         def get_bugs_non_bugs(fake, limit):
             items = self.uninjected2(fake)
             for item in items:
@@ -207,10 +196,10 @@ class LavaDatabase(object):
                 if (dfl in fileline) or (afl in fileline):
                     continue
                 if fake:
-                    print "non-bug",
+                    print("non-bug", end="")
                 else:
-                    print "bug    ",
-                print ' dua_fl={} atp_fl={}'.format(str(dfl), str(afl))
+                    print("bug    ", end="")
+                print(' dua_fl={} atp_fl={}'.format(str(dfl), str(afl)))
                 fileline.add(dfl)
                 fileline.add(afl)
                 bugs_and_non_bugs.append(item)
@@ -244,7 +233,7 @@ class Command(object):
         thread.join(timeout)
         if thread.is_alive():
             if debugging:
-                print 'Terminating process cmd=[%s] due to timeout' % self.cmd
+                print('Terminating process cmd=[%s] due to timeout' % self.cmd)
             if not self.rr:
                 self.process.terminate()
                 os.killpg(self.process.pid, signal.SIGTERM)
@@ -252,7 +241,7 @@ class Command(object):
             else:
                 self.process.send_signal(signal.SIGINT)
                 os.killpg(self.process.pid, signal.SIGINT)
-            print "terminated"
+            print("terminated")
             thread.join(1)
             self.returncode = -9
         else:
@@ -267,7 +256,7 @@ def run_cmd(cmd, cw_dir, envv, timeout, rr=False):
     output = p.output
     exitcode = p.returncode
     if debugging:
-        print "run_cmd(" + cmd + ")"
+        print("run_cmd(" + cmd + ")")
 #        print "exitcode = " + str(exitcode)
 #        for line in output:
 #            print "output = [" + line + "]"
