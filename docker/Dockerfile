@@ -2,9 +2,7 @@ FROM m4mbr3/lava32
 
 RUN echo deb http://httpredir.debian.org/debian wheezy-backports main >> /etc/apt/sources.list
 RUN apt-get update
-RUN apt-get install -y bc jq git build-essential python python-colorama zsh \
-    libjsoncpp-dev python-sqlalchemy python-psycopg2 \
-    python-pexpect python-psutil python-numpy python-argparse python-pip python-dev
+RUN apt-get install -y build-essential python
 
 ENV release 3.6.2
 ENV llvm_version llvm-${release}
@@ -30,7 +28,9 @@ WORKDIR /$llvm_version
 RUN ./configure --enable-optimized --disable-assertions --enable-targets=x86,arm --enable-shared --enable-pic --host=i486-linux-gnu --build=i486-linux-gnu
 RUN REQUIRES_RTTI=1 make -j $(nproc)
 
-RUN apt-get install -y libpq-dev
+RUN apt-get install -y git jq bc python python-colorama zsh libjsoncpp-dev \
+    python-sqlalchemy python-psycopg2 python-pexpect python-psutil \
+    python-numpy python-argparse python-pip python-dev libpq-dev
 
 WORKDIR /
 RUN wget http://codesynthesis.com/download/odb/2.4/odb_2.4.0-1_i386.deb
