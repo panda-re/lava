@@ -231,7 +231,7 @@ def main():
     if not isdir(PANDA_DIR):
         os.chdir(dirname(PANDA_DIR))
         run("wget {}".format(PANDA_UBUNTU))
-        run("bash install_ubuntu.sh")
+        run("bash install_ubuntu.sh --extra-cflags='-DLAVA -DPANDA_LAVA'")
         os.chdir(LAVA_DIR)
 
     progress("Checking for ODB orm libraries")
