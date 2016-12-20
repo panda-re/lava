@@ -15,7 +15,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import relationship, sessionmaker
 
-from .composite import Composite
+from composite import Composite
 
 Base = declarative_base()
 
