@@ -32,6 +32,7 @@ struct Loc {
 
     friend std::ostream &operator<<(std::ostream &os, const Loc &loc) {
         os << loc.line << ":" << loc.column;
+        return os;
     }
 
     Loc adjust_line(unsigned line_offset) const {
@@ -75,6 +76,7 @@ struct LavaASTLoc {
 
     friend std::ostream &operator<<(std::ostream &os, const LavaASTLoc &loc) {
         os << loc.filename << ":" << loc.begin << ":" << loc.end;
+        return os;
     }
 
     LavaASTLoc adjust_line(unsigned line_offset) const {
@@ -267,6 +269,10 @@ struct Bug {
     bool operator<(const Bug &other) const {
          return std::tie(atp->id, dua->id, selected_bytes) <
              std::tie(other.atp->id, other.dua->id, other.selected_bytes);
+    }
+
+    inline uint32_t magic() const {
+        return 0x6c617661 - id;
     }
 };
 
