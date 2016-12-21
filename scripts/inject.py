@@ -352,6 +352,8 @@ if __name__ == "__main__":
             print output[0]
         if debugging or exitcode != 0:
             print output[1]
+        if exitcode < 0:
+            raise RuntimeError("bad!")
 
     # ugh -- with tshark if you *dont* do this, your bug-inj source may not build, sadly
     # it looks like their makefile doesn't understand its own dependencies, in fact

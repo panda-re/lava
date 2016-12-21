@@ -364,11 +364,25 @@ struct LExpr {
     static LExpr Binary(std::string op, LExpr left, LExpr right) {
         return LExpr{BINARY, 0, op,
             std::shared_ptr<LExpr>(new LExpr(std::move(left))),
-            std::shared_ptr<LExpr>(new LExpr(std::move(left)))};
+            std::shared_ptr<LExpr>(new LExpr(std::move(right)))};
     }
 
     std::string render() {
-        return "";
+        if (t == STR) {
+            return str;
+        } else if (t == HEX) {
+            return hex_str(value);
+        } else if (t == DECIMAL) {
+            return std::to_string(value);
+        } else if (t == BINARY) {
+            std::stringstream result;
+            result << "(" << left->render() << " " << str << " ";
+            result << right->render() << ")";
+            return result.str();
+        } else {
+            assert(false && "Bad t!");
+            return "";
+        }
     }
 };
 
@@ -449,9 +463,8 @@ LExpr RangeTest(uint32_t magic_value, uint32_t range_size, LExpr value) {
 
 template<uint32_t num_bits>
 LExpr rangeStyleAttack(const Bug *bug) {
-    uint32_t magic_value = 0x6c617661 - bug->id;
-    return LavaGet(bug) * (RangeTest(magic_value, 1U << num_bits, LavaGet(bug)) ||
-        RangeTest(__builtin_bswap32(magic_value), 1U << num_bits, LavaGet(bug)));
+    return LavaGet(bug) * (RangeTest(bug->magic(), 1U << num_bits, LavaGet(bug)) ||
+        RangeTest(__builtin_bswap32(bug->magic()), 1U << num_bits, LavaGet(bug)));
 }
 
 /*******************************
@@ -520,12 +533,17 @@ public:
             LavaASTLoc ast_loc, AttackPoint::Type atpType) {
         //        debug << "in AttackExpressionDuaUse\n";
         std::string after;
+        debug << "AttackExpression\n";
         if (LavaAction == LavaInjectBugs) {
             std::set<const Bug*> injectable_bugs =
                 AtBug("", ast_loc, true, SourceLval::NULL_TIMING);
 
             // Nothing to do if we're not at an attack point
-            if (injectable_bugs.empty()) return;
+            if (injectable_bugs.empty()) {
+                return;
+            } else {
+                debug << "AtBug returned nonempty!";
+            }
 
             // if > 1 bug we live dangerously and may have multiple attack points
             if (bugs.size() == 1 && (returnCode & INSERTED_DUA_USE)) return;
@@ -551,7 +569,7 @@ public:
             if (parent) {
                 debug << " Injected MemoryReadWriteBug into " << ExprStr(parent) << "\n";
             } else {
-                debug << " Injected expression attack for " << ExprStr(parent) << "\n";
+                debug << " Injected expression attack for " << ExprStr(toAttack) << "\n";
             }
             debug << "    " << after << "\n";
         }
@@ -662,7 +680,7 @@ public:
         if (!InMainFile(ce)) return;
         LavaASTLoc p = GetASTLoc(toAttack);
 
-        if (FN_ARG_ATP)
+        //if (FN_ARG_ATP)
             AttackExpression(toAttack, NULL, p, AttackPoint::ATP_FUNCTION_CALL);
     }
 };
@@ -686,8 +704,8 @@ public:
         LavaASTLoc p = GetASTLoc(toAttack);
         //debug << "Have a atp pointer query point" << " at " << p.first << " " << p.second <<  "\n";
         bool memRead = !memWrite;
-        if ((memWrite && MEM_WRITE_ATP) ||
-                (memRead && MEM_READ_ATP)) {
+        /*if ((memWrite && MEM_WRITE_ATP) ||
+                (memRead && MEM_READ_ATP))*/ {
             AttackExpression(toAttack, parent, p, AttackPoint::ATP_POINTER_RW);
         }
     }
@@ -875,7 +893,7 @@ public:
         startLoc.dump(sm);
 
         rewriter.InsertText(startLoc, new_start_of_file_src.str(), true, true);
-#if !DEBUG
+#if !MATCHER_DEBUG
         bool ret = rewriter.overwriteChangedFiles();
 #endif
         // save the strings db
