@@ -252,14 +252,10 @@ class Command(object):
 def run_cmd(cmd, cw_dir, envv, timeout, rr=False):
     p = Command(cmd, cw_dir, envv, rr=rr)
     p.run(timeout)
-#    p = subprocess32.Popen(cmd.split(), cwd=cw_dir, env=envv, stdout=subprocess32.PIPE, stderr=subprocess32.PIPE)
     output = p.output
     exitcode = p.returncode
     if debugging:
         print("run_cmd(" + cmd + ")")
-#        print "exitcode = " + str(exitcode)
-#        for line in output:
-#            print "output = [" + line + "]"
     return (exitcode, output)
 
 def run_cmd_notimeout(cmd, cw_dir, envv):

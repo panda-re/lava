@@ -146,12 +146,6 @@ std::stringstream new_start_of_file_src;
 
 #define MAX_STRNLEN 64
 ///////////////// HELPER FUNCTIONS BEGIN ////////////////////
-std::string hex_str(uint32_t x) {
-    std::stringstream ss;
-    ss << "0x" << std::hex << x;
-    return ss.str();
-}
-
 std::set<uint32_t> parse_ints(std::string ints) {
     std::stringstream ss(ints);
     std::set<uint32_t> result;
