@@ -145,8 +145,22 @@ static std::vector<const Bug*> bugs;
 
 std::stringstream new_start_of_file_src;
 
+// Map of adjusted locations to siphon-able lvals there.
+// Only filled in in LavaInjectBugs. Replaces old gatherDuas func.
+std::map<LavaASTLoc, std::set<std::string>> lval_name_location_map;
+
 #define MAX_STRNLEN 64
 ///////////////// HELPER FUNCTIONS BEGIN ////////////////////
+template<typename K, typename V>
+V get_or_construct(const std::map<K, V> &map, K key) {
+    auto it = map.find(key);
+    if (it != map.end()) {
+        return it->second;
+    } else {
+        return V();
+    }
+}
+
 std::set<uint32_t> parse_ints(std::string ints) {
     std::stringstream ss(ints);
     std::set<uint32_t> result;
@@ -191,19 +205,6 @@ std::vector<const Bug*> AtBug(std::string lvalname, LavaASTLoc loc, bool atAttac
     }
     //                debug << "Not at bug\n";
     return injectable_bugs;
-}
-
-std::set<std::string> gatherDuas(LavaASTLoc loc) {
-    std::set<std::string> duas;
-    for ( const Bug *bug : bugs ) {
-        //                        debug << bug->str() << "\n";
-        // this is the dua siphon -- gather all unique dua names at this `loc`
-        if (loc == bug->dua->lval->loc.adjust_line(MainInstrCorrection)) {
-            //                debug << "found injectable bug @ line " << line << "\n";
-            duas.insert(bug->dua->lval->ast_name);
-        }
-    }
-    return duas;
 }
 
 std::string StripPfx(std::string filename, std::string pfx) {
@@ -659,7 +660,8 @@ public:
 
             num_taint_queries += 1;
         } else if (LavaAction == LavaInjectBugs) {
-            std::set<std::string> lval_names = gatherDuas(p);
+            std::set<std::string> lval_names =
+                get_or_construct(lval_name_location_map, p);
             std::stringstream before_ss;
             for (auto lval_name : lval_names) {
                 //an llval is { lvalname, pointer_tst, lvallen, lval_type, is_ptr };
@@ -694,12 +696,10 @@ public:
     virtual void run(const MatchFinder::MatchResult &Result) {
         const CallExpr *ce = Result.Nodes.getNodeAs<CallExpr>("ce");
         const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("arg");
+#if DEBUG
         debug << "Have a vulnerable arg: " << ExprStr(ce) << " -> " << ExprStr(toAttack) << "\n";
-#if DEBUG
         toAttack->dump();
-#endif
         debug << "Arg has type ";
-#if DEBUG
         toAttack->getType().dump();
 #endif
         debug << "\n";
@@ -806,24 +806,21 @@ public:
                 unless(memWriteMatcher),
                 memoryAccessMatcher);
 
+#if MATCHER_DEBUG == 1
+#define IFNOTDEBUG(matcher) HandlerMatcherDebug
+#else
+#define IFNOTDEBUG(matcher) (matcher)
+#endif
 
         Matcher.addMatcher(
                 stmt(hasParent(compoundStmt())).bind("stmt"),
-#if MATCHER_DEBUG == 1
-                &HandlerMatcherDebug
-#else
-                &HandlerForPriQueryPointSimple
-#endif
+                &IFNOTDEBUG(HandlerForPriQueryPointSimple)
                 );
 
         Matcher.addMatcher(
                 callExpr(
                     forEachArgMatcher(expr(isAttackableMatcher()).bind("arg"))).bind("ce"),
-#if MATCHER_DEBUG == 1
-                &HandlerMatcherDebug
-#else
-                &HandlerForArgAtpPoint
-#endif
+                &IFNOTDEBUG(HandlerForArgAtpPoint)
 );
 
         // an array subscript expression is composed of base[index]
@@ -831,25 +828,18 @@ public:
         // and matches all nodes of: base[innerExprParent(innerExpr)] = ...
         Matcher.addMatcher(
                 memWriteMatcher,
-#if MATCHER_DEBUG == 1
-                &HandlerMatcherDebug
-#else
-                &HandlerForAtpPointerQueryPoint
-#endif
+                &IFNOTDEBUG(HandlerForAtpPointerQueryPoint)
                 );
 
         //// matches all nodes of: ... *innerExprParent(innerExpr) ...
         //// and matches all nodes of: ... base[innerExprParent(innerExpr)] ...
         Matcher.addMatcher(
                 memReadMatcher,
-#if MATCHER_DEBUG == 1
-                &HandlerMatcherDebug
-#else
-                &HandlerForAtpPointerQueryPoint
-#endif
+                &IFNOTDEBUG(HandlerForAtpPointerQueryPoint)
                 );
 
         }
+#undef IFNOTDEBUG
 
     void HandleTranslationUnit(ASTContext &Context) override {
         // Run the matchers when we have the whole TU parsed.
@@ -988,6 +978,10 @@ int main(int argc, const char **argv) {
         std::set<uint32_t> bug_ids = parse_ints(LavaBugList);
         printf ("%d bug_ids\n", bug_ids.size());
         bugs = loadBugs(bug_ids);
+        for (const Bug *bug : bugs) {
+            LavaASTLoc dua_loc = bug->dua->lval->loc.adjust_line(MainInstrCorrection);
+            lval_name_location_map[dua_loc].insert(bug->dua->lval->ast_name);
+        }
     }
     debug << "about to call Tool.run \n";
 
