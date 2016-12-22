@@ -321,12 +321,13 @@ struct LExpr {
         return os.str();
     }
 
-    void infix(std::ostream &os, std::string sep) const {
+    void infix(std::ostream &os, std::string begin, std::string sep, std::string end) const {
         auto it = args.cbegin();
+        os << begin;
         for (; it != args.cend() - 1; it++) {
             os << **it << sep;
         }
-        os << **it;
+        os << **it << end;
     }
 
     friend std::ostream &operator<<(std::ostream &os, const LExpr &expr) {
@@ -337,20 +338,15 @@ struct LExpr {
         } else if (expr.t == LExpr::DECIMAL) {
             os << std::dec << expr.value;
         } else if (expr.t == LExpr::BINOP) {
-            os << "(" << *expr.args.at(0) << " " << expr.str << " ";
-            os << *expr.args.at(1) << ")";
+            expr.infix(os, "(", " " + expr.str + " ", ")");
         } else if (expr.t == LExpr::FUNC) {
-            os << expr.str << "(";
-            expr.infix(os, ", ");
-            os << ")";
+            os << expr.str;
+            expr.infix(os, "(", ", ", ")");
         } else if (expr.t == LExpr::BLOCK) {
-            os << "({";
-            expr.infix(os, "; ");
-            os << ";})";
+            expr.infix(os, "({", "; ", ";})");
         } else if (expr.t == LExpr::IF) {
-            os << "if (" << expr.str << ") {\n";
-            expr.infix(os, ";\n");
-            os << ";\n}\n";
+            os << "if (" << expr.str << ") ";
+            expr.infix(os, "{\n", ";\n", ";\n}\n");
         } else if (expr.t == LExpr::CAST) {
             os << "((" << expr.str << ")" << *expr.args.at(0) << ")";
         } else if (expr.t == LExpr::INDEX) {
@@ -364,6 +360,10 @@ struct LExpr {
 // Binary operator.
 LExpr LBinop(std::string op, LExpr left, LExpr right) {
     return LExpr(LExpr::BINOP, 0, op, { left, right });
+}
+
+LExpr LBinop(std::string op, std::vector<LExpr> args) {
+    return LExpr(LExpr::BINOP, 0, op, std::move(args));
 }
 
 LExpr operator-(LExpr us, LExpr other) { return LBinop("-", us, other); }
@@ -436,27 +436,6 @@ LExpr MagicTest(UInt magic_value, const Bug *bug) {
         LHex(BSwap<UInt>(magic_value)) == LavaGet(bug);
 }
 
-// This is a standard no-initializer fold.
-// args must be nonempty.
-template<typename T, LExpr (*Map)(T), LExpr(*Combine)(LExpr, LExpr)>
-LExpr Reduce(const std::vector<T> &args) {
-    auto it = args.begin();
-    LExpr result = Map(*it);
-    for (it++; it != args.end(); it++) {
-        result = Combine(std::move(result), Map(*it));
-    }
-    return result;
-}
-
-// Gives " + " plus the sum of all the LExpr's.
-template<LExpr (*MakeAddend)(const Bug *)>
-std::string AddSum(const std::vector<const Bug*> &injectable_bugs) {
-    if (injectable_bugs.empty()) return "";
-
-    return " + " +
-        Reduce<const Bug *, MakeAddend, operator+>(injectable_bugs).render();
-}
-
 LExpr traditionalAttack(const Bug *bug) {
     return LavaGet(bug) * MagicTest(bug->magic(), bug);
 }
@@ -487,12 +466,8 @@ LExpr rangeStyleAttack(const Bug *bug) {
    this is how, given a byte in a dua we'll grab it and insert into a global
    o = 3; // byte # in dua (0 is lsb)
    i = 0; // byte # in global
-   lava_1 |=  (((unsigned char *) &dua))[o] << (i*8) ;
+   lava_set(BUG_ID, ((unsigned char *)&dua))[o] << (i*8) | ...);
 */
-LExpr DuaOffset(std::string lval_name, uint32_t offset, unsigned i) {
-    return LIndex(LCast("unsigned char *", LStr(lval_name)), offset) << LDecimal(i * 8);
-}
-
 LExpr ComposeDuaSiphoning(const std::string &lval_name,
         std::vector<const Bug*> &injectable_bugs, std::string filename) {
     // only insert one dua siphon if single bug
@@ -507,14 +482,13 @@ LExpr ComposeDuaSiphoning(const std::string &lval_name,
     for (const Bug *bug : injectable_bugs) {
         const std::vector<uint32_t> &offsets = bug->selected_bytes;
 
-        unsigned i = 0;
-        auto it = offsets.begin();
-        LExpr siphon = DuaOffset(lval_name, *it, i);
-        for (it++; it != offsets.end(); it++) {
-            i++;
-            siphon = std::move(siphon) | DuaOffset(lval_name, *it, i);
+        std::vector<LExpr> or_args;
+        for (auto it = offsets.cbegin(); it != offsets.cend(); it++) {
+            LExpr shift = LDecimal((it - offsets.cbegin()) * 8);
+            or_args.push_back(
+                    LIndex(LCast("unsigned char *", LStr(lval_name)), *it) << shift);
         }
-        siphons.emplace_back(LavaSet(bug, std::move(siphon)));
+        siphons.push_back(LavaSet(bug, LBinop("|", or_args)));
     }
 
     return LIf(lval_name, siphons);
@@ -606,12 +580,14 @@ public:
             }
 
             // if > 1 bug we live dangerously and may have multiple attack points
+            // TODO: is this still necessary?
             if (bugs.size() == 1 && (returnCode & INSERTED_DUA_USE)) return;
             returnCode |= INSERTED_DUA_USE;
 
-            after = KT
-                ? AddSum<knobTriggerAttack>(injectable_bugs)
-                : AddSum<traditionalAttack>(injectable_bugs);
+            std::vector<LExpr> addends;
+            std::transform(injectable_bugs.cbegin(), injectable_bugs.cend(),
+                    std::back_inserter(addends), KT ? knobTriggerAttack : traditionalAttack);
+            after = " + " + LBinop("+", std::move(addends)).render();
         } else if (LavaAction == LavaQueries) {
             // call attack point hypercall and return 0
             after = " + " + LavaAtpQuery(ast_loc, atpType).render();
