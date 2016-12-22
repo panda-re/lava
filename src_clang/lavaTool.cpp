@@ -49,7 +49,6 @@ extern "C" {
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
 
-char resolved_path[512];
 std::string LavaPath;
 
 using namespace clang;
@@ -130,14 +129,6 @@ llvm::raw_null_ostream null_ostream;
 auto &debug = null_ostream;
 #endif
 
-/*
-static cl::opt<std::string> LavaBugBuildDir("bug-build-dir",
-    cl::desc("Path to build dir for bug-inj src"
-        "Used only in inject mode."),
-    cl::cat(LavaCategory),
-    cl::init("XXX"));
-*/
-
 Loc::Loc(const FullSourceLoc &full_loc)
     : line(full_loc.getExpansionLineNumber()),
     column(full_loc.getExpansionColumnNumber()) {}
@@ -150,15 +141,22 @@ std::stringstream new_start_of_file_src;
 // Only filled in in LavaInjectBugs. Replaces old gatherDuas func.
 std::map<LavaASTLoc, std::set<std::string>> lval_name_location_map;
 
+// These two maps replace AtBug.
+// Map of bugs with attack points at a given loc.
+std::map<LavaASTLoc, std::vector<const Bug *>> bugs_with_atp_at;
+// Map of bugs with siphon of a given  lval name at a given loc.
+std::map<std::pair<LavaASTLoc, std::string>, std::vector<const Bug *>> bugs_with_dua_at_named;
+
 #define MAX_STRNLEN 64
 ///////////////// HELPER FUNCTIONS BEGIN ////////////////////
 template<typename K, typename V>
-V get_or_construct(const std::map<K, V> &map, K key) {
+const V &get_or_construct(const std::map<K, V> &map, K key) {
+    static const V default_val;
     auto it = map.find(key);
     if (it != map.end()) {
         return it->second;
     } else {
-        return V();
+        return default_val;
     }
 }
 
@@ -177,35 +175,6 @@ std::set<uint32_t> parse_ints(std::string ints) {
 // struct fields known to cause trouble
 bool InFieldBlackList(std::string field_name) {
     return ((field_name == "__st_ino" ) || (field_name.size() == 0));
-}
-
-// is this lvalname / line / filename, etc a bug inj point?
-// if so, return the vector of bugs that are injectable at this point
-std::vector<const Bug*> AtBug(std::string lvalname, LavaASTLoc loc, bool atAttackPoint,
-                    SourceLval::Timing insertion_point) {
-    // debug << "atbug : lvalname=" << lvalname << " filename=" << filename << " line=" << line << " atAttackPoint=" << atAttackPoint << " insertion_point=" << insertion_point<< " \n";
-    std::vector<const Bug*> injectable_bugs;
-    for ( const Bug *bug : bugs ) {
-        //                        debug << bug->str() << "\n";
-        bool atbug = false;
-        if (atAttackPoint) {
-            // this is where we'll use the dua.  only need to match the file and line
-            assert (insertion_point == -1);
-            atbug = (loc == bug->atp->loc.adjust_line(MainInstrCorrection));
-        } else {
-            // this is the dua siphon -- need to match most every part of dua
-            // if dua is a retval, the one in the db wont match this one but verify prefix
-            atbug = (loc == bug->dua->lval->loc.adjust_line(MainInstrCorrection)
-                    && lvalname == bug->dua->lval->ast_name
-                    && insertion_point == bug->dua->lval->timing);
-        }
-        if (atbug) {
-            //                debug << "found injectable bug @ line " << line << "\n";
-            injectable_bugs.push_back(bug);
-        }
-    }
-    //                debug << "Not at bug\n";
-    return injectable_bugs;
 }
 
 std::string StripPfx(std::string filename, std::string pfx) {
@@ -299,7 +268,7 @@ bool IsAttackPoint(const CallExpr *e) {
    lava_set(BUG_ID, ((unsigned char *)&dua))[o] << (i*8) | ...);
 */
 LExpr ComposeDuaSiphoning(const std::string &lval_name,
-        std::vector<const Bug*> &injectable_bugs, std::string filename) {
+        const std::vector<const Bug*> &injectable_bugs, std::string filename) {
     // only insert one dua siphon if single bug
     // if > 1 bug we are living dangerously.
     // FIXME: understand this. is it just garbage?
@@ -399,14 +368,12 @@ public:
         std::string after;
         debug << "AttackExpression\n";
         if (LavaAction == LavaInjectBugs) {
-            std::vector<const Bug*> injectable_bugs =
-                AtBug("", ast_loc, true, SourceLval::NULL_TIMING);
+            const std::vector<const Bug*> &injectable_bugs =
+                get_or_construct(bugs_with_atp_at, ast_loc);
 
             // Nothing to do if we're not at an attack point
             if (injectable_bugs.empty()) {
                 return;
-            } else {
-                debug << "AtBug returned nonempty!";
             }
 
             // if > 1 bug we live dangerously and may have multiple attack points
@@ -415,6 +382,7 @@ public:
             returnCode |= INSERTED_DUA_USE;
 
             std::vector<LExpr> addends;
+            // std::transform is just the functional map() in c++ land.
             std::transform(injectable_bugs.cbegin(), injectable_bugs.cend(),
                     std::back_inserter(addends), KT ? knobTriggerAttack : traditionalAttack);
             after = " + " + LBinop("+", std::move(addends)).render();
@@ -489,15 +457,15 @@ public:
 
             num_taint_queries += 1;
         } else if (LavaAction == LavaInjectBugs) {
-            std::set<std::string> lval_names =
+            const std::set<std::string> &lval_names =
                 get_or_construct(lval_name_location_map, p);
             std::stringstream before_ss;
             for (auto lval_name : lval_names) {
-                //an llval is { lvalname, pointer_tst, lvallen, lval_type, is_ptr };
                 assert(lval_name.length() > 0);
-                std::vector<const Bug*> injectable_bugs =
-                    AtBug(lval_name, p, /*atAttackPoint=*/false,
-                          SourceLval::BEFORE_OCCURRENCE);
+                const std::vector<const Bug*> &injectable_bugs =
+                    get_or_construct(bugs_with_dua_at_named,
+                            std::make_pair(p, lval_name));
+
                 // NOTE: if injecting multiple bugs the same dua will need to
                 // be instrumented more than once
                 if (!injectable_bugs.empty()) {
@@ -809,7 +777,11 @@ int main(int argc, const char **argv) {
         bugs = loadBugs(bug_ids);
         for (const Bug *bug : bugs) {
             LavaASTLoc dua_loc = bug->dua->lval->loc.adjust_line(MainInstrCorrection);
-            lval_name_location_map[dua_loc].insert(bug->dua->lval->ast_name);
+            LavaASTLoc atp_loc = bug->atp->loc.adjust_line(MainInstrCorrection);
+            std::string lval_name = bug->dua->lval->ast_name;
+            lval_name_location_map[dua_loc].insert(lval_name);
+            bugs_with_atp_at[atp_loc].push_back(bug);
+            bugs_with_dua_at_named[std::make_pair(dua_loc, lval_name)].push_back(bug);
         }
     }
     debug << "about to call Tool.run \n";
