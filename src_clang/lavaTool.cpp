@@ -193,7 +193,6 @@ std::vector<const Bug*> AtBug(std::string lvalname, LavaASTLoc loc, bool atAttac
     return injectable_bugs;
 }
 
-
 std::set<std::string> gatherDuas(LavaASTLoc loc) {
     std::set<std::string> duas;
     for ( const Bug *bug : bugs ) {
@@ -205,19 +204,6 @@ std::set<std::string> gatherDuas(LavaASTLoc loc) {
         }
     }
     return duas;
-}
-
-std::string RandVarName() {
-    std::stringstream rvs;
-    rvs << RV_PFX;
-    rvs << rand();
-    return rvs.str();
-}
-
-std::string RandTargetValue() {
-    std::stringstream tv;
-    tv << "0x12345678";
-    return tv.str();
 }
 
 std::string StripPfx(std::string filename, std::string pfx) {
@@ -300,11 +286,6 @@ bool IsAttackPoint(const CallExpr *e) {
         }
     }
     return false;
-}
-
-// compose a lava global for this bug id
-std::string LavaGlobal(uint32_t id) {
-    return "lava_" + std::to_string(id);
 }
 
 ///////////////// HELPER FUNCTIONS END ////////////////////
