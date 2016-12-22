@@ -518,7 +518,7 @@ if __name__ == "__main__":
     except Exception as e:
         print "TESTING FAIL"
         if update_db:
-            db.session.add(Run(build=build, fuzzed=None, exitcode=None,
+            db.session.add(Run(build=build, fuzzed=None, exitcode=-22,
                                output=str(e), success=False))
             db.session.commit()
         raise
