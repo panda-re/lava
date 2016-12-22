@@ -152,21 +152,8 @@ LExpr MagicTest(UInt magic_value, const Bug *bug) {
         LHex(BSwap<UInt>(magic_value)) == LavaGet(bug);
 }
 
-LExpr traditionalAttack(const Bug *bug) {
-    return LavaGet(bug) * MagicTest(bug->magic(), bug);
-}
-
-LExpr knobTriggerAttack(const Bug *bug) {
-    LExpr lava_get_lower = LavaGet(bug) & LHex(0xffff);
-    LExpr lava_get_upper = (LavaGet(bug) >> LDecimal(16)) & LHex(0xffff);
-    // this is the magic value that will trigger the bug
-    uint16_t magic_value = bug->magic() & 0xffff;
-    uint16_t magic_value_bs = __builtin_bswap32(bug->magic() & 0xffff);
-
-    return (lava_get_lower * MagicTest(magic_value, bug))
-        + (lava_get_upper * MagicTest(magic_value_bs, bug));
-}
-
+// RangeTest and rangeStyleAttack are currently unused, but they're good examples of
+// how to use LExpr's.
 LExpr RangeTest(uint32_t magic_value, uint32_t range_size, LExpr value) {
     return LHex(magic_value - range_size) < value &&
         value < LHex(magic_value + range_size);
