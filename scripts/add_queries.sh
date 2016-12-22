@@ -31,11 +31,14 @@ START=$(echo "scale=2; $ns/1000000000" | bc)
 
 
 progress() {
+  set +x
   echo
   echo -e "\e[32m[queries]\e[0m \e[1m$1\e[0m"
+  set -x
 }
 
 set -e # Exit on error
+set -x # Debug mode
 
 if [ $# -lt 1 ]; then
   echo "Usage: $0 [ATP_Type] JSONfile"
@@ -122,6 +125,7 @@ for i in $c_files; do
   $lava/src_clang/build/lavaTool -action=query \
     -lava-db="$directory/$name/lavadb" \
     -p="$source/compile_commands.json" \
+    -src-prefix=$(readlink -f "$source") \
     $ATP_TYPE \
     -project-file="$json" "$i"
 done

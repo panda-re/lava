@@ -88,7 +88,7 @@ static cl::opt<std::string> ProjectFile("project-file",
 static cl::opt<std::string> SourceDir("src-prefix",
     cl::desc("Path to source directory to remove as prefix."),
     cl::cat(LavaCategory),
-    cl::init("XXX"));
+    cl::init(""));
 static cl::opt<std::string> SMainInstrCorrection("main_instr_correction",
     cl::desc("Insertion line correction for post-main instr"),
     cl::cat(LavaCategory),
@@ -177,20 +177,13 @@ bool InFieldBlackList(std::string field_name) {
     return ((field_name == "__st_ino" ) || (field_name.size() == 0));
 }
 
-std::string StripPfx(std::string filename, std::string pfx) {
-    size_t pos = filename.find(pfx, 0);
-    if (pos == std::string::npos
-        || pos != 0) {
-        // its not a prefix
-        return std::string("");
+std::string StripPrefix(std::string filename, std::string prefix) {
+    size_t prefix_len = prefix.length();
+    if (filename.compare(0, prefix_len, prefix) != 0) {
+        assert(false && "Not a prefix!");
     }
-    size_t filename_len = filename.length();
-    size_t pfx_len = pfx.length();
-    if (filename[pfx_len] == '/') {
-        pfx_len++;
-    }
-    std::string suff = filename.substr(pfx_len, filename_len - pfx_len);
-    return suff;
+    while (filename[prefix_len] == '/') prefix_len++;
+    return filename.substr(prefix_len);
 }
 
 bool QueriableType(const Type *lval_type) {
@@ -307,17 +300,12 @@ public:
 
     std::string FullPath(FullSourceLoc &loc) {
         SourceManager &sm = rewriter.getSourceMgr();
-        char curdir[260] = {};
-        char *ret = getcwd(curdir, 260);
+        char curdir[PATH_MAX] = {};
+        char *ret = getcwd(curdir, PATH_MAX);
         std::string name = sm.getFilename(loc).str();
-        if (name != "") {
-            std::stringstream s;
-            s << curdir << "/" << name;
-            return s.str();
-        }
-        else {
-            return "";
-        }
+        assert(!name.empty());
+        errs() << "FullPath: " << std::string(curdir) << "/" << name << "\n";
+        return std::string(curdir) + "/" + name;
     }
 
     std::string ExprStr(const Stmt *e) {
@@ -328,6 +316,7 @@ public:
         e->printPretty(s, 0, Policy);
         return s.str();
     }
+
     uint32_t GetStringID(std::string s) {
         if (StringIDs.find(s) == StringIDs.end()) {
             StringIDs[s] = StringIDs.size();
@@ -335,27 +324,18 @@ public:
         return StringIDs[s];
     }
 
-    bool InMainFile(const Stmt *s){
+    bool InMainFile(const Stmt *s) {
         SourceManager &sm = rewriter.getSourceMgr();
-        FullSourceLoc fullLoc(s->getLocStart(), sm);
-        std::string src_filename = FullPath(fullLoc);
-        return src_filename != "" && sm.isInMainFile(s->getLocStart());
+        SourceLocation loc = s->getLocStart();
+        return !sm.getFilename(loc).empty() && sm.isInMainFile(loc);
     }
 
-    LavaASTLoc GetASTLoc(const Stmt *s){
+    LavaASTLoc GetASTLoc(const Stmt *s) {
+        assert(!SourceDir.empty());
         SourceManager &sm = rewriter.getSourceMgr();
         FullSourceLoc fullLocStart(s->getLocStart(), sm);
         FullSourceLoc fullLocEnd(s->getLocEnd(), sm);
-        std::string src_filename;
-        if (LavaAction == LavaInjectBugs) {
-            // we want to strip the build path so that
-            // we can actually compare bug in and query files for
-            // same source which will be in different directories
-            src_filename = StripPfx(FullPath(fullLocStart), SourceDir);
-        }
-        else {
-            src_filename = FullPath(fullLocStart);
-        }
+        std::string src_filename = StripPrefix(FullPath(fullLocStart), SourceDir);
         return LavaASTLoc(src_filename, fullLocStart, fullLocEnd);
     }
 
@@ -508,7 +488,7 @@ public:
         LavaASTLoc p = GetASTLoc(toAttack);
 
         if (FN_ARG_ATP)
-            AttackExpression(toAttack, NULL, p, AttackPoint::ATP_FUNCTION_CALL);
+            AttackExpression(toAttack, NULL, p, AttackPoint::FUNCTION_ARG);
     }
 };
 
@@ -532,7 +512,7 @@ public:
         //debug << "Have a atp pointer query point" << " at " << p.first << " " << p.second <<  "\n";
         bool memRead = !memWrite;
         if ((memWrite && MEM_WRITE_ATP) || (memRead && MEM_READ_ATP)) {
-            AttackExpression(toAttack, parent, p, AttackPoint::ATP_POINTER_RW);
+            AttackExpression(toAttack, parent, p, AttackPoint::POINTER_RW);
         }
     }
 };

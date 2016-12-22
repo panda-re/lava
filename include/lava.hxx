@@ -216,9 +216,9 @@ struct AttackPoint {
     std::string ast_name;
 
     enum Type {
-        ATP_FUNCTION_CALL,
-        ATP_POINTER_RW,
-        ATP_LARGE_BUFFER_AVAIL
+        FUNCTION_ARG,
+        POINTER_RW,
+        LARGE_BUFFER_AVAIL
     } type;
 
     // Selected byte range for LARGE_BUFFER type.
@@ -240,13 +240,25 @@ struct AttackPoint {
 
     friend std::ostream &operator<<(std::ostream &os, const AttackPoint &m) {
         constexpr const char *names[3] = {
-            "ATP_FUNCTION_CALL",
+            "ATP_FUNCTION_ARG",
             "ATP_POINTER_RW",
             "ATP_LARGE_BUFFER_AVAIL"
         };
         os << "ATP [" << m.loc.filename << " " << m.loc.begin << "] {";
         os << names[m.type] << "}";
         return os;
+    }
+
+    static AttackPoint FunctionArg(LavaASTLoc loc, std::string ast_name) {
+        return AttackPoint{0, loc, ast_name, AttackPoint::FUNCTION_ARG, 0, 0};
+    }
+    static AttackPoint PointerRW(LavaASTLoc loc, std::string ast_name) {
+        return AttackPoint{0, loc, ast_name, AttackPoint::POINTER_RW, 0, 0};
+    }
+    static AttackPoint LargeBufferAvail(LavaASTLoc loc, std::string ast_name,
+            uint32_t range_low, uint32_t range_high) {
+        return AttackPoint{0, loc, ast_name, AttackPoint::LARGE_BUFFER_AVAIL,
+            range_low, range_high};
     }
 };
 

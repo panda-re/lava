@@ -225,26 +225,6 @@ std::map<uint32_t,std::string> LoadIDB(std::string fn) {
     return InvertDB(x);
 }
 
-// if pfx is a prefix of filename, then return the remainder of filename after
-// the prefix (exluding leading '/' chars).  If it is not a pfx, return
-// the empty string
-std::string strip_pfx(std::string filename, std::string pfx) {
-    size_t pos = filename.find(pfx, 0);
-    if (pos == std::string::npos
-        || pos != 0) {
-        // its not a prefix
-        return std::string("");
-    }
-    size_t filename_len = filename.length();
-    size_t pfx_len = pfx.length();
-    if (filename[pfx_len] == '/') {
-        pfx_len++;
-    }
-    std::string suff = filename.substr(pfx_len, filename_len - pfx_len);
-    return suff;
-}
-
-
 void spit_tquls(const Panda__TaintQueryUniqueLabelSet *tquls) {
     printf("tquls=[ptr=0x%" PRIx64 ",n_label=%d,label=[", tquls->ptr, (int) tquls->n_label);
     for (uint32_t i=0; i<tquls->n_label; i++) {
@@ -539,7 +519,6 @@ void taint_query_pri(Panda__LogEntry *ple) {
         assert(si->has_ast_loc_id);
 
         LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
-        ast_loc.filename = strip_pfx(ast_loc.filename, src_pfx);
         assert(ast_loc.filename.size() > 0);
 
         const SourceLval *lval = create(SourceLval{0, ast_loc, si->astnodename,
@@ -562,10 +541,10 @@ void taint_query_pri(Panda__LogEntry *ple) {
             if (range.size() > 20) {
                 const AttackPoint *pad_atp;
                 bool is_new_atp;
-                std::tie(pad_atp, is_new_atp) = create_full(AttackPoint{0,
-                        ast_loc, std::string(si->astnodename),
-                        AttackPoint::ATP_LARGE_BUFFER_AVAIL,
-                        range.low, range.high});
+                std::tie(pad_atp, is_new_atp) = create_full(
+                        AttackPoint::LargeBufferAvail(
+                            ast_loc, std::string(si->astnodename),
+                            range.low, range.high));
                 find_bug_inj_opportunities(pad_atp, is_new_atp);
             }
         }
@@ -752,7 +731,6 @@ void attack_point_ptr_rw(Panda__LogEntry *ple) {
     dprintf("%lu viable duas remain\n", recent_duas.size());
     assert(si->has_ast_loc_id);
     LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
-    ast_loc.filename = strip_pfx(ast_loc.filename, src_pfx);
     assert(ast_loc.filename.size() > 0);
     const AttackPoint *atp;
     bool is_new_atp;
