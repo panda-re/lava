@@ -33,6 +33,7 @@ extern "C" {
 #include <cstdint>
 #include <set>
 #include <memory>
+#include <iterator>
 
 #include "lavaDB.h"
 #include "lava.hxx"
@@ -140,7 +141,7 @@ Loc::Loc(const FullSourceLoc &full_loc)
     : line(full_loc.getExpansionLineNumber()),
     column(full_loc.getExpansionColumnNumber()) {}
 
-static std::set<const Bug*> bugs;
+static std::vector<const Bug*> bugs;
 
 std::stringstream new_start_of_file_src;
 
@@ -165,10 +166,10 @@ bool InFieldBlackList(std::string field_name) {
 
 // is this lvalname / line / filename, etc a bug inj point?
 // if so, return the vector of bugs that are injectable at this point
-std::set<const Bug*> AtBug(std::string lvalname, LavaASTLoc loc, bool atAttackPoint,
+std::vector<const Bug*> AtBug(std::string lvalname, LavaASTLoc loc, bool atAttackPoint,
                     SourceLval::Timing insertion_point) {
     // debug << "atbug : lvalname=" << lvalname << " filename=" << filename << " line=" << line << " atAttackPoint=" << atAttackPoint << " insertion_point=" << insertion_point<< " \n";
-    std::set<const Bug*> injectable_bugs;
+    std::vector<const Bug*> injectable_bugs;
     for ( const Bug *bug : bugs ) {
         //                        debug << bug->str() << "\n";
         bool atbug = false;
@@ -185,7 +186,7 @@ std::set<const Bug*> AtBug(std::string lvalname, LavaASTLoc loc, bool atAttackPo
         }
         if (atbug) {
             //                debug << "found injectable bug @ line " << line << "\n";
-            injectable_bugs.insert(bug);
+            injectable_bugs.push_back(bug);
         }
     }
     //                debug << "Not at bug\n";
@@ -303,109 +304,141 @@ bool IsAttackPoint(const CallExpr *e) {
 
 // compose a lava global for this bug id
 std::string LavaGlobal(uint32_t id) {
-    std::stringstream ss;
-    ss << "lava_" << id;
-    return ss.str();
+    return "lava_" + std::to_string(id);
 }
 
-/* create code that siphons dua bytes into a global
-   this is how, given a byte in a dua we'll grab it and insert into a global
-   o = 3; // byte # in dua (0 is lsb)
-   i = 0; // byte # in global
-   lava_1 |=  (((unsigned char *) &dua))[o] << (i*8) ;
-*/
-std::string ComposeDuaSiphoning(const std::string &lval_name,
-        std::set<const Bug*> &injectable_bugs, std::string filename) {
-    // only insert one dua siphon if single bug
-    // if > 1 bug we are living dangerously.
-    // FIXME: understand this. is it just garbage?
-    if (bugs.size() == 1 && (returnCode & INSERTED_DUA_SIPHON))
-        return "";
-
-    returnCode |= INSERTED_DUA_SIPHON;
-
-    std::stringstream siphon;
-    siphon << "if (" << lval_name << ") {";
-    for (const Bug *bug : injectable_bugs) {
-        uint32_t i = 0;
-        std::string gn = LavaGlobal(bug->id);
-        siphon << "int " << gn << " = 0;\n";
-        for ( uint32_t offset : bug->selected_bytes ) {
-            siphon << LavaGlobal(bug->id)
-                   << " |= ((unsigned char *) "
-                   << lval_name << ")[" << offset << "] << (" << i << "*8);";
-            i ++;
-            // we don't need more than 4 bytes of dua
-        }
-        siphon << "lava_set(" << (std::to_string(bug->id)) << "," << gn << ");\n";
-    }
-    siphon << "}";
-
-    return siphon.str();
-}
 ///////////////// HELPER FUNCTIONS END ////////////////////
 
 struct LExpr {
     enum Type {
-        STR, HEX, DECIMAL, BINARY
+        STR, HEX, DECIMAL, BINOP, FUNC, BLOCK, IF, CAST, INDEX
     } t;
 
     uint32_t value;
     std::string str;
-    std::shared_ptr<LExpr> left;
-    std::shared_ptr<LExpr> right;
+    std::vector<std::shared_ptr<LExpr>> args;
 
-    static LExpr Binary(std::string op, LExpr left, LExpr right) {
-        return LExpr{BINARY, 0, op,
-            std::shared_ptr<LExpr>(new LExpr(std::move(left))),
-            std::shared_ptr<LExpr>(new LExpr(std::move(right)))};
+    LExpr(Type t, uint32_t value, std::string str,
+            std::initializer_list<LExpr> init_args)
+        : t(t), value(value), str(str) {
+        for (const LExpr &arg : init_args) {
+            args.emplace_back(new LExpr(arg));
+        }
     }
 
-    std::string render() {
-        if (t == STR) {
-            return str;
-        } else if (t == HEX) {
-            return hex_str(value);
-        } else if (t == DECIMAL) {
-            return std::to_string(value);
-        } else if (t == BINARY) {
-            std::stringstream result;
-            result << "(" << left->render() << " " << str << " ";
-            result << right->render() << ")";
-            return result.str();
-        } else {
-            assert(false && "Bad t!");
-            return "";
+    LExpr(Type t, uint32_t value, std::string str,
+            std::vector<LExpr> init_args)
+        : t(t), value(value), str(str) {
+        for (const LExpr &arg : init_args) {
+            args.emplace_back(new LExpr(std::move(arg)));
         }
+    }
+
+    std::string render() const {
+        std::stringstream os;
+        os << *this;
+        return os.str();
+    }
+
+    void infix(std::ostream &os, std::string sep) const {
+        auto it = args.cbegin();
+        for (; it != args.cend() - 1; it++) {
+            os << **it << sep;
+        }
+        os << **it;
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const LExpr &expr) {
+        if (expr.t == STR) {
+            os << expr.str;
+        } else if (expr.t == LExpr::HEX) {
+            os << "0x" << std::hex << expr.value;
+        } else if (expr.t == LExpr::DECIMAL) {
+            os << std::dec << expr.value;
+        } else if (expr.t == LExpr::BINOP) {
+            os << "(" << *expr.args.at(0) << " " << expr.str << " ";
+            os << *expr.args.at(1) << ")";
+        } else if (expr.t == LExpr::FUNC) {
+            os << expr.str << "(";
+            expr.infix(os, ", ");
+            os << ")";
+        } else if (expr.t == LExpr::BLOCK) {
+            os << "({";
+            expr.infix(os, "; ");
+            os << ";})";
+        } else if (expr.t == LExpr::IF) {
+            os << "if (" << expr.str << ") {\n";
+            expr.infix(os, ";\n");
+            os << ";\n}\n";
+        } else if (expr.t == LExpr::CAST) {
+            os << "((" << expr.str << ")" << *expr.args.at(0) << ")";
+        } else if (expr.t == LExpr::INDEX) {
+            os << *expr.args.at(0) << "[" << expr.value << "]";
+        } else { assert(false && "Bad expr!"); }
+
+        return os;
     }
 };
 
-LExpr operator-(LExpr us, LExpr other) { return LExpr::Binary("-", std::move(us), std::move(other)); }
-LExpr operator+(LExpr us, LExpr other) { return LExpr::Binary("+", std::move(us), std::move(other)); }
-LExpr operator*(LExpr us, LExpr other) { return LExpr::Binary("*", std::move(us), std::move(other)); }
-LExpr operator==(LExpr us, LExpr other) { return LExpr::Binary("==", std::move(us), std::move(other)); }
-LExpr operator||(LExpr us, LExpr other) { return LExpr::Binary("||", std::move(us), std::move(other)); }
-LExpr operator>>(LExpr us, LExpr other) { return LExpr::Binary(">>", std::move(us), std::move(other)); }
-LExpr operator&(LExpr us, LExpr other) { return LExpr::Binary("&", std::move(us), std::move(other)); }
-LExpr operator<(LExpr us, LExpr other) { return LExpr::Binary("<", std::move(us), std::move(other)); }
-LExpr operator&&(LExpr us, LExpr other) { return LExpr::Binary("&&", std::move(us), std::move(other)); }
+// Binary operator.
+LExpr LBinop(std::string op, LExpr left, LExpr right) {
+    return LExpr(LExpr::BINOP, 0, op, { left, right });
+}
+
+LExpr operator-(LExpr us, LExpr other) { return LBinop("-", us, other); }
+LExpr operator+(LExpr us, LExpr other) { return LBinop("+", us, other); }
+LExpr operator*(LExpr us, LExpr other) { return LBinop("*", us, other); }
+LExpr operator==(LExpr us, LExpr other) { return LBinop("==", us, other); }
+LExpr operator&&(LExpr us, LExpr other) { return LBinop("&&", us, other); }
+LExpr operator||(LExpr us, LExpr other) { return LBinop("||", us, other); }
+LExpr operator>>(LExpr us, LExpr other) { return LBinop(">>", us, other); }
+LExpr operator<<(LExpr us, LExpr other) { return LBinop("<<", us, other); }
+LExpr operator&(LExpr us, LExpr other) { return LBinop("&", us, other); }
+LExpr operator|(LExpr us, LExpr other) { return LBinop("|", us, other); }
+LExpr operator<(LExpr us, LExpr other) { return LBinop("<", us, other); }
 
 LExpr LStr(std::string str) {
-    return LExpr{LExpr::STR, 0, str, nullptr, nullptr};
+    return LExpr(LExpr::STR, 0, str, {});
 }
 
 LExpr LHex(uint32_t value) {
-    return LExpr{LExpr::HEX, value, "", nullptr, nullptr};
+    return LExpr(LExpr::HEX, value, "", {});
 }
 
 LExpr LDecimal(uint32_t value) {
-    return LExpr{LExpr::DECIMAL, value, "", nullptr, nullptr};
+    return LExpr(LExpr::DECIMAL, value, "", {});
+}
+
+LExpr LBlock(std::initializer_list<LExpr> stmts) {
+    return LExpr(LExpr::BLOCK, 0, "", stmts);
+}
+
+LExpr LFunc(std::string name, std::initializer_list<LExpr> args) {
+    return LExpr(LExpr::FUNC, 0, name, args);
+}
+
+LExpr LIf(std::string cond, std::initializer_list<LExpr> stmts) {
+    return LExpr(LExpr::IF, 0, cond, stmts);
+}
+
+LExpr LIf(std::string cond, std::vector<LExpr> stmts) {
+    return LExpr(LExpr::IF, 0, cond, stmts);
+}
+
+LExpr LCast(std::string type, LExpr value) {
+    return LExpr(LExpr::CAST, 0, type, { value });
+}
+
+LExpr LIndex(LExpr array, uint32_t index) {
+    return LExpr(LExpr::INDEX, index, "", { array });
 }
 
 LExpr LavaGet(const Bug *bug) {
-    std::stringstream lava_get_val;
-    lava_get_val << "lava_get(" << bug->id << ")";
-    return LStr(lava_get_val.str());
+    return LFunc("lava_get", { LDecimal(bug->id) });
+}
+
+LExpr LavaSet(const Bug *bug, LExpr value) {
+    return LFunc("lava_set", { LDecimal(bug->id), value });
 }
 
 template<typename UInt>
@@ -417,26 +450,34 @@ template<>
 uint16_t BSwap<uint16_t>(uint16_t x) { return __builtin_bswap16(x); }
 
 template<typename UInt>
-LExpr MagicTest(UInt magic_value, LExpr lava_get) {
-    return LHex(magic_value) == lava_get ||
-        LHex(BSwap<UInt>(magic_value)) == lava_get;
+LExpr MagicTest(UInt magic_value, const Bug *bug) {
+    return LHex(magic_value) == LavaGet(bug) ||
+        LHex(BSwap<UInt>(magic_value)) == LavaGet(bug);
 }
 
-template<LExpr (*MakeAddend)(const Bug *bug)>
-std::string AddSum(const std::set<const Bug*> &injectable_bugs) {
-    auto it = injectable_bugs.begin();
-    if (it == injectable_bugs.end()) return "";
-
-    LExpr result = MakeAddend(*it);
-    it++;
-    for (; it != injectable_bugs.end(); it++) {
-        result = std::move(result) + MakeAddend(*it);
+// This is a standard no-initializer fold.
+// args must be nonempty.
+template<typename T, LExpr (*Map)(T), LExpr(*Combine)(LExpr, LExpr)>
+LExpr Reduce(const std::vector<T> &args) {
+    auto it = args.begin();
+    LExpr result = Map(*it);
+    for (it++; it != args.end(); it++) {
+        result = Combine(std::move(result), Map(*it));
     }
-    return " + " + result.render();
+    return result;
+}
+
+// Gives " + " plus the sum of all the LExpr's.
+template<LExpr (*MakeAddend)(const Bug *)>
+std::string AddSum(const std::vector<const Bug*> &injectable_bugs) {
+    if (injectable_bugs.empty()) return "";
+
+    return " + " +
+        Reduce<const Bug *, MakeAddend, operator+>(injectable_bugs).render();
 }
 
 LExpr traditionalAttack(const Bug *bug) {
-    return LavaGet(bug) * MagicTest(bug->magic(), LavaGet(bug));
+    return LavaGet(bug) * MagicTest(bug->magic(), bug);
 }
 
 LExpr knobTriggerAttack(const Bug *bug) {
@@ -446,8 +487,8 @@ LExpr knobTriggerAttack(const Bug *bug) {
     uint16_t magic_value = bug->magic() & 0xffff;
     uint16_t magic_value_bs = __builtin_bswap32(bug->magic() & 0xffff);
 
-    return (std::move(lava_get_lower) * MagicTest(magic_value, LavaGet(bug)))
-        + (std::move(lava_get_upper) * MagicTest(magic_value_bs, LavaGet(bug)));
+    return (lava_get_lower * MagicTest(magic_value, bug))
+        + (lava_get_upper * MagicTest(magic_value_bs, bug));
 }
 
 LExpr RangeTest(uint32_t magic_value, uint32_t range_size, LExpr value) {
@@ -459,6 +500,43 @@ template<uint32_t num_bits>
 LExpr rangeStyleAttack(const Bug *bug) {
     return LavaGet(bug) * (RangeTest(bug->magic(), 1U << num_bits, LavaGet(bug)) ||
         RangeTest(__builtin_bswap32(bug->magic()), 1U << num_bits, LavaGet(bug)));
+}
+
+/* create code that siphons dua bytes into a global
+   this is how, given a byte in a dua we'll grab it and insert into a global
+   o = 3; // byte # in dua (0 is lsb)
+   i = 0; // byte # in global
+   lava_1 |=  (((unsigned char *) &dua))[o] << (i*8) ;
+*/
+LExpr DuaOffset(std::string lval_name, uint32_t offset, unsigned i) {
+    return LIndex(LCast("unsigned char *", LStr(lval_name)), offset) << LDecimal(i * 8);
+}
+
+LExpr ComposeDuaSiphoning(const std::string &lval_name,
+        std::vector<const Bug*> &injectable_bugs, std::string filename) {
+    // only insert one dua siphon if single bug
+    // if > 1 bug we are living dangerously.
+    // FIXME: understand this. is it just garbage?
+    if (bugs.size() == 1 && (returnCode & INSERTED_DUA_SIPHON))
+        return LStr("");
+
+    returnCode |= INSERTED_DUA_SIPHON;
+
+    std::vector<LExpr> siphons;
+    for (const Bug *bug : injectable_bugs) {
+        const std::vector<uint32_t> &offsets = bug->selected_bytes;
+
+        unsigned i = 0;
+        auto it = offsets.begin();
+        LExpr siphon = DuaOffset(lval_name, *it, i);
+        for (it++; it != offsets.end(); it++) {
+            i++;
+            siphon = std::move(siphon) | DuaOffset(lval_name, *it, i);
+        }
+        siphons.emplace_back(LavaSet(bug, std::move(siphon)));
+    }
+
+    return LIf(lval_name, siphons);
 }
 
 /*******************************
@@ -523,13 +601,20 @@ public:
         return LavaASTLoc(src_filename, fullLocStart, fullLocEnd);
     }
 
+    LExpr LavaAtpQuery(LavaASTLoc ast_loc, AttackPoint::Type atpType) {
+        return LBlock({
+                LFunc("vm_lava_attack_point2",
+                    { LDecimal(GetStringID(ast_loc)), LDecimal(0), LDecimal(atpType) }),
+                LDecimal(0) });
+    }
+
     void AttackExpression(const Expr *toAttack, const Expr *parent,
             LavaASTLoc ast_loc, AttackPoint::Type atpType) {
         //        debug << "in AttackExpressionDuaUse\n";
         std::string after;
         debug << "AttackExpression\n";
         if (LavaAction == LavaInjectBugs) {
-            std::set<const Bug*> injectable_bugs =
+            std::vector<const Bug*> injectable_bugs =
                 AtBug("", ast_loc, true, SourceLval::NULL_TIMING);
 
             // Nothing to do if we're not at an attack point
@@ -543,17 +628,12 @@ public:
             if (bugs.size() == 1 && (returnCode & INSERTED_DUA_USE)) return;
             returnCode |= INSERTED_DUA_USE;
 
-            if (KT) {
-                after = AddSum<knobTriggerAttack>(injectable_bugs);
-            } else {
-                after = AddSum<traditionalAttack>(injectable_bugs);
-            }
+            after = KT
+                ? AddSum<knobTriggerAttack>(injectable_bugs)
+                : AddSum<traditionalAttack>(injectable_bugs);
         } else if (LavaAction == LavaQueries) {
-            std::stringstream corruption;
             // call attack point hypercall and return 0
-            corruption << " + ({vm_lava_attack_point2(" << GetStringID(ast_loc) << ", ";
-            corruption << 0 << ", " << atpType << "); 0;;})";
-            after = corruption.str();
+            after = " + " + LavaAtpQuery(ast_loc, atpType).render();
             num_atp_queries++;
         }
 
@@ -606,14 +686,6 @@ public:
     PriQueryPointSimpleHandler(Rewriter &rewriter, std::map<std::string,uint32_t> &StringIDs) :
         LavaMatchHandler(rewriter, StringIDs)  {}
 
-    std::string ComposePriDuaQuery(const Stmt *stmt, LavaASTLoc ast_loc) {
-        std::stringstream before;
-        before << "; vm_lava_pri_query_point(" << GetStringID(ast_loc);
-        before << ", " << ast_loc.begin.line << ", " << SourceLval::BEFORE_OCCURRENCE << "); ";
-
-        return before.str();
-    }
-
     virtual void run(const MatchFinder::MatchResult &Result) {
         const Stmt *toSiphon;
         toSiphon = Result.Nodes.getNodeAs<Stmt>("stmt");
@@ -623,7 +695,11 @@ public:
 
         std::string before;
         if (LavaAction == LavaQueries) {
-            before = ComposePriDuaQuery(toSiphon, p);
+            before = "; " + LFunc("vm_lava_pri_query_point", {
+                LDecimal(GetStringID(p)),
+                LDecimal(p.begin.line),
+                LDecimal(SourceLval::BEFORE_OCCURRENCE)}).render() + ";";
+
             num_taint_queries += 1;
         } else if (LavaAction == LavaInjectBugs) {
             std::set<std::string> lval_names = gatherDuas(p);
@@ -631,7 +707,7 @@ public:
             for (auto lval_name : lval_names) {
                 //an llval is { lvalname, pointer_tst, lvallen, lval_type, is_ptr };
                 assert(lval_name.length() > 0);
-                std::set<const Bug*> injectable_bugs =
+                std::vector<const Bug*> injectable_bugs =
                     AtBug(lval_name, p, /*atAttackPoint=*/false,
                           SourceLval::BEFORE_OCCURRENCE);
                 // NOTE: if injecting multiple bugs the same dua will need to
@@ -640,8 +716,7 @@ public:
                     debug << "PriQueryHandler: injecting a dua siphon for "
                         << injectable_bugs.size() << " bugs " << p << " : "
                         << lval_name << "\n";
-                }
-                else {
+                } else {
                     debug << "PriQueryHandlerSimple: No bugs for this dua. Something went wrong . . .\n";
                 }
                 before_ss << ComposeDuaSiphoning(lval_name, injectable_bugs, p);
@@ -674,7 +749,7 @@ public:
         if (!InMainFile(ce)) return;
         LavaASTLoc p = GetASTLoc(toAttack);
 
-        //if (FN_ARG_ATP)
+        if (FN_ARG_ATP)
             AttackExpression(toAttack, NULL, p, AttackPoint::ATP_FUNCTION_CALL);
     }
 };
@@ -698,8 +773,7 @@ public:
         LavaASTLoc p = GetASTLoc(toAttack);
         //debug << "Have a atp pointer query point" << " at " << p.first << " " << p.second <<  "\n";
         bool memRead = !memWrite;
-        /*if ((memWrite && MEM_WRITE_ATP) ||
-                (memRead && MEM_READ_ATP))*/ {
+        if ((memWrite && MEM_WRITE_ATP) || (memRead && MEM_READ_ATP)) {
             AttackExpression(toAttack, parent, p, AttackPoint::ATP_POINTER_RW);
         }
     }
@@ -877,7 +951,7 @@ public:
             returnCode |= INSERTED_MAIN_STUFF;
         }
 
-        if (LavaAction == LavaInjectBugs) {
+        if (LavaAction == LavaInjectBugs && MainInstrCorrection == 0) {
             new_start_of_file_src
                 << "void lava_set(unsigned int bn, unsigned int val);\n"
                 << "extern unsigned int lava_get(unsigned int);\n";
@@ -912,10 +986,10 @@ private:
     Rewriter rewriter;
 };
 
-std::set<const Bug*> loadBugs(const std::set<uint32_t> &bug_ids) {
-    std::set<const Bug*> result;
+std::vector<const Bug*> loadBugs(const std::set<uint32_t> &bug_ids) {
+    std::vector<const Bug*> result;
     for (uint32_t bug_id : bug_ids) {
-        result.insert(db->load<Bug>(bug_id));
+        result.push_back(db->load<Bug>(bug_id));
     }
     return result;
 }
@@ -923,12 +997,10 @@ std::set<const Bug*> loadBugs(const std::set<uint32_t> &bug_ids) {
 int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
-    if (LavaAction == LavaQueries) {
-        if (!(FN_ARG_ATP || MEM_READ_ATP || MEM_WRITE_ATP)) {
-            FN_ARG_ATP = true;
-            MEM_WRITE_ATP = true;
-            MEM_READ_ATP = true;
-        }
+    if (!(FN_ARG_ATP || MEM_READ_ATP || MEM_WRITE_ATP)) {
+        FN_ARG_ATP = true;
+        MEM_WRITE_ATP = true;
+        MEM_READ_ATP = true;
     }
 
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));

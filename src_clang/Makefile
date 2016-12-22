@@ -33,7 +33,7 @@ VPATH=.:../src_clang:$(PANDA_SRC_PATH)/panda/src:$(PANDA_BUILD_DIR)/i386-softmmu
 #CXX := g++
 #CXXFLAGS := -fexceptions -fno-rtti -O0 -g -std=c++11 -I/usr/include/jsoncpp
 CXX := $(LLVM_BIN_PATH)/clang++
-CXXFLAGS := -fexceptions -O2 -g -std=c++14 -I/usr/include/jsoncpp -fno-omit-frame-pointer
+CXXFLAGS := -fexceptions -O2 -g -gdwarf-2 -std=c++14 -I/usr/include/jsoncpp -fno-omit-frame-pointer
 CXXFLAGS += -I../include
 
 PLUGIN_CXXFLAGS := -fpic -fexceptions
