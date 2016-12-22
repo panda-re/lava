@@ -193,17 +193,6 @@ std::string StripPfx(std::string filename, std::string pfx) {
     return suff;
 }
 
-// returns true if this call expr has a retval we need to catch
-bool CallExprHasRetVal(QualType &rqt) {
-    if (rqt.getTypePtrOrNull() != NULL ) {
-        if (! rqt.getTypePtr()->isVoidType()) {
-            // this call has a return value (which may be being ignored
-            return true;
-        }
-    }
-    return false;
-}
-
 bool QueriableType(const Type *lval_type) {
     if ((lval_type->isIncompleteType())
         || (lval_type->isIncompleteArrayType())
@@ -730,14 +719,6 @@ private:
     Rewriter rewriter;
 };
 
-std::vector<const Bug*> loadBugs(const std::set<uint32_t> &bug_ids) {
-    std::vector<const Bug*> result;
-    for (uint32_t bug_id : bug_ids) {
-        result.push_back(db->load<Bug>(bug_id));
-    }
-    return result;
-}
-
 int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
@@ -774,7 +755,10 @@ int main(int argc, const char **argv) {
 
         std::set<uint32_t> bug_ids = parse_ints(LavaBugList);
         printf ("%d bug_ids\n", bug_ids.size());
-        bugs = loadBugs(bug_ids);
+        // for each bug_id, load that bug from DB and insert into bugs vector.
+        std::transform(bug_ids.begin(), bug_ids.end(), std::back_inserter(bugs),
+                [&](uint32_t bug_id) { return db->load<Bug>(bug_id); });
+
         for (const Bug *bug : bugs) {
             LavaASTLoc dua_loc = bug->dua->lval->loc.adjust_line(MainInstrCorrection);
             LavaASTLoc atp_loc = bug->atp->loc.adjust_line(MainInstrCorrection);
