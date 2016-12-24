@@ -15,4 +15,4 @@ docker run --rm -it \
     -v /etc/shadow:/etc/shadow:ro \
     -v /etc/gshadow:/etc/gshadow:ro \
     -v "$lava":"$lava" \
-    lava32 sh -c "trap '' PIPE; su -l phulin -c 'make -j$(nproc) -C \"$lava\"/src_clang'"
+    lava32 sh -c "trap '' PIPE; su -l $(whoami) -c 'make -j$(nproc) -C \"$lava\"/src_clang'"
