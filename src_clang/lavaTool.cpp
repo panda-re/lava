@@ -276,18 +276,20 @@ LExpr ComposeDuaSiphoning(const std::string &lval_name,
 }
 
 LExpr traditionalAttack(const Bug *bug) {
-    return LavaGet(bug) * MagicTest(bug->magic(), bug);
+    return LavaGet(bug) * MagicTest(bug->magic(), LavaGet(bug));
 }
 
 LExpr knobTriggerAttack(const Bug *bug) {
-    LExpr lava_get_lower = LavaGet(bug) & LHex(0xffff);
-    LExpr lava_get_upper = (LavaGet(bug) >> LDecimal(16)) & LHex(0xffff);
+    LExpr lava_get_lower = LavaGet(bug) & LHex(0x0000ffff);
+    //LExpr lava_get_upper = (LavaGet(bug) >> LDecimal(16)) & LHex(0xffff);
+    LExpr lava_get_upper = (LavaGet(bug) & LHex(0xffff0000)) >> LDecimal(16);
     // this is the magic value that will trigger the bug
-    uint16_t magic_value = bug->magic() & 0xffff;
-    uint16_t magic_value_bs = __builtin_bswap32(bug->magic() & 0xffff);
+    // we already know that magic_kt returns uint16_t so we don't have
+    // to mask it
+    uint16_t magic_value = bug->magic_kt();
 
-    return (lava_get_lower * MagicTest(magic_value, bug))
-        + (lava_get_upper * MagicTest(magic_value_bs, bug));
+    return (lava_get_lower * MagicTest(magic_value, lava_get_upper))
+        + (lava_get_upper * MagicTest(magic_value, lava_get_lower));
 }
 
 /*******************************

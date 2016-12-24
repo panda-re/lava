@@ -271,7 +271,7 @@ def mutfile(filename, fuzz_offsets, new_filename, bug_id, kt=False, knob=0):
     if kt:
         assert (knob < 2**16-1)
         lava_lower = lava & 0xffff
-        bug_trigger = ((lava_lower - bug_id) % 0x10000)
+        bug_trigger = ((lava_lower - bug_id) & 0xffff)
         magic_val = struct.pack("<I", (knob << 16) | bug_trigger)
     else:
         magic_val = struct.pack("<I", lava - bug_id)

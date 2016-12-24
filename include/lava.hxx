@@ -286,6 +286,17 @@ struct Bug {
     inline uint32_t magic() const {
         return 0x6c617661 - id;
     }
+
+    // this logic is complicated.  TODO: understand/fix this
+    // magic for kt has to be 2 bytes and we could
+    // can either be (LAVA - id) & 0xffff
+    // or (LAVA & 0xffff) - id
+    // the second way seems like a better solution for id's greater than 
+    // LAVA & 0xffff because we get wrap arounds that still create unique
+    // magic values
+    inline uint16_t magic_kt() const {
+        return ((uint16_t) (0x6c617661 & 0xffff)) - id;
+    }
 };
 
 // Corresponds to one (Lval, )

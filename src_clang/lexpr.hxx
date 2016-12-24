@@ -147,9 +147,9 @@ template<>
 uint16_t BSwap<uint16_t>(uint16_t x) { return __builtin_bswap16(x); }
 
 template<typename UInt>
-LExpr MagicTest(UInt magic_value, const Bug *bug) {
-    return LHex(magic_value) == LavaGet(bug) ||
-        LHex(BSwap<UInt>(magic_value)) == LavaGet(bug);
+LExpr MagicTest(UInt magic_value, LExpr maskedLavaGet) {
+    return LHex(magic_value) == maskedLavaGet ||
+        LHex(BSwap<UInt>(magic_value)) == maskedLavaGet;
 }
 
 // RangeTest and rangeStyleAttack are currently unused, but they're good examples of
