@@ -60,7 +60,8 @@ def instrument_main(filename):
     cmd = lava_tool + ' -action=main -bug-list=\"\"' \
         + ' -lava-db=' + lavadb + ' -p ' + bugs_build \
         + ' ' + filename_bug_part \
-        + ' ' + '-project-file=' + project_file
+        + ' ' + '-project-file=' + project_file \
+        + ' ' + '-src-prefix=' + bugs_build
     run_cmd_notimeout(cmd, None, None)
 
 def get_suffix(fn):
@@ -212,7 +213,7 @@ if __name__ == "__main__":
     bugs_install = join(bugs_build, 'lava-install')
     # Make sure directories and btrace is ready for bug injection.
     def run(args, **kwargs):
-        print "run(", " ".join(args), ")"
+        print "run(", subprocess32.list2cmdline(args), ")"
         subprocess32.check_call(args, cwd=bugs_build,
                 stdout=sys.stdout, stderr=sys.stderr, **kwargs)
     if not os.path.exists(bugs_build):
