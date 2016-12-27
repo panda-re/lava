@@ -6,22 +6,39 @@
 #include <vector>
 #include <memory>
 
+template<typename InputIt>
+static void infix(InputIt first, InputIt last, std::ostream &os,
+        std::string begin, std::string sep, std::string end) {
+    InputIt it = first;
+    os << begin;
+    for (; it != last - 1; it++) {
+        os << *it << sep;
+    }
+    os << *it << end;
+}
+
 struct LExpr {
     enum Type {
-        STR, HEX, DECIMAL, BINOP, FUNC, BLOCK, IF, CAST, INDEX
+        STR, HEX, DECIMAL, BINOP, FUNC, BLOCK, IF, CAST, INDEX, ASM
     } t;
 
     uint32_t value;
     std::string str;
     std::vector<std::shared_ptr<LExpr>> args;
+    std::vector<std::string> instrs;
 
     LExpr(Type t, uint32_t value, std::string str,
-            std::initializer_list<LExpr> init_args)
-        : t(t), value(value), str(str) {
+            std::initializer_list<LExpr> init_args,
+            std::initializer_list<std::string> instrs)
+        : t(t), value(value), str(str), instrs(instrs) {
         for (const LExpr &arg : init_args) {
             args.emplace_back(new LExpr(arg));
         }
     }
+
+    LExpr(Type t, uint32_t value, std::string str,
+            std::initializer_list<LExpr> init_args)
+        : LExpr(t, value, str, init_args, {}) {}
 
     LExpr(Type t, uint32_t value, std::string str,
             std::vector<LExpr> init_args)
@@ -67,6 +84,13 @@ struct LExpr {
             os << "((" << expr.str << ")" << *expr.args.at(0) << ")";
         } else if (expr.t == LExpr::INDEX) {
             os << *expr.args.at(0) << "[" << expr.value << "]";
+        } else if (expr.t == LExpr::ASM) {
+            os << "__asm__(";
+            ::infix(expr.instrs.cbegin(), expr.instrs.cend(), os,
+                    "\"", "\\n\\t", "\"");
+            os << " : : ";
+            expr.infix(os, "\"rm\" (", "), \"rm\" (", ")");
+            os << ")";
         } else { assert(false && "Bad expr!"); }
 
         return os;
@@ -128,6 +152,11 @@ LExpr LCast(std::string type, LExpr value) {
 
 LExpr LIndex(LExpr array, uint32_t index) {
     return LExpr(LExpr::INDEX, index, "", { array });
+}
+
+LExpr LAsm(std::initializer_list<LExpr> args,
+        std::initializer_list<std::string> instrs) {
+    return LExpr(LExpr::ASM, 0, "", args, instrs);
 }
 
 LExpr LavaGet(const Bug *bug) {

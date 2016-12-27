@@ -99,7 +99,7 @@ static cl::opt<std::string> SMainInstrCorrection("main_instr_correction",
     cl::desc("Insertion line correction for post-main instr"),
     cl::cat(LavaCategory),
     cl::init("XXX"));
-static cl::opt<bool> KT("kt",
+static cl::opt<bool> KnobTrigger("kt",
     cl::desc("Inject in Knob-Trigger style"),
     cl::cat(LavaCategory),
     cl::init(false));
@@ -156,7 +156,7 @@ std::map<std::pair<LavaASTLoc, std::string>, std::vector<const Bug *>> bugs_with
 #define MAX_STRNLEN 64
 ///////////////// HELPER FUNCTIONS BEGIN ////////////////////
 template<typename K, typename V>
-const V &get_or_construct(const std::map<K, V> &map, K key) {
+const V &map_get_default(const std::map<K, V> &map, K key) {
     static const V default_val;
     auto it = map.find(key);
     if (it != map.end()) {
@@ -250,38 +250,6 @@ bool IsAttackPoint(const CallExpr *e) {
 
 ///////////////// HELPER FUNCTIONS END ////////////////////
 
-/* create code that siphons dua bytes into a global
-   this is how, given a byte in a dua we'll grab it and insert into a global
-   o = 3; // byte # in dua (0 is lsb)
-   i = 0; // byte # in global
-   lava_set(BUG_ID, ((unsigned char *)&dua))[o] << (i*8) | ...);
-*/
-LExpr ComposeDuaSiphoning(const std::string &lval_name,
-        const std::vector<const Bug*> &injectable_bugs, std::string filename) {
-    // only insert one dua siphon if single bug
-    // if > 1 bug we are living dangerously.
-    // FIXME: understand this. is it just garbage?
-    if (bugs.size() == 1 && (returnCode & INSERTED_DUA_SIPHON))
-        return LStr("");
-
-    returnCode |= INSERTED_DUA_SIPHON;
-
-    std::vector<LExpr> siphons;
-    for (const Bug *bug : injectable_bugs) {
-        const std::vector<uint32_t> &offsets = bug->selected_bytes;
-
-        std::vector<LExpr> or_args;
-        for (auto it = offsets.cbegin(); it != offsets.cend(); it++) {
-            LExpr shift = LDecimal((it - offsets.cbegin()) * 8);
-            or_args.push_back(
-                    LIndex(LCast("unsigned char *", LStr(lval_name)), *it) << shift);
-        }
-        siphons.push_back(LavaSet(bug, LBinop("|", or_args)));
-    }
-
-    return LIf(lval_name, siphons);
-}
-
 LExpr traditionalAttack(const Bug *bug) {
     return LavaGet(bug) * MagicTest(bug->magic(), LavaGet(bug));
 }
@@ -302,8 +270,7 @@ LExpr knobTriggerAttack(const Bug *bug) {
 /*******************************
  * Matcher Handlers
  *******************************/
-class LavaMatchHandler : public MatchFinder::MatchCallback {
-public:
+struct LavaMatchHandler : public MatchFinder::MatchCallback {
     LavaMatchHandler(Rewriter &rewriter, std::map<std::string,uint32_t> &StringIDs) :
         rewriter(rewriter), StringIDs(StringIDs) {}
 
@@ -313,7 +280,6 @@ public:
         char *ret = getcwd(curdir, PATH_MAX);
         std::string name = sm.getFilename(loc).str();
         assert(!name.empty());
-        errs() << "FullPath: " << std::string(curdir) << "/" << name << "\n";
         return std::string(curdir) + "/" + name;
     }
 
@@ -356,32 +322,28 @@ public:
     }
 
     void AttackExpression(const Expr *toAttack, const Expr *parent,
-            LavaASTLoc ast_loc, AttackPoint::Type atpType) {
-        //        debug << "in AttackExpressionDuaUse\n";
+            AttackPoint::Type atpType) {
+        LavaASTLoc ast_loc = GetASTLoc(toAttack);
         std::string after;
         debug << "AttackExpression\n";
         if (LavaAction == LavaInjectBugs) {
             const std::vector<const Bug*> &injectable_bugs =
-                get_or_construct(bugs_with_atp_at, ast_loc);
+                map_get_default(bugs_with_atp_at, ast_loc);
 
             // Nothing to do if we're not at an attack point
-            if (injectable_bugs.empty()) {
-                return;
-            }
+            if (injectable_bugs.empty()) return;
 
-            // if > 1 bug we live dangerously and may have multiple attack points
-            // TODO: is this still necessary?
-            if (bugs.size() == 1 && (returnCode & INSERTED_DUA_USE)) return;
             returnCode |= INSERTED_DUA_USE;
 
             std::vector<LExpr> addends;
+            auto attack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
             // std::transform is just the functional map() in c++ land.
             std::transform(injectable_bugs.cbegin(), injectable_bugs.cend(),
-                    std::back_inserter(addends), KT ? knobTriggerAttack : traditionalAttack);
-            after = " + " + LBinop("+", std::move(addends)).render();
+                    std::back_inserter(addends), attack);
+            after = LBinop("+", std::move(addends)).render();
         } else if (LavaAction == LavaQueries) {
             // call attack point hypercall and return 0
-            after = " + " + LavaAtpQuery(ast_loc, atpType).render();
+            after = LavaAtpQuery(ast_loc, atpType).render();
             num_atp_queries++;
         }
 
@@ -397,7 +359,7 @@ public:
         }
         // Insert the new addition expression, and if parent expression is
         // already paren expression, do not add parens
-        rewriter.InsertTextAfterToken(toAttack->getLocEnd(), after);
+        rewriter.InsertTextAfterToken(toAttack->getLocEnd(), " + " + after);
         if (parent && !isa<ParenExpr>(parent) && !isa<ArraySubscriptExpr>(parent)){
             rewriter.InsertTextBefore(toAttack->getLocStart(), "(");
             rewriter.InsertTextAfterToken(parent->getLocEnd(), ")");
@@ -409,10 +371,8 @@ protected:
     Rewriter &rewriter;
 };
 
-class MatcherDebugHandler : public LavaMatchHandler {
-public:
-    MatcherDebugHandler(Rewriter &rewriter, std::map<std::string,uint32_t> &StringIDs) :
-        LavaMatchHandler(rewriter, StringIDs) {}
+struct MatcherDebugHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
     virtual void run(const MatchFinder::MatchResult &Result) {
         debug << "====== Found Match =====\n";
@@ -429,48 +389,89 @@ public:
     }
 };
 
-class PriQueryPointSimpleHandler : public LavaMatchHandler {
-public:
-    PriQueryPointSimpleHandler(Rewriter &rewriter, std::map<std::string,uint32_t> &StringIDs) :
-        LavaMatchHandler(rewriter, StringIDs)  {}
+struct PriQueryPointSimpleHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
+
+    /* create code that siphons dua bytes into a global
+    this is how, given a byte in a dua we'll grab it and insert into a global
+    o = 3; // byte # in dua (0 is lsb)
+    i = 0; // byte # in global
+    lava_set(BUG_ID, ((unsigned char *)&dua))[o] << (i*8) | ...);
+    */
+    LExpr SiphonsForLval(const std::string &lval_name,
+            const std::vector<const Bug*> &injectable_bugs, std::string filename) {
+        returnCode |= INSERTED_DUA_SIPHON;
+
+        std::vector<LExpr> siphons;
+        for (const Bug *bug : injectable_bugs) {
+            const std::vector<uint32_t> &offsets = bug->selected_bytes;
+
+            std::vector<LExpr> or_args;
+            for (auto it = offsets.cbegin(); it != offsets.cend(); it++) {
+                LExpr shift = LDecimal((it - offsets.cbegin()) * 8);
+                or_args.push_back(
+                        LIndex(LCast("unsigned char *", LStr(lval_name)), *it) << shift);
+            }
+            siphons.push_back(LavaSet(bug, LBinop("|", or_args)));
+        }
+
+        return LIf(lval_name, siphons);
+    }
+
+    // Each bug gets an if clause containing one siphon per bug that
+    // involves that dua.
+    std::string SiphonsForLocation(LavaASTLoc ast_loc) {
+        const std::set<std::string> &lval_names =
+            map_get_default(lval_name_location_map, ast_loc);
+
+        std::stringstream result_ss;
+        for (auto lval_name : lval_names) {
+            assert(!lval_name.empty());
+            const std::vector<const Bug*> &injectable_bugs =
+                map_get_default(bugs_with_dua_at_named,
+                        std::make_pair(ast_loc, lval_name));
+
+            assert(!injectable_bugs.empty());
+            debug << "PriQueryHandler: injecting a dua siphon for "
+                << injectable_bugs.size() << " bugs " << ast_loc << " : "
+                << lval_name << "\n";
+
+            // NOTE: if injecting multiple bugs the same dua will need to
+            // be instrumented more than once
+            result_ss << SiphonsForLval(lval_name, injectable_bugs, ast_loc);
+        }
+        return result_ss.str();
+    }
+
+    std::string AttackLargeBuffers(LavaASTLoc ast_loc) {
+        std::stringstream result_ss;
+        for (const Bug *bug : map_get_default(bugs_with_atp_at, ast_loc)) {
+            if (bug->atp->type == AttackPoint::LARGE_BUFFER_AVAIL) {
+                result_ss << LIf(MagicTest(bug->magic(), bug).render(), {
+                        LAsm({ LStr(bug->atp->ast_name) },
+                                { "movl %0, %%esp", "ret" })});
+            }
+        }
+        return result_ss.str();
+    }
 
     virtual void run(const MatchFinder::MatchResult &Result) {
-        const Stmt *toSiphon;
-        toSiphon = Result.Nodes.getNodeAs<Stmt>("stmt");
-        LavaASTLoc p = GetASTLoc(toSiphon);
+        const Stmt *toSiphon = Result.Nodes.getNodeAs<Stmt>("stmt");
         if (!InMainFile(toSiphon)) return;
-        debug << "Have a pri SIMPLE query point!\n";
+
+        LavaASTLoc ast_loc = GetASTLoc(toSiphon);
+        debug << "Have a pri SIMPLE query point @ " << ast_loc << "!\n";
 
         std::string before;
         if (LavaAction == LavaQueries) {
             before = "; " + LFunc("vm_lava_pri_query_point", {
-                LDecimal(GetStringID(p)),
-                LDecimal(p.begin.line),
+                LDecimal(GetStringID(ast_loc)),
+                LDecimal(ast_loc.begin.line),
                 LDecimal(SourceLval::BEFORE_OCCURRENCE)}).render() + ";";
 
             num_taint_queries += 1;
         } else if (LavaAction == LavaInjectBugs) {
-            const std::set<std::string> &lval_names =
-                get_or_construct(lval_name_location_map, p);
-            std::stringstream before_ss;
-            for (auto lval_name : lval_names) {
-                assert(lval_name.length() > 0);
-                const std::vector<const Bug*> &injectable_bugs =
-                    get_or_construct(bugs_with_dua_at_named,
-                            std::make_pair(p, lval_name));
-
-                // NOTE: if injecting multiple bugs the same dua will need to
-                // be instrumented more than once
-                if (!injectable_bugs.empty()) {
-                    debug << "PriQueryHandler: injecting a dua siphon for "
-                        << injectable_bugs.size() << " bugs " << p << " : "
-                        << lval_name << "\n";
-                } else {
-                    debug << "PriQueryHandlerSimple: No bugs for this dua. Something went wrong . . .\n";
-                }
-                before_ss << ComposeDuaSiphoning(lval_name, injectable_bugs, p);
-            }
-            before = before_ss.str();
+            before = SiphonsForLocation(ast_loc) + AttackLargeBuffers(ast_loc);
         }
         debug << " Injecting dua siphon at " << ExprStr(toSiphon) << "\n";
         debug << "    Text: " << before << "\n";
@@ -478,33 +479,21 @@ public:
     }
 };
 
-class ArgAtpPointHandler : public LavaMatchHandler {
-public:
-    ArgAtpPointHandler(Rewriter &rewriter, std::map<std::string,uint32_t> &StringIDs) :
-        LavaMatchHandler(rewriter, StringIDs) {}
+struct ArgAtpPointHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
     virtual void run(const MatchFinder::MatchResult &Result) {
-        const CallExpr *ce = Result.Nodes.getNodeAs<CallExpr>("ce");
         const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("arg");
-#if DEBUG
-        debug << "Have a vulnerable arg: " << ExprStr(ce) << " -> " << ExprStr(toAttack) << "\n";
-        toAttack->dump();
-        debug << "Arg has type ";
-        toAttack->getType().dump();
-#endif
-        debug << "\n";
-        if (!InMainFile(ce)) return;
-        LavaASTLoc p = GetASTLoc(toAttack);
+        if (!InMainFile(toAttack)) return;
 
-        if (FN_ARG_ATP)
-            AttackExpression(toAttack, NULL, p, AttackPoint::FUNCTION_ARG);
+        if (FN_ARG_ATP) {
+            AttackExpression(toAttack, NULL, AttackPoint::FUNCTION_ARG);
+        }
     }
 };
 
-class AtpPointerQueryPointHandler : public LavaMatchHandler {
-public:
-    AtpPointerQueryPointHandler(Rewriter &rewriter, std::map<std::string,uint32_t> &StringIDs) :
-        LavaMatchHandler(rewriter, StringIDs) {}
+struct AtpPointerQueryPointHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
     /* TODO: add description of what type of attacks we are doing here */
 
@@ -518,10 +507,10 @@ public:
         }
         if (!InMainFile(toAttack)) return;
         LavaASTLoc p = GetASTLoc(toAttack);
-        //debug << "Have a atp pointer query point" << " at " << p.first << " " << p.second <<  "\n";
+
         bool memRead = !memWrite;
         if ((memWrite && MEM_WRITE_ATP) || (memRead && MEM_READ_ATP)) {
-            AttackExpression(toAttack, parent, p, AttackPoint::POINTER_RW);
+            AttackExpression(toAttack, parent, AttackPoint::POINTER_RW);
         }
     }
 };
@@ -568,8 +557,6 @@ class LavaTaintQueryASTConsumer : public ASTConsumer {
 public:
     LavaTaintQueryASTConsumer(Rewriter &rewriter, std::map<std::string,uint32_t> &StringIDs) :
         HandlerMatcherDebug(rewriter, StringIDs),
-        //HandlerForAtpQueryPoint(rewriter, StringIDs),
-        //HandlerForPriQueryPoint(rewriter, StringIDs),
         HandlerForArgAtpPoint(rewriter, StringIDs),
         HandlerForAtpPointerQueryPoint(rewriter, StringIDs),
         HandlerForPriQueryPointSimple(rewriter, StringIDs)
@@ -611,7 +598,7 @@ public:
                 callExpr(
                     forEachArgMatcher(expr(isAttackableMatcher()).bind("arg"))).bind("ce"),
                 &IFNOTDEBUG(HandlerForArgAtpPoint)
-);
+                );
 
         // an array subscript expression is composed of base[index]
         // matches all nodes of: *innerExprParent(innerExpr) = ...
@@ -632,14 +619,14 @@ public:
 #undef IFNOTDEBUG
 
     void HandleTranslationUnit(ASTContext &Context) override {
-        // Run the matchers when we have the whole TU parsed.
-        Matcher.matchAST(Context);
+        if (LavaAction != LavaInstrumentMain) {
+            // Run the matchers when we have the whole TU parsed.
+            Matcher.matchAST(Context);
+        }
     }
 
 private:
     std::vector< VarDecl* > globalVars;
-    //AtpQueryPointHandler HandlerForAtpQueryPoint;
-    //PriQueryPointHandler HandlerForPriQueryPoint;
     ArgAtpPointHandler HandlerForArgAtpPoint;
     AtpPointerQueryPointHandler HandlerForAtpPointerQueryPoint;
     PriQueryPointSimpleHandler HandlerForPriQueryPointSimple;
