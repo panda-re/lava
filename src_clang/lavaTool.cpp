@@ -1,3 +1,21 @@
+// This makes sure assertions actually occur.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+
+#include <cassert>
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <map>
+#include <cstdint>
+#include <set>
+#include <memory>
+#include <iterator>
+
 extern "C" {
 #include <unistd.h>
 #include <libgen.h>
@@ -22,18 +40,6 @@ extern "C" {
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchersInternal.h"
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
-
-#include <cstdlib>
-#include <fstream>
-#include <iostream>
-#include <sstream>
-#include <string>
-#include <vector>
-#include <map>
-#include <cstdint>
-#include <set>
-#include <memory>
-#include <iterator>
 
 #include "lavaDB.h"
 #include "lava.hxx"
@@ -161,12 +167,13 @@ const V &get_or_construct(const std::map<K, V> &map, K key) {
 }
 
 std::set<uint32_t> parse_ints(std::string ints) {
-    std::stringstream ss(ints);
+    std::istringstream ss(ints);
     std::set<uint32_t> result;
     uint32_t i;
-    while (ss >> i) {
+    while (ss.good()) {
+        ss >> i;
         result.insert(i);
-        assert(ss.peek() == ',');
+        assert(ss.eof() || ss.peek() == ',');
         ss.ignore();
     }
     return result;
