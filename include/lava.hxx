@@ -218,14 +218,11 @@ struct AttackPoint {
     enum Type {
         FUNCTION_ARG,
         POINTER_RW,
-        LARGE_BUFFER_AVAIL
+        QUERY_POINT,
+        TYPE_END
     } type;
 
-    // Selected byte range for LARGE_BUFFER type.
-    uint32_t range_low;
-    uint32_t range_high;
-
-#pragma db index("AttackPointUniq") unique members(loc, type, range_low, range_high)
+#pragma db index("AttackPointUniq") unique members(loc, type)
 
     bool operator<(const AttackPoint &other) const {
         return std::tie(loc, type) <
@@ -239,26 +236,27 @@ struct AttackPoint {
     }
 
     friend std::ostream &operator<<(std::ostream &os, const AttackPoint &m) {
-        constexpr const char *names[3] = {
+        constexpr const char *names[TYPE_END] = {
             "ATP_FUNCTION_ARG",
             "ATP_POINTER_RW",
-            "ATP_LARGE_BUFFER_AVAIL"
+            "ATP_QUERY_POINT",
         };
         os << "ATP [" << m.loc.filename << " " << m.loc.begin << "] {";
         os << names[m.type] << "}";
         return os;
     }
 
+    static inline AttackPoint OldStyle(LavaASTLoc loc, std::string ast_name, Type type) {
+        return AttackPoint{0, loc, ast_name, type};
+    }
     static AttackPoint FunctionArg(LavaASTLoc loc, std::string ast_name) {
-        return AttackPoint{0, loc, ast_name, AttackPoint::FUNCTION_ARG, 0, 0};
+        return OldStyle(loc, ast_name, FUNCTION_ARG);
     }
     static AttackPoint PointerRW(LavaASTLoc loc, std::string ast_name) {
-        return AttackPoint{0, loc, ast_name, AttackPoint::POINTER_RW, 0, 0};
+        return OldStyle(loc, ast_name, POINTER_RW);
     }
-    static AttackPoint LargeBufferAvail(LavaASTLoc loc, std::string ast_name,
-            uint32_t range_low, uint32_t range_high) {
-        return AttackPoint{0, loc, ast_name, AttackPoint::LARGE_BUFFER_AVAIL,
-            range_low, range_high};
+    static AttackPoint QueryPoint(LavaASTLoc loc, std::string ast_name) {
+        return AttackPoint{0, loc, ast_name, QUERY_POINT};
     }
 };
 
@@ -267,20 +265,53 @@ struct Bug {
 #pragma db id auto
     unsigned long id;
 
+    enum Type {
+        PTR_ADD,
+        RET_BUFFER,
+        REL_WRITE,
+        TYPE_END
+    } type;
+
 #pragma db not_null
-    const Dua* dua;
+    const Dua* trigger;
+#pragma db not_null
+    const SourceLval* trigger_lval; // == trigger->lval
     std::vector<uint32_t> selected_bytes;
+    uint64_t selected_bytes_hash;
 
 #pragma db not_null
     const AttackPoint* atp;
 
     uint64_t max_liveness;
 
-#pragma db index("BugUniq") unique members(atp, dua, selected_bytes)
+    // Possible exploit pad for ret-eax bugs.
+    // Distance for relative-write style bugs.
+    // NULL otherwise.
+    const Dua *extra_dua;
+    uint32_t exploit_pad_offset;
+
+#pragma db index("BugUniq") unique members(type, atp, trigger_lval, \
+        selected_bytes, extra_dua)
+#pragma db index("BugLvalsQuery") members(atp, type, extra_dua)
+
+    Bug() {}
+    Bug(Type type, const Dua *trigger, std::vector<uint32_t> selected_bytes,
+            uint64_t max_liveness, const AttackPoint *atp,
+            const Dua *extra_dua, uint32_t exploit_pad_offset)
+        : id(0), type(type), trigger(trigger), trigger_lval(trigger->lval),
+            selected_bytes(selected_bytes), atp(atp), max_liveness(max_liveness),
+            extra_dua(extra_dua), exploit_pad_offset(exploit_pad_offset),
+            selected_bytes_hash(0) {
+        for (size_t i = 0; i < selected_bytes.size(); i++) {
+            selected_bytes_hash ^= (selected_bytes[i] + 1) << (16 * (i % 4));
+        }
+    }
 
     bool operator<(const Bug &other) const {
-         return std::tie(atp->id, dua->id, selected_bytes) <
-             std::tie(other.atp->id, other.dua->id, other.selected_bytes);
+        return std::tie(type, atp->id, trigger->id, selected_bytes_hash,
+                extra_dua->id) < std::tie(other.type, other.atp->id,
+                    other.trigger->id, other.selected_bytes_hash,
+                    other.extra_dua->id);
     }
 
     inline uint32_t magic() const {
@@ -291,52 +322,36 @@ struct Bug {
     // magic for kt has to be 2 bytes and we could
     // can either be (LAVA - id) & 0xffff
     // or (LAVA & 0xffff) - id
-    // the second way seems like a better solution for id's greater than 
+    // the second way seems like a better solution for id's greater than
     // LAVA & 0xffff because we get wrap arounds that still create unique
     // magic values
     inline uint16_t magic_kt() const {
         return ((uint16_t) (0x6c617661 & 0xffff)) - id;
     }
-};
 
-// Corresponds to one (Lval, )
-#pragma db object
-struct SourceModification {
-#pragma db id auto
-    unsigned long id = 0;
-
-#pragma db not_null
-    const SourceLval* lval = nullptr;
-    std::vector<uint32_t> selected_bytes;
-    uint64_t selected_bytes_hash = 0;
-
-#pragma db not_null
-    const AttackPoint* atp = nullptr;
-
-#pragma db index("SourceModificationUniq") unique members(atp, lval, selected_bytes_hash)
-
-    SourceModification() {}
-    SourceModification(const SourceLval *_lval, std::vector<uint32_t> _bytes,
-            const AttackPoint* _atp)
-        : lval(_lval), selected_bytes(_bytes), atp(_atp) {
-        selected_bytes_hash = 0;
-        for (size_t i = 0; i < selected_bytes.size(); i++) {
-            selected_bytes_hash ^= (selected_bytes[i] + 1) << (16 * (i % 4));
-        }
+    static Bug PtrAdd(const Dua *trigger, std::vector<uint32_t> selected_bytes,
+            uint64_t max_liveness, const AttackPoint *atp) {
+        return Bug(PTR_ADD, trigger, selected_bytes, max_liveness, atp,
+            nullptr, 0);
     }
-
-    // NB: MUST order by lval id first to enable faster algorithm in FBI.
-    bool operator<(const SourceModification &other) const {
-         return std::tie(lval->id, atp->id, selected_bytes_hash) <
-             std::tie(other.lval->id, other.atp->id, other.selected_bytes_hash);
+    static Bug RetBuffer(const Dua *trigger, std::vector<uint32_t> selected_bytes,
+            uint64_t max_liveness, const AttackPoint *atp,
+            const Dua *exploit_pad, uint32_t exploit_pad_offset) {
+        return Bug(RET_BUFFER, trigger, selected_bytes, max_liveness, atp,
+            exploit_pad, exploit_pad_offset);
+    }
+    static Bug RelWrite(const Dua *trigger, std::vector<uint32_t> selected_bytes,
+            uint64_t max_liveness, const AttackPoint *atp,
+            const Dua *rel_write_distance) {
+        return Bug(REL_WRITE, trigger, selected_bytes, max_liveness, atp,
+            rel_write_distance, 0);
     }
 };
 
-#pragma db view object(SourceModification) \
-    query((?) + "ORDER BY" + SourceModification::lval)
-struct SourceModificationLazy {
-    unsigned long id;
-    unsigned long lval;
+#pragma db view object(Bug) \
+    query((?) + "ORDER BY" + Bug::trigger_lval, distinct)
+struct BugLval {
+    unsigned long trigger_lval;
 };
 
 #pragma db object

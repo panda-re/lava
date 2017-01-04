@@ -19,7 +19,7 @@ from composite import Composite
 
 Base = declarative_base()
 
-debugging = False
+debugging = True
 
 class Loc(Composite):
     column = Integer
@@ -96,13 +96,13 @@ class AttackPoint(Base):
     typ = Column('type', Integer)
 
     # enum Type {
-    ATP_FUNCTION_CALL = 0
-    ATP_POINTER_RW = 1
-    ATP_LARGE_BUFFER_AVAIL = 2
+    FUNCTION_CALL = 0
+    POINTER_RW = 1
+    QUERY_POINT = 2
     # } type;
 
     def __str__(self):
-        type_strs = ["ATP_FUNCTION_CALL", "ATP_POINTER_RW", "ATP_LARGE_BUFFER_AVAIL"]
+        type_strs = ["ATP_FUNCTION_CALL", "ATP_POINTER_RW", "ATP_QUERY_POINT"]
         return 'ATP[{}](loc={}:{}, type={})'.format(
             self.id, self.loc_filename, self.loc_begin_line, type_strs[self.typ]
         )
@@ -117,14 +117,20 @@ class Bug(Base):
     __tablename__ = 'bug'
 
     id = Column(BigInteger, primary_key=True)
-    dua_id = Column('dua', BigInteger, ForeignKey('dua.id'))
+    trigger_id = Column('trigger', BigInteger, ForeignKey('dua.id'))
     atp_id = Column('atp', BigInteger, ForeignKey('attackpoint.id'))
+    exploit_pad_id = Column('exploit_pad', BigInteger, ForeignKey('dua.id'))
+    rel_write_distance_id = Column('rel_write_distance', BigInteger, ForeignKey('dua.id'))
 
-    dua = relationship("Dua")
-    atp = relationship("AttackPoint")
-
+    trigger = relationship("Dua", foreign_keys=[trigger_id])
     selected_bytes = Column(postgresql.ARRAY(Integer))
     max_liveness = Column(Float)
+
+    atp = relationship("AttackPoint")
+
+    exploit_pad = relationship("Dua", foreign_keys=[exploit_pad_id])
+    exploit_pad_offset = Column(Integer)
+    rel_write_distance = relationship("Dua", foreign_keys=[rel_write_distance_id])
 
     builds = relationship("Build", secondary=build_bugs,
                           back_populates="bugs")
@@ -168,8 +174,7 @@ class LavaDatabase(object):
 
     def uninjected(self):
         return self.session.query(Bug).filter(~Bug.builds.any()).join(Bug.atp).filter(
-            AttackPoint.typ == AttackPoint.ATP_POINTER_RW or
-            AttackPoint.typ == AttackPoint.ATP_FUNCTION_CALL)
+            AttackPoint.typ == AttackPoint.ATP_LARGE_BUFFER_AVAIL)
 
     # returns uninjected (not yet in the build table) possibly fake bugs
     def uninjected2(self, fake):

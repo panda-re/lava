@@ -293,10 +293,11 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
     }
 
     uint32_t GetStringID(std::string s) {
-        if (StringIDs.find(s) == StringIDs.end()) {
-            StringIDs[s] = StringIDs.size();
-        }
-        return StringIDs[s];
+        std::map<std::string, uint32_t>::iterator it;
+        // This does nothing if s is already in StringIDs.
+        std::tie(it, std::ignore) =
+            StringIDs.insert(std::make_pair(s, StringIDs.size()));
+        return it->second;
     }
 
     bool InMainFile(const Stmt *s) {
@@ -336,6 +337,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             returnCode |= INSERTED_DUA_USE;
 
             std::vector<LExpr> addends;
+            // this should be a function bug -> LExpr to add.
             auto attack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
             // std::transform is just the functional map() in c++ land.
             std::transform(injectable_bugs.cbegin(), injectable_bugs.cend(),
@@ -410,7 +412,7 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
             for (auto it = offsets.cbegin(); it != offsets.cend(); it++) {
                 LExpr shift = LDecimal((it - offsets.cbegin()) * 8);
                 or_args.push_back(
-                        LIndex(LCast("unsigned char *", LStr(lval_name)), *it) << shift);
+                        LIndex(UCharCast(LStr(lval_name)), *it) << shift);
             }
             siphons.push_back(LavaSet(bug, LBinop("|", or_args)));
         }
@@ -446,9 +448,10 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
     std::string AttackLargeBuffers(LavaASTLoc ast_loc) {
         std::stringstream result_ss;
         for (const Bug *bug : map_get_default(bugs_with_atp_at, ast_loc)) {
-            if (bug->atp->type == AttackPoint::LARGE_BUFFER_AVAIL) {
-                result_ss << LIf(MagicTest(bug->magic(), bug).render(), {
-                        LAsm({ LStr(bug->atp->ast_name) },
+            if (bug->type == Bug::RET_BUFFER) {
+                result_ss << LIf(MagicTest(bug).render(), {
+                        LAsm({ UCharCast(LStr(bug->exploit_pad->lval->ast_name)) +
+                                LDecimal(bug->exploit_pad_offset), },
                                 { "movl %0, %%esp", "ret" })});
             }
         }
@@ -751,9 +754,9 @@ int main(int argc, const char **argv) {
                 [&](uint32_t bug_id) { return db->load<Bug>(bug_id); });
 
         for (const Bug *bug : bugs) {
-            LavaASTLoc dua_loc = bug->dua->lval->loc.adjust_line(MainInstrCorrection);
+            LavaASTLoc dua_loc = bug->trigger->lval->loc.adjust_line(MainInstrCorrection);
             LavaASTLoc atp_loc = bug->atp->loc.adjust_line(MainInstrCorrection);
-            std::string lval_name = bug->dua->lval->ast_name;
+            std::string lval_name = bug->trigger->lval->ast_name;
             lval_name_location_map[dua_loc].insert(lval_name);
             bugs_with_atp_at[atp_loc].push_back(bug);
             bugs_with_dua_at_named[std::make_pair(dua_loc, lval_name)].push_back(bug);

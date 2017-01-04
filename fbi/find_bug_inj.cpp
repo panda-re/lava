@@ -67,7 +67,7 @@ std::unique_ptr<odb::pgsql::database> db;
 bool debug = false;
 #define dprintf(...) if (debug) { printf(__VA_ARGS__); }
 
-uint64_t max_liveness = 0.0;
+uint64_t max_liveness = 0;
 uint32_t max_card = 0;
 uint32_t max_tcn = 0;
 uint32_t max_lval = 0;
@@ -84,11 +84,23 @@ std::map<Ptr, const LabelSet*> ptr_to_labelset;
 std::vector<uint64_t> liveness;
 
 // Map from source lval to most recent DUA incarnation.
-std::map<const SourceLval*, const Dua*> recent_duas;
+std::map<const SourceLval*, const Dua*> recent_viable_duas;
 
 // Map from label to duas that are tainted by that label.
 // So when we update liveness, we know what duas might be invalidated.
 std::map<uint32_t, std::set<const Dua *> > dua_dependencies;
+
+// Print stuff to stream separated by commas.
+template<typename InputIt>
+static void infix(InputIt first, InputIt last, std::ostream &os,
+        std::string begin, std::string sep, std::string end) {
+    InputIt it = first;
+    os << begin;
+    for (; it != last - 1; it++) {
+        os << *it << sep;
+    }
+    os << *it << end;
+}
 
 // Templated query to ensure uniqueness across runs.
 // Here's what this means. Some of our datatypes are dependent on input file.
@@ -139,29 +151,6 @@ struct eq_query<AttackPoint> {
     }
 };
 
-template<>
-struct eq_query<SourceModification> {
-    typedef SourceModification enabled;
-    static constexpr const char *name = "sourcemod-value";
-
-    struct Params {
-        unsigned long atp;
-        unsigned long lval;
-        uint64_t selected_bytes_hash;
-
-        Params(const SourceModification &no_id) :
-            atp(no_id.atp->id), lval(no_id.lval->id),
-            selected_bytes_hash(no_id.selected_bytes_hash) {}
-    };
-
-    static const auto query(const Params *param) {
-        typedef odb::query<SourceModification> q;
-        return q::atp == q::_ref(param->atp) &&
-            q::lval == q::_ref(param->lval) &&
-            q::selected_bytes_hash == q::_ref(param->selected_bytes_hash);
-    }
-};
-
 // Returns a pointer to object and true if we just created it
 // (false if it existed already).
 template<class T, typename U = typename eq_query<T>::disabled>
@@ -169,9 +158,9 @@ static std::pair<const U*, bool> create_full(T no_id) {
     static std::set<U> existing;
 
     bool new_object = false;
-    auto it = existing.find(no_id);
-    if (it == existing.end()) {
-        // This should always hit session cache.
+    auto it = existing.lower_bound(no_id);
+    // it now guaranteed to be >= no_id. make sure not ==.
+    if (it == existing.end() || no_id < *it) {
         db->persist(no_id);
         it = existing.insert(it, no_id);
         new_object = true;
@@ -179,19 +168,14 @@ static std::pair<const U*, bool> create_full(T no_id) {
     return std::make_pair(&*it, new_object);
 }
 
-template<>
-std::pair<const Bug*, bool> create_full(Bug no_id) {
-    db->persist(no_id);
-    return std::make_pair(nullptr, true);
-}
-
 template<class T, typename P = typename eq_query<T>::Params>
 static std::pair<const T*, bool> create_full(T no_id) {
     static std::set<T> existing;
 
     bool new_object = false;
-    auto it = existing.find(no_id);
-    if (it == existing.end()) {
+    auto it = existing.lower_bound(no_id);
+    // see note above.
+    if (it == existing.end() || no_id < *it) {
         P *param;
         odb::prepared_query<T> pq(db->lookup_query<T>(eq_query<T>::name, param));
         if (!pq) {
@@ -266,9 +250,9 @@ void update_unique_taint_sets(const Panda__TaintQueryUniqueLabelSet *tquls) {
     Ptr p = tquls->ptr;
     auto it = ptr_to_labelset.find(p);
     if (it == ptr_to_labelset.end()) {
-        const LabelSet *ls = create(LabelSet{0, p, inputfile,
-                std::vector<uint32_t>(tquls->label,
-                        tquls->label + tquls->n_label)});
+        std::vector<uint32_t> labels_(tquls->label, tquls->label + tquls->n_label);
+        LabelSet no_id = LabelSet{0, p, inputfile, labels_};
+        const LabelSet *ls = create(no_id);
         ptr_to_labelset.insert(it, std::make_pair(p, ls));
 
         auto &labels = ls->labels;
@@ -357,7 +341,9 @@ inline Range get_dua_exploit_pad(const Dua *dua) {
     const auto &viable_bytes = dua->viable_bytes;
     for (uint32_t i = 0; i < viable_bytes.size(); i++) {
         const LabelSet *ls = viable_bytes[i];
-        if (ls && ls->labels.size() == 1 && dua->byte_tcn[i] == 0) {
+        // This test means tainted, uncomplicated, dead.
+        if (ls && ls->labels.size() == 1 && dua->byte_tcn[i] == 0
+                && liveness.at(*ls->labels.begin()) == 0) {
             if (current_run.empty()) {
                 current_run = Range{i, i + 1};
             } else {
@@ -386,7 +372,9 @@ inline bool is_dua_viable(const Dua *dua) {
     return get_dua_dead_offsets(dua).size() == LAVA_MAGIC_VALUE_SIZE;
 }
 
-void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp);
+void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp,
+        const Bug::Type bug_type, const Dua *extra_dua,
+        uint32_t exploit_pad_offset = 0);
 
 void taint_query_pri(Panda__LogEntry *ple) {
     assert (ple != NULL);
@@ -515,8 +503,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
         // keeping track of uncomplicated data extents we have
         // encountered so far in the trace
         // NB: we don't know liveness info yet. defer byte selection until later.
-        assert(si->has_insertionpoint);
-        assert(si->has_ast_loc_id);
+        assert(si->has_insertionpoint && si->has_ast_loc_id);
 
         LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
         assert(ast_loc.filename.size() > 0);
@@ -525,9 +512,8 @@ void taint_query_pri(Panda__LogEntry *ple) {
                 (SourceLval::Timing)si->insertionpoint, len});
 
         if (debug) {
-            printf("querying labels [");
-            for (uint32_t l : all_labels) printf("%d ", l);
-            printf("]\n");
+            infix(all_labels.begin(), all_labels.end(), std::cout,
+                    "querying labels [", " ", "]\n");
         }
         // tainted lval we just considered was deemed viable
         const Dua *dua = create(Dua{0, lval, viable_byte, byte_tcn, all_labels,
@@ -536,35 +522,32 @@ void taint_query_pri(Panda__LogEntry *ple) {
             dua_dependencies[l].insert(dua);
         }
 
+        const AttackPoint *pad_atp;
+        bool is_new_atp;
+        std::tie(pad_atp, is_new_atp) = create_full(
+                AttackPoint::QueryPoint(
+                    ast_loc, std::string(si->astnodename)));
         if (len > 20) {
             Range range = get_dua_exploit_pad(dua);
-            if (range.size() > 20) {
-                const AttackPoint *pad_atp;
-                bool is_new_atp;
-                std::tie(pad_atp, is_new_atp) = create_full(
-                        AttackPoint::LargeBufferAvail(
-                            ast_loc, std::string(si->astnodename),
-                            range.low, range.high));
-                find_bug_inj_opportunities(pad_atp, is_new_atp);
+            if (range.size() >= 20) {
+                find_bug_inj_opportunities(pad_atp, is_new_atp, Bug::RET_BUFFER,
+                        dua, range.low);
             }
+        }
+        if (is_dua_viable(dua)) {
+            find_bug_inj_opportunities(pad_atp, is_new_atp, Bug::REL_WRITE, dua, 0);
         }
 
         dprintf("OK DUA.\n");
         if (debug) {
-            if (recent_duas.count(lval)==0) printf("new lval\n");
+            if (recent_viable_duas.count(lval) == 0) printf("new lval\n");
             else printf("previously observed lval\n");
         }
-        recent_duas[lval] = dua;
-    }
-    else {
-        if (debug) {
-            std::cout << "discarded " << num_viable_bytes << " viable bytes "
-                      << all_labels.size() << " labels "
-                      << std::string(si->filename) << " "
-                      << si->linenum << " "
-                      << std::string(si->astnodename) << " "
-                      << si->insertionpoint << "\n";
-        }
+        recent_viable_duas[lval] = dua;
+    } else {
+        dprintf("discarded %u viable bytes %lu labels %s:%u %s",
+                num_viable_bytes, all_labels.size(), si->filename, si->linenum,
+                si->astnodename);
     }
 }
 
@@ -593,13 +576,13 @@ void update_liveness(Panda__LogEntry *ple) {
     }
 
     // For each label, look at all duas tainted by that label.
-    // If they aren't viable anymore, erase them from recent_duas list and
+    // If they aren't viable anymore, erase them from recent_viable_duas list and
     // also erase them from dependency tracker.
     std::vector<const Dua *> duas_to_check;
     for (uint32_t l : all_labels) {
         liveness[l]++;
 
-        dprintf("checking viability of %lu duas\n", recent_duas.size());
+        dprintf("checking viability of %lu duas\n", recent_viable_duas.size());
         auto it_duas = dua_dependencies.find(l);
         if (it_duas != dua_dependencies.end()) {
             std::set<const Dua *> &depends = it_duas->second;
@@ -612,7 +595,7 @@ void update_liveness(Panda__LogEntry *ple) {
         // is this dua still viable?
         if (!is_dua_viable(dua)) {
             dprintf("%s\n ** DUA not viable\n", std::string(*dua).c_str());
-            recent_duas.erase(dua->lval);
+            recent_viable_duas.erase(dua->lval);
             non_viable_duas.push_back(dua);
         }
     }
@@ -644,40 +627,56 @@ def collect_bugs(attack_point):
     if (viable_count >= bytes_needed):
       bugs.add((dua, attack_point))
 */
-
 /*
   we are at an attack point
   iterate over all currently viable duas and
   look for bug inj opportunities
 */
-void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp) {
+struct BugParam {
+    unsigned long atp_id;
+    Bug::Type type;
+    unsigned long extra_dua_id;
+};
+void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp,
+        const Bug::Type bug_type, const Dua *extra_dua,
+        uint32_t exploit_pad_offset) {
     std::vector<unsigned long> skip_lval_ids;
     if (!is_new_atp) {
         // This means that all bug opportunities here might be repeats: same
-        // atp/lval combo. Let's head that off at the pass.
-        typedef odb::query<SourceModificationLazy> q;
-        unsigned long *param;
-        odb::prepared_query<SourceModificationLazy> pq(
-                db->lookup_query<SourceModificationLazy>("atp-shortcut", param));
+        // atp/lval/type combo. Let's head that off at the pass.
+        const char *query_name = extra_dua ? "atp-shortcut" : "atp-shortcut-null";
+        typedef odb::query<BugLval> q;
+        BugParam *param;
+        odb::prepared_query<BugLval> pq(
+                db->lookup_query<BugLval>(query_name, param));
         if (!pq) {
-            std::unique_ptr<unsigned long> param_ptr(new unsigned long);
+            std::unique_ptr<BugParam> param_ptr(new BugParam);
             param = param_ptr.get();
-            pq = db->prepare_query<SourceModificationLazy>("atp-shortcut",
-                    q::atp == q::_ref(*param));
+            pq = db->prepare_query<BugLval>(query_name,
+                    q::atp == q::_ref(param->atp_id) &&
+                    q::type == q::_ref(param->type) &&
+                    (extra_dua
+                        ? q::extra_dua == q::_ref(param->extra_dua_id)
+                        : q::extra_dua.is_null()));
             db->cache_query(pq, std::move(param_ptr));
         }
-        *param = atp->id;
+        param->atp_id = atp->id;
+        param->type = bug_type;
+        param->extra_dua_id = extra_dua ? extra_dua->id : 0;
 
         auto result = pq.execute();
         skip_lval_ids.reserve(result.size());
         for (auto it = result.begin(); it != result.end(); it++) {
-            skip_lval_ids.push_back(it->lval);
+            skip_lval_ids.push_back(it->trigger_lval);
         }
     }
+
     // every still viable dua is a bug inj opportunity at this point in trace
-    // NB: recent_duas sorted by SourceMod and therefore by lval id!
+    // NB: recent_viable_duas sorted by SourceMod and therefore by lval id!
+    // so we can do set-subtraction (recent_viable_duas - skip_lval_ids)
+    // in linear time
     auto skip_it = skip_lval_ids.begin();
-    for ( const auto &kvp : recent_duas ) {
+    for ( const auto &kvp : recent_viable_duas ) {
         const SourceLval *lval = kvp.first;
         unsigned long lval_id = lval->id;
         while (skip_it != skip_lval_ids.end() && *skip_it < lval_id) skip_it++;
@@ -687,29 +686,36 @@ void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp) {
         // Need to select bytes now.
         std::vector<uint32_t> selected_bytes = get_dua_dead_offsets(dua);
 
-        const SourceModification *source_mod;
-        bool is_new_mod;
-        std::tie(source_mod, is_new_mod) =
-            create_full(SourceModification(lval, selected_bytes, atp));
-
-        if (is_new_mod) {
-            uint64_t c_max_liveness = 0.0;
-            for (uint32_t offset : selected_bytes) {
-                for (uint32_t l : dua->viable_bytes[offset]->labels) {
-                    c_max_liveness = std::max(c_max_liveness, liveness.at(l));
-                }
+        // lval skip list guarantees this is a new (lval, atp) combo not seen
+        // before.
+        uint64_t c_max_liveness = 0;
+        for (uint32_t offset : selected_bytes) {
+            for (uint32_t l : dua->viable_bytes.at(offset)->labels) {
+                c_max_liveness = std::max(c_max_liveness, liveness.at(l));
             }
+        }
 
-            // this is a new bug (new src mods for both dua and atp)
-            create(Bug{0, dua, selected_bytes, atp, c_max_liveness});
-            num_bugs_added_to_db++;
-            if (dua->fake_dua) {
-                num_potential_nonbugs++;
-            } else {
-                num_potential_bugs++;
-            }
-        } else dprintf("not a new bug\n");
-        num_bugs_attempted ++;
+        Bug bug;
+        if ((atp->type == AttackPoint::FUNCTION_ARG
+                || atp->type == AttackPoint::POINTER_RW)
+                && bug_type == Bug::PTR_ADD) {
+            bug = Bug::PtrAdd(dua, selected_bytes, c_max_liveness, atp);
+        } else if (atp->type == AttackPoint::QUERY_POINT
+                && bug_type == Bug::RET_BUFFER) {
+            bug = Bug::RetBuffer(dua, selected_bytes, c_max_liveness, atp,
+                        extra_dua, exploit_pad_offset);
+        } else if (atp->type == AttackPoint::QUERY_POINT
+                && bug_type == Bug::REL_WRITE) {
+            bug = Bug::RelWrite(dua, selected_bytes, c_max_liveness, atp, extra_dua);
+        } else assert(false && "Bad bug type/atp type combination!");
+        db->persist(bug);
+
+        num_bugs_added_to_db++;
+        if (dua->fake_dua) {
+            num_potential_nonbugs++;
+        } else {
+            num_potential_bugs++;
+        }
     }
 }
 
@@ -723,12 +729,12 @@ void attack_point_ptr_rw(Panda__LogEntry *ple) {
 
     assert (si != NULL);
     dprintf("ATTACK POINT\n");
-    if (recent_duas.size() == 0) {
+    if (recent_viable_duas.size() == 0) {
         dprintf("no duas yet -- discarding attack point\n");
         return;
     }
 
-    dprintf("%lu viable duas remain\n", recent_duas.size());
+    dprintf("%lu viable duas remain\n", recent_viable_duas.size());
     assert(si->has_ast_loc_id);
     LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
     assert(ast_loc.filename.size() > 0);
@@ -736,67 +742,14 @@ void attack_point_ptr_rw(Panda__LogEntry *ple) {
     bool is_new_atp;
     std::tie(atp, is_new_atp) = create_full(AttackPoint{0,
             ast_loc, ind2str[si->astnodename],
-            (AttackPoint::Type)pleatp->info, 0, 0});
+            (AttackPoint::Type)pleatp->info});
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
-    find_bug_inj_opportunities(atp, is_new_atp);
+    find_bug_inj_opportunities(atp, is_new_atp, Bug::PTR_ADD, nullptr, 0);
 }
 
-struct SrcFunction {
-    uint64_t id;
-    std::string filename;
-    uint64_t line;
-    std::string name;
-};
+void record_call(Panda__LogEntry *ple) { }
 
-//namespace std {
-    //template<>
-    //struct less<Panda__DwarfCall> {
-        //bool operator() (const Panda__DwarfCall &A, const Panda__DwarfCall &B) const {
-            //int64_t cmp = strcmp(A.file_callee, B.file_callee);
-            //if (cmp != 0) return cmp > 0;
-
-            //cmp = strcmp(A.function_name_callee, B.function_name_callee);
-            //if (cmp != 0) return cmp > 0;
-
-            //if (A.line_number_callee != B.line_number_callee)
-                //return A.line_number_callee > B.line_number_callee;
-
-            //cmp = strcmp(A.file_callsite, B.file_callsite);
-            //if (cmp != 0) return cmp > 0;
-
-            //return A.line_number_callsite > B.line_number_callsite;
-        //}
-    //};
-//}
-//std::map<Panda__DwarfCall, std::vector<uint64_t> > dwarf_call_to_instr;
-
-void record_call(Panda__LogEntry *ple) {
-    assert(ple->dwarf_call);
-    //dwarf_call_to_instr[*ple->dwarf_call].push_back(ple->instr);
-}
-
-void record_ret(Panda__LogEntry *ple) {
-    /*// Find corresponding call for this return.
-    assert(ple->dwarf_ret);
-    Panda__DwarfCall *dwarf_ret = ple->dwarf_ret;
-
-    std::vector<uint64_t> &calls = dwarf_call_to_instr[*dwarf_ret];
-    assert(!calls.empty());
-
-    uint64_t call_instr = calls.back(), ret_instr = ple->instr;
-    calls.pop_back();
-
-    SrcFunction &func = memoized_create(SrcFunction{dwarf_ret->file_callee,
-            dwarf_ret->line_number_callee, dwarf_ret->function_name_callee});
-
-    std::string callsite_filename = strip_pfx(dwarf_ret->file_callsite, src_pfx);
-    int callsite_filename_id = addstr(conn, "sourcefile", callsite_filename);
-    std::stringstream sql;
-    sql << "INSERT INTO call (call_instr, ret_instr, "
-        << "called_function, filename_id, line) VALUES ("
-        << call_instr << ", " << ret_instr << ", " << func.id << ", "
-        << callsite_filename_id << ", " << dwarf_ret->line_number_callsite << ");";*/
-}
+void record_ret(Panda__LogEntry *ple) { }
 
 int main (int argc, char **argv) {
     if (argc != 5) {
@@ -861,7 +814,7 @@ int main (int argc, char **argv) {
             printf("processed %lu pandalog entries \n", num_entries_read);
             std::cout << num_bugs_added_to_db << " added to db "
                 << num_bugs_attempted << " total attempted. "
-                << recent_duas.size() << " duas\n";
+                << recent_viable_duas.size() << " duas\n";
         }
 
         if (ple->taint_query_pri) {

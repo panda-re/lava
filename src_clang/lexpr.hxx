@@ -167,6 +167,10 @@ LExpr LavaSet(const Bug *bug, LExpr value) {
     return LFunc("lava_set", { LDecimal(bug->id), value });
 }
 
+LExpr UCharCast(LExpr arg) {
+    return LCast("unsigned char *", arg);
+}
+
 template<typename UInt>
 UInt BSwap(UInt x);
 
@@ -179,6 +183,10 @@ template<typename UInt>
 LExpr MagicTest(UInt magic_value, LExpr maskedLavaGet) {
     return LHex(magic_value) == maskedLavaGet ||
         LHex(BSwap<UInt>(magic_value)) == maskedLavaGet;
+}
+
+LExpr MagicTest(const Bug *bug) {
+    return MagicTest(bug->magic(), LavaGet(bug));
 }
 
 // RangeTest and rangeStyleAttack are currently unused, but they're good examples of

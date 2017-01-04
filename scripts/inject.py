@@ -6,12 +6,9 @@ import atexit
 import json
 import lockfile
 import os
-import psycopg2
-import random
 import re
 import shlex
 import shutil
-import signal
 import signal
 import string
 import subprocess32
@@ -20,14 +17,15 @@ import time
 
 from os.path import basename, dirname, join, abspath
 
-from lava import *
+from lava import LavaDatabase, Bug, Build, Run, \
+    run_cmd, run_cmd_notimeout, exit_error
 
 start_time = time.time()
 
 project = None
 # this is how much code we add to top of any file with main fn in it
 NUM_LINES_MAIN_INSTR = 5
-debugging = False
+debugging = True
 
 # run lavatool on this file to inject any parts of this list of bugs
 # offset will be nonzero if file contains main and therefore
@@ -74,6 +72,7 @@ def get_suffix(fn):
 # here's how to run the built program
 def run_modified_program(install_dir, input_file, timeout):
     cmd = project['command'].format(install_dir=install_dir,input_file=input_file)
+    cmd = "setarch {} -R {}".format(subprocess32.check_output("arch").strip(), cmd)
     print cmd
     envv = {}
     lib_path = project['library_path'].format(install_dir=install_dir)
@@ -310,20 +309,20 @@ if __name__ == "__main__":
     for bug_index, bug in enumerate(bugs_to_inject):
          print "------------\n"
          print "SELECTED "
-         if bug.dua.fake_dua:
+         if bug.trigger.fake_dua:
              print "NON-BUG"
          else:
              print "BUG"
          print " {} : {}".format(bug_index, bug.id)#
  ####        if not args.randomize: print "   score=%d " % score
-         print "   (%d,%d)" % (bug.dua.id, bug.atp.id)
+         print "   (%d,%d)" % (bug.trigger.id, bug.atp.id)
          print "DUA:"
-         print "   ", bug.dua
+         print "   ", bug.trigger
          print "ATP:"
          print "   ", bug.atp
          print "max_tcn={}  max_liveness={}".format(
-             bug.max_liveness, bug.dua.max_tcn)
-         src_files.add(bug.dua.lval.loc_filename)
+             bug.max_liveness, bug.trigger.max_tcn)
+         src_files.add(bug.trigger.lval.loc_filename)
          src_files.add(bug.atp.loc_filename)
 
     # cleanup
@@ -388,7 +387,7 @@ if __name__ == "__main__":
         print "------------\n"
         # first, try the original file
         print "TESTING -- ORIG INPUT"
-        orig_input = join(top_dir, 'inputs', basename(bug.dua.inputfile))
+        orig_input = join(top_dir, 'inputs', basename(bug.trigger.inputfile))
         (rv, outp) = run_modified_program(bugs_install, orig_input, timeout)
         if rv != 0:
             print "***** buggy program fails on original input!"
@@ -415,9 +414,9 @@ if __name__ == "__main__":
             print "fuzzed = [%s]" % fuzzed_input
             if args.knobTrigger != -1:
                 print "Knob size: {}".format(args.knobTrigger)
-                mutfile(orig_input, bug.dua.all_labels, fuzzed_input, bug.id, True, args.knobTrigger)
+                mutfile(orig_input, bug.trigger.all_labels, fuzzed_input, bug.id, True, args.knobTrigger)
             else:
-                mutfile(orig_input, bug.dua.all_labels, fuzzed_input, bug.id)
+                mutfile(orig_input, bug.trigger.all_labels, fuzzed_input, bug.id)
             print "testing with fuzzed input for {} of {} potential.  ".format(
                 bug_index + 1, len(bugs_to_inject))
             print "{} real. bug {}".format(len(real_bugs), bug.id)
@@ -429,7 +428,7 @@ if __name__ == "__main__":
             if update_db:
                 db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
                                 output=lines.encode('string-escape'), success=True))
-            if bug.dua.fake_dua == False:
+            if bug.trigger.fake_dua == False:
                 # this really is supposed to be a bug
                 # we should see a seg fault or something
                 if rv == -11 or rv == -6:
