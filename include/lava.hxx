@@ -260,7 +260,7 @@ struct AttackPoint {
     }
 };
 
-#pragma db object
+#pragma db object bulk(5000)
 struct Bug {
 #pragma db id auto
     unsigned long id;

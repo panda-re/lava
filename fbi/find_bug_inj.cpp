@@ -59,7 +59,10 @@ std::string inputfile;
 std::string src_pfx;
 // Map LavaDB string indices to actual strings.
 std::map<uint32_t,std::string> ind2str;
-int num_fake_bugs = 0;
+
+uint64_t num_fake_bugs = 0;
+uint64_t num_bugs_added_to_db = 0;
+uint64_t num_bugs_of_type[Bug::TYPE_END] = {0};
 
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
@@ -75,7 +78,6 @@ uint32_t max_lval = 0;
 uint32_t num_potential_bugs = 0;
 uint32_t num_potential_nonbugs = 0;
 
-
 // These map pointer values in the PANDA taint run to the sets they refer to.
 typedef uint64_t Ptr;
 std::map<Ptr, const LabelSet*> ptr_to_labelset;
@@ -83,12 +85,32 @@ std::map<Ptr, const LabelSet*> ptr_to_labelset;
 // Liveness for each input byte.
 std::vector<uint64_t> liveness;
 
-// Map from source lval to most recent DUA incarnation.
-std::map<const SourceLval*, const Dua*> recent_viable_duas;
+// Map from source lval ID to most recent DUA incarnation.
+std::map<unsigned long, const Dua*> recent_dead_duas;
 
 // Map from label to duas that are tainted by that label.
 // So when we update liveness, we know what duas might be invalidated.
 std::map<uint32_t, std::set<const Dua *> > dua_dependencies;
+
+// Returns true with probability 1/ratio.
+inline bool decimate(double ratio) {
+    return rand() * ratio < RAND_MAX;
+}
+
+// This will make bugs less likely to be injected if there are more of that
+// type. Returns true if we should inject bug.
+inline bool decimate_by_type(Bug::Type bug_type) {
+    uint64_t num_types_injected_already = 0;
+    for (unsigned i = 0; i < Bug::TYPE_END; i++) {
+        if (num_bugs_of_type[i] > 0) num_types_injected_already++;
+    }
+    if (num_types_injected_already == 0) return true;
+
+    uint64_t average_num_bugs = num_bugs_added_to_db /
+        num_types_injected_already;
+    int64_t diff = num_bugs_of_type[bug_type] - average_num_bugs;
+    return diff <= 10000 || decimate(1 + (diff - 10000) * 0.05);
+}
 
 // Print stuff to stream separated by commas.
 template<typename InputIt>
@@ -248,11 +270,11 @@ void update_unique_taint_sets(const Panda__TaintQueryUniqueLabelSet *tquls) {
     }
     // maintain mapping from ptr (uint64_t) to actual set of taint labels
     Ptr p = tquls->ptr;
-    auto it = ptr_to_labelset.find(p);
-    if (it == ptr_to_labelset.end()) {
-        std::vector<uint32_t> labels_(tquls->label, tquls->label + tquls->n_label);
-        LabelSet no_id = LabelSet{0, p, inputfile, labels_};
-        const LabelSet *ls = create(no_id);
+    auto it = ptr_to_labelset.lower_bound(p);
+    if (it == ptr_to_labelset.end() || p < it->first) {
+        const LabelSet *ls = create(LabelSet{0, p, inputfile,
+                std::vector<uint32_t>(tquls->label,
+                        tquls->label + tquls->n_label)});
         ptr_to_labelset.insert(it, std::make_pair(p, ls));
 
         auto &labels = ls->labels;
@@ -368,11 +390,11 @@ inline Range get_dua_exploit_pad(const Dua *dua) {
 }
 
 // determine if this dua is viable at all.
-inline bool is_dua_viable(const Dua *dua) {
+inline bool is_dua_dead(const Dua *dua) {
     return get_dua_dead_offsets(dua).size() == LAVA_MAGIC_VALUE_SIZE;
 }
 
-void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp,
+void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         const Bug::Type bug_type, const Dua *extra_dua,
         uint32_t exploit_pad_offset = 0);
 
@@ -400,6 +422,8 @@ void taint_query_pri(Panda__LogEntry *ple) {
     // keep track of min / max for each of these measures over all bytes
     // in this queried lval
     uint32_t c_max_tcn = 0, c_max_card = 0;
+
+    transaction t(db->begin());
 
     // consider all bytes in this extent that were queried and found to be tainted
     // collect "ok" bytes, which have low enough taint compute num and card,
@@ -527,28 +551,26 @@ void taint_query_pri(Panda__LogEntry *ple) {
         std::tie(pad_atp, is_new_atp) = create_full(
                 AttackPoint::QueryPoint(
                     ast_loc, std::string(si->astnodename)));
-        if (len > 20) {
+        if (is_dua && len >= 20 && decimate_by_type(Bug::RET_BUFFER)) {
             Range range = get_dua_exploit_pad(dua);
             if (range.size() >= 20) {
-                find_bug_inj_opportunities(pad_atp, is_new_atp, Bug::RET_BUFFER,
+                record_injectable_bugs_at(pad_atp, is_new_atp, Bug::RET_BUFFER,
                         dua, range.low);
             }
-        }
-        if (is_dua_viable(dua)) {
-            find_bug_inj_opportunities(pad_atp, is_new_atp, Bug::REL_WRITE, dua, 0);
         }
 
         dprintf("OK DUA.\n");
         if (debug) {
-            if (recent_viable_duas.count(lval) == 0) printf("new lval\n");
+            if (recent_dead_duas.count(lval->id) == 0) printf("new lval\n");
             else printf("previously observed lval\n");
         }
-        recent_viable_duas[lval] = dua;
+        recent_dead_duas[lval->id] = dua;
     } else {
         dprintf("discarded %u viable bytes %lu labels %s:%u %s",
                 num_viable_bytes, all_labels.size(), si->filename, si->linenum,
                 si->astnodename);
     }
+    t.commit();
 }
 
 // update liveness measure for each of taint labels (file bytes) associated with a byte in lval that was queried
@@ -558,6 +580,7 @@ void update_liveness(Panda__LogEntry *ple) {
     assert (tb != NULL);
     dprintf("TAINTED BRANCH\n");
 
+    transaction t(db->begin());
     std::vector<uint32_t> all_labels;
     for (uint32_t i=0; i<tb->n_taint_query; i++) {
         Panda__TaintQuery *tq = tb->taint_query[i];
@@ -574,15 +597,16 @@ void update_liveness(Panda__LogEntry *ple) {
             ptr_to_labelset.at(tq->ptr)->labels;
         merge_into(cur_labels.begin(), cur_labels.end(), all_labels);
     }
+    t.commit();
 
     // For each label, look at all duas tainted by that label.
-    // If they aren't viable anymore, erase them from recent_viable_duas list and
+    // If they aren't viable anymore, erase them from recent_dead_duas list and
     // also erase them from dependency tracker.
     std::vector<const Dua *> duas_to_check;
     for (uint32_t l : all_labels) {
         liveness[l]++;
 
-        dprintf("checking viability of %lu duas\n", recent_viable_duas.size());
+        dprintf("checking viability of %lu duas\n", recent_dead_duas.size());
         auto it_duas = dua_dependencies.find(l);
         if (it_duas != dua_dependencies.end()) {
             std::set<const Dua *> &depends = it_duas->second;
@@ -593,9 +617,9 @@ void update_liveness(Panda__LogEntry *ple) {
     std::vector<const Dua *> non_viable_duas;
     for (const Dua *dua : duas_to_check) {
         // is this dua still viable?
-        if (!is_dua_viable(dua)) {
+        if (!is_dua_dead(dua)) {
             dprintf("%s\n ** DUA not viable\n", std::string(*dua).c_str());
-            recent_viable_duas.erase(dua->lval);
+            recent_dead_duas.erase(dua->lval->id);
             non_viable_duas.push_back(dua);
         }
     }
@@ -611,11 +635,6 @@ void update_liveness(Panda__LogEntry *ple) {
         }
     }
 }
-
-uint32_t num_bugs = 0;
-
-uint64_t num_bugs_added_to_db = 0;
-uint64_t num_bugs_attempted = 0;
 
 /*
 def collect_bugs(attack_point):
@@ -637,13 +656,15 @@ struct BugParam {
     Bug::Type type;
     unsigned long extra_dua_id;
 };
-void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp,
+void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         const Bug::Type bug_type, const Dua *extra_dua,
         uint32_t exploit_pad_offset) {
     std::vector<unsigned long> skip_lval_ids;
     if (!is_new_atp) {
         // This means that all bug opportunities here might be repeats: same
         // atp/lval/type combo. Let's head that off at the pass.
+        // So get all lval_ids that have been used with this ATP/type/extra dua
+        // before, and skip them as we iterate over recent_dead_duas.
         const char *query_name = extra_dua ? "atp-shortcut" : "atp-shortcut-null";
         typedef odb::query<BugLval> q;
         BugParam *param;
@@ -672,13 +693,12 @@ void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp,
     }
 
     // every still viable dua is a bug inj opportunity at this point in trace
-    // NB: recent_viable_duas sorted by SourceMod and therefore by lval id!
-    // so we can do set-subtraction (recent_viable_duas - skip_lval_ids)
+    // NB: recent_dead_duas sorted by lval_id
+    // so we can do set-subtraction (recent_dead_duas - skip_lval_ids)
     // in linear time
     auto skip_it = skip_lval_ids.begin();
-    for ( const auto &kvp : recent_viable_duas ) {
-        const SourceLval *lval = kvp.first;
-        unsigned long lval_id = lval->id;
+    for ( const auto &kvp : recent_dead_duas ) {
+        unsigned long lval_id = kvp.first;
         while (skip_it != skip_lval_ids.end() && *skip_it < lval_id) skip_it++;
         if (skip_it != skip_lval_ids.end() && *skip_it == lval_id) continue;
 
@@ -697,17 +717,19 @@ void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp,
 
         Bug bug;
         if ((atp->type == AttackPoint::FUNCTION_ARG
-                || atp->type == AttackPoint::POINTER_RW)
+                    || atp->type == AttackPoint::POINTER_RW)
                 && bug_type == Bug::PTR_ADD) {
             bug = Bug::PtrAdd(dua, selected_bytes, c_max_liveness, atp);
         } else if (atp->type == AttackPoint::QUERY_POINT
                 && bug_type == Bug::RET_BUFFER) {
             bug = Bug::RetBuffer(dua, selected_bytes, c_max_liveness, atp,
                         extra_dua, exploit_pad_offset);
-        } else if (atp->type == AttackPoint::QUERY_POINT
+        } else if ((atp->type == AttackPoint::FUNCTION_ARG
+                    || atp->type == AttackPoint::POINTER_RW)
                 && bug_type == Bug::REL_WRITE) {
             bug = Bug::RelWrite(dua, selected_bytes, c_max_liveness, atp, extra_dua);
         } else assert(false && "Bad bug type/atp type combination!");
+        num_bugs_of_type[bug.type]++;
         db->persist(bug);
 
         num_bugs_added_to_db++;
@@ -719,7 +741,7 @@ void find_bug_inj_opportunities(const AttackPoint *atp, bool is_new_atp,
     }
 }
 
-void attack_point_ptr_rw(Panda__LogEntry *ple) {
+void attack_point_lval_usage(Panda__LogEntry *ple) {
     assert (ple != NULL);
     Panda__AttackPoint *pleatp = ple->attack_point;
     assert (pleatp != NULL);
@@ -729,22 +751,35 @@ void attack_point_ptr_rw(Panda__LogEntry *ple) {
 
     assert (si != NULL);
     dprintf("ATTACK POINT\n");
-    if (recent_viable_duas.size() == 0) {
+    if (recent_dead_duas.size() == 0) {
         dprintf("no duas yet -- discarding attack point\n");
         return;
     }
 
-    dprintf("%lu viable duas remain\n", recent_viable_duas.size());
+    dprintf("%lu viable duas remain\n", recent_dead_duas.size());
     assert(si->has_ast_loc_id);
     LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
     assert(ast_loc.filename.size() > 0);
+    transaction t(db->begin());
     const AttackPoint *atp;
     bool is_new_atp;
     std::tie(atp, is_new_atp) = create_full(AttackPoint{0,
             ast_loc, ind2str[si->astnodename],
             (AttackPoint::Type)pleatp->info});
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
-    find_bug_inj_opportunities(atp, is_new_atp, Bug::PTR_ADD, nullptr, 0);
+
+    // Don't decimate PTR_ADD bugs.
+    record_injectable_bugs_at(atp, is_new_atp, Bug::PTR_ADD, nullptr, 0);
+    for (auto kvp : recent_dead_duas) {
+        // TODO: Should only inject these if we know dynamically that
+        // value written is attacker-controlled...
+        if (atp->type == AttackPoint::POINTER_RW
+                && decimate_by_type(Bug::REL_WRITE)) {
+            record_injectable_bugs_at(atp, is_new_atp, Bug::REL_WRITE, kvp.second, 0);
+        }
+    }
+
+    t.commit();
 }
 
 void record_call(Panda__LogEntry *ple) { }
@@ -764,6 +799,9 @@ int main (int argc, char **argv) {
         printf("    inputfile: Input file basename, like malware.pcap\n");
         exit (1);
     }
+
+    // We want decimation to be deterministic, so srand w/ magic value.
+    srand(0x6c617661);
 
     std::ifstream json_file(argv[1]);
     Json::Value root;
@@ -795,8 +833,6 @@ int main (int argc, char **argv) {
 
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
                 root["db"].asString()));
-    transaction t(db->begin());
-    //t.tracer(odb::stderr_full_tracer);
     /*
      re-read pandalog, this time focusing on taint queries.  Look for
      dead available data, attack points, and thus bug injection oppotunities
@@ -813,8 +849,7 @@ int main (int argc, char **argv) {
         if ((num_entries_read % 10000) == 0) {
             printf("processed %lu pandalog entries \n", num_entries_read);
             std::cout << num_bugs_added_to_db << " added to db "
-                << num_bugs_attempted << " total attempted. "
-                << recent_viable_duas.size() << " duas\n";
+                << recent_dead_duas.size() << " duas\n";
         }
 
         if (ple->taint_query_pri) {
@@ -822,7 +857,7 @@ int main (int argc, char **argv) {
         } else if (ple->tainted_branch) {
             update_liveness(ple);
         } else if (ple->attack_point) {
-            attack_point_ptr_rw(ple);
+            attack_point_lval_usage(ple);
         } else if (ple->dwarf_call) {
             record_call(ple);
         } else if (ple->dwarf_ret) {
@@ -830,9 +865,8 @@ int main (int argc, char **argv) {
         }
         pandalog_free_entry(ple);
     }
-    std::cout << num_bugs_added_to_db << " added to db " << num_bugs_attempted << " total attempted\n";
+    std::cout << num_bugs_added_to_db << " added to db ";
     pandalog_close();
-    t.commit();
 
     std::cout << num_potential_bugs << " potential bugs\n";
     std::cout << num_potential_nonbugs << " potential non bugs\n";
