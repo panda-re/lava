@@ -18,7 +18,7 @@ import time
 from os.path import basename, dirname, join, abspath
 
 from lava import LavaDatabase, Bug, Build, Run, \
-    run_cmd, run_cmd_notimeout, exit_error
+    run_cmd, run_cmd_notimeout, mutfile
 
 start_time = time.time()
 
@@ -113,8 +113,8 @@ def get_atp_line(bug, bugs_build):
             line_num = atp_iter.next() + 1
             return line_num
         except StopIteration:
-            exit_error("lava_get({}) was not in {}".format(bug.id,
-                                                        bug.atp.loc_filename))
+            print "lava_get({}) was not in {}".format(bug.id, bug.atp.loc_filename)
+            raise
 
 if __name__ == "__main__":
     update_db = False
@@ -216,15 +216,18 @@ if __name__ == "__main__":
         subprocess32.check_call(args, cwd=bugs_build,
                 stdout=sys.stdout, stderr=sys.stderr, **kwargs)
     if not os.path.exists(bugs_build):
+        print "Untarring..."
         subprocess32.check_call(['tar', '--no-same-owner', '-xf', project['tarfile'],
             '-C', bugs_parent], stderr=sys.stderr)
     if not os.path.exists(join(bugs_build, '.git')):
+        print "Initializing git repo..."
         run(['git', 'init'])
         run(['git', 'config', 'user.name', 'LAVA'])
         run(['git', 'config', 'user.email', 'nobody@nowhere'])
         run(['git', 'add', '-A', '.'])
         run(['git', 'commit', '-m', 'Unmodified source.'])
     if not os.path.exists(join(bugs_build, 'btrace.log')):
+        print "Making with btrace..."
         run(shlex.split(project['configure']) + ['--prefix=' + bugs_install])
         run([join(lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
 
@@ -273,6 +276,7 @@ if __name__ == "__main__":
         except subprocess32.CalledProcessError:
             pass
 
+    print "Picking bugs to inject."
     # Now start picking the bug and injecting
     bugs_to_inject = []
     if args.bugid != -1:

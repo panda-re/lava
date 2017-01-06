@@ -14,6 +14,7 @@ from sqlalchemy.types import Integer, Text, Float, BigInteger, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.sql.expression import func
 
 from composite import Composite
 
@@ -119,24 +120,22 @@ class Bug(Base):
     id = Column(BigInteger, primary_key=True)
     trigger_id = Column('trigger', BigInteger, ForeignKey('dua.id'))
     atp_id = Column('atp', BigInteger, ForeignKey('attackpoint.id'))
-    exploit_pad_id = Column('exploit_pad', BigInteger, ForeignKey('dua.id'))
-    rel_write_distance_id = Column('rel_write_distance', BigInteger, ForeignKey('dua.id'))
+    extra_dua_id = Column('extra_dua', BigInteger, ForeignKey('dua.id'))
 
-    trigger = relationship("Dua", foreign_keys=[trigger_id])
+    trigger = relationship("Dua", foreign_keys=trigger_id)
     selected_bytes = Column(postgresql.ARRAY(Integer))
     max_liveness = Column(Float)
 
     atp = relationship("AttackPoint")
 
-    exploit_pad = relationship("Dua", foreign_keys=[exploit_pad_id])
+    extra_dua = relationship("Dua", foreign_keys=extra_dua_id)
     exploit_pad_offset = Column(Integer)
-    rel_write_distance = relationship("Dua", foreign_keys=[rel_write_distance_id])
 
     builds = relationship("Build", secondary=build_bugs,
                           back_populates="bugs")
 
     def __str__(self):
-        return 'Bug[{}](dua={}, atp={})'.format(self.id, self.dua, self.atp)
+        return 'Bug[{}](trigger={}, atp={})'.format(self.id, self.trigger, self.atp)
 
 class Build(Base):
     __tablename__ = 'build'
@@ -173,12 +172,14 @@ class LavaDatabase(object):
         self.session = self.Session()
 
     def uninjected(self):
-        return self.session.query(Bug).filter(~Bug.builds.any()).join(Bug.atp).filter(
-            AttackPoint.typ == AttackPoint.ATP_LARGE_BUFFER_AVAIL)
+        return self.session.query(Bug).filter(~Bug.builds.any()).join(Bug.atp)
 
     # returns uninjected (not yet in the build table) possibly fake bugs
     def uninjected2(self, fake):
-        return self.uninjected().join(Bug.dua).join(Dua.lval).filter(Dua.fake_dua == fake)
+        return self.uninjected().join(Bug.trigger).filter(Dua.fake_dua == fake)
+
+    def uninjected_random(self, fake):
+        return self.uninjected2(fake).order_by(func.random())
 
     def next_bug_random(self, fake):
         count = self.uninjected2(fake).count()
@@ -194,9 +195,9 @@ class LavaDatabase(object):
         bugs_and_non_bugs = []
         fileline = set()
         def get_bugs_non_bugs(fake, limit):
-            items = self.uninjected2(fake)
+            items = self.uninjected_random(limit)
             for item in items:
-                dfl = (item.dua.lval.loc_filename, item.dua.lval.loc_begin_line)
+                dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
                 afl = (item.atp.loc_filename, item.atp.loc_begin_line)
                 if (dfl in fileline) or (afl in fileline):
                     continue
