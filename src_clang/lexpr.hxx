@@ -97,12 +97,29 @@ struct LExpr {
     }
 };
 
+LExpr LStr(std::string str) {
+    return LExpr(LExpr::STR, 0, str, {});
+}
+
+LExpr LHex(uint32_t value) {
+    return LExpr(LExpr::HEX, value, "", {});
+}
+
+LExpr LDecimal(uint32_t value) {
+    return LExpr(LExpr::DECIMAL, value, "", {});
+}
+
 // Binary operator.
 LExpr LBinop(std::string op, LExpr left, LExpr right) {
     return LExpr(LExpr::BINOP, 0, op, { left, right });
 }
 
 LExpr LBinop(std::string op, std::vector<LExpr> args) {
+    if (args.empty()) {
+        if (op == "+") return LDecimal(0);
+        else if (op == "*") return LDecimal(1);
+        else assert(false);
+    }
     return LExpr(LExpr::BINOP, 0, op, std::move(args));
 }
 
@@ -117,18 +134,6 @@ LExpr operator<<(LExpr us, LExpr other) { return LBinop("<<", us, other); }
 LExpr operator&(LExpr us, LExpr other) { return LBinop("&", us, other); }
 LExpr operator|(LExpr us, LExpr other) { return LBinop("|", us, other); }
 LExpr operator<(LExpr us, LExpr other) { return LBinop("<", us, other); }
-
-LExpr LStr(std::string str) {
-    return LExpr(LExpr::STR, 0, str, {});
-}
-
-LExpr LHex(uint32_t value) {
-    return LExpr(LExpr::HEX, value, "", {});
-}
-
-LExpr LDecimal(uint32_t value) {
-    return LExpr(LExpr::DECIMAL, value, "", {});
-}
 
 LExpr LBlock(std::initializer_list<LExpr> stmts) {
     return LExpr(LExpr::BLOCK, 0, "", stmts);
@@ -146,6 +151,10 @@ LExpr LIf(std::string cond, std::vector<LExpr> stmts) {
     return LExpr(LExpr::IF, 0, cond, stmts);
 }
 
+LExpr LIf(std::string cond, LExpr stmt) {
+    return LExpr(LExpr::IF, 0, cond, { stmt });
+}
+
 LExpr LCast(std::string type, LExpr value) {
     return LExpr(LExpr::CAST, 0, type, { value });
 }
@@ -159,16 +168,30 @@ LExpr LAsm(std::initializer_list<LExpr> args,
     return LExpr(LExpr::ASM, 0, "", args, instrs);
 }
 
-LExpr LavaGet(const Bug *bug) {
-    return LFunc("lava_get", { LDecimal(bug->id) });
+LExpr LavaGet(uint64_t val) {
+    return LFunc("lava_get", { LDecimal(val) });
 }
 
-LExpr LavaSet(const Bug *bug, LExpr value) {
-    return LFunc("lava_set", { LDecimal(bug->id), value });
-}
+LExpr LavaGet(const Bug *bug) { return LavaGet(bug->trigger_lval->id); }
+LExpr LavaGet(const Dua *dua) { return LavaGet(dua->lval->id); }
+LExpr LavaGet(const SourceLval *lval) { return LavaGet(lval->id); }
 
 LExpr UCharCast(LExpr arg) {
     return LCast("unsigned char *", arg);
+}
+
+LExpr LavaSet(const Bug *bug) {
+    const std::vector<uint32_t> &offsets = bug->selected_bytes;
+    const std::string &lval_name = bug->trigger_lval->ast_name;
+
+    std::vector<LExpr> or_args;
+    for (auto it = offsets.cbegin(); it != offsets.cend(); it++) {
+        LExpr shift = LDecimal((it - offsets.cbegin()) * 8);
+        or_args.push_back(
+                LIndex(UCharCast(LStr(lval_name)), *it) << shift);
+    }
+    return LFunc("lava_set", { LDecimal(bug->trigger_lval->id),
+            LBinop("|", or_args) });
 }
 
 template<typename UInt>

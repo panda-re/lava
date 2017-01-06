@@ -143,15 +143,11 @@ static std::vector<const Bug*> bugs;
 
 std::stringstream new_start_of_file_src;
 
-// Map of adjusted locations to siphon-able lvals there.
-// Only filled in in LavaInjectBugs. Replaces old gatherDuas func.
-std::map<LavaASTLoc, std::set<std::string>> lval_name_location_map;
-
 // These two maps replace AtBug.
 // Map of bugs with attack points at a given loc.
 std::map<LavaASTLoc, std::vector<const Bug *>> bugs_with_atp_at;
 // Map of bugs with siphon of a given  lval name at a given loc.
-std::map<std::pair<LavaASTLoc, std::string>, std::vector<const Bug *>> bugs_with_dua_at_named;
+std::map<LavaASTLoc, std::vector<const Bug *>> bugs_with_dua_at;
 
 #define MAX_STRNLEN 64
 ///////////////// HELPER FUNCTIONS BEGIN ////////////////////
@@ -179,15 +175,11 @@ std::set<uint32_t> parse_ints(std::string ints) {
     return result;
 }
 
-// struct fields known to cause trouble
-bool InFieldBlackList(std::string field_name) {
-    return ((field_name == "__st_ino" ) || (field_name.size() == 0));
-}
-
 std::string StripPrefix(std::string filename, std::string prefix) {
     size_t prefix_len = prefix.length();
     if (filename.compare(0, prefix_len, prefix) != 0) {
-        assert(false && "Not a prefix!");
+        printf("Not a prefix!\n");
+        assert(false);
     }
     while (filename[prefix_len] == '/') prefix_len++;
     return filename.substr(prefix_len);
@@ -209,29 +201,29 @@ bool QueriableType(const Type *lval_type) {
 }
 
 bool IsArgAttackable(const Expr *arg) {
-    //        debug << "IsArgAttackable \n";
-    //        arg->dump();
+    debug << "IsArgAttackable \n";
+    if (DEBUG) arg->dump();
     const Type *t = arg->IgnoreParenImpCasts()->getType().getTypePtr();
     if (dyn_cast<OpaqueValueExpr>(arg) || t->isStructureType() || t->isEnumeralType() || t->isIncompleteType()) {
         return false;
     }
     if (QueriableType(t)) {
-        //            debug << "is of queriable type\n";
+        debug << "is of queriable type\n";
         if (t->isPointerType()) {
-            //                debug << "is a pointer type\n";
+            debug << "is a pointer type\n";
             const Type *pt = t->getPointeeType().getTypePtr();
             // its a pointer to a non-void
             if ( ! (pt->isVoidType() ) ) {
-                //                    debug << "is not a void type -- ATTACKABLE\n";
+                debug << "is not a void type -- ATTACKABLE\n";
                 return true;
             }
         }
         if ((t->isIntegerType() || t->isCharType()) && (!t->isEnumeralType())) {
-            //                debug << "is integer or char and not enum -- ATTACKABLE\n";
+            debug << "is integer or char and not enum -- ATTACKABLE\n";
             return true;
         }
     }
-    //        debug << "not ATTACKABLE\n";
+    debug << "not ATTACKABLE\n";
     return false;
 }
 
@@ -323,9 +315,11 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
     }
 
     void AttackExpression(const Expr *toAttack, const Expr *parent,
-            AttackPoint::Type atpType) {
+            const Expr *writeValue, AttackPoint::Type atpType) {
         LavaASTLoc ast_loc = GetASTLoc(toAttack);
-        std::string after;
+        std::vector<LExpr> pointerAddends;
+        std::vector<LExpr> valueAddends;
+
         debug << "AttackExpression\n";
         if (LavaAction == LavaInjectBugs) {
             const std::vector<const Bug*> &injectable_bugs =
@@ -336,35 +330,40 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
             returnCode |= INSERTED_DUA_USE;
 
-            std::vector<LExpr> addends;
             // this should be a function bug -> LExpr to add.
-            auto attack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
-            // std::transform is just the functional map() in c++ land.
-            std::transform(injectable_bugs.cbegin(), injectable_bugs.cend(),
-                    std::back_inserter(addends), attack);
-            after = LBinop("+", std::move(addends)).render();
+            auto pointerAttack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
+            for (const Bug *bug : injectable_bugs) {
+                if (bug->type == Bug::PTR_ADD) {
+                    pointerAddends.push_back(pointerAttack(bug));
+                } else if (bug->type == Bug::REL_WRITE) {
+                    pointerAddends.push_back(
+                            MagicTest(bug) * LavaGet(bug->extra_dua));
+                    valueAddends.push_back(
+                            MagicTest(bug) * LavaGet(bug->extra_dua));
+                }
+            }
         } else if (LavaAction == LavaQueries) {
             // call attack point hypercall and return 0
-            after = LavaAtpQuery(ast_loc, atpType).render();
+            pointerAddends.push_back(LavaAtpQuery(ast_loc, atpType));
             num_atp_queries++;
         }
 
-        // we will get here if not attack was inject in knobTriggerAttack
-        // or traditionalAttack
-        if (!after.empty()) {
-            if (parent) {
-                debug << " Injected MemoryReadWriteBug into " << ExprStr(parent) << "\n";
-            } else {
-                debug << " Injected expression attack for " << ExprStr(toAttack) << "\n";
-            }
-            debug << "    " << after << "\n";
-        }
+        LExpr addToPointer = LBinop("+", std::move(pointerAddends));
+        LExpr addToValue = LBinop("+", std::move(valueAddends));
+
         // Insert the new addition expression, and if parent expression is
         // already paren expression, do not add parens
-        rewriter.InsertTextAfterToken(toAttack->getLocEnd(), " + " + after);
+        rewriter.InsertTextAfterToken(toAttack->getLocEnd(),
+                " + " + addToPointer.render());
         if (parent && !isa<ParenExpr>(parent) && !isa<ArraySubscriptExpr>(parent)){
             rewriter.InsertTextBefore(toAttack->getLocStart(), "(");
             rewriter.InsertTextAfterToken(parent->getLocEnd(), ")");
+        }
+
+        if (writeValue) {
+            rewriter.InsertTextBefore(writeValue->getLocStart(), "(");
+            rewriter.InsertTextAfterToken(writeValue->getLocEnd(),
+                    " + " + addToValue.render() + ")");
         }
     }
 
@@ -400,57 +399,25 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
     i = 0; // byte # in global
     lava_set(BUG_ID, ((unsigned char *)&dua))[o] << (i*8) | ...);
     */
-    LExpr SiphonsForLval(const std::string &lval_name,
-            const std::vector<const Bug*> &injectable_bugs, std::string filename) {
-        returnCode |= INSERTED_DUA_SIPHON;
-
-        std::vector<LExpr> siphons;
-        for (const Bug *bug : injectable_bugs) {
-            const std::vector<uint32_t> &offsets = bug->selected_bytes;
-
-            std::vector<LExpr> or_args;
-            for (auto it = offsets.cbegin(); it != offsets.cend(); it++) {
-                LExpr shift = LDecimal((it - offsets.cbegin()) * 8);
-                or_args.push_back(
-                        LIndex(UCharCast(LStr(lval_name)), *it) << shift);
-            }
-            siphons.push_back(LavaSet(bug, LBinop("|", or_args)));
-        }
-
-        return LIf(lval_name, siphons);
-    }
-
-    // Each bug gets an if clause containing one siphon per bug that
-    // involves that dua.
+    // Each lval gets an if clause containing one siphon
     std::string SiphonsForLocation(LavaASTLoc ast_loc) {
-        const std::set<std::string> &lval_names =
-            map_get_default(lval_name_location_map, ast_loc);
+        const std::vector<const Bug *> &bugs_here =
+            map_get_default(bugs_with_dua_at, ast_loc);
 
         std::stringstream result_ss;
-        for (auto lval_name : lval_names) {
-            assert(!lval_name.empty());
-            const std::vector<const Bug*> &injectable_bugs =
-                map_get_default(bugs_with_dua_at_named,
-                        std::make_pair(ast_loc, lval_name));
-
-            assert(!injectable_bugs.empty());
-            debug << "PriQueryHandler: injecting a dua siphon for "
-                << injectable_bugs.size() << " bugs " << ast_loc << " : "
-                << lval_name << "\n";
-
-            // NOTE: if injecting multiple bugs the same dua will need to
-            // be instrumented more than once
-            result_ss << SiphonsForLval(lval_name, injectable_bugs, ast_loc);
+        for (const Bug *bug : bugs_here) {
+            returnCode |= INSERTED_DUA_SIPHON;
+            result_ss << LIf(bug->trigger_lval->ast_name, LavaSet(bug));
         }
         return result_ss.str();
     }
 
-    std::string AttackLargeBuffers(LavaASTLoc ast_loc) {
+    std::string AttackRetBuffer(LavaASTLoc ast_loc) {
         std::stringstream result_ss;
         for (const Bug *bug : map_get_default(bugs_with_atp_at, ast_loc)) {
             if (bug->type == Bug::RET_BUFFER) {
                 result_ss << LIf(MagicTest(bug).render(), {
-                        LAsm({ UCharCast(LStr(bug->exploit_pad->lval->ast_name)) +
+                        LAsm({ UCharCast(LStr(bug->extra_dua->lval->ast_name)) +
                                 LDecimal(bug->exploit_pad_offset), },
                                 { "movl %0, %%esp", "ret" })});
             }
@@ -474,7 +441,7 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
 
             num_taint_queries += 1;
         } else if (LavaAction == LavaInjectBugs) {
-            before = SiphonsForLocation(ast_loc) + AttackLargeBuffers(ast_loc);
+            before = SiphonsForLocation(ast_loc) + AttackRetBuffer(ast_loc);
         }
         debug << " Injecting dua siphon at " << ExprStr(toSiphon) << "\n";
         debug << "    Text: " << before << "\n";
@@ -490,7 +457,7 @@ struct ArgAtpPointHandler : public LavaMatchHandler {
         if (!InMainFile(toAttack)) return;
 
         if (FN_ARG_ATP) {
-            AttackExpression(toAttack, NULL, AttackPoint::FUNCTION_ARG);
+            AttackExpression(toAttack, nullptr, nullptr, AttackPoint::FUNCTION_ARG);
         }
     }
 };
@@ -504,16 +471,20 @@ struct AtpPointerQueryPointHandler : public LavaMatchHandler {
         const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("innerExpr");
         const Expr *parent = Result.Nodes.getNodeAs<Expr>("innerExprParent");
         bool memWrite = false;
-        // memwrite style attack points will have assign_expr bound to a node
-        if (Result.Nodes.getMap().find("assign_expr") != Result.Nodes.getMap().end()){
-             memWrite = true;
+        const Expr *writeValue = nullptr;
+        // memwrite style attack points will have rhs bound to a node
+        auto it = Result.Nodes.getMap().find("rhs");
+        if (it != Result.Nodes.getMap().end()){
+            memWrite = true;
+            writeValue = it->second.get<Expr>();
+            assert(writeValue);
         }
         if (!InMainFile(toAttack)) return;
         LavaASTLoc p = GetASTLoc(toAttack);
 
         bool memRead = !memWrite;
         if ((memWrite && MEM_WRITE_ATP) || (memRead && MEM_READ_ATP)) {
-            AttackExpression(toAttack, parent, AttackPoint::POINTER_RW);
+            AttackExpression(toAttack, parent, writeValue, AttackPoint::POINTER_RW);
         }
     }
 };
@@ -579,7 +550,9 @@ public:
         StatementMatcher memWriteMatcher =
             expr(allOf(
                     memoryAccessMatcher,
-                    expr(hasParent(binaryOperator(hasOperatorName("=")).bind("assign_expr"))).bind("lhs")));
+                    expr(hasParent(binaryOperator(allOf(
+                                    hasOperatorName("="),
+                                    hasRHS(expr().bind("rhs")))))).bind("lhs")));
 
         StatementMatcher memReadMatcher =
             allOf(
@@ -754,12 +727,10 @@ int main(int argc, const char **argv) {
                 [&](uint32_t bug_id) { return db->load<Bug>(bug_id); });
 
         for (const Bug *bug : bugs) {
-            LavaASTLoc dua_loc = bug->trigger->lval->loc.adjust_line(MainInstrCorrection);
+            LavaASTLoc dua_loc = bug->trigger_lval->loc.adjust_line(MainInstrCorrection);
             LavaASTLoc atp_loc = bug->atp->loc.adjust_line(MainInstrCorrection);
-            std::string lval_name = bug->trigger->lval->ast_name;
-            lval_name_location_map[dua_loc].insert(lval_name);
             bugs_with_atp_at[atp_loc].push_back(bug);
-            bugs_with_dua_at_named[std::make_pair(dua_loc, lval_name)].push_back(bug);
+            bugs_with_dua_at[dua_loc].push_back(bug);
         }
     }
     debug << "about to call Tool.run \n";
