@@ -29,7 +29,7 @@ RUN ./configure --enable-optimized --disable-assertions --enable-targets=x86,arm
 RUN REQUIRES_RTTI=1 make -j $(nproc)
 
 RUN apt-get install -y git jq bc python python-colorama zsh libjsoncpp-dev \
-    python-sqlalchemy python-psycopg2 python-pexpect python-psutil \
+    python-psycopg2 python-pexpect python-psutil \
     python-numpy python-argparse python-pip python-dev libpq-dev
 
 WORKDIR /
@@ -48,4 +48,4 @@ RUN ./configure --enable-shared && make -j $(nproc) && make install
 RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/usr-local-lib.conf
 RUN ldconfig
 
-RUN pip install subprocess32 lockfile
+RUN pip install subprocess32 lockfile sqlalchemy
