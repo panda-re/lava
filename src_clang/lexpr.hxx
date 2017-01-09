@@ -119,7 +119,7 @@ LExpr LBinop(std::string op, std::vector<LExpr> args) {
     if (len == 0) {
         if (op == "+") return LDecimal(0);
         else if (op == "*") return LDecimal(1);
-        else assert(false);
+        else { assert(false); return LStr(""); }
     } else if (len == 1) {
         return args.front();
     } else {
