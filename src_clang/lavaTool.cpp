@@ -348,19 +348,20 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             num_atp_queries++;
         }
 
-        LExpr addToPointer = LBinop("+", std::move(pointerAddends));
-        LExpr addToValue = LBinop("+", std::move(valueAddends));
-
         // Insert the new addition expression, and if parent expression is
         // already paren expression, do not add parens
-        rewriter.InsertTextAfterToken(toAttack->getLocEnd(),
-                " + " + addToPointer.render());
-        if (parent && !isa<ParenExpr>(parent) && !isa<ArraySubscriptExpr>(parent)){
-            rewriter.InsertTextBefore(toAttack->getLocStart(), "(");
-            rewriter.InsertTextAfterToken(parent->getLocEnd(), ")");
+        if (!pointerAddends.empty()) {
+            LExpr addToPointer = LBinop("+", std::move(pointerAddends));
+            rewriter.InsertTextAfterToken(toAttack->getLocEnd(),
+                    " + " + addToPointer.render());
+            if (parent && !isa<ParenExpr>(parent) && !isa<ArraySubscriptExpr>(parent)){
+                rewriter.InsertTextBefore(toAttack->getLocStart(), "(");
+                rewriter.InsertTextAfterToken(parent->getLocEnd(), ")");
+            }
         }
 
-        if (writeValue) {
+        if (writeValue && !valueAddends.empty()) {
+            LExpr addToValue = LBinop("+", std::move(valueAddends));
             rewriter.InsertTextBefore(writeValue->getLocStart(), "(");
             rewriter.InsertTextAfterToken(writeValue->getLocEnd(),
                     " + " + addToValue.render() + ")");
