@@ -115,12 +115,16 @@ LExpr LBinop(std::string op, LExpr left, LExpr right) {
 }
 
 LExpr LBinop(std::string op, std::vector<LExpr> args) {
-    if (args.empty()) {
+    size_t len = args.size();
+    if (len == 0) {
         if (op == "+") return LDecimal(0);
         else if (op == "*") return LDecimal(1);
         else assert(false);
+    } else if (len == 1) {
+        return args.front();
+    } else {
+        return LExpr(LExpr::BINOP, 0, op, std::move(args));
     }
-    return LExpr(LExpr::BINOP, 0, op, std::move(args));
 }
 
 LExpr operator-(LExpr us, LExpr other) { return LBinop("-", us, other); }

@@ -395,7 +395,7 @@ inline bool is_dua_dead(const Dua *dua) {
 }
 
 void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
-        const Bug::Type bug_type, const Dua *extra_dua,
+        const Bug::Type bug_type, std::vector<const Dua *> extra_duas,
         uint32_t exploit_pad_offset = 0);
 
 void taint_query_pri(Panda__LogEntry *ple) {
@@ -555,7 +555,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
             Range range = get_dua_exploit_pad(dua);
             if (range.size() >= 20) {
                 record_injectable_bugs_at(pad_atp, is_new_atp, Bug::RET_BUFFER,
-                        dua, range.low);
+                        { dua }, range.low);
             }
         }
 
@@ -654,10 +654,10 @@ def collect_bugs(attack_point):
 struct BugParam {
     unsigned long atp_id;
     Bug::Type type;
-    unsigned long extra_dua_id;
+    uint64_t extra_duas_hash;
 };
 void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
-        const Bug::Type bug_type, const Dua *extra_dua,
+        const Bug::Type bug_type, std::vector<const Dua *> extra_duas,
         uint32_t exploit_pad_offset) {
     std::vector<unsigned long> skip_lval_ids;
     if (!is_new_atp) {
@@ -665,7 +665,7 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         // atp/lval/type combo. Let's head that off at the pass.
         // So get all lval_ids that have been used with this ATP/type/extra dua
         // before, and skip them as we iterate over recent_dead_duas.
-        const char *query_name = extra_dua ? "atp-shortcut" : "atp-shortcut-null";
+        const char *query_name = "atp-shortcut";
         typedef odb::query<BugLval> q;
         BugParam *param;
         odb::prepared_query<BugLval> pq(
@@ -676,14 +676,17 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
             pq = db->prepare_query<BugLval>(query_name,
                     q::atp == q::_ref(param->atp_id) &&
                     q::type == q::_ref(param->type) &&
-                    (extra_dua
-                        ? q::extra_dua == q::_ref(param->extra_dua_id)
-                        : q::extra_dua.is_null()));
+                    q::extra_duas_hash == q::_ref(param->extra_duas_hash));
             db->cache_query(pq, std::move(param_ptr));
         }
         param->atp_id = atp->id;
         param->type = bug_type;
-        param->extra_dua_id = extra_dua ? extra_dua->id : 0;
+        param->extra_duas_hash = 0;
+
+        // guaranteed to be unique as long as < 4B duas, < 2 extra_duas in vector
+        for (size_t i = 0; i < extra_duas.size(); i++) {
+            param->extra_duas_hash ^= (extra_duas[i]->id + 1) << (32 * (i % 2));
+        }
 
         auto result = pq.execute();
         skip_lval_ids.reserve(result.size());
@@ -723,11 +726,11 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         } else if (atp->type == AttackPoint::QUERY_POINT
                 && bug_type == Bug::RET_BUFFER) {
             bug = Bug::RetBuffer(dua, selected_bytes, c_max_liveness, atp,
-                        extra_dua, exploit_pad_offset);
+                        extra_duas[0], exploit_pad_offset);
         } else if ((atp->type == AttackPoint::FUNCTION_ARG
                     || atp->type == AttackPoint::POINTER_RW)
                 && bug_type == Bug::REL_WRITE) {
-            bug = Bug::RelWrite(dua, selected_bytes, c_max_liveness, atp, extra_dua);
+            bug = Bug::RelWrite(dua, selected_bytes, c_max_liveness, atp, extra_duas);
         } else assert(false && "Bad bug type/atp type combination!");
         num_bugs_of_type[bug.type]++;
         db->persist(bug);
@@ -769,13 +772,14 @@ void attack_point_lval_usage(Panda__LogEntry *ple) {
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
 
     // Don't decimate PTR_ADD bugs.
-    record_injectable_bugs_at(atp, is_new_atp, Bug::PTR_ADD, nullptr, 0);
-    for (auto kvp : recent_dead_duas) {
-        // TODO: Should only inject these if we know dynamically that
-        // value written is attacker-controlled...
-        if (atp->type == AttackPoint::POINTER_RW
-                && decimate_by_type(Bug::REL_WRITE)) {
-            record_injectable_bugs_at(atp, is_new_atp, Bug::REL_WRITE, kvp.second, 0);
+    record_injectable_bugs_at(atp, is_new_atp, Bug::PTR_ADD, { }, 0);
+    for (auto kvp_distance : recent_dead_duas) {
+        for (auto kvp_value : recent_dead_duas) {
+            if (atp->type == AttackPoint::POINTER_RW
+                    && decimate_by_type(Bug::REL_WRITE)) {
+                record_injectable_bugs_at(atp, is_new_atp, Bug::REL_WRITE,
+                        { kvp_distance.second, kvp_value.second }, 0);
+            }
         }
     }
 

@@ -1,8 +1,3 @@
-// This makes sure assertions actually occur.
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
-
 #include <cassert>
 #include <cstdlib>
 #include <fstream>
@@ -45,6 +40,11 @@ extern "C" {
 #include "lava.hxx"
 #include "lava-odb.hxx"
 #include "lexpr.hxx"
+
+// This makes sure assertions actually occur.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 
 #define RV_PFX "kbcieiubweuhc"
 #define RV_PFX_LEN 13
@@ -337,9 +337,11 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                     pointerAddends.push_back(pointerAttack(bug));
                 } else if (bug->type == Bug::REL_WRITE) {
                     pointerAddends.push_back(
-                            MagicTest(bug) * LavaGet(bug->extra_dua));
+                            MagicTest(bug) * LavaGet(
+                                db->load<Dua>(bug->extra_duas[0])));
                     valueAddends.push_back(
-                            MagicTest(bug) * LavaGet(bug->extra_dua));
+                            MagicTest(bug) * LavaGet(
+                                db->load<Dua>(bug->extra_duas[1])));
                 }
             }
         } else if (LavaAction == LavaQueries) {
@@ -417,8 +419,9 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
         std::stringstream result_ss;
         for (const Bug *bug : map_get_default(bugs_with_atp_at, ast_loc)) {
             if (bug->type == Bug::RET_BUFFER) {
+                const Dua *buffer = db->load<Dua>(bug->extra_duas[0]);
                 result_ss << LIf(MagicTest(bug).render(), {
-                        LAsm({ UCharCast(LStr(bug->extra_dua->lval->ast_name)) +
+                        LAsm({ UCharCast(LStr(buffer->lval->ast_name)) +
                                 LDecimal(bug->exploit_pad_offset), },
                                 { "movl %0, %%esp", "ret" })});
             }
@@ -438,7 +441,7 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
             before = "; " + LFunc("vm_lava_pri_query_point", {
                 LDecimal(GetStringID(ast_loc)),
                 LDecimal(ast_loc.begin.line),
-                LDecimal(SourceLval::BEFORE_OCCURRENCE)}).render() + ";";
+                LDecimal(SourceLval::BEFORE_OCCURRENCE)}).render() + "; ";
 
             num_taint_queries += 1;
         } else if (LavaAction == LavaInjectBugs) {

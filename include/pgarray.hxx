@@ -73,7 +73,7 @@ namespace odb
         {
              static const database_type_id db_type_id = id_string;
              struct conversion {
-                 static const char* to() { return "(?)::INTEGER[]"; }
+                 static const char* to() { return "(?)::BIGINT[]"; }
              };
         };
 

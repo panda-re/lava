@@ -20,6 +20,10 @@
 typedef std::vector<uint32_t> uint32_t_vec;
 #pragma db value(uint32_t_vec) type("INTEGER[]")
 
+#pragma db map type("BIGINT\\[\\]") as("TEXT") to("(?)::BIGINT[]") from("(?)::TEXT")
+typedef std::vector<uint64_t> uint64_t_vec;
+#pragma db value(uint64_t_vec) type("BIGINT[]")
+
 namespace clang { class FullSourceLoc; }
 #pragma db value
 struct Loc {
@@ -260,7 +264,7 @@ struct AttackPoint {
     }
 };
 
-#pragma db object bulk(5000)
+#pragma db object
 struct Bug {
 #pragma db id auto
     unsigned long id;
@@ -285,33 +289,37 @@ struct Bug {
     uint64_t max_liveness;
 
     // Possible exploit pad for ret-eax bugs.
-    // Distance for relative-write style bugs.
-    // NULL otherwise.
-    const Dua *extra_dua;
+    // Distance and  for relative-write style bugs.
+    // empty otherwise.
+    std::vector<uint64_t> extra_duas;
+    uint64_t extra_duas_hash;
     uint32_t exploit_pad_offset;
 
 #pragma db index("BugUniq") unique members(type, atp, trigger_lval, \
-        selected_bytes, extra_dua)
-#pragma db index("BugLvalsQuery") members(atp, type, extra_dua)
+        selected_bytes, extra_duas)
+#pragma db index("BugLvalsQuery") members(atp, type, extra_duas_hash)
 
     Bug() {}
     Bug(Type type, const Dua *trigger, std::vector<uint32_t> selected_bytes,
             uint64_t max_liveness, const AttackPoint *atp,
-            const Dua *extra_dua, uint32_t exploit_pad_offset)
+            std::vector<uint64_t> extra_duas, uint32_t exploit_pad_offset)
         : id(0), type(type), trigger(trigger), trigger_lval(trigger->lval),
             selected_bytes(selected_bytes), atp(atp), max_liveness(max_liveness),
-            extra_dua(extra_dua), exploit_pad_offset(exploit_pad_offset),
+            extra_duas(extra_duas), exploit_pad_offset(exploit_pad_offset),
             selected_bytes_hash(0) {
         for (size_t i = 0; i < selected_bytes.size(); i++) {
             selected_bytes_hash ^= (selected_bytes[i] + 1) << (16 * (i % 4));
+        }
+        for (size_t i = 0; i < extra_duas.size(); i++) {
+            extra_duas_hash ^= (extra_duas[i] + 1) << (32 * (i % 2));
         }
     }
 
     bool operator<(const Bug &other) const {
         return std::tie(type, atp->id, trigger->id, selected_bytes_hash,
-                extra_dua->id) < std::tie(other.type, other.atp->id,
+                extra_duas_hash) < std::tie(other.type, other.atp->id,
                     other.trigger->id, other.selected_bytes_hash,
-                    other.extra_dua->id);
+                    other.extra_duas_hash);
     }
 
     inline uint32_t magic() const {
@@ -332,19 +340,22 @@ struct Bug {
     static Bug PtrAdd(const Dua *trigger, std::vector<uint32_t> selected_bytes,
             uint64_t max_liveness, const AttackPoint *atp) {
         return Bug(PTR_ADD, trigger, selected_bytes, max_liveness, atp,
-            nullptr, 0);
+                { }, 0);
     }
     static Bug RetBuffer(const Dua *trigger, std::vector<uint32_t> selected_bytes,
             uint64_t max_liveness, const AttackPoint *atp,
             const Dua *exploit_pad, uint32_t exploit_pad_offset) {
         return Bug(RET_BUFFER, trigger, selected_bytes, max_liveness, atp,
-            exploit_pad, exploit_pad_offset);
+                { exploit_pad->id }, exploit_pad_offset);
     }
     static Bug RelWrite(const Dua *trigger, std::vector<uint32_t> selected_bytes,
             uint64_t max_liveness, const AttackPoint *atp,
-            const Dua *rel_write_distance) {
+            std::vector<const Dua *> args) {
+        std::vector<uint64_t> arg_ids;
+        for (const Dua *dua : args) arg_ids.push_back(dua->id);
+
         return Bug(REL_WRITE, trigger, selected_bytes, max_liveness, atp,
-            rel_write_distance, 0);
+                arg_ids, 0);
     }
 };
 
