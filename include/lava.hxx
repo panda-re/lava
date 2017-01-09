@@ -306,7 +306,7 @@ struct Bug {
         : id(0), type(type), trigger(trigger), trigger_lval(trigger->lval),
             selected_bytes(selected_bytes), atp(atp), max_liveness(max_liveness),
             extra_duas(extra_duas), exploit_pad_offset(exploit_pad_offset),
-            selected_bytes_hash(0) {
+            selected_bytes_hash(0), extra_duas_hash(0) {
         for (size_t i = 0; i < selected_bytes.size(); i++) {
             selected_bytes_hash ^= (selected_bytes[i] + 1) << (16 * (i % 4));
         }
