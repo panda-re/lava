@@ -210,9 +210,9 @@ expectation = project['expect'] if 'expect' in project else "root@debian-i386:~"
 env = project['env'] if 'env' in project else {}
 env['LD_LIBRARY_PATH'] = project['library_path'].format(install_dir=installdir)
 env_string = " ".join(["{}={}".format(pipes.quote(k), pipes.quote(env[k])) for k in env])
-run_console(env_string + " " + project['command'].format(
-    install_dir=installdir,
-    input_file=input_file_guest), expectation)
+command = project['command'].format(
+    install_dir=installdir, input_file=input_file_guest)
+run_console(env_string + " " + command, expectation)
 
 progress("Ending recording...")
 run_monitor("end_record")
@@ -251,7 +251,7 @@ qemu_args = [project['qemu'], '-replay', isoname,
         '-panda', 'taint2:no_tp',
         '-panda', 'tainted_branch',
         '-panda', 'file_taint:pos,enable_taint_on_open=true,filename={}'.format(
-            input_file_guest)]
+            'stdin' if 'use_stdin' in project else input_file_guest)]
 
 dprint ("qemu args: [%s]" % (" ".join(qemu_args)))
 try:
