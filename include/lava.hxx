@@ -13,6 +13,25 @@
 #include <algorithm>
 #include <iterator>
 
+template<typename T, class InputIt>
+inline void merge_into(InputIt first, InputIt last, size_t size, std::vector<T> &dest) {
+    // Make empty array and swap with all_labels.
+    // Obviously not thread-safe.
+    static std::vector<T> prev_dest;
+    prev_dest.clear();
+    prev_dest.swap(dest);
+
+    dest.reserve(prev_dest.size() + size);
+    std::set_union(
+            prev_dest.begin(), prev_dest.end(),
+            first, last, std::back_inserter(dest));
+}
+
+template<typename T, class InputIt>
+inline void merge_into(InputIt first, InputIt last, std::vector<T> &dest) {
+    merge_into(first, last, last - first, dest);
+}
+
 // This garbage makes the ORM map integer-vectors to INTEGER[] type in Postgres
 // instead of making separate tables. Important for uniqueness constraints to
 // work!
@@ -100,6 +119,36 @@ struct LavaASTLoc {
     }
 };
 
+// Standard left-closed, right-open range.
+#pragma db value
+struct Range {
+    uint32_t low;
+    uint32_t high;
+
+    operator std::string() const {
+        std::stringstream os;
+        os << *this;
+        return os.str();
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const Range &r) {
+        os << "[" << r.low << ", " << r.high << "]";
+        return os;
+    }
+
+    bool operator==(const Range &other) const {
+        return std::tie(low, high) == std::tie(other.low, other.high);
+    }
+
+    bool operator<(const Range &other) const {
+        return std::tie(low, high) < std::tie(other.low, other.high);
+    }
+
+    inline uint32_t size() const { return high - low; }
+    inline bool empty() const { return high <= low; }
+};
+
+
 #pragma db object
 struct SourceLval { // was DuaKey
 #pragma db id auto
@@ -162,6 +211,7 @@ struct Dua {
     std::vector<const LabelSet*> viable_bytes;
     std::vector<uint32_t> byte_tcn;
 
+    // Union of labelsets in viable_bytes.
     std::vector<uint32_t> all_labels;
 
     // Inputfile used when this dua appeared.
@@ -198,16 +248,47 @@ struct Dua {
         for (const LabelSet *ls : dua.viable_bytes) {
             *it++ = ls ? ls->ptr : 0;
         }
-        os << "}]," << "{";
-        std::copy(dua.all_labels.begin(), dua.all_labels.end(),
-                std::ostream_iterator<uint32_t>(os, ","));
-        os << "}," << dua.max_tcn;
+        os << "}]," << dua.max_tcn;
         os << "," << dua.max_cardinality << "," << dua.instr;
         os << "," << (dua.fake_dua ? "fake" : "real");
         os << "]";
         return os;
     }
+};
 
+#pragma db object
+struct DuaBytes {
+#pragma db id auto
+    unsigned long id;
+
+#pragma db not_null
+    const Dua *dua;
+
+    // Selected bytes.
+    Range selected;
+
+#pragma db not_null
+    std::vector<uint32_t> all_labels;
+
+#pragma db index("DuaBytesUniq") unique members(dua, selected)
+
+    DuaBytes() {}
+    DuaBytes(const Dua *dua, Range selected) : dua(dua), selected(selected) {
+        assert(selected.low <= selected.high);
+        assert(selected.high <= dua->viable_bytes.size());
+        const auto &viable_bytes = dua->viable_bytes;
+        auto it = viable_bytes.cbegin() + selected.low;
+        auto end = viable_bytes.cbegin() + selected.high;
+        for (; it != end; it++) {
+            const LabelSet *ls = *it;
+            merge_into(ls->labels.begin(), ls->labels.end(), all_labels);
+        }
+    }
+
+    bool operator<(const DuaBytes &other) const {
+        return std::tie(dua->id, selected) <
+            std::tie(other.dua->id, other.selected);
+    }
 };
 
 #pragma db object
@@ -276,12 +357,16 @@ struct Bug {
         TYPE_END
     } type;
 
+    static constexpr uint32_t const num_extra_duas[] = {
+        [PTR_ADD] = 0,
+        [RET_BUFFER] = 1,
+        [REL_WRITE] = 2,
+    };
+
 #pragma db not_null
-    const Dua* trigger;
+    const DuaBytes* trigger;
 #pragma db not_null
     const SourceLval* trigger_lval; // == trigger->lval
-    std::vector<uint32_t> selected_bytes;
-    uint64_t selected_bytes_hash;
 
 #pragma db not_null
     const AttackPoint* atp;
@@ -289,37 +374,26 @@ struct Bug {
     uint64_t max_liveness;
 
     // Possible exploit pad for ret-eax bugs.
-    // Distance and  for relative-write style bugs.
+    // Distance and value change for relative-write style bugs.
     // empty otherwise.
+    // Actually id's of DuaBytes.
     std::vector<uint64_t> extra_duas;
-    uint64_t extra_duas_hash;
-    uint32_t exploit_pad_offset;
 
-#pragma db index("BugUniq") unique members(type, atp, trigger_lval, \
-        selected_bytes, extra_duas)
-#pragma db index("BugLvalsQuery") members(atp, type, extra_duas_hash)
+#pragma db index("BugUniq") unique members(type, atp, trigger_lval)
+#pragma db index("BugLvalsQuery") members(atp, type)
 
     Bug() {}
-    Bug(Type type, const Dua *trigger, std::vector<uint32_t> selected_bytes,
-            uint64_t max_liveness, const AttackPoint *atp,
-            std::vector<uint64_t> extra_duas, uint32_t exploit_pad_offset)
-        : id(0), type(type), trigger(trigger), trigger_lval(trigger->lval),
-            selected_bytes(selected_bytes), atp(atp), max_liveness(max_liveness),
-            extra_duas(extra_duas), exploit_pad_offset(exploit_pad_offset),
-            selected_bytes_hash(0), extra_duas_hash(0) {
-        for (size_t i = 0; i < selected_bytes.size(); i++) {
-            selected_bytes_hash ^= (selected_bytes[i] + 1) << (16 * (i % 4));
-        }
-        for (size_t i = 0; i < extra_duas.size(); i++) {
-            extra_duas_hash ^= (extra_duas[i] + 1) << (32 * (i % 2));
-        }
-    }
+    Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
+            const AttackPoint *atp, std::vector<uint64_t> extra_duas)
+        : id(0), type(type), trigger(trigger), trigger_lval(trigger->dua->lval),
+            atp(atp), max_liveness(max_liveness), extra_duas(extra_duas) {}
 
-    bool operator<(const Bug &other) const {
-        return std::tie(type, atp->id, trigger->id, selected_bytes_hash,
-                extra_duas_hash) < std::tie(other.type, other.atp->id,
-                    other.trigger->id, other.selected_bytes_hash,
-                    other.extra_duas_hash);
+    Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
+            const AttackPoint *atp, std::vector<const DuaBytes *> extra_duas_)
+        : Bug(type, trigger, max_liveness, atp, std::initializer_list<uint64_t>({})) {
+        for (const DuaBytes *dua_bytes : extra_duas_) {
+            extra_duas.push_back(dua_bytes->id);
+        }
     }
 
     inline uint32_t magic() const {
@@ -335,27 +409,6 @@ struct Bug {
     // magic values
     inline uint16_t magic_kt() const {
         return ((uint16_t) (0x6c617661 & 0xffff)) - id;
-    }
-
-    static Bug PtrAdd(const Dua *trigger, std::vector<uint32_t> selected_bytes,
-            uint64_t max_liveness, const AttackPoint *atp) {
-        return Bug(PTR_ADD, trigger, selected_bytes, max_liveness, atp,
-                { }, 0);
-    }
-    static Bug RetBuffer(const Dua *trigger, std::vector<uint32_t> selected_bytes,
-            uint64_t max_liveness, const AttackPoint *atp,
-            const Dua *exploit_pad, uint32_t exploit_pad_offset) {
-        return Bug(RET_BUFFER, trigger, selected_bytes, max_liveness, atp,
-                { exploit_pad->id }, exploit_pad_offset);
-    }
-    static Bug RelWrite(const Dua *trigger, std::vector<uint32_t> selected_bytes,
-            uint64_t max_liveness, const AttackPoint *atp,
-            std::vector<const Dua *> args) {
-        std::vector<uint64_t> arg_ids;
-        for (const Dua *dua : args) arg_ids.push_back(dua->id);
-
-        return Bug(REL_WRITE, trigger, selected_bytes, max_liveness, atp,
-                arg_ids, 0);
     }
 };
 

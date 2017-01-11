@@ -174,6 +174,8 @@ if __name__ == "__main__":
     bugs_parent = ""
     candidate = 0
     bugs_lock = None
+    print "Getting locked bugs directory..."
+    sys.stdout.flush()
     while bugs_parent == "":
         candidate_path = join(bugs_top_dir, str(candidate))
         if args.noLock:
@@ -230,6 +232,7 @@ if __name__ == "__main__":
         print "Making with btrace..."
         run(shlex.split(project['configure']) + ['--prefix=' + bugs_install])
         run([join(lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
+    sys.stdout.flush()
 
     lavadb = join(top_dir, 'lavadb')
 
@@ -277,6 +280,7 @@ if __name__ == "__main__":
             pass
 
     print "Picking bugs to inject."
+    sys.stdout.flush()
     # Now start picking the bug and injecting
     bugs_to_inject = []
     if args.bugid != -1:
@@ -301,33 +305,36 @@ if __name__ == "__main__":
         else:
             # demo, I guess
             print "Injecting %d bugs" % num_bugs_to_inject
-            for i in range(num_bugs_to_inject):
-                bugs_to_inject.append(db.next_bug_random(False))
+            bugs_to_inject.extend(db.uninjected_random(False)[:num_bugs_to_inject])
+            assert len(bugs_to_inject) == num_bugs_to_inject
         update_db = True
     else: assert False
 
     # collect set of src files into which we must inject code
     src_files = set()
+    input_files = set()
     i = 0
 
     for bug_index, bug in enumerate(bugs_to_inject):
-         print "------------\n"
-         print "SELECTED "
-         if bug.trigger.fake_dua:
-             print "NON-BUG"
-         else:
-             print "BUG"
-         print " {} : {}".format(bug_index, bug.id)#
- ####        if not args.randomize: print "   score=%d " % score
-         print "   (%d,%d)" % (bug.trigger.id, bug.atp.id)
-         print "DUA:"
-         print "   ", bug.trigger
-         print "ATP:"
-         print "   ", bug.atp
-         print "max_tcn={}  max_liveness={}".format(
-             bug.max_liveness, bug.trigger.max_tcn)
-         src_files.add(bug.trigger.lval.loc_filename)
-         src_files.add(bug.atp.loc_filename)
+        print "------------\n"
+        print "SELECTED "
+        if bug.trigger.dua.fake_dua:
+            print "NON-BUG"
+        else:
+            print "BUG"
+        print " {} : {}".format(bug_index, bug.id)#
+ ####       if not args.randomize: print "   score=%d " % score
+        print "   (%d,%d)" % (bug.trigger.dua_id, bug.atp_id)
+        print "DUA:"
+        print "   ", bug.trigger.dua
+        print "ATP:"
+        print "   ", bug.atp
+        print "max_tcn={}  max_liveness={}".format(
+            bug.max_liveness, bug.trigger.dua.max_tcn)
+        src_files.add(bug.trigger_lval.loc_filename)
+        src_files.add(bug.atp.loc_filename)
+        input_files.add(bug.trigger.dua.inputfile)
+    sys.stdout.flush()
 
     # cleanup
     print "------------\n"
@@ -391,7 +398,7 @@ if __name__ == "__main__":
         print "------------\n"
         # first, try the original file
         print "TESTING -- ORIG INPUT"
-        orig_input = join(top_dir, 'inputs', basename(bug.trigger.inputfile))
+        orig_input = join(top_dir, 'inputs', basename(input_files.pop()))
         (rv, outp) = run_modified_program(bugs_install, orig_input, timeout)
         if rv != 0:
             print "***** buggy program fails on original input!"
@@ -432,7 +439,7 @@ if __name__ == "__main__":
             if update_db:
                 db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
                                 output=lines.encode('string-escape'), success=True))
-            if bug.trigger.fake_dua == False:
+            if bug.trigger.dua.fake_dua == False:
                 # this really is supposed to be a bug
                 # we should see a seg fault or something
                 if rv == -11 or rv == -6:

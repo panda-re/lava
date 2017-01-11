@@ -43,6 +43,7 @@ extern "C" {
 #include "pgarray.hxx"
 #include "lava.hxx"
 #include "lava-odb.hxx"
+#include "spit.hxx"
 #include <odb/pgsql/database.hxx>
 #include <odb/session.hxx>
 
@@ -58,7 +59,7 @@ extern "C" {
 std::string inputfile;
 std::string src_pfx;
 // Map LavaDB string indices to actual strings.
-std::map<uint32_t,std::string> ind2str;
+std::map<uint32_t, std::string> ind2str;
 
 uint64_t num_fake_bugs = 0;
 uint64_t num_bugs_added_to_db = 0;
@@ -88,6 +89,13 @@ std::vector<uint64_t> liveness;
 // Map from source lval ID to most recent DUA incarnation.
 std::map<unsigned long, const Dua*> recent_dead_duas;
 
+bool less_by_instr(const Dua *a, const Dua *b) {
+    return a->instr < b->instr;
+}
+// List of recent duas sorted by dua->instr. Invariant should hold that:
+// set(recent_dead_duas.values()) == set(recent_duas_by_instr).
+std::vector<const Dua *> recent_duas_by_instr;
+
 // Map from label to duas that are tainted by that label.
 // So when we update liveness, we know what duas might be invalidated.
 std::map<uint32_t, std::set<const Dua *> > dua_dependencies;
@@ -98,18 +106,23 @@ inline bool decimate(double ratio) {
 }
 
 // This will make bugs less likely to be injected if there are more of that
-// type. Returns true if we should inject bug.
-inline bool decimate_by_type(Bug::Type bug_type) {
+// type.
+inline double decimation_ratio(Bug::Type bug_type, uint64_t potential) {
     uint64_t num_types_injected_already = 0;
     for (unsigned i = 0; i < Bug::TYPE_END; i++) {
         if (num_bugs_of_type[i] > 0) num_types_injected_already++;
     }
-    if (num_types_injected_already == 0) return true;
+    if (num_types_injected_already == 0) return 1.0;
 
     uint64_t average_num_bugs = num_bugs_added_to_db /
         num_types_injected_already;
-    int64_t diff = num_bugs_of_type[bug_type] - average_num_bugs;
-    return diff <= 10000 || decimate(1 + (diff - 10000) * 0.05);
+    int64_t diff = num_bugs_of_type[bug_type] + potential - average_num_bugs;
+    return diff < 10000 ? 1.0 : 1.0 + (diff - 10000) * 0.2;
+}
+
+// Returns true if we should inject bug.
+inline bool decimate_by_type(Bug::Type bug_type) {
+    return decimate(decimation_ratio(bug_type, 1));
 }
 
 // Print stuff to stream separated by commas.
@@ -231,35 +244,6 @@ std::map<uint32_t,std::string> LoadIDB(std::string fn) {
     return InvertDB(x);
 }
 
-void spit_tquls(const Panda__TaintQueryUniqueLabelSet *tquls) {
-    printf("tquls=[ptr=0x%" PRIx64 ",n_label=%d,label=[", tquls->ptr, (int) tquls->n_label);
-    for (uint32_t i=0; i<tquls->n_label; i++) {
-        printf("%d", tquls->label[i]);
-        if (i+1<tquls->n_label) printf(",");
-    }
-    printf("]]");
-}
-
-void spit_tq(Panda__TaintQuery *tq) {
-    printf("tq=[ptr=0x%" PRIx64 ",tcn=%d,offset=%d]", tq->ptr, tq->tcn, tq->offset);
-}
-
-void spit_si(Panda__SrcInfo *si) {
-    printf("si=[filename='%s',line=%d,", (char*) ind2str[si->filename].c_str(), si->linenum);
-    printf("astnodename='%s',", (char *) ind2str[si->astnodename].c_str());
-    if (si->has_insertionpoint) {
-        printf("insertionpoint=%d", si->insertionpoint);
-    }
-    printf("]");
-}
-
-void spit_tqh(Panda__TaintQueryHypercall *tqh) {
-    printf("tqh=[buf=0x%" PRIx64 ",len=%d,num_tainted=%d]", tqh->buf, tqh->len, tqh->num_tainted);
-}
-
-void spit_ap(Panda__AttackPoint *ap) {
-    printf("ap=[info=%d]", ap->info);
-}
 
 
 void update_unique_taint_sets(const Panda__TaintQueryUniqueLabelSet *tquls) {
@@ -292,21 +276,25 @@ bool is_header_file(std::string filename) {
     return (filename[l-2] == '.' && filename[l-1] == 'h');
 }
 
-template<typename T, class InputIt>
-inline void merge_into(InputIt first, InputIt last, size_t size, std::vector<T> &dest) {
-    // Make empty array and swap with all_labels.
-    std::vector<T> prev_dest;
-    prev_dest.swap(dest);
-
-    dest.reserve(prev_dest.size() + size);
-    std::set_union(
-            prev_dest.begin(), prev_dest.end(),
-            first, last, std::back_inserter(dest));
+// Check if sets are disjoint.
+template<class InputIt1, class InputIt2>
+inline bool disjoint(InputIt1 first1, InputIt1 last1,
+        InputIt2 first2, InputIt2 last2) {
+    while (first1 != last1 && first2 != last2) {
+        if (*first1 < *first2) ++first1;
+        else if (*first2 < *first1) ++first2;
+        else return false;
+    }
+    return true;
 }
 
-template<typename T, class InputIt>
-inline void merge_into(InputIt first, InputIt last, std::vector<T> &dest) {
-    merge_into(first, last, last - first, dest);
+template<class T1, class T2>
+inline bool disjoint(const T1 &range1, const T2 &range2) {
+    return disjoint(range1.begin(), range1.end(), range2.begin(), range2.end());
+}
+
+inline bool disjoint(const DuaBytes *db1, const DuaBytes *db2) {
+    return disjoint(db1->all_labels, db2->all_labels);
 }
 
 template<class T>
@@ -316,21 +304,20 @@ uint32_t count_nonzero(std::vector<T> arr) {
     return count;
 }
 
-// get still-viable offsets for a dua.
-inline std::vector<uint32_t> get_dua_dead_offsets(const Dua *dua) {
+// get first 4-or-larger dead range.
+inline Range get_dua_dead_range(const Dua *dua) {
     const auto &viable_bytes = dua->viable_bytes;
     dprintf("checking viability of dua: currently %u viable bytes\n",
             count_nonzero(viable_bytes));
 
+    Range current_run{0, 0};
+
     // NB: we have already checked dua for viability wrt tcn & card at induction
     // these do not need re-checking as they are to be captured at dua siphon point
-    std::vector<uint32_t> viable_offsets;
-    viable_offsets.reserve(LAVA_MAGIC_VALUE_SIZE);
     for (uint32_t i = 0; i < viable_bytes.size(); i++) {
+        bool byte_viable = true;
         const LabelSet *ls = viable_bytes[i];
         if (ls) {
-            bool byte_viable = true;
-            // determine if liveness for this offset is still low enough
             for (auto l : ls->labels) {
                 if (liveness[l] > max_liveness) {
                     dprintf("byte offset is nonviable b/c label %d has liveness %lu\n",
@@ -339,64 +326,65 @@ inline std::vector<uint32_t> get_dua_dead_offsets(const Dua *dua) {
                     break;
                 }
             }
-            if (byte_viable) viable_offsets.push_back(i);
-            // Once we know we have at least 4 viable bytes, we can stop
-            if (viable_offsets.size() >= LAVA_MAGIC_VALUE_SIZE) break;
+            if (byte_viable) {
+                if (current_run.empty()) {
+                    current_run = Range{i, i + 1};
+                } else {
+                    current_run.high++;
+                    if (current_run.size() >= LAVA_MAGIC_VALUE_SIZE) {
+                        break;
+                    }
+                }
+                continue; // skip resetting of range below.
+            }
         }
+
+        current_run = Range{0, 0};
     }
-    dprintf("%s\ndua has %lu viable bytes\n", std::string(*dua).c_str(),
-            viable_offsets.size());
+    dprintf("%s\ndua has %u viable bytes\n", std::string(*dua).c_str(),
+            current_run.size());
     // dua is viable iff it has more than one viable byte
-    return viable_offsets;
+    return current_run;
 }
 
-struct Range {
-    uint32_t low;
-    uint32_t high;
-    inline uint32_t size() const { return high - low; }
-    inline bool empty() const { return high <= low; }
-};
 inline Range get_dua_exploit_pad(const Dua *dua) {
     // Each is a range of offsets with large run of DUA bytes.
     std::vector<Range> runs;
     Range current_run{0, 0};
+    Range largest_run{0, 0};
     const auto &viable_bytes = dua->viable_bytes;
     for (uint32_t i = 0; i < viable_bytes.size(); i++) {
         const LabelSet *ls = viable_bytes[i];
         // This test means tainted, uncomplicated, dead.
         if (ls && ls->labels.size() == 1 && dua->byte_tcn[i] == 0
-                && liveness.at(*ls->labels.begin()) == 0) {
+                && liveness[*ls->labels.begin()] == 0) {
             if (current_run.empty()) {
                 current_run = Range{i, i + 1};
             } else {
                 current_run.high++;
             }
         } else {
-            if (!current_run.empty()) {
-                runs.push_back(current_run);
+            if (current_run.size() > largest_run.size()) {
+                largest_run = current_run;
             }
             current_run = Range{0, 0};
         }
     }
-    if (!current_run.empty()) {
-        runs.push_back(current_run);
+    if (current_run.size() > largest_run.size()) {
+        largest_run = current_run;
     }
 
-    auto it = std::max_element(runs.begin(), runs.end(),
-            [](const Range &run1, const Range &run2) {
-        return run1.size() < run2.size();
-    });
-    return it == runs.end() ? Range{0, 0} : *it;
+    return largest_run;
 }
 
 // determine if this dua is viable at all.
 inline bool is_dua_dead(const Dua *dua) {
-    return get_dua_dead_offsets(dua).size() == LAVA_MAGIC_VALUE_SIZE;
+    return get_dua_dead_range(dua).size() == LAVA_MAGIC_VALUE_SIZE;
 }
 
+template<Bug::Type bug_type>
 void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
-        const Bug::Type bug_type, std::vector<const Dua *> extra_duas,
-        uint32_t exploit_pad_offset = 0);
+        std::vector<const DuaBytes *> extra_duas);
 
 void taint_query_pri(Panda__LogEntry *ple) {
     assert (ple != NULL);
@@ -476,25 +464,22 @@ void taint_query_pri(Panda__LogEntry *ple) {
                 // keep track of highest tcn, liveness, and card for any viable byte for this lval
                 c_max_tcn = std::max(tq->tcn, c_max_tcn);
                 c_max_card = std::max((uint32_t) ls->labels.size(), c_max_card);
-                // collect set of labels on all ok bytes for this extent
-                // remember: labels are offsets into input file
-                // NB: only do this for bytes that will actually be used in the dua
+
                 merge_into(ls->labels.begin(), ls->labels.end(), all_labels);
+
                 dprintf("keeping byte @ offset %d\n", offset);
                 // add this byte to the list of ok bytes
                 viable_byte[offset] = ls;
                 num_viable_bytes++;
             }
         }
+        dprintf("%u viable bytes in lval\n", num_viable_bytes);
 
-        dprintf("%u viable bytes in lval  %lu labels\n",
-                num_viable_bytes, all_labels.size());
         // three possibilities at this point
         // 1. this is a dua which we can use to make bugs,
         // 2. it's a non-dua which has enough untainted parts to make a fake bug
         // 3. or its neither and we truly discard.
-        if ((num_viable_bytes >= LAVA_MAGIC_VALUE_SIZE)
-            && (all_labels.size() >= LAVA_MAGIC_VALUE_SIZE)) {
+        if (num_viable_bytes >= LAVA_MAGIC_VALUE_SIZE) {
             is_dua = true;
         }
     } else if (len - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
@@ -512,7 +497,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
             if (!tq->ptr) {
                 count++;
                 viable_byte[offset] = create(LabelSet{0,
-                        FAKE_DUA_BYTE_FLAG, "/hi/patrick",
+                        FAKE_DUA_BYTE_FLAG, "fakedua",
                         std::vector<uint32_t>()});
             }
         }
@@ -542,29 +527,64 @@ void taint_query_pri(Panda__LogEntry *ple) {
         // tainted lval we just considered was deemed viable
         const Dua *dua = create(Dua{0, lval, viable_byte, byte_tcn, all_labels,
                 inputfile, c_max_tcn, c_max_card, ple->instr, is_fake_dua});
-        for (uint32_t l : all_labels) {
-            dua_dependencies[l].insert(dua);
-        }
-
-        const AttackPoint *pad_atp;
-        bool is_new_atp;
-        std::tie(pad_atp, is_new_atp) = create_full(
-                AttackPoint::QueryPoint(
-                    ast_loc, std::string(si->astnodename)));
-        if (is_dua && len >= 20 && decimate_by_type(Bug::RET_BUFFER)) {
-            Range range = get_dua_exploit_pad(dua);
-            if (range.size() >= 20) {
-                record_injectable_bugs_at(pad_atp, is_new_atp, Bug::RET_BUFFER,
-                        { dua }, range.low);
+        if (is_fake_dua || is_dua_dead(dua)) {
+            if (is_dua) {
+                // Only track liveness for non-fake duas.
+                for (uint32_t l : all_labels) {
+                    dua_dependencies[l].insert(dua);
+                }
             }
-        }
 
-        dprintf("OK DUA.\n");
-        if (debug) {
-            if (recent_dead_duas.count(lval->id) == 0) printf("new lval\n");
-            else printf("previously observed lval\n");
+            const AttackPoint *pad_atp;
+            bool is_new_atp;
+            std::tie(pad_atp, is_new_atp) = create_full(
+                    AttackPoint::QueryPoint(
+                        ast_loc, std::string(si->astnodename)));
+            if (len >= 20 && decimate_by_type(Bug::RET_BUFFER)) {
+                Range range = get_dua_exploit_pad(dua);
+                const DuaBytes *dua_bytes = create(DuaBytes(dua, range));
+                if (is_fake_dua || range.size() >= 20) {
+                    record_injectable_bugs_at<Bug::RET_BUFFER>(
+                            pad_atp, is_new_atp, { dua_bytes });
+                }
+            }
+
+            dprintf("OK DUA.\n");
+
+            // Update recent_dead_duas + recent_duas_by_instr:
+            // 1) erase at most one in r_d_by_instr w/ same lval_id.
+            // 2) insert/update in recent_dead_duas
+            // 2) insert new dua into r_d_by_instr, probably at end.
+            unsigned long lval_id = lval->id;
+            auto it_lval = recent_dead_duas.lower_bound(lval_id);
+            if (it_lval == recent_dead_duas.end() || lval_id < it_lval->first) {
+                recent_dead_duas.insert(it_lval, std::make_pair(lval_id, dua));
+                dprintf("new lval\n");
+            } else {
+                // recent_duas_by_instr should contain a dua w/ this lval.
+                assert(it_lval->second->lval->id == lval_id);
+                auto instr_range = std::equal_range(
+                        recent_duas_by_instr.begin(),
+                        recent_duas_by_instr.end(),
+                        it_lval->second, less_by_instr);
+                auto it_instr = std::find(instr_range.first, instr_range.second,
+                        it_lval->second);
+                assert(it_instr != instr_range.second); // found
+                recent_duas_by_instr.erase(it_instr);
+
+                // replace value in recent_dead_duas.
+                it_lval->second = dua;
+                dprintf("previously observed lval\n");
+            }
+
+            assert(recent_duas_by_instr.empty() ||
+                    dua->instr >= recent_duas_by_instr.back()->instr);
+            recent_duas_by_instr.push_back(dua);
+
+            // Invariant should hold that:
+            // set(recent_dead_duas.values()) == set(recent_duas_by_instr).
+            assert(recent_dead_duas.size() == recent_duas_by_instr.size());
         }
-        recent_dead_duas[lval->id] = dua;
     } else {
         dprintf("discarded %u viable bytes %lu labels %s:%u %s",
                 num_viable_bytes, all_labels.size(), si->filename, si->linenum,
@@ -620,6 +640,11 @@ void update_liveness(Panda__LogEntry *ple) {
         if (!is_dua_dead(dua)) {
             dprintf("%s\n ** DUA not viable\n", std::string(*dua).c_str());
             recent_dead_duas.erase(dua->lval->id);
+            recent_duas_by_instr.erase(
+                    std::remove(recent_duas_by_instr.begin(),
+                        recent_duas_by_instr.end(), dua),
+                    recent_duas_by_instr.end());
+            assert(recent_dead_duas.size() == recent_duas_by_instr.size());
             non_viable_duas.push_back(dua);
         }
     }
@@ -654,12 +679,11 @@ def collect_bugs(attack_point):
 struct BugParam {
     unsigned long atp_id;
     Bug::Type type;
-    uint64_t extra_duas_hash;
 };
+template<Bug::Type bug_type>
 void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
-        const Bug::Type bug_type, std::vector<const Dua *> extra_duas,
-        uint32_t exploit_pad_offset) {
-    std::vector<unsigned long> skip_lval_ids;
+        std::vector<const DuaBytes *> extra_duas) {
+    std::vector<unsigned long> skip_trigger_lvals;
     if (!is_new_atp) {
         // This means that all bug opportunities here might be repeats: same
         // atp/lval/type combo. Let's head that off at the pass.
@@ -675,68 +699,94 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
             param = param_ptr.get();
             pq = db->prepare_query<BugLval>(query_name,
                     q::atp == q::_ref(param->atp_id) &&
-                    q::type == q::_ref(param->type) &&
-                    q::extra_duas_hash == q::_ref(param->extra_duas_hash));
+                    q::type == q::_ref(param->type));
             db->cache_query(pq, std::move(param_ptr));
         }
         param->atp_id = atp->id;
         param->type = bug_type;
-        param->extra_duas_hash = 0;
-
-        // guaranteed to be unique as long as < 4B duas, < 2 extra_duas in vector
-        for (size_t i = 0; i < extra_duas.size(); i++) {
-            param->extra_duas_hash ^= (extra_duas[i]->id + 1) << (32 * (i % 2));
-        }
 
         auto result = pq.execute();
-        skip_lval_ids.reserve(result.size());
+        skip_trigger_lvals.reserve(result.size());
         for (auto it = result.begin(); it != result.end(); it++) {
-            skip_lval_ids.push_back(it->trigger_lval);
+            skip_trigger_lvals.push_back(it->trigger_lval);
         }
     }
 
     // every still viable dua is a bug inj opportunity at this point in trace
     // NB: recent_dead_duas sorted by lval_id
-    // so we can do set-subtraction (recent_dead_duas - skip_lval_ids)
+    // so we can do set-subtraction (recent_dead_duas - skip_trigger_lvals)
     // in linear time
-    auto skip_it = skip_lval_ids.begin();
+    auto skip_it = skip_trigger_lvals.begin();
     for ( const auto &kvp : recent_dead_duas ) {
         unsigned long lval_id = kvp.first;
-        while (skip_it != skip_lval_ids.end() && *skip_it < lval_id) skip_it++;
-        if (skip_it != skip_lval_ids.end() && *skip_it == lval_id) continue;
+        // fast-forward skip_it so *skip_it >= lval_id
+        while (skip_it != skip_trigger_lvals.end() && *skip_it < lval_id) skip_it++;
+        // skip this dua if it is in skip list.
+        if (skip_it != skip_trigger_lvals.end() && *skip_it == lval_id) continue;
 
-        const Dua *dua = kvp.second;
+        // lval skip list guarantees this is a new (lval, atp) combo not seen before.
+        const Dua *trigger_dua = kvp.second;
+
         // Need to select bytes now.
-        std::vector<uint32_t> selected_bytes = get_dua_dead_offsets(dua);
+        Range selected = get_dua_dead_range(trigger_dua);
+        assert(selected.size() == LAVA_MAGIC_VALUE_SIZE);
+        const DuaBytes *trigger = create(DuaBytes{trigger_dua, selected});
 
-        // lval skip list guarantees this is a new (lval, atp) combo not seen
-        // before.
-        uint64_t c_max_liveness = 0;
-        for (uint32_t offset : selected_bytes) {
-            for (uint32_t l : dua->viable_bytes.at(offset)->labels) {
-                c_max_liveness = std::max(c_max_liveness, liveness.at(l));
+        // Now select extra duas. One set of extra duas per (lval, atp, type).
+        int num_extra = Bug::num_extra_duas[bug_type] - extra_duas.size();
+        assert(num_extra >= 0);
+        // Get list of duas observed before chosen trigger.
+        // Otherwise a bug might partially trigger - some duas might not be
+        // shoveled yet.
+        // std::lower_bound returns iter to first w/ instr >= trigger->instr
+        auto end_it = std::lower_bound(recent_duas_by_instr.begin(),
+                recent_duas_by_instr.end(), trigger_dua, less_by_instr);
+        auto begin_it = recent_duas_by_instr.begin();
+        auto distance = std::distance(begin_it, end_it);
+        bool skip_this_trigger = false;
+        std::vector<uint32_t> labels_so_far = trigger->all_labels;
+        if (num_extra < distance) { // do we have enough other duas??
+            for (int i = 0; i < num_extra; i++) {
+                const Dua *extra_dua;
+                const DuaBytes *extra;
+                unsigned tries = 0;
+                // Try five times to find an extra dua that is disjoint from
+                // trigger.
+                for (unsigned tries = 0; tries < 5; tries++) {
+                    auto it = begin_it;
+                    std::advance(it, rand() % distance);
+                    extra_dua = *it;
+                    Range selected = get_dua_dead_range(extra_dua);
+                    extra = create(DuaBytes(extra_dua, selected));
+                    if (disjoint(labels_so_far, trigger->all_labels)) break;
+                }
+                if (tries == 5) break;
+                extra_duas.push_back(extra);
+                merge_into(trigger->all_labels.begin(), trigger->all_labels.end(),
+                        labels_so_far);
             }
         }
+        if (extra_duas.size() < Bug::num_extra_duas[bug_type]) {
+            // Failed to select extra duas. Probably this trigger was too early.
+            // Skip this trigger/type combo.
+            continue;
+        }
 
-        Bug bug;
-        if ((atp->type == AttackPoint::FUNCTION_ARG
-                    || atp->type == AttackPoint::POINTER_RW)
-                && bug_type == Bug::PTR_ADD) {
-            bug = Bug::PtrAdd(dua, selected_bytes, c_max_liveness, atp);
-        } else if (atp->type == AttackPoint::QUERY_POINT
-                && bug_type == Bug::RET_BUFFER) {
-            bug = Bug::RetBuffer(dua, selected_bytes, c_max_liveness, atp,
-                        extra_duas[0], exploit_pad_offset);
-        } else if ((atp->type == AttackPoint::FUNCTION_ARG
-                    || atp->type == AttackPoint::POINTER_RW)
-                && bug_type == Bug::REL_WRITE) {
-            bug = Bug::RelWrite(dua, selected_bytes, c_max_liveness, atp, extra_duas);
-        } else assert(false && "Bad bug type/atp type combination!");
-        num_bugs_of_type[bug.type]++;
+        // Calculate maximum liveness for this bug's trigger.
+        uint64_t c_max_liveness = 0;
+        for (uint32_t l : trigger->all_labels) {
+            c_max_liveness = std::max(c_max_liveness, liveness[l]);
+        }
+
+        assert(bug_type != Bug::RET_BUFFER ||
+                atp->type == AttackPoint::QUERY_POINT);
+        assert(extra_duas.size() == Bug::num_extra_duas[bug_type]);
+        Bug bug(bug_type, trigger, c_max_liveness, atp, extra_duas);
         db->persist(bug);
+        num_bugs_of_type[bug_type]++;
 
         num_bugs_added_to_db++;
-        if (dua->fake_dua) {
+        if (trigger_dua->fake_dua) {
             num_potential_nonbugs++;
         } else {
             num_potential_bugs++;
@@ -772,16 +822,8 @@ void attack_point_lval_usage(Panda__LogEntry *ple) {
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
 
     // Don't decimate PTR_ADD bugs.
-    record_injectable_bugs_at(atp, is_new_atp, Bug::PTR_ADD, { }, 0);
-    for (auto kvp_distance : recent_dead_duas) {
-        for (auto kvp_value : recent_dead_duas) {
-            if (atp->type == AttackPoint::POINTER_RW
-                    && decimate_by_type(Bug::REL_WRITE)) {
-                record_injectable_bugs_at(atp, is_new_atp, Bug::REL_WRITE,
-                        { kvp_distance.second, kvp_value.second }, 0);
-            }
-        }
-    }
+    record_injectable_bugs_at<Bug::PTR_ADD>(atp, is_new_atp, { });
+    record_injectable_bugs_at<Bug::REL_WRITE>(atp, is_new_atp, { });
 
     t.commit();
 }

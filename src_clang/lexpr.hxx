@@ -111,6 +111,11 @@ LExpr LDecimal(uint32_t value) {
 
 // Binary operator.
 LExpr LBinop(std::string op, LExpr left, LExpr right) {
+    if (op == "+"
+            && (right.t == LExpr::DECIMAL || right.t == LExpr::HEX)
+            && right.value == 0) {
+        return left;
+    }
     return LExpr(LExpr::BINOP, 0, op, { left, right });
 }
 
@@ -176,26 +181,22 @@ LExpr LavaGet(uint64_t val) {
     return LFunc("lava_get", { LDecimal(val) });
 }
 
-LExpr LavaGet(const Bug *bug) { return LavaGet(bug->trigger_lval->id); }
-LExpr LavaGet(const Dua *dua) { return LavaGet(dua->lval->id); }
-LExpr LavaGet(const SourceLval *lval) { return LavaGet(lval->id); }
+LExpr LavaGet(const Bug *bug) { return LavaGet(bug->trigger->id); }
+LExpr LavaGet(const DuaBytes *dua_bytes) { return LavaGet(dua_bytes->id); }
 
-LExpr UCharCast(LExpr arg) {
-    return LCast("unsigned char *", arg);
-}
+LExpr UCharCast(LExpr arg) { return LCast("unsigned char *", arg); }
+LExpr UIntCast(LExpr arg) { return LCast("unsigned int *", arg); }
 
 LExpr LavaSet(const Bug *bug) {
-    const std::vector<uint32_t> &offsets = bug->selected_bytes;
     const std::string &lval_name = bug->trigger_lval->ast_name;
+    Range selected = bug->trigger->selected;
+    assert(selected.size() == 4);
 
-    std::vector<LExpr> or_args;
-    for (auto it = offsets.cbegin(); it != offsets.cend(); it++) {
-        LExpr shift = LDecimal((it - offsets.cbegin()) * 8);
-        or_args.push_back(
-                LIndex(UCharCast(LStr(lval_name)), *it) << shift);
-    }
-    return LFunc("lava_set", { LDecimal(bug->trigger_lval->id),
-            LBinop("|", or_args) });
+    LExpr pointer = selected.low
+        ? UCharCast(LStr(lval_name)) + LDecimal(selected.low)
+        : LStr(lval_name);
+    LExpr value = LIndex(UIntCast(pointer), 0);
+    return LFunc("lava_set", { LDecimal(bug->trigger->id), value });
 }
 
 template<typename UInt>

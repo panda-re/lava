@@ -31,6 +31,10 @@ class ASTLoc(Composite):
     begin = Loc
     end = Loc
 
+class Range(Composite):
+    low = Integer
+    high = Integer
+
 class SourceLval(Base):
     __tablename__ = 'sourcelval'
 
@@ -89,6 +93,21 @@ class Dua(Base):
             self.instr, self.fake_dua
             )
 
+class DuaBytes(Base):
+    __tablename__ = 'duabytes'
+
+    id = Column(BigInteger, primary_key=True)
+    dua_id = Column('dua', BigInteger, ForeignKey('dua.id'))
+    selected = Range.composite('selected')
+    all_labels = Column(postgresql.ARRAY(Integer))
+
+    dua = relationship("Dua")
+    def __str__(self):
+        return 'DUABytes[DUA[{}:{}, {}, {}]][{}:{}](labels={})'.format(
+            self.dua.lval.loc.filename, self.dua.lval.loc.begin.line,
+            self.dua.lval.ast_name, 'fake' if self.dua.fake_dua else 'real',
+            self.selected.low, self.selected.high, self.all_labels)
+
 class AttackPoint(Base):
     __tablename__ = 'attackpoint'
 
@@ -105,7 +124,7 @@ class AttackPoint(Base):
     def __str__(self):
         type_strs = ["ATP_FUNCTION_CALL", "ATP_POINTER_RW", "ATP_QUERY_POINT"]
         return 'ATP[{}](loc={}:{}, type={})'.format(
-            self.id, self.loc_filename, self.loc_begin_line, type_strs[self.typ]
+            self.id, self.loc.filename, self.loc.begin.line, type_strs[self.typ]
         )
 
 build_bugs = \
@@ -117,25 +136,34 @@ build_bugs = \
 class Bug(Base):
     __tablename__ = 'bug'
 
-    id = Column(BigInteger, primary_key=True)
-    trigger_id = Column('trigger', BigInteger, ForeignKey('dua.id'))
-    atp_id = Column('atp', BigInteger, ForeignKey('attackpoint.id'))
-    extra_dua_id = Column('extra_dua', BigInteger, ForeignKey('dua.id'))
+    # enum Type {
+    PTR_ADD = 0
+    RET_BUFFER = 1
+    REL_WRITE = 2
+    # };
+    type_strings = ['BUG_PTR_ADD', 'BUG_RET_BUFFER', 'BUG_REL_WRITE']
 
-    trigger = relationship("Dua", foreign_keys=trigger_id)
-    selected_bytes = Column(postgresql.ARRAY(Integer))
+    id = Column(BigInteger, primary_key=True)
+    type = Column(Integer)
+    trigger_id = Column('trigger', BigInteger, ForeignKey('duabytes.id'))
+    trigger_lval_id = Column('trigger_lval', BigInteger, ForeignKey('sourcelval.id'))
+    atp_id = Column('atp', BigInteger, ForeignKey('attackpoint.id'))
+
+    trigger = relationship("DuaBytes")
+    trigger_lval = relationship("SourceLval")
+
     max_liveness = Column(Float)
 
     atp = relationship("AttackPoint")
 
-    extra_dua = relationship("Dua", foreign_keys=extra_dua_id)
-    exploit_pad_offset = Column(Integer)
+    extra_duas = Column(postgresql.ARRAY(BigInteger))
 
     builds = relationship("Build", secondary=build_bugs,
                           back_populates="bugs")
 
     def __str__(self):
-        return 'Bug[{}](trigger={}, atp={})'.format(self.id, self.trigger, self.atp)
+        return 'Bug[{}](type={}, trigger={}, atp={})'.format(
+            self.id, Bug.type_strings[self.type], self.trigger, self.atp)
 
 class Build(Base):
     __tablename__ = 'build'
@@ -176,7 +204,10 @@ class LavaDatabase(object):
 
     # returns uninjected (not yet in the build table) possibly fake bugs
     def uninjected2(self, fake):
-        return self.uninjected().join(Bug.trigger).filter(Dua.fake_dua == fake)
+        return self.uninjected()\
+            .join(Bug.trigger)\
+            .join(DuaBytes.dua)\
+            .filter(Dua.fake_dua == fake)
 
     def uninjected_random(self, fake):
         return self.uninjected2(fake).order_by(func.random())
@@ -267,13 +298,11 @@ def run_cmd(cmd, cw_dir, envv, timeout, rr=False):
 def run_cmd_notimeout(cmd, cw_dir, envv):
     return run_cmd(cmd, cw_dir, envv, 1000000)
 
-
 lava = 0x6c617661
-
 
 # fuzz_offsets is a list of tainted byte offsets within file filename.
 # replace those bytes with random in a new file named new_filename
-def mutfile(filename, fuzz_offsets, new_filename, bug_id, kt=False, knob=0):
+def mutfile(filename, fuzz_labels, new_filename, bug_id, kt=False, knob=0):
     if kt:
         assert (knob < 2**16-1)
         lava_lower = lava & 0xffff
@@ -284,8 +313,8 @@ def mutfile(filename, fuzz_offsets, new_filename, bug_id, kt=False, knob=0):
     # collect set of tainted offsets in file.
     file_bytes = bytearray(open(filename).read())
     # change first 4 bytes in dua to magic value
-    for (i, offset) in zip(range(4), fuzz_offsets):
-#        print "i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes))
+    for (i, offset) in zip(range(4), fuzz_labels):
+        #print("i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes)))
         file_bytes[offset] = magic_val[i]
     with open(new_filename, 'w') as fuzzed_f:
         fuzzed_f.write(file_bytes)

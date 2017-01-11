@@ -337,11 +337,9 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                     pointerAddends.push_back(pointerAttack(bug));
                 } else if (bug->type == Bug::REL_WRITE) {
                     pointerAddends.push_back(
-                            MagicTest(bug) * LavaGet(
-                                db->load<Dua>(bug->extra_duas[0])));
+                            MagicTest(bug) * LavaGet(bug->extra_duas[0]));
                     valueAddends.push_back(
-                            MagicTest(bug) * LavaGet(
-                                db->load<Dua>(bug->extra_duas[1])));
+                            MagicTest(bug) * LavaGet(bug->extra_duas[1]));
                 }
             }
         } else if (LavaAction == LavaQueries) {
@@ -419,10 +417,10 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
         std::stringstream result_ss;
         for (const Bug *bug : map_get_default(bugs_with_atp_at, ast_loc)) {
             if (bug->type == Bug::RET_BUFFER) {
-                const Dua *buffer = db->load<Dua>(bug->extra_duas[0]);
+                const DuaBytes *buffer = db->load<DuaBytes>(bug->extra_duas[0]);
                 result_ss << LIf(MagicTest(bug).render(), {
-                        LAsm({ UCharCast(LStr(buffer->lval->ast_name)) +
-                                LDecimal(bug->exploit_pad_offset), },
+                        LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
+                                LDecimal(buffer->selected.low), },
                                 { "movl %0, %%esp", "ret" })});
             }
         }
