@@ -240,7 +240,7 @@ testinghost="$(jq -r '.testinghost // "docker"' $json)"
 fixupscript="$(jq -r .fixupscript $json)"
 makecmd="$(jq -r .make $json)"
 container="$(jq -r .docker $json)"
-
+install=$(jq -r .install $json)
 scripts="$lava/scripts"
 python="/usr/bin/python"
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
@@ -295,7 +295,7 @@ if [ $make -eq 1 ]; then
     progress 1 "Make step -- making 32-bit version with queries"
     lf="$logs/make.log"
     run_remote "$buildhost" "cd $sourcedir && $makecmd  >& $lf"
-    run_remote "$buildhost" "cd $sourcedir && make install   &>> $lf"
+    run_remote "$buildhost" "cd $sourcedir && $install   &>> $lf"
     tock
     echo "make complete $time_diff seconds"
 fi

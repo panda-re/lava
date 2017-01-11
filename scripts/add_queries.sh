@@ -92,7 +92,7 @@ progress "Making with btrace..."
 $lava/btrace/sw-btrace $(jq -r .make $json)
 
 progress "Installing..."
-$(jq -r .install $json)
+bash -c "$(jq -r .install $json)"
 
 
 # figure out where llvm is

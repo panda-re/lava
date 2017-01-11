@@ -170,7 +170,9 @@ def main():
     f = open("compile_commands.json", "w")
     f.write("[")
     for x in commands:
+        print(x)
         sourceFile = extractSourceFile(x, include_path)
+        print(sourceFile)
         if sourceFile is not None:
             if not firstFile:
                 f.write(",")
