@@ -354,7 +354,8 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             LExpr addToPointer = LBinop("+", std::move(pointerAddends));
             rewriter.InsertTextAfterToken(toAttack->getLocEnd(),
                     " + " + addToPointer.render());
-            if (parent && !isa<ParenExpr>(parent) && !isa<ArraySubscriptExpr>(parent)){
+            if (parent &&
+                    !isa<ParenExpr>(parent) && !isa<ArraySubscriptExpr>(parent)) {
                 rewriter.InsertTextBefore(toAttack->getLocStart(), "(");
                 rewriter.InsertTextAfterToken(parent->getLocEnd(), ")");
             }
@@ -447,7 +448,8 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
         }
         debug << " Injecting dua siphon at " << ExprStr(toSiphon) << "\n";
         debug << "    Text: " << before << "\n";
-        rewriter.InsertTextBefore(toSiphon->getLocStart(), before);
+        rewriter.InsertText(toSiphon->getLocStart(), before,
+                /* InsertAfter = */ false, /* indentNewLine = */ true);
     }
 };
 
