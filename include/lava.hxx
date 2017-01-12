@@ -225,13 +225,11 @@ struct Dua {
     uint64_t instr;     // instr count
     bool fake_dua;      // true iff this dua is fake (corresponds to untainted bytes)
 
-#pragma db index("DuaUniq") unique members(lval, inputfile, instr)
+#pragma db index("DuaUniq") unique members(lval, inputfile, instr, fake_dua)
 
     bool operator<(const Dua &other) const {
-         return std::tie(lval->id, viable_bytes, inputfile, max_tcn,
-                         max_cardinality, instr, fake_dua) <
-             std::tie(other.lval->id, other.viable_bytes, other.inputfile,
-                     other.max_tcn, other.max_cardinality, other.instr,
+         return std::tie(lval->id, inputfile, instr, fake_dua) <
+             std::tie(other.lval->id, other.inputfile, other.instr,
                      other.fake_dua);
     }
 
