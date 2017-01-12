@@ -283,7 +283,7 @@ inline bool disjoint(InputIt1 first1, InputIt1 last1,
     while (first1 != last1 && first2 != last2) {
         if (*first1 < *first2) ++first1;
         else if (*first2 < *first1) ++first2;
-        else return false;
+        else return false; // *first1 == *first2
     }
     return true;
 }
@@ -384,7 +384,7 @@ inline bool is_dua_dead(const Dua *dua) {
 
 template<Bug::Type bug_type>
 void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
-        std::vector<const DuaBytes *> extra_duas);
+        std::initializer_list<const DuaBytes *> extra_duas);
 
 void taint_query_pri(Panda__LogEntry *ple) {
     assert (ple != NULL);
@@ -682,7 +682,7 @@ struct BugParam {
 };
 template<Bug::Type bug_type>
 void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
-        std::vector<const DuaBytes *> extra_duas) {
+        std::initializer_list<const DuaBytes *> extra_duas_prechosen) {
     std::vector<unsigned long> skip_trigger_lvals;
     if (!is_new_atp) {
         // This means that all bug opportunities here might be repeats: same
@@ -717,6 +717,9 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
     // so we can do set-subtraction (recent_dead_duas - skip_trigger_lvals)
     // in linear time
     auto skip_it = skip_trigger_lvals.begin();
+    int num_extra_duas = Bug::num_extra_duas[bug_type] -
+        extra_duas_prechosen.size();
+    assert(num_extra_duas >= 0);
     for ( const auto &kvp : recent_dead_duas ) {
         unsigned long lval_id = kvp.first;
         // fast-forward skip_it so *skip_it >= lval_id
@@ -733,8 +736,8 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         const DuaBytes *trigger = create(DuaBytes{trigger_dua, selected});
 
         // Now select extra duas. One set of extra duas per (lval, atp, type).
-        int num_extra = Bug::num_extra_duas[bug_type] - extra_duas.size();
-        assert(num_extra >= 0);
+        std::vector<const DuaBytes *> extra_duas = extra_duas_prechosen;
+
         // Get list of duas observed before chosen trigger.
         // Otherwise a bug might partially trigger - some duas might not be
         // shoveled yet.
@@ -745,25 +748,27 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         auto distance = std::distance(begin_it, end_it);
         bool skip_this_trigger = false;
         std::vector<uint32_t> labels_so_far = trigger->all_labels;
-        if (num_extra < distance) { // do we have enough other duas??
-            for (int i = 0; i < num_extra; i++) {
-                const Dua *extra_dua;
+        if (num_extra_duas < distance) { // do we have enough other duas??
+            for (int i = 0; i < num_extra_duas; i++) {
                 const DuaBytes *extra;
-                unsigned tries = 0;
+                unsigned tries;
                 // Try five times to find an extra dua that is disjoint from
                 // trigger.
-                for (unsigned tries = 0; tries < 5; tries++) {
+                for (tries = 0; tries < 2; tries++) {
                     auto it = begin_it;
                     std::advance(it, rand() % distance);
-                    extra_dua = *it;
+                    const Dua *extra_dua = *it;
                     Range selected = get_dua_dead_range(extra_dua);
                     extra = create(DuaBytes(extra_dua, selected));
-                    if (disjoint(labels_so_far, trigger->all_labels)) break;
+                    if (disjoint(labels_so_far, extra->all_labels)) break;
                 }
-                if (tries == 5) break;
+                if (tries == 2) break;
                 extra_duas.push_back(extra);
-                merge_into(trigger->all_labels.begin(), trigger->all_labels.end(),
+
+                size_t new_size = extra->all_labels.size() + labels_so_far.size();
+                merge_into(extra->all_labels.begin(), extra->all_labels.end(),
                         labels_so_far);
+                assert(new_size == labels_so_far.size());
             }
         }
         if (extra_duas.size() < Bug::num_extra_duas[bug_type]) {
@@ -771,6 +776,7 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
             // Skip this trigger/type combo.
             continue;
         }
+        assert(labels_so_far.size() >= 4 * Bug::num_extra_duas[bug_type]);
 
         // Calculate maximum liveness for this bug's trigger.
         uint64_t c_max_liveness = 0;
