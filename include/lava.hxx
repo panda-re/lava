@@ -46,11 +46,11 @@ typedef std::vector<uint64_t> uint64_t_vec;
 namespace clang { class FullSourceLoc; }
 #pragma db value
 struct Loc {
-    unsigned line;
-    unsigned column;
+    uint32_t line;
+    uint32_t column;
 
     Loc() {}
-    Loc(unsigned line, unsigned column) : line(line), column(column) {}
+    Loc(uint32_t line, uint32_t column) : line(line), column(column) {}
     Loc(const clang::FullSourceLoc &full_loc);
 
     friend std::ostream &operator<<(std::ostream &os, const Loc &loc) {
@@ -58,7 +58,7 @@ struct Loc {
         return os;
     }
 
-    Loc adjust_line(unsigned line_offset) const {
+    Loc adjust_line(uint32_t line_offset) const {
         return Loc(line + line_offset, column);
     }
 
@@ -102,7 +102,7 @@ struct LavaASTLoc {
         return os;
     }
 
-    LavaASTLoc adjust_line(unsigned line_offset) const {
+    LavaASTLoc adjust_line(uint32_t line_offset) const {
         return LavaASTLoc(filename,
                 begin.adjust_line(line_offset),
                 end.adjust_line(line_offset));
@@ -152,7 +152,7 @@ struct Range {
 #pragma db object
 struct SourceLval { // was DuaKey
 #pragma db id auto
-    unsigned long id;
+    uint64_t id;
 
     LavaASTLoc loc;
 
@@ -184,7 +184,7 @@ struct SourceLval { // was DuaKey
 #pragma db object
 struct LabelSet {
 #pragma db id auto
-    unsigned long id;
+    uint64_t id;
 
     uint64_t ptr;           // Pointer to labelset during taint run
     std::string inputfile;  // Inputfile used for this run.
@@ -202,7 +202,7 @@ struct LabelSet {
 #pragma db object
 struct Dua {
 #pragma db id auto
-    unsigned long id;
+    uint64_t id;
 
 #pragma db not_null
     const SourceLval* lval;
@@ -259,7 +259,7 @@ struct Dua {
 #pragma db object
 struct DuaBytes {
 #pragma db id auto
-    unsigned long id;
+    uint64_t id;
 
 #pragma db not_null
     const Dua *dua;
@@ -294,7 +294,7 @@ struct DuaBytes {
 #pragma db object
 struct AttackPoint {
 #pragma db id auto
-    unsigned long id;
+    uint64_t id;
 
     LavaASTLoc loc;
 
@@ -348,7 +348,7 @@ struct AttackPoint {
 #pragma db object
 struct Bug {
 #pragma db id auto
-    unsigned long id;
+    uint64_t id;
 
     enum Type {
         PTR_ADD,
@@ -415,13 +415,13 @@ struct Bug {
 #pragma db view object(Bug) \
     query((?) + "ORDER BY" + Bug::trigger_lval, distinct)
 struct BugLval {
-    unsigned long trigger_lval;
+    uint64_t trigger_lval;
 };
 
 #pragma db object
 struct Build {
 #pragma db id auto
-    unsigned long id;
+    uint64_t id;
 
 #pragma db value_not_null
     // Bugs that were inserted into this build
@@ -439,7 +439,7 @@ struct Build {
 #pragma db object
 struct Run {
 #pragma db id auto
-    unsigned long id;
+    uint64_t id;
 
 #pragma db not_null
     const Build* build;
@@ -458,7 +458,7 @@ struct Run {
 #pragma db object
 struct SourceFunction {
 #pragma db id auto
-    unsigned long id;
+    uint64_t id;
 
     LavaASTLoc loc;
     std::string name;       // Function name
@@ -474,7 +474,7 @@ struct SourceFunction {
 #pragma db object
 struct Call {
 #pragma db id auto
-    unsigned long id;
+    uint64_t id;
 
     uint64_t call_instr;    // Instruction count at call
     uint64_t ret_instr;     // Instruction count at ret
