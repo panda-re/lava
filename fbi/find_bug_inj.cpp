@@ -895,7 +895,7 @@ int main (int argc, char **argv) {
         if ((num_entries_read % 10000) == 0) {
             printf("processed %lu pandalog entries \n", num_entries_read);
             std::cout << num_bugs_added_to_db << " added to db "
-                << recent_dead_duas.size() << " duas\n";
+                << recent_dead_duas.size() << " duas\n" << std::flush;
         }
 
         if (ple->taint_query_pri) {
