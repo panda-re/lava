@@ -254,13 +254,15 @@ logs="$directory/$name/logs"
 if [ $reset -eq 1 ]; then
     tick
     deldir "$sourcedir"
-    deldir "$logs"
     deldir "$bugsdir"
     deldir "$directory/$name/inputs"
     deldir "$directory/$name/*rr-*"
     # remove all plog files in the directory
     deldir "$directory/$name/*.plog"
-    /bin/mkdir -p $logs
+    progress 0 "Truncating logs..."
+    for i in "$logs"/*.log; do
+        echo > "$i"
+    done
     lf="$logs/dbwipe.log"
     progress 1  "Setting up lava db -- logging to $lf"
     run_remote "$pandahost" "dropdb -U postgres $db >& $lf || true"
