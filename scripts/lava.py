@@ -300,9 +300,9 @@ def run_cmd_notimeout(cmd, cw_dir, envv):
 
 lava = 0x6c617661
 
-# fuzz_offsets is a list of tainted byte offsets within file filename.
+# fuzz_labels_list is a list of listof tainted byte offsets within file filename.
 # replace those bytes with random in a new file named new_filename
-def mutfile(filename, fuzz_labels, new_filename, bug_id, kt=False, knob=0):
+def mutfile(filename, fuzz_labels_list, new_filename, bug_id, kt=False, knob=0):
     if kt:
         assert (knob < 2**16-1)
         lava_lower = lava & 0xffff
@@ -313,8 +313,10 @@ def mutfile(filename, fuzz_labels, new_filename, bug_id, kt=False, knob=0):
     # collect set of tainted offsets in file.
     file_bytes = bytearray(open(filename).read())
     # change first 4 bytes in dua to magic value
-    for (i, offset) in zip(range(4), fuzz_labels):
-        #print("i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes)))
-        file_bytes[offset] = magic_val[i]
+    print(fuzz_labels_list)
+    for fuzz_labels in fuzz_labels_list:
+        for (i, offset) in zip(range(4), fuzz_labels):
+            #print("i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes)))
+            file_bytes[offset] = magic_val[i]
     with open(new_filename, 'w') as fuzzed_f:
         fuzzed_f.write(file_bytes)

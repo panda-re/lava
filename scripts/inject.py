@@ -17,7 +17,7 @@ import time
 
 from os.path import basename, dirname, join, abspath
 
-from lava import LavaDatabase, Bug, Build, Run, \
+from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     run_cmd, run_cmd_notimeout, mutfile
 
 start_time = time.time()
@@ -423,11 +423,17 @@ if __name__ == "__main__":
             fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
             print bug
             print "fuzzed = [%s]" % fuzzed_input
+            mutfile_kwargs = {}
             if args.knobTrigger != -1:
                 print "Knob size: {}".format(args.knobTrigger)
-                mutfile(orig_input, bug.trigger.all_labels, fuzzed_input, bug.id, True, args.knobTrigger)
-            else:
-                mutfile(orig_input, bug.trigger.all_labels, fuzzed_input, bug.id)
+                mutfile_kwargs = { 'kt': True, 'knob': arg.knobTrigger }
+
+            extra_query = db.session.query(DuaBytes)\
+                .filter(DuaBytes.id.in_(bug.extra_duas))
+            fuzz_labels_list = [bug.trigger.all_labels]
+            fuzz_labels_list.extend([d.all_labels for d in extra_query])
+            mutfile(orig_input, fuzz_labels_list, fuzzed_input, bug.id,
+                    **mutfile_kwargs)
             print "testing with fuzzed input for {} of {} potential.  ".format(
                 bug_index + 1, len(bugs_to_inject))
             print "{} real. bug {}".format(len(real_bugs), bug.id)
