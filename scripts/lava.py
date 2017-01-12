@@ -313,7 +313,6 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug_id, kt=False, knob=0):
     # collect set of tainted offsets in file.
     file_bytes = bytearray(open(filename).read())
     # change first 4 bytes in dua to magic value
-    print(fuzz_labels_list)
     for fuzz_labels in fuzz_labels_list:
         for (i, offset) in zip(range(4), fuzz_labels):
             #print("i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes)))
