@@ -27,6 +27,13 @@ struct LExpr {
     std::vector<std::shared_ptr<LExpr>> args;
     std::vector<std::string> instrs;
 
+    LExpr(Type t, uint32_t value, std::string str)
+        : t(t), value(value), str(str) {}
+
+    LExpr(Type t, uint32_t value, std::string str,
+            std::initializer_list<std::shared_ptr<LExpr>> args)
+        : t(t), value(value), str(str), args(args) {}
+
     LExpr(Type t, uint32_t value, std::string str,
             std::initializer_list<LExpr> init_args,
             std::initializer_list<std::string> instrs)
@@ -98,15 +105,15 @@ struct LExpr {
 };
 
 LExpr LStr(std::string str) {
-    return LExpr(LExpr::STR, 0, str, {});
+    return LExpr(LExpr::STR, 0, str);
 }
 
 LExpr LHex(uint32_t value) {
-    return LExpr(LExpr::HEX, value, "", {});
+    return LExpr(LExpr::HEX, value, "");
 }
 
 LExpr LDecimal(uint32_t value) {
-    return LExpr(LExpr::DECIMAL, value, "", {});
+    return LExpr(LExpr::DECIMAL, value, "");
 }
 
 // Binary operator.
@@ -156,16 +163,17 @@ LExpr LIf(std::string cond, std::initializer_list<LExpr> stmts) {
     return LExpr(LExpr::IF, 0, cond, stmts);
 }
 
-LExpr LIf(std::string cond, std::vector<LExpr> stmts) {
-    return LExpr(LExpr::IF, 0, cond, stmts);
-}
-
 LExpr LIf(std::string cond, LExpr stmt) {
     return LExpr(LExpr::IF, 0, cond, { stmt });
 }
 
 LExpr LCast(std::string type, LExpr value) {
-    return LExpr(LExpr::CAST, 0, type, { value });
+    if (value.t == LExpr::CAST) {
+        // Casting twice is a no-op.
+        return LExpr(LExpr::CAST, 0, type, { value.args[0] });
+    } else {
+        return LExpr(LExpr::CAST, 0, type, { value });
+    }
 }
 
 LExpr LIndex(LExpr array, uint32_t index) {
@@ -192,11 +200,10 @@ LExpr LavaSet(const Bug *bug) {
     Range selected = bug->trigger->selected;
     assert(selected.size() == 4);
 
-    LExpr pointer = selected.low
-        ? UCharCast(LStr(lval_name)) + LDecimal(selected.low)
-        : LStr(lval_name);
-    LExpr value = LIndex(UIntCast(pointer), 0);
-    return LFunc("lava_set", { LDecimal(bug->trigger->id), value });
+    LExpr pointer = selected.low % 4 == 0
+        ? UIntCast(LStr(lval_name)) + LDecimal(selected.low / 4)
+        : UIntCast(UCharCast(LStr(lval_name)) + LDecimal(selected.low));
+    return LFunc("lava_set", { LDecimal(bug->trigger->id), LIndex(pointer, 0) });
 }
 
 template<typename UInt>
