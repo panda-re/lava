@@ -147,7 +147,7 @@ std::stringstream new_start_of_file_src;
 // Map of bugs with attack points at a given loc.
 std::map<LavaASTLoc, std::vector<const Bug *>> bugs_with_atp_at;
 // Map of bugs with siphon of a given  lval name at a given loc.
-std::map<LavaASTLoc, std::vector<const Bug *>> bugs_with_dua_at;
+std::map<LavaASTLoc, std::vector<const DuaBytes *>> siphons_at;
 
 #define MAX_STRNLEN 64
 ///////////////// HELPER FUNCTIONS BEGIN ////////////////////
@@ -333,6 +333,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             // this should be a function bug -> LExpr to add.
             auto pointerAttack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
             for (const Bug *bug : injectable_bugs) {
+                assert(bug->atp->type == atpType);
                 if (bug->type == Bug::PTR_ADD) {
                     pointerAddends.push_back(pointerAttack(bug));
                 } else if (bug->type == Bug::REL_WRITE) {
@@ -403,14 +404,12 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
     */
     // Each lval gets an if clause containing one siphon
     std::string SiphonsForLocation(LavaASTLoc ast_loc) {
-        const std::vector<const Bug *> &bugs_here =
-            map_get_default(bugs_with_dua_at, ast_loc);
-
         std::stringstream result_ss;
-        for (const Bug *bug : bugs_here) {
+        for (const DuaBytes *dua_bytes : map_get_default(siphons_at, ast_loc)) {
             returnCode |= INSERTED_DUA_SIPHON;
-            result_ss << LIf(bug->trigger_lval->ast_name, LavaSet(bug));
+            result_ss << LIf(dua_bytes->dua->lval->ast_name, LavaSet(dua_bytes));
         }
+        siphons_at.erase(ast_loc); // Only inject once.
         return result_ss.str();
     }
 
@@ -425,6 +424,7 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
                                 { "movl %0, %%esp", "ret" })});
             }
         }
+        bugs_with_atp_at.erase(ast_loc); // Only inject once.
         return result_ss.str();
     }
 
@@ -474,21 +474,20 @@ struct AtpPointerQueryPointHandler : public LavaMatchHandler {
     virtual void run(const MatchFinder::MatchResult &Result) {
         const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("innerExpr");
         const Expr *parent = Result.Nodes.getNodeAs<Expr>("innerExprParent");
-        bool memWrite = false;
         const Expr *writeValue = nullptr;
+        AttackPoint::Type atpType = AttackPoint::POINTER_READ;
         // memwrite style attack points will have rhs bound to a node
         auto it = Result.Nodes.getMap().find("rhs");
         if (it != Result.Nodes.getMap().end()){
-            memWrite = true;
+            atpType = AttackPoint::POINTER_WRITE;
             writeValue = it->second.get<Expr>();
             assert(writeValue);
         }
         if (!InMainFile(toAttack)) return;
-        LavaASTLoc p = GetASTLoc(toAttack);
 
-        bool memRead = !memWrite;
-        if ((memWrite && MEM_WRITE_ATP) || (memRead && MEM_READ_ATP)) {
-            AttackExpression(toAttack, parent, writeValue, AttackPoint::POINTER_RW);
+        if ((MEM_WRITE_ATP && atpType == AttackPoint::POINTER_WRITE)
+                || (MEM_READ_ATP && atpType == AttackPoint::POINTER_READ)) {
+            AttackExpression(toAttack, parent, writeValue, atpType);
         }
     }
 };
@@ -731,10 +730,17 @@ int main(int argc, const char **argv) {
                 [&](uint32_t bug_id) { return db->load<Bug>(bug_id); });
 
         for (const Bug *bug : bugs) {
-            LavaASTLoc dua_loc = bug->trigger_lval->loc.adjust_line(MainInstrCorrection);
             LavaASTLoc atp_loc = bug->atp->loc.adjust_line(MainInstrCorrection);
             bugs_with_atp_at[atp_loc].push_back(bug);
-            bugs_with_dua_at[dua_loc].push_back(bug);
+
+            LavaASTLoc dua_loc = bug->trigger_lval->loc.adjust_line(MainInstrCorrection);
+            siphons_at[dua_loc].push_back(bug->trigger);
+
+            for (uint64_t dua_id : bug->extra_duas) {
+                const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
+                LavaASTLoc extra_loc = dua_bytes->dua->lval->loc.adjust_line(MainInstrCorrection);
+                siphons_at[extra_loc].push_back(dua_bytes);
+            }
         }
     }
     debug << "about to call Tool.run \n";

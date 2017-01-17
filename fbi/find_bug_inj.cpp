@@ -538,8 +538,8 @@ void taint_query_pri(Panda__LogEntry *ple) {
             const AttackPoint *pad_atp;
             bool is_new_atp;
             std::tie(pad_atp, is_new_atp) = create_full(
-                    AttackPoint::QueryPoint(
-                        ast_loc, std::string(si->astnodename)));
+                    AttackPoint{0, ast_loc, std::string(si->astnodename),
+                        AttackPoint::QUERY_POINT});
             if (len >= 20 && decimate_by_type(Bug::RET_BUFFER)) {
                 Range range = get_dua_exploit_pad(dua);
                 const DuaBytes *dua_bytes = create(DuaBytes(dua, range));
@@ -829,7 +829,9 @@ void attack_point_lval_usage(Panda__LogEntry *ple) {
 
     // Don't decimate PTR_ADD bugs.
     record_injectable_bugs_at<Bug::PTR_ADD>(atp, is_new_atp, { });
-    record_injectable_bugs_at<Bug::REL_WRITE>(atp, is_new_atp, { });
+    if ((AttackPoint::Type)pleatp->info == AttackPoint::POINTER_WRITE) {
+        record_injectable_bugs_at<Bug::REL_WRITE>(atp, is_new_atp, { });
+    }
 
     t.commit();
 }

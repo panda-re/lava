@@ -300,7 +300,8 @@ struct AttackPoint {
 
     enum Type {
         FUNCTION_ARG,
-        POINTER_RW,
+        POINTER_READ,
+        POINTER_WRITE,
         QUERY_POINT,
         TYPE_END
     } type;
@@ -321,25 +322,13 @@ struct AttackPoint {
     friend std::ostream &operator<<(std::ostream &os, const AttackPoint &m) {
         constexpr const char *names[TYPE_END] = {
             "ATP_FUNCTION_ARG",
-            "ATP_POINTER_RW",
+            "ATP_POINTER_READ",
+            "ATP_POINTER_WRITE",
             "ATP_QUERY_POINT",
         };
         os << "ATP [" << m.loc.filename << " " << m.loc.begin << "] {";
         os << names[m.type] << "}";
         return os;
-    }
-
-    static inline AttackPoint OldStyle(LavaASTLoc loc, std::string ast_name, Type type) {
-        return AttackPoint{0, loc, ast_name, type};
-    }
-    static AttackPoint FunctionArg(LavaASTLoc loc, std::string ast_name) {
-        return OldStyle(loc, ast_name, FUNCTION_ARG);
-    }
-    static AttackPoint PointerRW(LavaASTLoc loc, std::string ast_name) {
-        return OldStyle(loc, ast_name, POINTER_RW);
-    }
-    static AttackPoint QueryPoint(LavaASTLoc loc, std::string ast_name) {
-        return AttackPoint{0, loc, ast_name, QUERY_POINT};
     }
 };
 

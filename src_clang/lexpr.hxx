@@ -204,18 +204,18 @@ LExpr LavaGet(uint64_t val) {
 LExpr LavaGet(const Bug *bug) { return LavaGet(bug->trigger->id); }
 LExpr LavaGet(const DuaBytes *dua_bytes) { return LavaGet(dua_bytes->id); }
 
-LExpr UCharCast(LExpr arg) { return LCast("unsigned char *", arg); }
-LExpr UIntCast(LExpr arg) { return LCast("unsigned int *", arg); }
+LExpr UCharCast(LExpr arg) { return LCast("const unsigned char *", arg); }
+LExpr UIntCast(LExpr arg) { return LCast("const unsigned int *", arg); }
 
-LExpr LavaSet(const Bug *bug) {
-    const std::string &lval_name = bug->trigger_lval->ast_name;
-    Range selected = bug->trigger->selected;
+LExpr LavaSet(const DuaBytes *dua_bytes) {
+    const std::string &lval_name = dua_bytes->dua->lval->ast_name;
+    Range selected = dua_bytes->selected;
     assert(selected.size() == 4);
 
     LExpr pointer = selected.low % 4 == 0
         ? UIntCast(LStr(lval_name)) + LDecimal(selected.low / 4)
         : UIntCast(UCharCast(LStr(lval_name)) + LDecimal(selected.low));
-    return LFunc("lava_set", { LDecimal(bug->trigger->id), LDeref(pointer) });
+    return LFunc("lava_set", { LDecimal(dua_bytes->id), LDeref(pointer) });
 }
 
 template<typename UInt>

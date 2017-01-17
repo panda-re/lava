@@ -117,12 +117,18 @@ class AttackPoint(Base):
 
     # enum Type {
     FUNCTION_CALL = 0
-    POINTER_RW = 1
-    QUERY_POINT = 2
+    POINTER_READ = 1
+    POINTER_WRITE = 2
+    QUERY_POINT = 3
     # } type;
 
     def __str__(self):
-        type_strs = ["ATP_FUNCTION_CALL", "ATP_POINTER_RW", "ATP_QUERY_POINT"]
+        type_strs = [
+            "ATP_FUNCTION_CALL",
+            "ATP_POINTER_READ",
+            "ATP_POINTER_WRITE",
+            "ATP_QUERY_POINT"
+        ]
         return 'ATP[{}](loc={}:{}, type={})'.format(
             self.id, self.loc.filename, self.loc.begin.line, type_strs[self.typ]
         )
