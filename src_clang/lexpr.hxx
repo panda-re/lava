@@ -19,7 +19,7 @@ static void infix(InputIt first, InputIt last, std::ostream &os,
 
 struct LExpr {
     enum Type {
-        STR, HEX, DECIMAL, BINOP, FUNC, BLOCK, IF, CAST, INDEX, ASM
+        STR, HEX, DECIMAL, BINOP, FUNC, BLOCK, IF, CAST, INDEX, ASM, DEREF
     } t;
 
     uint32_t value;
@@ -88,9 +88,15 @@ struct LExpr {
             os << "if (" << expr.str << ") ";
             expr.infix(os, "{\n", ";\n", ";\n}\n");
         } else if (expr.t == LExpr::CAST) {
-            os << "((" << expr.str << ")" << *expr.args.at(0) << ")";
+            // Careful about precedence. Only problem is (CAST)INDEX[0].
+            os << "(" << expr.str << ")" << *expr.args.at(0);
         } else if (expr.t == LExpr::INDEX) {
-            os << *expr.args.at(0) << "[" << expr.value << "]";
+            // In ((CAST)X)[0], add extra parens.
+            const LExpr &arg = *expr.args.at(0);
+            if (arg.t == LExpr::CAST) os << "(";
+            os << arg;
+            if (arg.t == LExpr::CAST) os << ")";
+            os << "[" << expr.value << "]";
         } else if (expr.t == LExpr::ASM) {
             os << "__asm__(";
             ::infix(expr.instrs.cbegin(), expr.instrs.cend(), os,
@@ -98,6 +104,8 @@ struct LExpr {
             os << " : : ";
             expr.infix(os, "\"rm\" (", "), \"rm\" (", ")");
             os << ")";
+        } else if (expr.t == LExpr::DEREF) {
+            os << '*' << *expr.args.at(0);
         } else { assert(false && "Bad expr!"); }
 
         return os;
@@ -185,6 +193,10 @@ LExpr LAsm(std::initializer_list<LExpr> args,
     return LExpr(LExpr::ASM, 0, "", args, instrs);
 }
 
+LExpr LDeref(LExpr ptr) {
+    return LExpr(LExpr::DEREF, 0, "", { ptr });
+}
+
 LExpr LavaGet(uint64_t val) {
     return LFunc("lava_get", { LDecimal(val) });
 }
@@ -203,7 +215,7 @@ LExpr LavaSet(const Bug *bug) {
     LExpr pointer = selected.low % 4 == 0
         ? UIntCast(LStr(lval_name)) + LDecimal(selected.low / 4)
         : UIntCast(UCharCast(LStr(lval_name)) + LDecimal(selected.low));
-    return LFunc("lava_set", { LDecimal(bug->trigger->id), LIndex(pointer, 0) });
+    return LFunc("lava_set", { LDecimal(bug->trigger->id), LDeref(pointer) });
 }
 
 template<typename UInt>
