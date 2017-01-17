@@ -40,6 +40,7 @@ extern "C" {
 #include "lava.hxx"
 #include "lava-odb.hxx"
 #include "lexpr.hxx"
+#include "vector_set.hxx"
 
 // This makes sure assertions actually occur.
 #ifdef NDEBUG
@@ -147,7 +148,7 @@ std::stringstream new_start_of_file_src;
 // Map of bugs with attack points at a given loc.
 std::map<LavaASTLoc, std::vector<const Bug *>> bugs_with_atp_at;
 // Map of bugs with siphon of a given  lval name at a given loc.
-std::map<LavaASTLoc, std::vector<const DuaBytes *>> siphons_at;
+std::map<LavaASTLoc, vector_set<const DuaBytes *>> siphons_at;
 
 #define MAX_STRNLEN 64
 ///////////////// HELPER FUNCTIONS BEGIN ////////////////////
@@ -734,12 +735,12 @@ int main(int argc, const char **argv) {
             bugs_with_atp_at[atp_loc].push_back(bug);
 
             LavaASTLoc dua_loc = bug->trigger_lval->loc.adjust_line(MainInstrCorrection);
-            siphons_at[dua_loc].push_back(bug->trigger);
+            siphons_at[dua_loc].insert(bug->trigger);
 
             for (uint64_t dua_id : bug->extra_duas) {
                 const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
                 LavaASTLoc extra_loc = dua_bytes->dua->lval->loc.adjust_line(MainInstrCorrection);
-                siphons_at[extra_loc].push_back(dua_bytes);
+                siphons_at[extra_loc].insert(dua_bytes);
             }
         }
     }
