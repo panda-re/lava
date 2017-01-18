@@ -19,6 +19,7 @@ import tempfile
 import subprocess32
 from subprocess32 import PIPE
 import shutil
+import shlex
 import time
 import pipes
 import json
@@ -87,9 +88,6 @@ assert 'tarfile' in project
 assert 'library_path' in project
 # namespace in db for prospective bugs
 assert 'db' in project
-# process name
-#assert 'proc_name' in project
-proc_name = os.path.basename(project['command'].split()[0])
 
 chaff = False
 if 'chaff' in project:
@@ -234,28 +232,50 @@ tick()
 print('')
 progress("Starting first and only replay, tainting on file open...")
 
+# process name
+proc_name = os.path.basename(shlex.split(command)[0])
 
 pandalog = "%s/%s/queries-%s.plog" % (project['directory'], project['name'], os.path.basename(isoname))
 print("pandalog = [%s] " % pandalog)
 
-pri_taint_args = "hypercall"
-if chaff:
-    pri_taint_args += ",log_untainted"
+panda_args = {
+    'pri': {},
+    'pri_dwarf': {
+        'proc': proc_name,
+        'g_debugpath': installdir,
+        'h_debugpath': installdir
+    },
+    'pri_taint': {
+        'hypercall': True,
+        'chaff': chaff
+    },
+    'taint2': { 'no_tp': True },
+    'tainted_branch': {},
+    'file_taint': {
+        'pos': True,
+    }
+}
 
-qemu_args = [project['qemu'], '-replay', isoname,
-        '-pandalog', pandalog,
-        '-os', panda_os_string,
-        '-panda', 'pri',
-        '-panda', 'pri_dwarf:proc=%s,g_debugpath=%s,h_debugpath=%s' % (proc_name, installdir, installdir),
-        '-panda', 'pri_taint:' + pri_taint_args,
-        '-panda', 'taint2:no_tp',
-        '-panda', 'tainted_branch',
-        '-panda', 'file_taint:pos,filename={}{}{}'.format(
-            input_file_guest,
-            ',first_instr=1' if 'use_stdin' in project else ',enable_taint_on_open=true',
-            ',use_stdin=challenge' if 'use_stdin' in project else '')]
+if 'use_stdin' in project and project['use_stdin']:
+    panda_args['file_taint']['first_instr'] = 1
+    panda_args['file_taint']['use_stdin'] = proc_name
+else:
+    panda_args['file_taint']['enable_taint_on_open'] = True
 
-dprint ("qemu args: [%s]" % (" ".join(qemu_args)))
+qemu_args = [
+    project['qemu'], '-replay', isoname,
+    '-pandalog', pandalog, '-os', panda_os_string
+]
+
+for plugin, plugin_args in panda_args.iteritems():
+    qemu_args.append('-panda')
+    arg_string = ",".join(["{}={}".format(arg, val) for arg, val in plugin_args.iteritems()])
+    qemu_args.append('{}:{}'.format(plugin, arg_string))
+
+# Use -panda-plugin-arg to account for commas and colons in filename.
+qemu_args.extend(['-panda-arg', 'file_taint:filename=' + input_file_guest])
+
+dprint("qemu args: [{}]".format(subprocess32.list2cmdline(qemu_args)))
 try:
     subprocess32.check_call(qemu_args, stderr=subprocess32.STDOUT)
 except subprocess32.CalledProcessError:
