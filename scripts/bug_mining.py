@@ -250,9 +250,10 @@ qemu_args = [project['qemu'], '-replay', isoname,
         '-panda', 'pri_taint:' + pri_taint_args,
         '-panda', 'taint2:no_tp',
         '-panda', 'tainted_branch',
-        '-panda', 'file_taint:pos,enable_taint_on_open={},filename={}'.format(
-            'false' if 'use_stdin' in project else 'true',
-            'stdin' if 'use_stdin' in project else input_file_guest)]
+        '-panda', 'file_taint:pos,{}filename={}{}'.format(
+            input_file_guest,
+            ',first_instr=1' if 'use_stdin' in project else ',enable_taint_on_open=true',
+            ',use_stdin=challenge' if 'use_stdin' in project else '')]
 
 dprint ("qemu args: [%s]" % (" ".join(qemu_args)))
 try:
