@@ -214,6 +214,7 @@ if __name__ == "__main__":
     bugs_install = join(bugs_build, 'lava-install')
     # Make sure directories and btrace is ready for bug injection.
     def run(args, **kwargs):
+        if isinstance(args, str): args = shlex.split(args)
         print "run(", subprocess32.list2cmdline(args), ")"
         subprocess32.check_call(args, cwd=bugs_build,
                 stdout=sys.stdout, stderr=sys.stderr, **kwargs)
@@ -233,6 +234,7 @@ if __name__ == "__main__":
         run(shlex.split(project['configure']) + ['--prefix=' + bugs_install])
         run([join(lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
     sys.stdout.flush()
+    sys.stderr.flush()
 
     lavadb = join(top_dir, 'lavadb')
 
