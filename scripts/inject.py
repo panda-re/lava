@@ -398,28 +398,30 @@ if __name__ == "__main__":
         print "------------\n"
         # first, try the original file
         print "TESTING -- ORIG INPUT"
-        orig_input = join(top_dir, 'inputs', basename(input_files.pop()))
-        (rv, outp) = run_modified_program(bugs_install, orig_input, timeout)
-        if rv != 0:
-            print "***** buggy program fails on original input!"
-            assert False
-        else:
-            print "buggy program succeeds on original input"
-        print "retval = %d" % rv
-        print "output:"
-        lines = outp[0] + " ; " + outp[1]
-#            print lines
-        if update_db:
-            db.session.add(Run(build=build, fuzzed=None, exitcode=rv,
-                               output=lines, success=True))
+        for input_file in input_files:
+            unfuzzed_input = join(top_dir, 'inputs', basename(input_file))
+            (rv, outp) = run_modified_program(bugs_install, unfuzzed_input, timeout)
+            if rv != 0:
+                print "***** buggy program fails on original input!"
+                assert False
+            else:
+                print "buggy program succeeds on original input", input_file
+            print "retval = %d" % rv
+            print "output:"
+            lines = outp[0] + " ; " + outp[1]
+    #            print lines
+            if update_db:
+                db.session.add(Run(build=build, fuzzed=None, exitcode=rv,
+                                output=lines, success=True))
         print "SUCCESS"
         # second, fuzz it with the magic value
         print "TESTING -- FUZZED INPUTS"
-        suff = get_suffix(orig_input)
-        pref = orig_input[:-len(suff)] if suff != "" else orig_input
         real_bugs = []
         fuzzed_inputs = []
         for bug_index, bug in enumerate(bugs_to_inject):
+            unfuzzed_input = join(top_dir, 'inputs', basename(bug.trigger.dua.inputfile))
+            suff = get_suffix(unfuzzed_input)
+            pref = unfuzzed_input[:-len(suff)] if suff != "" else unfuzzed_input
             fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
             print bug
             print "fuzzed = [%s]" % fuzzed_input
@@ -432,7 +434,7 @@ if __name__ == "__main__":
                 .filter(DuaBytes.id.in_(bug.extra_duas))
             fuzz_labels_list = [bug.trigger.all_labels]
             fuzz_labels_list.extend([d.all_labels for d in extra_query])
-            mutfile(orig_input, fuzz_labels_list, fuzzed_input, bug.id,
+            mutfile(unfuzzed_input, fuzz_labels_list, fuzzed_input, bug.id,
                     **mutfile_kwargs)
             print "testing with fuzzed input for {} of {} potential.  ".format(
                 bug_index + 1, len(bugs_to_inject))
