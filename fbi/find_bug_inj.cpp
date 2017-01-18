@@ -482,7 +482,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
         if (num_viable_bytes >= LAVA_MAGIC_VALUE_SIZE) {
             is_dua = true;
         }
-    } else if (len - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
+    } else if (tqh->n_taint_query - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
         dprintf("not enough taint -- what about non-taint?\n");
         dprintf("tqh->n_taint_query=%d\n", (int) tqh->n_taint_query);
         dprintf("len=%d num_tainted=%d\n",len, num_tainted);
