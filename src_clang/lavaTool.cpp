@@ -52,6 +52,7 @@ extern "C" {
 
 #define DEBUG 0
 #define MATCHER_DEBUG 0
+#define OVERWRITE 1
 
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
@@ -203,7 +204,9 @@ bool QueriableType(const Type *lval_type) {
 
 bool IsArgAttackable(const Expr *arg) {
     debug << "IsArgAttackable \n";
-    if (DEBUG) arg->dump();
+#if MATCHER_DEBUG
+    arg->dump();
+#endif
     const Type *t = arg->IgnoreParenImpCasts()->getType().getTypePtr();
     if (dyn_cast<OpaqueValueExpr>(arg) || t->isStructureType() || t->isEnumeralType() || t->isIncompleteType()) {
         return false;
@@ -321,7 +324,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         std::vector<LExpr> pointerAddends;
         std::vector<LExpr> valueAddends;
 
-        debug << "AttackExpression\n";
+        debug << "Inserting expression attack (AttackExpression).\n";
         if (LavaAction == LavaInjectBugs) {
             const std::vector<const Bug*> &injectable_bugs =
                 map_get_default(bugs_with_atp_at, ast_loc);
@@ -363,7 +366,8 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             }
         }
 
-        if (writeValue && !valueAddends.empty()) {
+        if (!valueAddends.empty()) {
+            assert(writeValue);
             LExpr addToValue = LBinop("+", std::move(valueAddends));
             rewriter.InsertTextBefore(writeValue->getLocStart(), "(");
             rewriter.InsertTextAfterToken(writeValue->getLocEnd(),
@@ -387,7 +391,9 @@ struct MatcherDebugHandler : public LavaMatchHandler {
         for (BoundNodes::IDToNodeMap::const_iterator n = Result.Nodes.getMap().begin();
                                                      n != Result.Nodes.getMap().end(); ++n){
             if ((stmt = n->second.get<Stmt>())){
-                debug << n->first << ": " << ExprStr(stmt) << "\n";
+                debug << n->first << ": " << ExprStr(stmt) << " ";
+                stmt->getLocStart().dump(rewriter.getSourceMgr());
+                debug << "\n";
             }
         }
         return;
@@ -410,8 +416,14 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
             returnCode |= INSERTED_DUA_SIPHON;
             result_ss << LIf(dua_bytes->dua->lval->ast_name, LavaSet(dua_bytes));
         }
+
+        std::string result = result_ss.str();
+        if (!result.empty()) {
+            debug << " Injecting dua siphon at " << ast_loc << "\n";
+            debug << "    Text: " << result << "\n";
+        }
         siphons_at.erase(ast_loc); // Only inject once.
-        return result_ss.str();
+        return result;
     }
 
     std::string AttackRetBuffer(LavaASTLoc ast_loc) {
@@ -434,7 +446,7 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
         if (!InMainFile(toSiphon)) return;
 
         LavaASTLoc ast_loc = GetASTLoc(toSiphon);
-        debug << "Have a pri SIMPLE query point @ " << ast_loc << "!\n";
+        debug << "Have a query point @ " << ast_loc << "!\n";
 
         std::string before;
         if (LavaAction == LavaQueries) {
@@ -447,19 +459,19 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
         } else if (LavaAction == LavaInjectBugs) {
             before = SiphonsForLocation(ast_loc) + AttackRetBuffer(ast_loc);
         }
-        debug << " Injecting dua siphon at " << ExprStr(toSiphon) << "\n";
-        debug << "    Text: " << before << "\n";
         rewriter.InsertText(toSiphon->getLocStart(), before,
                 /* InsertAfter = */ false, /* indentNewLine = */ true);
     }
 };
 
-struct ArgAtpPointHandler : public LavaMatchHandler {
+struct FunctionArgAtpHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
     virtual void run(const MatchFinder::MatchResult &Result) {
         const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("arg");
         if (!InMainFile(toAttack)) return;
+
+        debug << "FunctionArgAtpHandler @ " << GetASTLoc(toAttack) << "\n";
 
         if (FN_ARG_ATP) {
             AttackExpression(toAttack, nullptr, nullptr, AttackPoint::FUNCTION_ARG);
@@ -467,7 +479,7 @@ struct ArgAtpPointHandler : public LavaMatchHandler {
     }
 };
 
-struct AtpPointerQueryPointHandler : public LavaMatchHandler {
+struct PointerAtpHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
     /* TODO: add description of what type of attacks we are doing here */
@@ -475,8 +487,12 @@ struct AtpPointerQueryPointHandler : public LavaMatchHandler {
     virtual void run(const MatchFinder::MatchResult &Result) {
         const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("innerExpr");
         const Expr *parent = Result.Nodes.getNodeAs<Expr>("innerExprParent");
+        LavaASTLoc ast_loc = GetASTLoc(toAttack);
+        debug << "PointerAtpHandler @ " << ast_loc << "\n";
+
         const Expr *writeValue = nullptr;
         AttackPoint::Type atpType = AttackPoint::POINTER_READ;
+
         // memwrite style attack points will have rhs bound to a node
         auto it = Result.Nodes.getMap().find("rhs");
         if (it != Result.Nodes.getMap().end()){
@@ -535,8 +551,8 @@ class LavaTaintQueryASTConsumer : public ASTConsumer {
 public:
     LavaTaintQueryASTConsumer(Rewriter &rewriter, std::map<std::string,uint32_t> &StringIDs) :
         HandlerMatcherDebug(rewriter, StringIDs),
-        HandlerForArgAtpPoint(rewriter, StringIDs),
-        HandlerForAtpPointerQueryPoint(rewriter, StringIDs),
+        HandlerForFunctionArgAtp(rewriter, StringIDs),
+        HandlerForPointerAtp(rewriter, StringIDs),
         HandlerForPriQueryPointSimple(rewriter, StringIDs)
     {
         StatementMatcher memoryAccessMatcher =
@@ -554,7 +570,7 @@ public:
         StatementMatcher memWriteMatcher =
             expr(allOf(
                     memoryAccessMatcher,
-                    expr(hasParent(binaryOperator(allOf(
+                    expr(hasAncestor(binaryOperator(allOf(
                                     hasOperatorName("="),
                                     hasRHS(expr().bind("rhs")))))).bind("lhs")));
 
@@ -577,7 +593,7 @@ public:
         Matcher.addMatcher(
                 callExpr(
                     forEachArgMatcher(expr(isAttackableMatcher()).bind("arg"))).bind("ce"),
-                &IFNOTDEBUG(HandlerForArgAtpPoint)
+                &IFNOTDEBUG(HandlerForFunctionArgAtp)
                 );
 
         // an array subscript expression is composed of base[index]
@@ -585,14 +601,14 @@ public:
         // and matches all nodes of: base[innerExprParent(innerExpr)] = ...
         Matcher.addMatcher(
                 memWriteMatcher,
-                &IFNOTDEBUG(HandlerForAtpPointerQueryPoint)
+                &IFNOTDEBUG(HandlerForPointerAtp)
                 );
 
         //// matches all nodes of: ... *innerExprParent(innerExpr) ...
         //// and matches all nodes of: ... base[innerExprParent(innerExpr)] ...
         Matcher.addMatcher(
                 memReadMatcher,
-                &IFNOTDEBUG(HandlerForAtpPointerQueryPoint)
+                &IFNOTDEBUG(HandlerForPointerAtp)
                 );
 
         }
@@ -607,8 +623,8 @@ public:
 
 private:
     std::vector< VarDecl* > globalVars;
-    ArgAtpPointHandler HandlerForArgAtpPoint;
-    AtpPointerQueryPointHandler HandlerForAtpPointerQueryPoint;
+    FunctionArgAtpHandler HandlerForFunctionArgAtp;
+    PointerAtpHandler HandlerForPointerAtp;
     PriQueryPointSimpleHandler HandlerForPriQueryPointSimple;
     MatcherDebugHandler HandlerMatcherDebug;
     MatchFinder Matcher;
@@ -662,10 +678,10 @@ public:
         }
 
         auto startLoc = sm.getLocForStartOfFile(sm.getMainFileID());
-        startLoc.dump(sm);
+        startLoc.print(debug, sm);
 
         rewriter.InsertText(startLoc, new_start_of_file_src.str(), true, true);
-#if !MATCHER_DEBUG
+#if OVERWRITE
         bool ret = rewriter.overwriteChangedFiles();
 #endif
         // save the strings db
@@ -725,7 +741,6 @@ int main(int argc, const char **argv) {
         debug << "LavaBugList: [" << LavaBugList << "]\n";
 
         std::set<uint32_t> bug_ids = parse_ints(LavaBugList);
-        printf ("%d bug_ids\n", bug_ids.size());
         // for each bug_id, load that bug from DB and insert into bugs vector.
         std::transform(bug_ids.begin(), bug_ids.end(), std::back_inserter(bugs),
                 [&](uint32_t bug_id) { return db->load<Bug>(bug_id); });
@@ -748,8 +763,10 @@ int main(int argc, const char **argv) {
 
     int r = Tool.run(newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
     debug << "back from calling Tool.run \n";
-    debug << "num taint queries added " << num_taint_queries << "\n";
-    debug << "num atp queries added " << num_atp_queries << "\n";
+    if (LavaAction == LavaQueries) {
+        debug << "num taint queries added " << num_taint_queries << "\n";
+        debug << "num atp queries added " << num_atp_queries << "\n";
+    }
 
     if (t) {
         t->commit();
