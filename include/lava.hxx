@@ -296,8 +296,6 @@ struct AttackPoint {
 
     LavaASTLoc loc;
 
-    std::string ast_name;
-
     enum Type {
         FUNCTION_ARG,
         POINTER_READ,
@@ -353,7 +351,7 @@ struct Bug {
 #pragma db not_null
     const DuaBytes* trigger;
 #pragma db not_null
-    const SourceLval* trigger_lval; // == trigger->lval
+    const SourceLval* trigger_lval; // == trigger->dua->lval
 
 #pragma db not_null
     const AttackPoint* atp;
