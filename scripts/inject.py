@@ -14,7 +14,7 @@ import string
 import subprocess32
 import sys
 import time
-
+import pipes
 from os.path import basename, dirname, join, abspath
 
 from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
@@ -73,11 +73,12 @@ def get_suffix(fn):
 def run_modified_program(install_dir, input_file, timeout):
     cmd = project['command'].format(install_dir=install_dir,input_file=input_file)
     cmd = "setarch {} -R {}".format(subprocess32.check_output("arch").strip(), cmd)
+    cmd = '/bin/bash -c '+ pipes.quote(cmd)
     print cmd
     envv = {}
     lib_path = project['library_path'].format(install_dir=install_dir)
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
-    return run_cmd(cmd, install_dir, envv, timeout) # shell=True)
+    return run_cmd(cmd, install_dir, envv, timeout)
 
 def filter_printable(text):
     return ''.join([ '.' if c not in string.printable else c for c in text])
@@ -414,7 +415,7 @@ if __name__ == "__main__":
     #            print lines
             if update_db:
                 db.session.add(Run(build=build, fuzzed=None, exitcode=rv,
-                                output=lines, success=True))
+                                output='', success=True))
         print "SUCCESS"
         # second, fuzz it with the magic value
         print "TESTING -- FUZZED INPUTS"
