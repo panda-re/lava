@@ -276,6 +276,7 @@ for plugin, plugin_args in panda_args.iteritems():
 qemu_args.extend(['-panda-arg', 'file_taint:filename=' + input_file_guest])
 
 dprint("qemu args: [{}]".format(subprocess32.list2cmdline(qemu_args)))
+sys.stdout.flush()
 try:
     subprocess32.check_call(qemu_args, stderr=subprocess32.STDOUT)
 except subprocess32.CalledProcessError:

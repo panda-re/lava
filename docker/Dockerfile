@@ -49,3 +49,4 @@ RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/usr-local-lib.conf
 RUN ldconfig
 
 RUN pip install subprocess32 lockfile sqlalchemy
+Run apt-get install -y sudo gdb gawk
