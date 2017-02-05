@@ -69,7 +69,7 @@ using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
 
 bool debug = false;
-#define dprintf(...) if (debug) { printf(__VA_ARGS__); }
+#define dprintf(...) if (debug) { printf(__VA_ARGS__); fflush(stdout); }
 
 uint64_t max_liveness = 0;
 uint32_t max_card = 0;
@@ -443,6 +443,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
         for (uint32_t i = 0; i < tqh->n_taint_query; i++) {
             Panda__TaintQuery *tq = tqh->taint_query[i];
             uint32_t offset = tq->offset;
+            if (offset >= len) continue;
             dprintf("considering offset = %d\n", offset);
             const LabelSet *ls = ptr_to_labelset.at(tq->ptr);
 
@@ -561,20 +562,20 @@ void taint_query_pri(Panda__LogEntry *ple) {
                 dprintf("new lval\n");
             } else {
                 // recent_duas_by_instr should contain a dua w/ this lval.
-                assert(it_lval->second->lval->id == lval_id);
+                const Dua *old_dua = it_lval->second;
+                assert(old_dua->lval->id == lval_id);
                 auto instr_range = std::equal_range(
                         recent_duas_by_instr.begin(),
                         recent_duas_by_instr.end(),
-                        it_lval->second, less_by_instr);
+                        old_dua, less_by_instr);
                 auto it_instr = std::find(instr_range.first, instr_range.second,
-                        it_lval->second);
+                        old_dua);
                 assert(it_instr != instr_range.second); // found
-                assert(it_instr->lval->id == lval_id);
+                assert((*it_instr)->lval->id == lval_id);
                 recent_duas_by_instr.erase(it_instr);
 
                 // replace value in recent_dead_duas and erase old from
                 // dua_dependencies.
-                const Dua *old_dua = it_lval->second;
                 for (uint32_t l : old_dua->all_labels) {
                     dua_dependencies[l].erase(old_dua);
                 }
