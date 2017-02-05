@@ -13,21 +13,22 @@ Second is input file you want to run, under panda, to get taint info.
 
 from __future__ import print_function
 
+import json
 import os
+import pexpect
+import pipes
+import psutil
+import shlex
+import shutil
+import subprocess32
 import sys
 import tempfile
-import subprocess32
-from subprocess32 import PIPE
-import shutil
-import shlex
 import time
-import pipes
-import json
+
 from colorama import Fore, Style
+from os.path import abspath, dirname, join
 from pexpect import spawn
-import pexpect
-from os.path import dirname, abspath, join
-import psutil
+from subprocess32 import PIPE
 
 from lava import LavaDatabase, Dua, Bug, AttackPoint
 
