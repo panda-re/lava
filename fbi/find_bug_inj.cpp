@@ -569,9 +569,15 @@ void taint_query_pri(Panda__LogEntry *ple) {
                 auto it_instr = std::find(instr_range.first, instr_range.second,
                         it_lval->second);
                 assert(it_instr != instr_range.second); // found
+                assert(it_instr->lval->id == lval_id);
                 recent_duas_by_instr.erase(it_instr);
 
-                // replace value in recent_dead_duas.
+                // replace value in recent_dead_duas and erase old from
+                // dua_dependencies.
+                const Dua *old_dua = it_lval->second;
+                for (uint32_t l : old_dua->all_labels) {
+                    dua_dependencies[l].erase(old_dua);
+                }
                 it_lval->second = dua;
                 dprintf("previously observed lval\n");
             }
@@ -736,6 +742,11 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
 
         // Now select extra duas. One set of extra duas per (lval, atp, type).
         std::vector<const DuaBytes *> extra_duas = extra_duas_prechosen;
+        std::vector<uint32_t> labels_so_far = trigger->all_labels;
+        for (const DuaBytes* extra : extra_duas_prechosen) {
+            merge_into(extra->all_labels.begin(), extra->all_labels.end(),
+                    labels_so_far);
+        }
 
         // Get list of duas observed before chosen trigger.
         // Otherwise a bug might partially trigger - some duas might not be
@@ -746,7 +757,6 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         auto begin_it = recent_duas_by_instr.begin();
         auto distance = std::distance(begin_it, end_it);
         bool skip_this_trigger = false;
-        std::vector<uint32_t> labels_so_far = trigger->all_labels;
         if (num_extra_duas < distance) { // do we have enough other duas??
             for (int i = 0; i < num_extra_duas; i++) {
                 const DuaBytes *extra;
