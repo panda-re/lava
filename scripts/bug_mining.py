@@ -52,7 +52,7 @@ def dprint(msg):
         print(msg)
 
 def progress(msg):
-    print('')
+    print()
     print(Fore.GREEN + '[bug_mining.py] ' + Fore.RESET + Style.BRIGHT + msg + Style.RESET_ALL)
 
 if len(sys.argv) < 3:
@@ -141,7 +141,7 @@ print("panda record complete %.2f seconds" % record_time)
 sys.stdout.flush()
 
 tick()
-print('')
+print()
 progress("Starting first and only replay, tainting on file open...")
 
 # process name
@@ -207,7 +207,7 @@ progress("Trying to create database {}...".format(project['name']))
 createdb_args = ['createdb', '-U', 'postgres', project['db']]
 createdb_result = subprocess32.call(createdb_args, stdout=sys.stdout, stderr=sys.stderr)
 
-print('')
+print()
 if createdb_result == 0: # Created new DB; now populate
     progress("Database created. Initializing...")
     psql_args = ['psql', '-U', 'postgres', '-d', project['db'],
@@ -217,13 +217,13 @@ if createdb_result == 0: # Created new DB; now populate
 else:
     progress("Database already exists.")
 
-print('')
+print()
 progress("Calling the FBI on queries.plog...")
 fbi_args = [join(lavadir, 'fbi', 'fbi'), project_file, sourcedir, pandalog, input_file_base]
 dprint ("fbi invocation: [%s]" % (" ".join(fbi_args)))
 subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
 
-print('')
+print()
 progress("Found Bugs, Injectable!!")
 
 fib_time = tock()
