@@ -271,7 +271,7 @@ qemu_args = [
 for plugin, plugin_args in panda_args.iteritems():
     qemu_args.append('-panda')
     arg_string = ",".join(["{}={}".format(arg, val) for arg, val in plugin_args.iteritems()])
-    qemu_args.append('{}:{}'.format(plugin, arg_string))
+    qemu_args.append('{}{}{}'.format(plugin, ':' if arg_string else '', arg_string))
 
 # Use -panda-plugin-arg to account for commas and colons in filename.
 qemu_args.extend(['-panda-arg', 'file_taint:filename=' + input_file_guest])
