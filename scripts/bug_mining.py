@@ -26,7 +26,8 @@ import tempfile
 import time
 
 from colorama import Fore, Style
-from os.path import abspath, dirname, join
+from errno import EEXIST
+from os.path import abspath, basename, dirname, join
 from pexpect import spawn
 from subprocess32 import PIPE
 
@@ -58,7 +59,6 @@ if len(sys.argv) < 3:
     print("Usage: python project.json inputfile", file=sys.stderr)
     sys.exit(1)
 
-
 tick()
 
 project_file = abspath(sys.argv[1])
@@ -68,7 +68,6 @@ print("bug_mining.py %s %s" % (project_file, input_file))
 
 input_file_base = os.path.basename(input_file)
 project = json.load(open(project_file, "r"))
-
 
 # *** Required json fields 
 # path to qemu exec (correct guest)
@@ -90,14 +89,25 @@ assert 'library_path' in project
 # namespace in db for prospective bugs
 assert 'db' in project
 
-chaff = False
-if 'chaff' in project:
-    chaff = True
+qemu_path = project['qemu']
+qemu_build_dir = dirname(dirname(abspath(qemu_path)))
+src_path = None
+with open(join(qemu_build_dir, 'config-host.mak')) as config_host:
+    for line in config_host:
+        var, sep, value = line.strip().partition('=')
+        if var == 'SRC_PATH':
+            src_path = value
+            break
+assert src_path
+panda_scripts_dir = join(src_path, 'panda', 'scripts')
+sys.path.append(panda_scripts_dir)
+from run_guest import create_recording
+
+chaff = project.get('chaff', False)
 
 assert 'panda_os_string' in project
 
 panda_os_string = project['panda_os_string']
-
 
 lavadir = dirname(dirname(abspath(sys.argv[0])))
 
@@ -109,121 +119,22 @@ tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']])
 sourcedir = tar_files.splitlines()[0].split(os.path.sep)[0]
 sourcedir = abspath(sourcedir)
 
-print('')
-isoname = '{}-{}.iso'.format(sourcedir, input_file_base)
-progress("Creating ISO {}...".format(isoname))
+print()
+# e.g. file-5.22-true.iso
 installdir = join(sourcedir, 'lava-install')
-shutil.copy(input_file, join(installdir, input_file_base))
-subprocess32.check_call(['genisoimage', '-RJ', '-max-iso9660-filenames',
-    '-o', isoname, installdir])
-try: os.mkdir('inputs')
-except: pass
-shutil.copy(input_file, 'inputs/')
-os.unlink(join(installdir, input_file_base))
-
-tempdir = tempfile.mkdtemp()
-
-# Find open VNC port.
-connections = psutil.net_connections(kind='tcp')
-vnc_ports = filter(lambda x : x >= 5900 and x < 6000, [c.laddr[1] for c in connections])
-vnc_displays = set([p - 5900 for p in vnc_ports])
-new_vnc_display = None
-for i in range(10, 100):
-    if i not in vnc_displays:
-        new_vnc_display = i
-        break
-if new_vnc_display == None:
-    progress("Couldn't find VNC display!")
-    sys.exit(1)
-
-monitor_path = os.path.join(tempdir, 'monitor')
-serial_path = os.path.join(tempdir, 'serial')
-qemu_args = [project['qemu'], project['qcow'], '-loadvm', project['snapshot'],
-        '-monitor', 'unix:' + monitor_path + ',server,nowait',
-        '-serial', 'unix:' + serial_path + ',server,nowait',
-        '-vnc', ':' + str(new_vnc_display)]
-if qemu_use_rr:
-    qemu_args = ['rr', 'record'] + qemu_args
-
-print('')
-progress("Running qemu with args:")
-print(subprocess32.list2cmdline(qemu_args))
-print('')
-
-os.mkfifo(monitor_path)
-os.mkfifo(serial_path)
-monitor_wait = subprocess32.Popen(['inotifywait', '-e', 'open', monitor_path],
-                                  stdout=PIPE, stderr=PIPE)
-serial_wait = subprocess32.Popen(['inotifywait', '-e', 'open', serial_path],
-                                 stdout=PIPE, stderr=PIPE)
-qemu = subprocess32.Popen(qemu_args, stderr=subprocess32.STDOUT)
-
-try:
-    monitor_wait.communicate(timeout=15)
-    serial_wait.communicate(timeout=15)
-except subprocess32.TimeoutExpired: pass
-
-monitor = spawn("socat", ["stdin", "unix-connect:" + monitor_path])
-monitor.logfile = open(os.path.join(tempdir, 'monitor.txt'), 'w')
-console = spawn("socat", ["stdin", "unix-connect:" + serial_path])
-console.logfile = open(os.path.join(tempdir, 'console.txt'), 'w')
-
-def run_monitor(cmd):
-    print(Style.BRIGHT + "(qemu) " + cmd + Style.RESET_ALL)
-    monitor.sendline(cmd)
-    monitor.expect_exact("(qemu)")
-    print(monitor.before.partition("\r\n")[2])
-
-def run_console(cmd, expectation="root@debian-i386:~", timeout=-1):
-    print(Style.BRIGHT + "root@debian-i386:~# " + cmd + Style.RESET_ALL)
-    console.sendline(cmd)
-    try:
-        console.expect_exact(expectation, timeout=timeout)
-    except pexpect.TIMEOUT:
-        print(console.before)
-        raise
-
-    print(console.before.partition("\n")[2])
-
-# Make sure monitor/console are in right state.
-monitor.expect_exact("(qemu)")
-console.sendline("")
-console.expect_exact("root@debian-i386:~#")
-
-progress("Inserting CD...")
-run_monitor("change ide1-cd0 {}".format(isoname))
-
-run_console("mkdir -p {}".format(installdir))
-
-# Make sure cdrom didn't automount
-# Make sure guest path mirrors host path
-run_console("while ! mount /dev/cdrom '{}'; do sleep 0.3; umount /dev/cdrom; done".format(installdir))
-
-# Use the ISO name as the replay name.
-progress("Beginning recording queries...")
-run_monitor("begin_record {}".format(isoname))
-
-progress("Running command inside guest...")
 input_file_guest = join(installdir, input_file_base)
-expectation = project['expect'] if 'expect' in project else "root@debian-i386:~"
-env = project['env'] if 'env' in project else {}
-env['LD_LIBRARY_PATH'] = project['library_path'].format(install_dir=installdir)
-env_string = " ".join(["{}={}".format(pipes.quote(k), pipes.quote(env[k])) for k in env])
-command = project['command'].format(
-    install_dir=installdir, input_file=input_file_guest)
-run_console(env_string + " " + command, expectation)
+isoname = '{}-{}.iso'.format(sourcedir, input_file_base)
+command_args = shlex.split(project['command'].format(
+    install_dir=pipes.quote(installdir),
+    input_file=input_file_guest))
 
-progress("Ending recording...")
-run_monitor("end_record")
+create_recording(qemu_path, project['qcow'], project['snapshot'],
+                 command_args, installdir, isoname, isoname)
 
-monitor.sendline("quit")
-monitor.close()
-console.close()
-try:
-    qemu.wait(timeout=3)
-except subprocess32.TimeoutExpired:
-    qemu.terminate()
-shutil.rmtree(tempdir)
+try: os.mkdir('inputs')
+except OSError as e:
+    if e.errno != EEXIST: raise
+shutil.copy(input_file, 'inputs/')
 
 record_time = tock()
 print("panda record complete %.2f seconds" % record_time)
@@ -234,7 +145,7 @@ print('')
 progress("Starting first and only replay, tainting on file open...")
 
 # process name
-proc_name = os.path.basename(shlex.split(command)[0])
+proc_name = basename(command_args[0])
 
 pandalog = "%s/%s/queries-%s.plog" % (project['directory'], project['name'], os.path.basename(isoname))
 print("pandalog = [%s] " % pandalog)
