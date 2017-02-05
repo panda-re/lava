@@ -355,10 +355,11 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
         // Insert the new addition expression, and if parent expression is
         // already paren expression, do not add parens
+        // NB: InsertText... returns false on success.
         if (!pointerAddends.empty()) {
             LExpr addToPointer = LBinop("+", std::move(pointerAddends));
-            rewriter.InsertTextAfterToken(toAttack->getLocEnd(),
-                    " + " + addToPointer.render());
+            assert(!rewriter.InsertTextAfterToken(toAttack->getLocEnd(),
+                    " + " + addToPointer.render()));
             if (parent &&
                     !isa<ParenExpr>(parent) && !isa<ArraySubscriptExpr>(parent)) {
                 rewriter.InsertTextBefore(toAttack->getLocStart(), "(");
@@ -370,8 +371,8 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             assert(writeValue);
             LExpr addToValue = LBinop("+", std::move(valueAddends));
             rewriter.InsertTextBefore(writeValue->getLocStart(), "(");
-            rewriter.InsertTextAfterToken(writeValue->getLocEnd(),
-                    " + " + addToValue.render() + ")");
+            assert(!rewriter.InsertTextAfterToken(writeValue->getLocEnd(),
+                    " + " + addToValue.render() + ")"));
         }
     }
 
