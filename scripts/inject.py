@@ -215,8 +215,10 @@ if __name__ == "__main__":
     bugs_install = join(bugs_build, 'lava-install')
     # Make sure directories and btrace is ready for bug injection.
     def run(args, **kwargs):
-        if isinstance(args, str): args = shlex.split(args)
-        print "run(", subprocess32.list2cmdline(args), ")"
+        if type(args) in [str, unicode]:
+            print "run(", args, ")"
+        else:
+            print "run(", subprocess32.list2cmdline(args), ")"
         subprocess32.check_call(args, cwd=bugs_build,
                 stdout=sys.stdout, stderr=sys.stderr, **kwargs)
     if not os.path.exists(bugs_build):
