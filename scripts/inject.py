@@ -1,11 +1,12 @@
 #!/usr/bin/python
 
-import datetime
 import argparse
 import atexit
+import datetime
 import json
 import lockfile
 import os
+import pipes
 import re
 import shlex
 import shutil
@@ -14,7 +15,7 @@ import string
 import subprocess32
 import sys
 import time
-import pipes
+
 from math import sqrt
 from os.path import basename, dirname, join, abspath
 
