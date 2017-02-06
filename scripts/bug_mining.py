@@ -15,21 +15,16 @@ from __future__ import print_function
 
 import json
 import os
-import pexpect
 import pipes
-import psutil
 import shlex
 import shutil
 import subprocess32
 import sys
-import tempfile
 import time
 
 from colorama import Fore, Style
 from errno import EEXIST
 from os.path import abspath, basename, dirname, join
-from pexpect import spawn
-from subprocess32 import PIPE
 
 from lava import LavaDatabase, Dua, Bug, AttackPoint
 
@@ -127,6 +122,7 @@ isoname = '{}-{}.iso'.format(sourcedir, input_file_base)
 command_args = shlex.split(project['command'].format(
     install_dir=pipes.quote(installdir),
     input_file=input_file_guest))
+shutil.copy(input_file, installdir)
 
 create_recording(qemu_path, project['qcow'], project['snapshot'],
                  command_args, installdir, isoname, isoname)
