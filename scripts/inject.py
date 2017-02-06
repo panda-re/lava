@@ -310,7 +310,7 @@ if __name__ == "__main__":
         else:
             # demo, I guess
             print "Injecting %d bugs" % num_bugs_to_inject
-            assert len(db.uninjected_random(False)) >= num_bugs_to_inject
+            assert db.uninjected_random(False).count() >= num_bugs_to_inject
             bugs_to_inject.extend(db.uninjected_random(False)[:num_bugs_to_inject])
         update_db = True
     else: assert False
