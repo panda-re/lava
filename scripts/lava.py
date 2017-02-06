@@ -1,13 +1,9 @@
 from __future__ import print_function
 
-import struct
 import random
-import subprocess32
-import os
 import shlex
-import signal
-
-import threading
+import struct
+import subprocess32
 
 from sqlalchemy import Table, Column, ForeignKey, create_engine
 from sqlalchemy.types import Integer, Text, Float, BigInteger, Boolean
@@ -15,6 +11,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.sql.expression import func
+
+from subprocess32 import PIPE
 
 from composite import Composite
 
@@ -252,54 +250,19 @@ class LavaDatabase(object):
         get_bugs_non_bugs(True, 2*num)
         return bugs_and_non_bugs
 
-class Command(object):
-    def __init__(self, cmd, cwd, envv, rr=False): #  **popen_kwargs):
-        self.cmd = cmd
-        self.cwd = cwd
-        self.envv = envv
-        self.process = None
-        self.output = "no output"
-        self.rr = rr
-#        self.popen_kwargs = popen_kwargs
-
-    def run(self, timeout):
-        def target():
-#            print "Thread started"
-            self.process = subprocess32.Popen(shlex.split(self.cmd), cwd=self.cwd, env=self.envv, \
-                                                stdout=subprocess32.PIPE, \
-                                                stderr=subprocess32.PIPE, \
-                                                preexec_fn=os.setsid) # , **popen_kwargs)
-            self.output = self.process.communicate()
-#            print 'Thread finished'
-        thread = threading.Thread(target=target)
-        thread.start()
-        thread.join(timeout)
-        if thread.is_alive():
-            if debugging:
-                print('Terminating process cmd=[%s] due to timeout' % self.cmd)
-            if not self.rr:
-                self.process.terminate()
-                os.killpg(self.process.pid, signal.SIGTERM)
-                self.process.kill()
-            else:
-                self.process.send_signal(signal.SIGINT)
-                os.killpg(self.process.pid, signal.SIGINT)
-            print("terminated")
-            thread.join(1)
-            self.returncode = -9
-        else:
-            self.returncode = self.process.returncode
-
-
-
 def run_cmd(cmd, cw_dir, envv, timeout, rr=False):
-    p = Command(cmd, cw_dir, envv, rr=rr)
-    p.run(timeout)
-    output = p.output
-    exitcode = p.returncode
+    if type(cmd) in [str, unicode]:
+        cmd = shlex.split(cmd)
     if debugging:
-        print("run_cmd(" + cmd + ")")
-    return (exitcode, output)
+        print("run_cmd(" + subprocess32.list2cmdline(cmd) + ")")
+    p = subprocess32.Popen(cmd, cwd=cw_dir, env=envv, stdout=PIPE, stderr=PIPE)
+    try:
+        output = p.communicate(timeout) # returns tuple (stdout, stderr)
+    except subprocess32.TimeoutExpired:
+        print("Killing process due to timeout expiration.")
+        p.terminate()
+        return (-9, "timeout expired")
+    return (p.returncode, output)
 
 def run_cmd_notimeout(cmd, cw_dir, envv):
     return run_cmd(cmd, cw_dir, envv, 1000000)
