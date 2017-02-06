@@ -15,6 +15,7 @@ import subprocess32
 import sys
 import time
 import pipes
+from math import sqrt
 from os.path import basename, dirname, join, abspath
 
 from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
@@ -468,8 +469,9 @@ if __name__ == "__main__":
 
             print
         f = float(len(real_bugs)) / len(bugs_to_inject)
-        print "yield {:.2f} ({} out of {}) real bugs".format(
-            f, len(real_bugs), len(bugs_to_inject)
+        print u"yield {:.2f} ({} out of {}) real bugs (95% CI +/- {:.2f}) ".format(
+            f, len(real_bugs), len(bugs_to_inject),
+            1.96 * sqrt(f * (1 - f) / len(bugs_to_inject))
         )
         print "TESTING COMPLETE"
         if len(bugs_to_inject) > 1:
