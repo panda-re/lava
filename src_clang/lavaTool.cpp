@@ -358,8 +358,9 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         // NB: InsertText... returns false on success.
         if (!pointerAddends.empty()) {
             LExpr addToPointer = LBinop("+", std::move(pointerAddends));
-            assert(!rewriter.InsertTextAfterToken(toAttack->getLocEnd(),
-                    " + " + addToPointer.render()));
+            bool ret = rewriter.InsertTextAfterToken(toAttack->getLocEnd(),
+                    " + " + addToPointer.render());
+            assert(!ret);
             if (parent &&
                     !isa<ParenExpr>(parent) && !isa<ArraySubscriptExpr>(parent)) {
                 rewriter.InsertTextBefore(toAttack->getLocStart(), "(");
@@ -370,9 +371,11 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         if (!valueAddends.empty()) {
             assert(writeValue);
             LExpr addToValue = LBinop("+", std::move(valueAddends));
-            rewriter.InsertTextBefore(writeValue->getLocStart(), "(");
-            assert(!rewriter.InsertTextAfterToken(writeValue->getLocEnd(),
-                    " + " + addToValue.render() + ")"));
+            bool ret = rewriter.InsertTextBefore(writeValue->getLocStart(), "(");
+            assert(!ret);
+            ret = rewriter.InsertTextAfterToken(writeValue->getLocEnd(),
+                    " + " + addToValue.render() + ")");
+            assert(!ret);
         }
     }
 
