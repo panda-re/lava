@@ -455,7 +455,9 @@ if __name__ == "__main__":
             if bug.trigger.dua.fake_dua == False:
                 # this really is supposed to be a bug
                 # we should see a seg fault or something
-                if rv == -11 or rv == -6:
+                # NB: Wrapping programs in bash transforms rv -> 128 - rv
+                # so e.g. -11 goes to 139.
+                if rv in [-6, -11, 134, 139]:
                     real_bugs.append(bug.id)
                     fuzzed_inputs.append(fuzzed_input)
             else:
