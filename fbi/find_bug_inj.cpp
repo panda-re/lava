@@ -480,7 +480,9 @@ void taint_query_pri(Panda__LogEntry *ple) {
         // 1. this is a dua which we can use to make bugs,
         // 2. it's a non-dua which has enough untainted parts to make a fake bug
         // 3. or its neither and we truly discard.
-        if (num_viable_bytes >= LAVA_MAGIC_VALUE_SIZE) {
+        // NB: Duas with <4 taint labels cannot possibly work.
+        if (num_viable_bytes >= LAVA_MAGIC_VALUE_SIZE
+                && all_labels.size() >= LAVA_MAGIC_VALUE_SIZE) {
             is_dua = true;
         }
     } else if (tqh->n_taint_query - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
