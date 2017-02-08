@@ -284,7 +284,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug_id, kt=False, knob=0):
     # change first 4 bytes in dua to magic value
     for fuzz_labels in fuzz_labels_list:
         for (i, offset) in zip(range(4), fuzz_labels):
-            #print("i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes)))
+            print("i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes)))
             file_bytes[offset] = magic_val[i]
     with open(new_filename, 'w') as fuzzed_f:
         fuzzed_f.write(file_bytes)

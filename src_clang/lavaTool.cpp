@@ -50,7 +50,7 @@ extern "C" {
 #define RV_PFX "kbcieiubweuhc"
 #define RV_PFX_LEN 13
 
-#define DEBUG 0
+#define DEBUG 1
 #define MATCHER_DEBUG 0
 #define OVERWRITE 1
 
@@ -483,6 +483,40 @@ struct FunctionArgAtpHandler : public LavaMatchHandler {
     }
 };
 
+struct ReadDisclosureHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
+    virtual void run(const MatchFinder::MatchResult &Result) {
+        const CallExpr *callExpr = Result.Nodes.getNodeAs<CallExpr>("call_expression");
+        if (!InMainFile(callExpr)) return;
+
+        debug << "BEGIN ANDY :: ReadDisclosureHandler @ " << GetASTLoc(callExpr) << "\n";
+	//callExpr->dump();
+	LExpr addend = LDecimal(0);
+	// iterate through all the arguments in the call expression
+	for ( auto it = callExpr->arg_begin(); it != callExpr->arg_end(); ++it) {
+			const Expr *arg = dyn_cast<Expr>(*it);
+		        if (arg)
+			  {
+			    if (arg->getType()->isIntegerType()) {
+			      debug << "ANDY: FOUND ONE!!!!" << "\n";
+			      arg->dump();
+			      
+			      if (LavaAction == LavaQueries)  {
+				addend = LavaAtpQuery(GetASTLoc(arg), AttackPoint::PRINTF_LEAK);
+			      } else if (LavaAction == LavaInjectBugs) {
+				
+			    }
+			      rewriter.InsertTextAfterToken(arg->getLocEnd(), " + " + addend.render());
+			    }}
+
+
+		}
+	debug << "END ANDY" << "\n";
+
+        //AttackExpression(toAttack, nullptr, nullptr, AttackPoint::FUNCTION_ARG);
+    }
+};
+
 struct PointerAtpHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
@@ -557,6 +591,7 @@ public:
         HandlerMatcherDebug(rewriter, StringIDs),
         HandlerForFunctionArgAtp(rewriter, StringIDs),
         HandlerForPointerAtp(rewriter, StringIDs),
+        HandlerForReadDisclosure(rewriter, StringIDs),
         HandlerForPriQueryPointSimple(rewriter, StringIDs)
     {
         StatementMatcher memoryAccessMatcher =
@@ -615,6 +650,12 @@ public:
                 &IFNOTDEBUG(HandlerForPointerAtp)
                 );
 
+	///////////////////////////////////////////////////////
+	// andy's matcher
+        Matcher.addMatcher(
+			   callExpr(callee(functionDecl(hasName("::printf"))), unless(argumentCountIs(1))).bind("call_expression"),
+                &HandlerForReadDisclosure
+                );
         }
 #undef IFNOTDEBUG
 
@@ -631,6 +672,7 @@ private:
     PointerAtpHandler HandlerForPointerAtp;
     PriQueryPointSimpleHandler HandlerForPriQueryPointSimple;
     MatcherDebugHandler HandlerMatcherDebug;
+    ReadDisclosureHandler HandlerForReadDisclosure;
     MatchFinder Matcher;
 };
 
