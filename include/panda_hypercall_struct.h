@@ -7,19 +7,8 @@
  * Keep me in sync between PANDA and LAVA repos
  */
 
-#ifdef PANDA
-#include "stdint.h"
-typedef uint32_t lavaint;
-#else
 typedef unsigned int lavaint;
-#endif
-
-// query is inserted before call
-#define INSERTION_POINT_BEFORE_CALL 1
-// query is inserted after call
-#define INSERTION_POINT_AFTER_CALL 2
-
-
+_Static_assert(sizeof(lavaint) == 4, "lavaint size must be 4!");
 
 #pragma pack(push,1)
 typedef struct panda_hypercall_struct {
@@ -33,7 +22,7 @@ typedef struct panda_hypercall_struct {
     lavaint src_linenum;        // line number
     lavaint src_ast_node_name;  // the name of the l-value queries 
     lavaint info;               // general info
-    lavaint insertion_point;    // tells where query was inserted.  used for attack point?
+    lavaint insertion_point;    // unused now.
 } PandaHypercallStruct;
 #pragma pack(pop)
 
