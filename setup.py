@@ -214,7 +214,7 @@ def main():
         LLVM_DOCKER_DIR = '/llvm-{}'.format(LLVM_VERSION)
         f.write(LLVM_MAK.format(LLVM_BUILD_PATH=LLVM_DOCKER_DIR,
                                 LLVM_SRC_PATH=LLVM_DOCKER_DIR))
-    run_docker(['make', '-B', '-C', join(LAVA_DIR, 'src_clang'), '-j', str(cpu_count())])
+    run_docker(['make', '-C', join(LAVA_DIR, 'src_clang'), '-j', str(cpu_count())])
 
     # ensure /etc/apt/sources.list has all of the deb-src lines uncommented
     patch_sources = join(LAVA_DIR, "scripts/patch-sources.py")
@@ -293,7 +293,7 @@ def main():
     progress("Compiling fbi")
 
     os.chdir(join(LAVA_DIR, "fbi"))
-    run("make -B -j {}".format(cpu_count()))
+    run("make -j {}".format(cpu_count()))
     os.chdir(LAVA_DIR)
 
     return 0
