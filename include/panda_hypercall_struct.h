@@ -8,7 +8,10 @@
  */
 
 typedef unsigned int lavaint;
-_Static_assert(sizeof(lavaint) == 4, "lavaint size must be 4!");
+#ifndef __cplusplus
+#define static_assert _Static_assert
+#endif
+static_assert(sizeof(lavaint) == 4, "lavaint size must be 4!");
 
 #pragma pack(push,1)
 typedef struct panda_hypercall_struct {
