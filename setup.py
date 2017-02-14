@@ -70,6 +70,7 @@ try:
 except Exception:
     PANDA_DIR = abspath(join(LAVA_DIR, "../panda"))
     LLVM_DIR = join(BUILD_DIR, "llvm-" + LLVM_VERSION)
+PANDA_BUILD_DIR = join(PANDA_DIR, 'build')
 
 PANDA_UBUNTU = "https://raw.githubusercontent.com/panda-re/panda/master/panda/scripts/install_ubuntu.sh"
 # libc6 needed for compiling btrace
@@ -142,13 +143,10 @@ ALREADY_IN_DOCKER_GROUP = user_in_docker(getpass.getuser())
 
 def run_docker(cmd):
     cmd, cmd_args = cmd_to_list(cmd)
+    sudo_args = [] if ALREADY_IN_DOCKER_GROUP else ['sudo']
     # Have to be sudo in case we just installed docker and don't have the group yet.
-    if ALREADY_IN_DOCKER_GROUP:
-        cmd_args = ['docker', 'run', '--rm'] + map_dirs_args + \
-            map_files_args + env_var_args + [DOCKER_NAME, 'su', '-l', getpass.getuser(), '-c', cmd]
-    else:
-        cmd_args = ["sudo", 'docker', 'run', '--rm'] + map_dirs_args + \
-            map_files_args + env_var_args + [DOCKER_NAME, 'su', '-l', getpass.getuser(), '-c', cmd]
+    cmd_args = sudo_args + ['docker', 'run', '--rm'] + map_dirs_args + \
+        map_files_args + env_var_args + [DOCKER_NAME, 'su', '-l', getpass.getuser(), '-c', cmd]
     try:
         progress("Running in docker [{}] . . . ".format(cmd))
         print "[{}]".format(" ".join(cmd_args))
@@ -201,10 +199,8 @@ def main():
     # if not run python scripts/build-docker.py
     if not IGNORE_DOCKER:
         progress("Checking that {} docker is properly built".format(DOCKER_NAME))
-        if ALREADY_IN_DOCKER_GROUP:
-            run(['docker', 'build', '-t', DOCKER_NAME, join(LAVA_DIR, 'docker')])
-        else:
-            run(["sudo", 'docker', 'build', '-t', DOCKER_NAME, join(LAVA_DIR, 'docker')])
+        sudo_args = [] if ALREADY_IN_DOCKER_GROUP else ['sudo']
+        run(sudo_args + ['docker', 'build', '-t', DOCKER_NAME, join(LAVA_DIR, 'docker')])
         compile_cmd = ['cd', join(LAVA_DIR, 'btrace'), '&&', 'bash', 'compile.sh']
         run_docker(['bash', '-c', subprocess.list2cmdline(compile_cmd)])
 
@@ -232,7 +228,14 @@ def main():
     if not isdir(PANDA_DIR):
         os.chdir(dirname(PANDA_DIR))
         run("wget {}".format(PANDA_UBUNTU))
-        run("bash install_ubuntu.sh --extra-cflags='-DLAVA -DPANDA_LAVA'")
+        run("bash install_ubuntu.sh")
+        os.chdir(LAVA_DIR)
+    elif not isfile(join(LAVA_DIR, "fbi", "panda.mak")) and \
+            not isfile(join(PANDA_BUILD_DIR, 'config.log')):
+        progress("Building PANDA in " + PANDA_BUILD_DIR)
+        os.makedirs(PANDA_BUILD_DIR)
+        os.chdir(PANDA_BUILD_DIR)
+        run([join(PANDA_DIR, 'build.sh')])
         os.chdir(LAVA_DIR)
 
     progress("Checking for ODB orm libraries")
@@ -277,12 +280,13 @@ def main():
     # then setup.py will parse it and configure the environmet to those specs
     os.chdir(LAVA_DIR)
 
-    progress("Creating $LAVA_DIR/fbi/panda.mak")
-    with open(join(LAVA_DIR, "fbi/panda.mak"), "w") as f:
-        f.write(PANDA_MAK.format(PANDA_DIR=PANDA_DIR))
+    if not isfile(join(LAVA_DIR, "fbi", "panda.mak")):
+        progress("Creating $LAVA_DIR/fbi/panda.mak")
+        with open(join(LAVA_DIR, "fbi/panda.mak"), "w") as f:
+            f.write(PANDA_MAK.format(PANDA_DIR=PANDA_DIR))
 
-    progress("Creating $LAVA_DIR/lava.mak")
     if not isfile(join(LAVA_DIR, "lava.mak")):
+        progress("Creating $LAVA_DIR/lava.mak")
         with open("lava.mak", 'w') as f:
             f.write(PANDA_MAK.format(PANDA_DIR=PANDA_DIR))
             f.write(LLVM_MAK.format(LLVM_BUILD_PATH=LLVM_DOCKER_DIR,
