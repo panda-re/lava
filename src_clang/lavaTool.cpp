@@ -489,17 +489,12 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
         const CallExpr *callExpr = Result.Nodes.getNodeAs<CallExpr>("call_expression");
         if (!InMainFile(callExpr)) return;
 
-        debug << "BEGIN ANDY :: ReadDisclosureHandler @ " << GetASTLoc(callExpr) << "\n";
-        //callExpr->dump();
         LExpr addend = LDecimal(0);
         // iterate through all the arguments in the call expression
         for ( auto it = callExpr->arg_begin(); it != callExpr->arg_end(); ++it) {
             const Expr *arg = dyn_cast<Expr>(*it);
             if (arg) {
                 if (arg->getType()->isIntegerType()) {
-                    debug << "ANDY: FOUND ONE!!!!" << "\n";
-                    arg->dump();
-
                     if (LavaAction == LavaQueries)  {
                         addend = LavaAtpQuery(GetASTLoc(arg), AttackPoint::PRINTF_LEAK);
                         rewriter.InsertTextAfterToken(arg->getLocEnd(), " + " + addend.render());
@@ -517,20 +512,16 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
 			    unsigned int offset = rewriter.getRangeSize(range, rangeOpts);
 			    
 			    range.setEnd(range.getEnd().getLocWithOffset(offset));
-                            debug << "ANDY: " << GetASTLoc(arg) << " " << offset <<"\n";
+                    
                             llvm::StringRef ref = Lexer::getSourceText(CharSourceRange::getCharRange(range), SM, LangOptions());
 
                             rewriter.InsertTextBefore(arg->getLocStart(), MagicTest(bug).render() + "? &(" + ref.str() + ") : ");
                         }
                     }
 
-                }}
-
-
+                }
+	    }
         }
-        debug << "END ANDY" << "\n";
-
-        //AttackExpression(toAttack, nullptr, nullptr, AttackPoint::FUNCTION_ARG);
     }
 };
 
