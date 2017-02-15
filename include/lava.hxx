@@ -191,7 +191,7 @@ struct LabelSet {
 
     std::vector<uint32_t> labels;
 
-#pragma db index("LabelSetUniq") unique members(ptr, inputfile, labels)
+#pragma db index("LabelSetUniq") unique members(ptr, inputfile)
 
     bool operator<(const LabelSet &other) const {
         return std::tie(ptr, inputfile, labels) <
