@@ -405,9 +405,11 @@ if __name__ == "__main__":
         print "------------\n"
         # first, try the original file
         print "TESTING -- ORIG INPUT"
+        inputs_and_outputs = {}
         for input_file in input_files:
             unfuzzed_input = join(top_dir, 'inputs', basename(input_file))
             (rv, outp) = run_modified_program(bugs_install, unfuzzed_input, timeout)
+            inputs_and_outputs[input_file] = outp
             if rv != 0:
                 print "***** buggy program fails on original input!"
                 assert False
@@ -455,6 +457,10 @@ if __name__ == "__main__":
                 db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
                                 output=lines.encode('string-escape'), success=True))
             if bug.trigger.dua.fake_dua == False:
+                if bug.type == Bug.PRINTF_LEAK:
+                    if outp != inputs_and_outputs[bug.trigger.dua.inputfile]:
+                        real_bugs.append(bug.id)
+                        fuzzed_inputs.append(fuzzed_input)
                 # this really is supposed to be a bug
                 # we should see a seg fault or something
                 # NB: Wrapping programs in bash transforms rv -> 128 - rv
