@@ -131,7 +131,8 @@ class AttackPoint(Base):
             "ATP_FUNCTION_CALL",
             "ATP_POINTER_READ",
             "ATP_POINTER_WRITE",
-            "ATP_QUERY_POINT"
+            "ATP_QUERY_POINT",
+            "ATP_PRINTF_LEAK"
         ]
         return 'ATP[{}](loc={}:{}, type={})'.format(
             self.id, self.loc.filename, self.loc.begin.line, type_strs[self.typ]
@@ -150,8 +151,9 @@ class Bug(Base):
     PTR_ADD = 0
     RET_BUFFER = 1
     REL_WRITE = 2
+    PRINTF_LEAK = 3
     # };
-    type_strings = ['BUG_PTR_ADD', 'BUG_RET_BUFFER', 'BUG_REL_WRITE']
+    type_strings = ['BUG_PTR_ADD', 'BUG_RET_BUFFER', 'BUG_REL_WRITE', 'BUG_PRINTF_LEAK']
 
     id = Column(BigInteger, primary_key=True)
     type = Column(Integer)
@@ -291,7 +293,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug_id, kt=False, knob=0):
     # change first 4 bytes in dua to magic value
     for fuzz_labels in fuzz_labels_list:
         for (i, offset) in zip(range(4), fuzz_labels):
-            #print("i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes)))
+            print("i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes)))
             file_bytes[offset] = magic_val[i]
     with open(new_filename, 'w') as fuzzed_f:
         fuzzed_f.write(file_bytes)
@@ -577,6 +579,10 @@ def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db)
         db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
                            output=lines.encode('string-escape'), success=True))
     if bug.trigger.dua.fake_dua == False:
+        if bug.type == Bug.PRINTF_LEAK:
+            if outp != inputs_and_outputs[bug.trigger.dua.inputfile]:
+                real_bugs.append(bug.id)
+                fuzzed_inputs.append(fuzzed_input)
         # this really is supposed to be a bug
         # we should see a seg fault or something
         # NB: Wrapping programs in bash transforms rv -> 128 - rv

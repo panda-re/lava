@@ -35,7 +35,7 @@ extern "C" {
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchersInternal.h"
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
-
+#include "clang/Lex/Lexer.h"
 #include "lavaDB.h"
 #include "lava.hxx"
 #include "lava-odb.hxx"
@@ -50,7 +50,7 @@ extern "C" {
 #define RV_PFX "kbcieiubweuhc"
 #define RV_PFX_LEN 13
 
-#define DEBUG 0
+#define DEBUG 1
 #define MATCHER_DEBUG 0
 #define OVERWRITE 1
 
@@ -483,6 +483,48 @@ struct FunctionArgAtpHandler : public LavaMatchHandler {
     }
 };
 
+struct ReadDisclosureHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
+    virtual void run(const MatchFinder::MatchResult &Result) {
+        const CallExpr *callExpr = Result.Nodes.getNodeAs<CallExpr>("call_expression");
+        if (!InMainFile(callExpr)) return;
+
+        LExpr addend = LDecimal(0);
+        // iterate through all the arguments in the call expression
+        for ( auto it = callExpr->arg_begin(); it != callExpr->arg_end(); ++it) {
+            const Expr *arg = dyn_cast<Expr>(*it);
+            if (arg) {
+                if (arg->getType()->isIntegerType()) {
+                    if (LavaAction == LavaQueries)  {
+                        addend = LavaAtpQuery(GetASTLoc(arg), AttackPoint::PRINTF_LEAK);
+                        rewriter.InsertTextAfterToken(arg->getLocEnd(), " + " + addend.render());
+                    } else if (LavaAction == LavaInjectBugs) {
+                        const std::vector<const Bug*> &injectable_bugs =
+                            map_get_default(bugs_with_atp_at, GetASTLoc(arg));
+                        for (const Bug* bug : injectable_bugs) {
+                            if (bug->type != Bug::PRINTF_LEAK) {
+                                continue;
+                            }
+                            SourceManager &SM = rewriter.getSourceMgr();
+                            SourceRange range = arg->getSourceRange();
+			    Rewriter::RewriteOptions rangeOpts;
+			    rangeOpts.IncludeInsertsAtBeginOfRange = false;
+			    unsigned int offset = rewriter.getRangeSize(range, rangeOpts);
+			    
+			    range.setEnd(range.getEnd().getLocWithOffset(offset));
+                    
+                            llvm::StringRef ref = Lexer::getSourceText(CharSourceRange::getCharRange(range), SM, LangOptions());
+
+                            rewriter.InsertTextBefore(arg->getLocStart(), MagicTest(bug).render() + "? &(" + ref.str() + ") : ");
+                        }
+                    }
+
+                }
+	    }
+        }
+    }
+};
+
 struct PointerAtpHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
@@ -557,6 +599,7 @@ public:
         HandlerMatcherDebug(rewriter, StringIDs),
         HandlerForFunctionArgAtp(rewriter, StringIDs),
         HandlerForPointerAtp(rewriter, StringIDs),
+        HandlerForReadDisclosure(rewriter, StringIDs),
         HandlerForPriQueryPointSimple(rewriter, StringIDs)
     {
         StatementMatcher memoryAccessMatcher =
@@ -615,6 +658,12 @@ public:
                 &IFNOTDEBUG(HandlerForPointerAtp)
                 );
 
+	///////////////////////////////////////////////////////
+	// andy's matcher
+        Matcher.addMatcher(
+			   callExpr(callee(functionDecl(hasName("::printf"))), unless(argumentCountIs(1))).bind("call_expression"),
+                &HandlerForReadDisclosure
+                );
         }
 #undef IFNOTDEBUG
 
@@ -631,6 +680,7 @@ private:
     PointerAtpHandler HandlerForPointerAtp;
     PriQueryPointSimpleHandler HandlerForPriQueryPointSimple;
     MatcherDebugHandler HandlerMatcherDebug;
+    ReadDisclosureHandler HandlerForReadDisclosure;
     MatchFinder Matcher;
 };
 
