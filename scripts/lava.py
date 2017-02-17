@@ -1,5 +1,11 @@
 from __future__ import print_function
 
+import os
+from os.path import  dirname, join, abspath, split, basename
+import sys
+import re
+import pipes
+import math
 import random
 import shlex
 import struct
@@ -328,10 +334,6 @@ def inject_bugs_into_src(project_file, lava_tool, lavadb, bugs_build, bugs, \
             )
     return run_cmd_notimeout(cmd, None, None)
 
-import os
-from os.path import  dirname, join, abspath, split, basename
-import sys
-import re
 
 class LavaPaths:
 
@@ -357,10 +359,10 @@ class LavaPaths:
 
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
-def inject_bugs(db, lp, project_file, project, bug_list, knobTrigger, update_db):
+def inject_bugs(bug_list, bugs_parent, db, lp, project_file, project, knobTrigger, update_db):
 
     try:
-        os.mkdir(lp.bugs_parent)
+        os.mkdir(bugs_parent)
     except Exception: pass
 
     print ("source_root = " + lp.source_root + "\n")
@@ -376,7 +378,7 @@ def inject_bugs(db, lp, project_file, project, bug_list, knobTrigger, update_db)
     if not os.path.exists(lp.bugs_build):
         print ("Untarring...")
         subprocess32.check_call(['tar', '--no-same-owner', '-xf', project['tarfile'],
-            '-C', lp.bugs_parent], stderr=sys.stderr)
+            '-C', bugs_parent], stderr=sys.stderr)
     if not os.path.exists(join(lp.bugs_build, '.git')):
         print ("Initializing git repo...")
         run(['git', 'init'])
@@ -533,7 +535,6 @@ def get_suffix(fn):
     else:
         return "." + split[-1]
 
-import pipes
 # run the bugged-up program
 def run_modified_program(project, install_dir, input_file, timeout):
     cmd = project['command'].format(install_dir=install_dir,input_file=input_file)
@@ -589,3 +590,56 @@ def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db)
         # we should see a 0
         assert (rv == 0)
         return None
+
+
+
+# validate this set of bugs
+def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, update_db, timeout):
+
+    print ("------------\n")
+    # first, try the original file
+    print ("TESTING -- ORIG INPUT")
+    for input_file in input_files:
+        unfuzzed_input = join(lp.top_dir, 'inputs', basename(input_file))
+        (rv, outp) = run_modified_program(project, lp.bugs_install, \
+                                              unfuzzed_input, timeout)
+        if rv != 0:
+            print ("***** buggy program fails on original input!")
+            assert False
+        else:
+            print ("buggy program succeeds on original input", input_file)
+        print ("retval = %d" % rv)
+        print ("output:")
+        lines = outp[0] + " ; " + outp[1]
+        if update_db:
+            db.session.add(Run(build=build, fuzzed=None, exitcode=rv,
+                            output='', success=True))
+    print ("ORIG INPUT STILL WORKS\n")
+
+    # second, try each of the fuzzed inputs and validate
+    print ("TESTING -- FUZZED INPUTS")
+    real_bugs = []
+    fuzzed_inputs = []
+    bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
+    for bug_index, bug in enumerate(bugs_to_inject):
+        print ("testing with fuzzed input for {} of {} potential.  ".format(
+                bug_index + 1, len(bugs_to_inject)))
+        fuzzed_input = validate_bug(db, lp, project, bug, bug_index, build, \
+                                        knobTrigger, update_db)
+        if not (fuzzed_input is None):
+            real_bugs.append(bug.id)
+            fuzzed_inputs.append(fuzzed_input)
+        print ("{} real. bug {}".format(len(real_bugs), bug.id))
+        print()
+    f = float(len(real_bugs)) / len(bugs_to_inject)
+    print (u"yield {:.2f} ({} out of {}) real bugs (95% CI +/- {:.2f}) ".format(
+        f, len(real_bugs), len(bugs_to_inject),
+        1.96 * math.sqrt(f * (1 - f) / len(bugs_to_inject)))
+    )
+    print ("TESTING COMPLETE")
+    if len(bugs_to_inject) > 1:
+        print ("list of real validated bugs:", real_bugs)
+
+    if update_db: db.session.commit()
+
+    return real_bugs
