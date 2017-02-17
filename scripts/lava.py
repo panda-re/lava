@@ -230,7 +230,8 @@ class LavaDatabase(object):
         bugs_and_non_bugs = []
         fileline = set()
         def get_bugs_non_bugs(fake, limit):
-            items = self.uninjected_random(limit)
+#            items = self.uninjected_random(limit)
+            items = self.uninjected_random(fake)
             for item in items:
                 dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
                 afl = (item.atp.loc_filename, item.atp.loc_begin_line)
@@ -288,3 +289,303 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug_id, kt=False, knob=0):
             file_bytes[offset] = magic_val[i]
     with open(new_filename, 'w') as fuzzed_f:
         fuzzed_f.write(file_bytes)
+
+
+# this is vile
+NUM_LINES_MAIN_INSTR = 5
+
+# run lavatool on this file and add defns for lava_get and lava_set
+def instrument_main(filename, bugs_build, lava_tool, lavadb, project_file):
+#    global bugs_build
+#    global lava_tool
+#    global lavadb
+    filename_bug_part = bugs_build + "/" + filename
+    cmd = lava_tool + ' -action=main -bug-list=\"\"' \
+        + ' -lava-db=' + lavadb + ' -p ' + bugs_build \
+        + ' ' + filename_bug_part \
+        + ' ' + '-project-file=' + project_file \
+        + ' ' + '-src-prefix=' + bugs_build
+    run_cmd_notimeout(cmd, None, None)
+
+
+# run lavatool on this file to inject any parts of this list of bugs
+# offset will be nonzero if file contains main and therefore
+# has already been instrumented with a bunch of defs of lava_get and lava_set and so on
+def inject_bugs_into_src(project_file, lava_tool, lavadb, bugs_build, bugs, \
+                             filename, offset, kt=False):
+    buglist = ','.join([str(bug.id) for bug in bugs])
+    if kt:
+        cmd = ('{} -action=inject -kt -bug-list={} -lava-db={} -src-prefix={} ' + \
+            '-main_instr_correction={} {} -project-file={}').format(
+                lava_tool, buglist, lavadb, bugs_build, offset,
+                join(bugs_build, filename), project_file
+            )
+    else:
+        cmd = ('{} -action=inject -bug-list={} -lava-db={} -src-prefix={} ' + \
+            '-main_instr_correction={} {} -project-file={}').format(
+                lava_tool, buglist, lavadb, bugs_build, offset,
+                join(bugs_build, filename), project_file
+            )
+    return run_cmd_notimeout(cmd, None, None)
+
+import os
+from os.path import  dirname, join, abspath, split, basename
+import sys
+import re
+
+class LavaPaths:
+
+    def __init__(self, project):
+        self.top_dir = join(project['directory'], project['name'])
+        self.lavadb = join(self.top_dir, 'lavadb')
+        self.lava_dir = dirname(dirname(abspath(sys.argv[0])))
+        self.lava_tool = join(self.lava_dir, 'src_clang', 'build', 'lavaTool')
+        if 'source_root' in project:
+            self.source_root = project['source_root']
+        else:
+            tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
+            self.source_root = tar_files.splitlines()[0].split(os.path.sep)[0]
+        self.queries_build = join(self.top_dir, self.source_root)
+        self.bugs_top_dir = join(self.top_dir, 'bugs')
+
+    def set_bugs_parent(self, bugs_parent):
+        self.bugs_parent = bugs_parent
+        self.bugs_build = join(self.bugs_parent, self.source_root)
+        self.bugs_install = join(self.bugs_build, 'lava-install')
+
+
+
+# inject this set of bugs into the source place the resulting bugged-up
+# version of the program in bug_dir
+def inject_bugs(db, lp, project_file, project, bug_list, knobTrigger, update_db):
+
+    try:
+        os.mkdir(lp.bugs_parent)
+    except Exception: pass
+
+    print ("source_root = " + lp.source_root + "\n")
+
+    # Make sure directories and btrace is ready for bug injection.
+    def run(args, **kwargs):
+        if type(args) in [str, unicode]:
+            print ("run(", args, ")")
+        else:
+            print ("run(", subprocess32.list2cmdline(args), ")")
+        subprocess32.check_call(args, cwd=lp.bugs_build,
+                stdout=sys.stdout, stderr=sys.stderr, **kwargs)
+    if not os.path.exists(lp.bugs_build):
+        print ("Untarring...")
+        subprocess32.check_call(['tar', '--no-same-owner', '-xf', project['tarfile'],
+            '-C', lp.bugs_parent], stderr=sys.stderr)
+    if not os.path.exists(join(lp.bugs_build, '.git')):
+        print ("Initializing git repo...")
+        run(['git', 'init'])
+        run(['git', 'config', 'user.name', 'LAVA'])
+        run(['git', 'config', 'user.email', 'nobody@nowhere'])
+        run(['git', 'add', '-A', '.'])
+        run(['git', 'commit', '-m', 'Unmodified source.'])
+    if not os.path.exists(join(lp.bugs_build, 'btrace.log')):
+        print ("Making with btrace...")
+        run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
+        run([join(lp.lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+    main_files = set(project['main_file'])
+
+    if not os.path.exists(join(lp.bugs_build, 'compile_commands.json')):
+        # find llvm_src dir so we can figure out where clang #includes are for btrace
+        llvm_src = None
+        config_mak = project['lava'] + "/src_clang/config.mak"
+        print ("config.mak = [%s]" % config_mak)
+        for line in open(config_mak):
+            foo = re.search("LLVM_SRC_PATH := (.*)$", line)
+            if foo:
+                llvm_src = foo.groups()[0]
+                break
+        assert(not (llvm_src is None))
+
+        print ("llvm_src =" + llvm_src)
+
+        run([join(lp.lava_dir, 'btrace', 'sw-btrace-to-compiledb'), llvm_src + "/Release/lib/clang/3.6.2/include"])
+        # also insert instr for main() fn in all files that need it
+        print ("Instrumenting main fn by running lavatool on %d files\n" % (len(main_files)))
+        for filename in main_files:
+            print ("injecting lava_set and lava_get code into [%s]" % filename)
+            filename_bug_part = lp.bugs_build + "/" + filename
+            cmd = lp.lava_tool + ' -action=main -bug-list=\"\"' \
+                + ' -lava-db=' + lp.lavadb + ' -p ' + lp.bugs_build \
+                + ' ' + filename_bug_part \
+                + ' ' + '-project-file=' + project_file \
+                + ' ' + '-src-prefix=' + lp.bugs_build
+            run_cmd_notimeout(cmd, None, None)
+#            instrument_main(f, bugs_build, lava_tool, lavadb)
+            run(['git', 'add', filename])
+        run(['git', 'add', 'compile_commands.json'])
+        run(['git', 'commit', '-m', 'Add compile_commands.json and instrument main.'])
+        run(shlex.split(project['make']))
+        try:
+            run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \\;"))
+            run(['git', 'commit', '-m', 'Adding source files'])
+        except subprocess32.CalledProcessError:
+            pass
+        if not os.path.exists(lp.bugs_install):
+            run(project['install'], shell=True)
+
+        # ugh binutils readelf.c will not be lavaTool-able without
+        # bfd.h which gets created by make.
+        run_cmd_notimeout(project["make"], lp.bugs_build, None)
+        run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \\;"))
+        try:
+            run(['git', 'commit', '-m', 'Adding any make-generated source files'])
+        except subprocess32.CalledProcessError:
+            pass
+        
+    bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
+
+    # collect set of src files into which we must inject code
+    src_files = set()
+    input_files = set()
+    i = 0
+
+    for bug_index, bug in enumerate(bugs_to_inject):
+        print("------------\n")
+        print("SELECTED ")
+        if bug.trigger.dua.fake_dua:
+            print("NON-BUG")
+        else:
+            print("BUG")
+        print(" {} : {}".format(bug_index, bug.id))
+        print("   (%d,%d)" % (bug.trigger.dua_id, bug.atp_id))
+        print("DUA:")
+        print("   ", bug.trigger.dua)
+        print("ATP:")
+        print("   ", bug.atp)
+        print("max_tcn={}  max_liveness={}".format(
+            bug.max_liveness, bug.trigger.dua.max_tcn))
+        src_files.add(bug.trigger_lval.loc_filename)
+        src_files.add(bug.atp.loc_filename)
+        input_files.add(bug.trigger.dua.inputfile)
+    sys.stdout.flush()
+
+    # cleanup
+    print("------------\n")
+    print("CLEAN UP SRC")
+    run_cmd_notimeout("/usr/bin/git checkout -f", lp.bugs_build, None)
+
+    print("------------\n")
+    print("INJECTING BUGS INTO SOURCE")
+    print("%d source files: " % (len(src_files)))
+    print(src_files)
+    main_files = set(project['main_file'])
+    print(main_files)
+    for src_file in src_files:
+        print("inserting code into dua file %s" % src_file)
+        offset = 0
+        if src_file in main_files:
+            offset = NUM_LINES_MAIN_INSTR
+        if knobTrigger != -1:
+            (exitcode, output) \
+                = inject_bugs_into_src(project_file, lp.lava_tool, lp.lavadb, \
+                                           lp.bugs_build, bugs_to_inject, \
+                                           src_file, offset, True)
+        else:
+            (exitcode, output) \
+                = inject_bugs_into_src(project_file, lp.lava_tool, lp.lavadb, \
+                                           lp.bugs_build, \
+                                       bugs_to_inject, src_file, offset)
+        if exitcode < 0:
+            raise RuntimeError("bad!")
+
+    # paranoid clean -- some build systems need this
+    if ('makeclean' in project) and (project['makeclean']):
+        run_cmd_notimeout("make clean", lp.bugs_build, None)
+
+    # compile
+    print("------------\n")
+    print("ATTEMPTING BUILD OF INJECTED BUG(S)")
+    print("build_dir = " + lp.bugs_build)
+    (rv, outp) = run_cmd_notimeout(project['make'], lp.bugs_build, None)
+    build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]))
+    if rv!=0:
+        # build failed
+        print(outp)
+        print("build failed")
+        sys.exit(1)
+    else:
+        # build success
+        print("build succeeded")
+        (rv, outp) = run_cmd_notimeout("make install", lp.bugs_build, None)
+        assert rv == 0 # really how can this fail if build succeeds?
+        print("make install succeeded")
+
+    # add a row to the build table in the db
+    if update_db:
+        db.session.add(build)
+
+    return (build, input_files)
+        
+
+def get_suffix(fn):
+    split = basename(fn).split(".")
+    if len(split) == 1:
+        return ""
+    else:
+        return "." + split[-1]
+
+import pipes
+# run the bugged-up program
+def run_modified_program(project, install_dir, input_file, timeout):
+    cmd = project['command'].format(install_dir=install_dir,input_file=input_file)
+    cmd = "setarch {} -R {}".format(subprocess32.check_output("arch").strip(), cmd)
+    cmd = '/bin/bash -c '+ pipes.quote(cmd)
+    print (cmd)
+    envv = {}
+    lib_path = project['library_path'].format(install_dir=install_dir)
+    envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
+    return run_cmd(cmd, install_dir, envv, timeout)
+
+
+def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db):
+
+    unfuzzed_input = join(lp.top_dir, 'inputs', basename(bug.trigger.dua.inputfile))
+    suff = get_suffix(unfuzzed_input)
+    pref = unfuzzed_input[:-len(suff)] if suff != "" else unfuzzed_input
+    fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
+    print (str(bug))
+    print ("fuzzed = [%s]" % fuzzed_input)
+    mutfile_kwargs = {}
+    if knobTrigger != -1:
+        print ("Knob size: {}".format(knobTrigger))
+        mutfile_kwargs = { 'kt': True, 'knob': knobTrigger }
+        
+    extra_query = db.session.query(DuaBytes)\
+        .filter(DuaBytes.id.in_(bug.extra_duas))
+    fuzz_labels_list = [bug.trigger.all_labels]
+    fuzz_labels_list.extend([d.all_labels for d in extra_query])
+    mutfile(unfuzzed_input, fuzz_labels_list, fuzzed_input, bug.id,
+            **mutfile_kwargs)
+    timeout = project.get('timeout', 5)
+    (rv, outp) = run_modified_program(project, lp.bugs_install, fuzzed_input, \
+                                          timeout)
+    print ("retval = %d" % rv)
+    print ("output:")
+    lines = outp[0] + " ; " + outp[1]
+#                print lines
+    if update_db:
+        db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
+                           output=lines.encode('string-escape'), success=True))
+    if bug.trigger.dua.fake_dua == False:
+        # this really is supposed to be a bug
+        # we should see a seg fault or something
+        # NB: Wrapping programs in bash transforms rv -> 128 - rv
+        # so e.g. -11 goes to 139.
+        if rv in [-6, -11, 134, 139]:
+            return fuzzed_input
+        else:
+            return None
+    else:
+        # this really is supposed to be a non-bug
+        # we should see a 0
+        assert (rv == 0)
+        return None
