@@ -26,43 +26,23 @@ start_time = time.time()
 
 project = None
 # this is how much code we add to top of any file with main fn in it
-NUM_LINES_MAIN_INSTR = 5
-debugging = True
+debugging = False
 
 # run lavatool on this file to inject any parts of this list of bugs
 # offset will be nonzero if file contains main and therefore
 # has already been instrumented with a bunch of defs of lava_get and lava_set and so on
-def inject_bugs_into_src(bugs, filename, offset, kt=False):
+def inject_bugs_into_src(bugs, filenames, kt=False):
     global bugs_build
     global lava_tool
     global lavadb
     buglist = ','.join([str(bug.id) for bug in bugs])
-    if kt:
-        cmd = ('{} -action=inject -kt -bug-list={} -lava-db={} -src-prefix={} ' + \
-            '-main_instr_correction={} {} -project-file={}').format(
-                lava_tool, buglist, lavadb, bugs_build, offset,
-                join(bugs_build, filename), project_file
-            )
-    else:
-        cmd = ('{} -action=inject -bug-list={} -lava-db={} -src-prefix={} ' + \
-            '-main_instr_correction={} {} -project-file={}').format(
-                lava_tool, buglist, lavadb, bugs_build, offset,
-                join(bugs_build, filename), project_file
-            )
+    cmd = ('{} -action=inject -bug-list={} -lava-db={} -src-prefix={} ' + \
+        '-project-file={} -main-files={} {}').format(
+            lava_tool, buglist, lavadb, bugs_build, project_file,
+            ",".join([join(bugs_build, f) for f in main_files]),
+            " ".join([join(bugs_build, f) for f in filenames])
+        )
     return run_cmd_notimeout(cmd, None, None)
-
-# run lavatool on this file and add defns for lava_get and lava_set
-def instrument_main(filename):
-    global bugs_build
-    global lava_tool
-    global lavadb
-    filename_bug_part = bugs_build + "/" + filename
-    cmd = lava_tool + ' -action=main -bug-list=\"\"' \
-        + ' -lava-db=' + lavadb + ' -p ' + bugs_build \
-        + ' ' + filename_bug_part \
-        + ' ' + '-project-file=' + project_file \
-        + ' ' + '-src-prefix=' + bugs_build
-    run_cmd_notimeout(cmd, None, None)
 
 def get_suffix(fn):
     split = basename(fn).split(".")
@@ -260,14 +240,8 @@ if __name__ == "__main__":
         print "llvm_src =", llvm_src
 
         run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'), llvm_src + "/Release/lib/clang/3.6.2/include"])
-        # also insert instr for main() fn in all files that need it
-        print "Instrumenting main fn by running lavatool on %d files\n" % (len(main_files))
-        for f in main_files:
-            print "injecting lava_set and lava_get code into [%s]" % f
-            instrument_main(f)
-            run(['git', 'add', f])
         run(['git', 'add', 'compile_commands.json'])
-        run(['git', 'commit', '-m', 'Add compile_commands.json and instrument main.'])
+        run(['git', 'commit', '-m', 'Add compile_commands.json.'])
         run(shlex.split(project['make']))
         try:
             run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \\;"))
@@ -353,25 +327,7 @@ if __name__ == "__main__":
     print "%d source files: " % (len(src_files))
     print src_files
     print main_files
-    for src_file in src_files:
-        print "inserting code into dua file %s" % src_file
-        offset = 0
-        if src_file in main_files:
-            offset = NUM_LINES_MAIN_INSTR
-
-        if args.knobTrigger != -1:
-            (exitcode, output) = inject_bugs_into_src(bugs_to_inject, src_file, offset, True)
-        else:
-            (exitcode, output) = inject_bugs_into_src(bugs_to_inject, src_file, offset)
-        # note: now that we are inserting many dua / atp bug parts into each source, potentially.
-        # which means we can't have simple exitcodes to indicate precisely what happened
-        print "exitcode = %d" % exitcode
-        if debugging:
-            print output[0]
-        if debugging or exitcode != 0:
-            print output[1]
-        if exitcode < 0:
-            raise RuntimeError("bad!")
+    (exitcode, output) = inject_bugs_into_src(bugs_to_inject, src_files, True)
 
     # ugh -- with tshark if you *dont* do this, your bug-inj source may not build, sadly
     # it looks like their makefile doesn't understand its own dependencies, in fact

@@ -106,8 +106,6 @@ git commit -m 'Add compile_commands.json.'
 
 cd ..
 
-#tar czf "btraced.tar.gz" "$source"
-
 c_files=$(python $lava/src_clang/get_c_files.py $source)
 c_dirs=$(for i in $c_files; do dirname $i; done | sort | uniq)
 
@@ -119,17 +117,20 @@ done
 
 
 progress "Inserting queries..."
-for i in $c_files; do
-  echo "running lavaTool on $i"
+$lava/src_clang/build/lavaTool -action=query \
+-lava-db="$directory/$name/lavadb" \
+-p="$source/compile_commands.json" \
+-src-prefix=$(readlink -f "$source") \
+$ATP_TYPE \
+-project-file="$json" \
+$c_files
 
-  $lava/src_clang/build/lavaTool -action=query \
-    -lava-db="$directory/$name/lavadb" \
-    -p="$source/compile_commands.json" \
-    -src-prefix=$(readlink -f "$source") \
-    $ATP_TYPE \
-    -project-file="$json" "$i"
+for i in $c_dirs; do
+    echo "  Applying replacements to $i"
+    pushd $i
+    $llvm_src/Release/bin/clang-apply-replacements -format .
+    popd
 done
-
 
 progress "Done inserting queries. Time to make and run actuate.py on a 64-BIT machine!"
 

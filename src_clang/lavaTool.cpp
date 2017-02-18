@@ -20,15 +20,14 @@ extern "C" {
 #include <odb/pgsql/database.hxx>
 
 #include "clang/AST/AST.h"
-#include "clang/AST/ASTConsumer.h"
-#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Driver/Options.h"
-#include "clang/Frontend/ASTConsumers.h"
-#include "clang/Frontend/FrontendActions.h"
 #include "clang/Frontend/CompilerInstance.h"
-#include "clang/Tooling/CommonOptionsParser.h"
-#include "clang/Tooling/Tooling.h"
+#include "clang/Lex/Lexer.h"
 #include "clang/Rewrite/Core/Rewriter.h"
+#include "clang/Tooling/CommonOptionsParser.h"
+#include "clang/Tooling/Refactoring.h"
+#include "clang/Tooling/ReplacementsYaml.h"
+#include "clang/Tooling/Tooling.h"
 #include "llvm/Option/OptTable.h"
 #include "llvm/Support/raw_ostream.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
@@ -46,9 +45,6 @@ extern "C" {
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
-
-#define RV_PFX "kbcieiubweuhc"
-#define RV_PFX_LEN 13
 
 #define DEBUG 0
 #define MATCHER_DEBUG 0
@@ -76,7 +72,6 @@ static cl::opt<action> LavaAction("action", cl::desc("LAVA Action"),
     cl::values(
         clEnumValN(LavaQueries, "query", "Add taint queries"),
         clEnumValN(LavaInjectBugs, "inject", "Inject bugs"),
-        clEnumValN(LavaInstrumentMain, "main", "Insert lava fns into file containing main"),
         clEnumValEnd),
     cl::cat(LavaCategory),
     cl::Required);
@@ -97,35 +92,14 @@ static cl::opt<std::string> SourceDir("src-prefix",
     cl::desc("Path to source directory to remove as prefix."),
     cl::cat(LavaCategory),
     cl::init(""));
-static cl::opt<std::string> SMainInstrCorrection("main_instr_correction",
-    cl::desc("Insertion line correction for post-main instr"),
+static cl::opt<std::string> MainFileList("main-files",
+    cl::desc("Main files"),
     cl::cat(LavaCategory),
-    cl::init("XXX"));
+    cl::init(""));
 static cl::opt<bool> KnobTrigger("kt",
     cl::desc("Inject in Knob-Trigger style"),
     cl::cat(LavaCategory),
     cl::init(false));
-static cl::opt<bool> FN_ARG_ATP("fn_arg",
-    cl::desc("Inject in function arg style attack point"),
-    cl::cat(LavaCategory),
-    cl::init(false));
-static cl::opt<bool> MEM_WRITE_ATP("mem_write",
-    cl::desc("Inject a mem_write sytle attack point"),
-    cl::cat(LavaCategory),
-    cl::init(false));
-static cl::opt<bool> MEM_READ_ATP("mem_read",
-    cl::desc("Inject a mem_read style attack point"),
-    cl::cat(LavaCategory),
-    cl::init(false));
-
-
-uint32_t MainInstrCorrection;
-
-#define INSERTED_DUA_SIPHON 0x4
-#define INSERTED_DUA_USE    0x8
-#define INSERTED_MAIN_STUFF 0x16
-
-uint32_t returnCode=0;
 
 uint32_t num_taint_queries = 0;
 uint32_t num_atp_queries = 0;
@@ -142,10 +116,11 @@ Loc::Loc(const FullSourceLoc &full_loc)
     column(full_loc.getExpansionColumnNumber()) {}
 
 static std::vector<const Bug*> bugs;
+static std::set<std::string> main_files;
 
-std::stringstream new_start_of_file_src;
+static std::map<std::string, uint32_t> StringIDs;
 
-// These two maps replace AtBug.
+// These two maps Insert AtBug.
 // Map of bugs with attack points at a given loc.
 std::map<LavaASTLoc, std::vector<const Bug *>> bugs_with_atp_at;
 // Map of bugs with siphon of a given  lval name at a given loc.
@@ -153,6 +128,14 @@ std::map<LavaASTLoc, vector_set<const DuaBytes *>> siphons_at;
 
 #define MAX_STRNLEN 64
 ///////////////// HELPER FUNCTIONS BEGIN ////////////////////
+uint32_t GetStringID(std::string s) {
+    std::map<std::string, uint32_t>::iterator it;
+    // This does nothing if s is already in StringIDs.
+    std::tie(it, std::ignore) =
+        StringIDs.insert(std::make_pair(s, s.size()));
+    return it->second;
+}
+
 template<typename K, typename V>
 const V &map_get_default(const std::map<K, V> &map, K key) {
     static const V default_val;
@@ -164,10 +147,11 @@ const V &map_get_default(const std::map<K, V> &map, K key) {
     }
 }
 
-std::set<uint32_t> parse_ints(std::string ints) {
-    std::istringstream ss(ints);
-    std::set<uint32_t> result;
-    uint32_t i;
+template<typename Elem>
+std::set<Elem> parse_commas(std::string list) {
+    std::istringstream ss(list);
+    std::set<Elem> result;
+    Elem i;
     while (ss.good()) {
         ss >> i;
         result.insert(i);
@@ -203,8 +187,8 @@ bool QueriableType(const Type *lval_type) {
 }
 
 bool IsArgAttackable(const Expr *arg) {
-    debug << "IsArgAttackable \n";
 #if MATCHER_DEBUG
+    debug << "IsArgAttackable \n";
     arg->dump();
 #endif
     const Type *t = arg->IgnoreParenImpCasts()->getType().getTypePtr();
@@ -212,22 +196,17 @@ bool IsArgAttackable(const Expr *arg) {
         return false;
     }
     if (QueriableType(t)) {
-        debug << "is of queriable type\n";
         if (t->isPointerType()) {
-            debug << "is a pointer type\n";
             const Type *pt = t->getPointeeType().getTypePtr();
             // its a pointer to a non-void
             if ( ! (pt->isVoidType() ) ) {
-                debug << "is not a void type -- ATTACKABLE\n";
                 return true;
             }
         }
         if ((t->isIntegerType() || t->isCharType()) && (!t->isEnumeralType())) {
-            debug << "is integer or char and not enum -- ATTACKABLE\n";
             return true;
         }
     }
-    debug << "not ATTACKABLE\n";
     return false;
 }
 
@@ -263,50 +242,109 @@ LExpr knobTriggerAttack(const Bug *bug) {
         + (lava_get_upper * MagicTest(magic_value, lava_get_lower));
 }
 
+class Insertions {
+private:
+    std::map<SourceLocation, std::string> impl;
+
+public:
+    void clear() { impl.clear(); }
+
+    void insertAfter(SourceLocation loc, std::string str) {
+        impl[loc].append(str);
+    }
+
+    void insertBefore(SourceLocation loc, std::string str) {
+        str.append(impl[loc]);
+        impl[loc] = str;
+    }
+
+    void render(const SourceManager &sm, std::vector<Replacement> &out) {
+        out.reserve(impl.size() + out.size());
+        for (const auto &keyvalue : impl) {
+            out.emplace_back(sm, keyvalue.first, 0, keyvalue.second);
+        }
+    }
+};
+
+struct Modifier {
+    Insertions &Insert;
+    const LangOptions &LangOpts;
+    const SourceManager &sm;
+    const Expr *expr;
+
+    Modifier(Insertions &Insert, const LangOptions &LangOpts,
+             const SourceManager &sm, const Expr *expr) :
+        Insert(Insert), sm(sm), LangOpts(LangOpts), expr(expr) {}
+
+    SourceLocation insertionLoc(SourceLocation loc) const {
+        if (sm.isMacroArgExpansion(loc)) {
+            return sm.getMacroArgExpandedLocation(loc);
+        } else if (sm.isMacroBodyExpansion(loc)) {
+            return sm.getExpansionLoc(loc);
+        } else return loc;
+    }
+
+    SourceLocation before() const {
+        return insertionLoc(expr->getLocStart());
+    }
+
+    // Get location for end of expr.
+    SourceLocation after() const {
+        // clang stores ranges as start of first token -> start of last token.
+        // so to get character range for replacement, we need to add start of
+        // last token.
+        SourceLocation end = insertionLoc(expr->getLocEnd());
+        unsigned lastTokenSize = Lexer::MeasureTokenLength(end, sm, LangOpts);
+        return end.getLocWithOffset(lastTokenSize);
+    }
+
+    void Parenthesize() const {
+        Insert.insertBefore(before(), "(");
+        Insert.insertAfter(after(), ")");
+    }
+
+    const Modifier &Operate(std::string op, const LExpr &addend, bool outerParens) const {
+        if (isa<BinaryOperator>(expr)
+                || isa<AbstractConditionalOperator>(expr)) {
+            Parenthesize();
+        }
+        Insert.insertAfter(after(), " " + op + " " + addend.render());
+        if (outerParens) { Parenthesize(); }
+        return *this;
+    }
+
+    const Modifier &Add(const LExpr &addend, bool parens) const {
+        return Operate("+", addend, parens);
+    }
+};
+
 /*******************************
  * Matcher Handlers
  *******************************/
 struct LavaMatchHandler : public MatchFinder::MatchCallback {
-    LavaMatchHandler(Rewriter &rewriter, std::map<std::string,uint32_t> &StringIDs) :
-        rewriter(rewriter), StringIDs(StringIDs) {}
+    LavaMatchHandler(Insertions &Insert) : Insert(Insert) {}
 
-    std::string FullPath(FullSourceLoc &loc) {
-        SourceManager &sm = rewriter.getSourceMgr();
+    std::string FullPath(FullSourceLoc &loc) const {
+        const SourceManager &sm = loc.getManager();
         char curdir[PATH_MAX] = {};
         char *ret = getcwd(curdir, PATH_MAX);
-        std::string name = sm.getFilename(loc).str();
+        std::string name = sm.getFilename(sm.getExpansionLoc(loc));
         assert(!name.empty());
         return std::string(curdir) + "/" + name;
     }
 
     std::string ExprStr(const Stmt *e) {
-        const clang::LangOptions &LangOpts = rewriter.getLangOpts();
-        clang::PrintingPolicy Policy(LangOpts);
+        clang::PrintingPolicy Policy(*LangOpts);
         std::string TypeS;
         llvm::raw_string_ostream s(TypeS);
         e->printPretty(s, 0, Policy);
         return s.str();
     }
 
-    uint32_t GetStringID(std::string s) {
-        std::map<std::string, uint32_t>::iterator it;
-        // This does nothing if s is already in StringIDs.
-        std::tie(it, std::ignore) =
-            StringIDs.insert(std::make_pair(s, StringIDs.size()));
-        return it->second;
-    }
-
-    bool InMainFile(const Stmt *s) {
-        SourceManager &sm = rewriter.getSourceMgr();
-        SourceLocation loc = s->getLocStart();
-        return !sm.getFilename(loc).empty() && sm.isInMainFile(loc);
-    }
-
-    LavaASTLoc GetASTLoc(const Stmt *s) {
+    LavaASTLoc GetASTLoc(const SourceManager &sm, const Stmt *s) {
         assert(!SourceDir.empty());
-        SourceManager &sm = rewriter.getSourceMgr();
-        FullSourceLoc fullLocStart(s->getLocStart(), sm);
-        FullSourceLoc fullLocEnd(s->getLocEnd(), sm);
+        FullSourceLoc fullLocStart(sm.getExpansionLoc(s->getLocStart()), sm);
+        FullSourceLoc fullLocEnd(sm.getExpansionLoc(s->getLocEnd()), sm);
         std::string src_filename = StripPrefix(FullPath(fullLocStart), SourceDir);
         return LavaASTLoc(src_filename, fullLocStart, fullLocEnd);
     }
@@ -318,9 +356,9 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                 LDecimal(0) });
     }
 
-    void AttackExpression(const Expr *toAttack, const Expr *parent,
-            const Expr *writeValue, AttackPoint::Type atpType) {
-        LavaASTLoc ast_loc = GetASTLoc(toAttack);
+    void AttackExpression(const SourceManager &sm, const Expr *toAttack,
+            const Expr *parent, const Expr *rhs, AttackPoint::Type atpType) {
+        LavaASTLoc ast_loc = GetASTLoc(sm, toAttack);
         std::vector<LExpr> pointerAddends;
         std::vector<LExpr> valueAddends;
 
@@ -331,8 +369,6 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
             // Nothing to do if we're not at an attack point
             if (injectable_bugs.empty()) return;
-
-            returnCode |= INSERTED_DUA_USE;
 
             // this should be a function bug -> LExpr to add.
             auto pointerAttack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
@@ -355,69 +391,66 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
         // Insert the new addition expression, and if parent expression is
         // already paren expression, do not add parens
-        // NB: InsertText... returns false on success.
         if (!pointerAddends.empty()) {
             LExpr addToPointer = LBinop("+", std::move(pointerAddends));
-            bool ret = rewriter.InsertTextAfterToken(toAttack->getLocEnd(),
-                    " + " + addToPointer.render());
-            assert(!ret);
-            if (parent &&
-                    !isa<ParenExpr>(parent) && !isa<ArraySubscriptExpr>(parent)) {
-                rewriter.InsertTextBefore(toAttack->getLocStart(), "(");
-                rewriter.InsertTextAfterToken(parent->getLocEnd(), ")");
-            }
+            Modifier(Insert, *LangOpts, sm, toAttack)
+                .Add(addToPointer, parent);
         }
 
         if (!valueAddends.empty()) {
-            assert(writeValue);
+            assert(rhs);
             LExpr addToValue = LBinop("+", std::move(valueAddends));
-            bool ret = rewriter.InsertTextBefore(writeValue->getLocStart(), "(");
-            assert(!ret);
-            ret = rewriter.InsertTextAfterToken(writeValue->getLocEnd(),
-                    " + " + addToValue.render() + ")");
-            assert(!ret);
+            Modifier(Insert, *LangOpts, sm, rhs)
+                .Add(addToValue, false);
         }
     }
 
-protected:
-    std::map<std::string,uint32_t> &StringIDs;
-    Rewriter &rewriter;
-};
-
-struct MatcherDebugHandler : public LavaMatchHandler {
-    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
+    virtual void handle(const MatchFinder::MatchResult &Result) = 0;
+    virtual ~LavaMatchHandler() = default;
 
     virtual void run(const MatchFinder::MatchResult &Result) {
+        const SourceManager &sm = *Result.SourceManager;
+        auto nodesMap = Result.Nodes.getMap();
+
+#if MATCHER_DEBUG
         debug << "====== Found Match =====\n";
-        //for (auto n : Result.Nodes.IDToNodeMap){
-        //toSiphon = Result.Nodes.getNodeAs<Stmt>("stmt");
-        const Stmt *stmt;
-        for (BoundNodes::IDToNodeMap::const_iterator n = Result.Nodes.getMap().begin();
-                                                     n != Result.Nodes.getMap().end(); ++n){
-            if ((stmt = n->second.get<Stmt>())){
-                debug << n->first << ": " << ExprStr(stmt) << " ";
-                stmt->getLocStart().dump(rewriter.getSourceMgr());
-                debug << "\n";
+#endif
+        for (auto &keyValue : nodesMap) {
+            const Stmt *stmt = keyValue.second.get<Stmt>();
+            SourceLocation start = stmt->getLocStart(), end = stmt->getLocEnd();
+            SourceRange range(start, end);
+            if (stmt) {
+                if (sm.isInMainFile(start) && sm.isInMainFile(end)
+                        && sm.getExpansionRange(start).first == start
+                        && sm.getExpansionRange(end).second == end
+                        && Rewriter::isRewritable(start)) {
+#if MATCHER_DEBUG
+                    debug << keyValue.first << ": " << ExprStr(stmt) << " ";
+                    stmt->getLocStart().print(debug, sm);
+                    debug << "\n";
+#endif
+                } else return;
             }
         }
-        return;
+        handle(Result);
     }
+
+    const LangOptions *LangOpts = nullptr;
+
+protected:
+    Insertions &Insert;
 };
 
-struct PriQueryPointSimpleHandler : public LavaMatchHandler {
+struct PriQueryPointHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
-    /* create code that siphons dua bytes into a global
-    this is how, given a byte in a dua we'll grab it and insert into a global
-    o = 3; // byte # in dua (0 is lsb)
-    i = 0; // byte # in global
-    lava_set(BUG_ID, ((unsigned char *)&dua))[o] << (i*8) | ...);
-    */
+    // create code that siphons dua bytes into a global
+    // for dua x, offset o, generates:
+    // lava_set(slot, *(const unsigned int *)(((const unsigned char *)x)+o)
     // Each lval gets an if clause containing one siphon
     std::string SiphonsForLocation(LavaASTLoc ast_loc) {
         std::stringstream result_ss;
         for (const DuaBytes *dua_bytes : map_get_default(siphons_at, ast_loc)) {
-            returnCode |= INSERTED_DUA_SIPHON;
             result_ss << LIf(dua_bytes->dua->lval->ast_name, LavaSet(dua_bytes));
         }
 
@@ -445,11 +478,11 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
         return result_ss.str();
     }
 
-    virtual void run(const MatchFinder::MatchResult &Result) {
+    virtual void handle(const MatchFinder::MatchResult &Result) override {
         const Stmt *toSiphon = Result.Nodes.getNodeAs<Stmt>("stmt");
-        if (!InMainFile(toSiphon)) return;
+        const SourceManager &sm = *Result.SourceManager;
 
-        LavaASTLoc ast_loc = GetASTLoc(toSiphon);
+        LavaASTLoc ast_loc = GetASTLoc(sm, toSiphon);
         debug << "Have a query point @ " << ast_loc << "!\n";
 
         std::string before;
@@ -463,53 +496,47 @@ struct PriQueryPointSimpleHandler : public LavaMatchHandler {
         } else if (LavaAction == LavaInjectBugs) {
             before = SiphonsForLocation(ast_loc) + AttackRetBuffer(ast_loc);
         }
-        rewriter.InsertText(toSiphon->getLocStart(), before,
-                /* InsertAfter = */ false, /* indentNewLine = */ true);
-    }
-};
-
-struct FunctionArgAtpHandler : public LavaMatchHandler {
-    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
-
-    virtual void run(const MatchFinder::MatchResult &Result) {
-        const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("arg");
-        if (!InMainFile(toAttack)) return;
-
-        debug << "FunctionArgAtpHandler @ " << GetASTLoc(toAttack) << "\n";
-
-        if (FN_ARG_ATP) {
-            AttackExpression(toAttack, nullptr, nullptr, AttackPoint::FUNCTION_ARG);
+        if (!before.empty()) {
+            Insert.insertBefore(sm.getExpansionLoc(toSiphon->getLocStart()), before);
         }
     }
 };
 
-struct PointerAtpHandler : public LavaMatchHandler {
+struct FunctionArgHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
-    /* TODO: add description of what type of attacks we are doing here */
+    virtual void handle(const MatchFinder::MatchResult &Result) override {
+        const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("arg");
+        const SourceManager &sm = *Result.SourceManager;
 
-    virtual void run(const MatchFinder::MatchResult &Result) {
+        debug << "FunctionArgHandler @ " << GetASTLoc(sm, toAttack) << "\n";
+
+        AttackExpression(sm, toAttack, nullptr, nullptr, AttackPoint::FUNCTION_ARG);
+    }
+};
+
+struct MemoryAccessHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
+
+    virtual void handle(const MatchFinder::MatchResult &Result) override {
         const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("innerExpr");
-        const Expr *parent = Result.Nodes.getNodeAs<Expr>("innerExprParent");
-        LavaASTLoc ast_loc = GetASTLoc(toAttack);
+        const Expr *parent = Result.Nodes.getNodeAs<Expr>("lhs");
+        const SourceManager &sm = *Result.SourceManager;
+        LavaASTLoc ast_loc = GetASTLoc(sm, toAttack);
         debug << "PointerAtpHandler @ " << ast_loc << "\n";
 
-        const Expr *writeValue = nullptr;
+        const Expr *rhs = nullptr;
         AttackPoint::Type atpType = AttackPoint::POINTER_READ;
 
         // memwrite style attack points will have rhs bound to a node
         auto it = Result.Nodes.getMap().find("rhs");
         if (it != Result.Nodes.getMap().end()){
             atpType = AttackPoint::POINTER_WRITE;
-            writeValue = it->second.get<Expr>();
-            assert(writeValue);
+            rhs = it->second.get<Expr>();
+            assert(rhs);
         }
-        if (!InMainFile(toAttack)) return;
 
-        if ((MEM_WRITE_ATP && atpType == AttackPoint::POINTER_WRITE)
-                || (MEM_READ_ATP && atpType == AttackPoint::POINTER_READ)) {
-            AttackExpression(toAttack, parent, writeValue, atpType);
-        }
+        AttackExpression(sm, toAttack, parent, rhs, atpType);
     }
 };
 
@@ -547,182 +574,112 @@ namespace clang {
     }
 }
 
-/*******************************************************************************
- * LavaTaintQueryASTConsumer
- ******************************************************************************/
-
-class LavaTaintQueryASTConsumer : public ASTConsumer {
+class LavaMatchFinder : public MatchFinder, public SourceFileCallbacks {
 public:
-    LavaTaintQueryASTConsumer(Rewriter &rewriter, std::map<std::string,uint32_t> &StringIDs) :
-        HandlerMatcherDebug(rewriter, StringIDs),
-        HandlerForFunctionArgAtp(rewriter, StringIDs),
-        HandlerForPointerAtp(rewriter, StringIDs),
-        HandlerForPriQueryPointSimple(rewriter, StringIDs)
-    {
+    LavaMatchFinder() {
         StatementMatcher memoryAccessMatcher =
             allOf(
-                anyOf(
+                expr(anyOf(
                     arraySubscriptExpr(
-                        hasIndex(ignoringParenImpCasts(
-                            expr(hasParent(expr().bind("innerExprParent"))).bind("innerExpr")))).bind("lhs"),
+                        hasIndex(ignoringImpCasts(
+                                expr().bind("innerExpr")))),
                     unaryOperator(hasOperatorName("*"),
-                        hasUnaryOperand(ignoringParenImpCasts(
-                            expr(hasParent(expr().bind("innerExprParent"))).bind("innerExpr")))).bind("lhs")),
-                hasAncestor(functionDecl()), // makes sure that we are't in a global variable declaration
-                unless(hasAncestor(varDecl(isStaticLocalDeclMatcher())))); //makes sure that we aren't in an initializer of a static local variable which must be constant
-
-        StatementMatcher memWriteMatcher =
-            expr(allOf(
-                    memoryAccessMatcher,
+                        hasUnaryOperand(ignoringImpCasts(
+                                expr().bind("innerExpr")))))).bind("lhs"),
+                anyOf(
                     expr(hasAncestor(binaryOperator(allOf(
                                     hasOperatorName("="),
-                                    hasRHS(expr().bind("rhs")))))).bind("lhs")));
+                                    hasRHS(ignoringImpCasts(
+                                            expr().bind("rhs"))),
+                                    hasLHS(hasDescendant(expr(
+                                                equalsBoundNode("lhs")))))))),
+                    anything()), // this is a "maybe" construction.
+                hasAncestor(functionDecl()), // makes sure that we are't in a global variable declaration
+                // make sure we aren't in static local variable initializer which must be constant
+                unless(hasAncestor(varDecl(isStaticLocalDeclMatcher()))));
 
-        StatementMatcher memReadMatcher =
-            allOf(
-                unless(memWriteMatcher),
-                memoryAccessMatcher);
-
-#if MATCHER_DEBUG == 1
-#define IFNOTDEBUG(matcher) HandlerMatcherDebug
-#else
-#define IFNOTDEBUG(matcher) (matcher)
-#endif
-
-        Matcher.addMatcher(
+        addMatcher(
                 stmt(hasParent(compoundStmt())).bind("stmt"),
-                &IFNOTDEBUG(HandlerForPriQueryPointSimple)
+                makeHandler<PriQueryPointHandler>()
                 );
 
-        Matcher.addMatcher(
+        addMatcher(
                 callExpr(
-                    forEachArgMatcher(expr(isAttackableMatcher()).bind("arg"))).bind("ce"),
-                &IFNOTDEBUG(HandlerForFunctionArgAtp)
+                    forEachArgMatcher(expr(isAttackableMatcher()).bind("arg"))),
+                makeHandler<FunctionArgHandler>()
                 );
 
         // an array subscript expression is composed of base[index]
-        // matches all nodes of: *innerExprParent(innerExpr) = ...
-        // and matches all nodes of: base[innerExprParent(innerExpr)] = ...
-        Matcher.addMatcher(
-                memWriteMatcher,
-                &IFNOTDEBUG(HandlerForPointerAtp)
-                );
-
-        //// matches all nodes of: ... *innerExprParent(innerExpr) ...
-        //// and matches all nodes of: ... base[innerExprParent(innerExpr)] ...
-        Matcher.addMatcher(
-                memReadMatcher,
-                &IFNOTDEBUG(HandlerForPointerAtp)
-                );
-
-        }
-#undef IFNOTDEBUG
-
-    void HandleTranslationUnit(ASTContext &Context) override {
-        if (LavaAction != LavaInstrumentMain) {
-            // Run the matchers when we have the whole TU parsed.
-            Matcher.matchAST(Context);
-        }
+        // matches all nodes of: *innerExprParent(innerExpr) = rhs
+        // and matches all nodes of: base[innerExprParent(innerExpr)] = rhs
+        addMatcher(memoryAccessMatcher, makeHandler<MemoryAccessHandler>());
     }
 
-private:
-    std::vector< VarDecl* > globalVars;
-    FunctionArgAtpHandler HandlerForFunctionArgAtp;
-    PointerAtpHandler HandlerForPointerAtp;
-    PriQueryPointSimpleHandler HandlerForPriQueryPointSimple;
-    MatcherDebugHandler HandlerMatcherDebug;
-    MatchFinder Matcher;
-};
+    virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
+        Insert.clear();
+        TUReplace.Replacements.clear();
+        TUReplace.MainSourceFile = Filename;
+        CurrentCI = &CI;
 
-/*
- * clang::FrontendAction
- *      ^
- * clang::ASTFrontendAction
- *      ^
- * clang::PluginASTAction
- *
- * This inheritance pattern allows this class (and the classes above) to be used
- * as both a libTooling tool, and a Clang plugin.  In the libTooling case, the
- * plugin-specific methods just aren't utilized.
- */
-class LavaTaintQueryFrontendAction : public ASTFrontendAction {
-public:
-    std::string startoffile_ins;
+        debug << "*** handleBeginSource for: " << Filename << "\n";
 
-    LavaTaintQueryFrontendAction() {}
-
-    void EndSourceFileAction() override {
-        SourceManager &sm = rewriter.getSourceMgr();
-        debug << "*** EndSourceFileAction for: "
-                     << sm.getFileEntryForID(sm.getMainFileID())->getName()
-                     << "\n";
-        // Last thing: include the right file
-        // Now using our separate LAVA version
+        std::string insert_at_top;
         if (LavaAction == LavaQueries) {
-            new_start_of_file_src << "#include \"pirate_mark_lava.h\"\n";
+            insert_at_top = "#include \"pirate_mark_lava.h\"\n";
+        } else if (LavaAction == LavaInjectBugs) {
+            if (main_files.count(Filename) > 0) {
+                // This is the file with main! insert lava_[gs]et and whatever.
+                std::ifstream lava_funcs_file(LavaPath + "/src_clang/lava_set.c");
+                insert_at_top.assign(
+                        std::istreambuf_iterator<char>(lava_funcs_file),
+                        std::istreambuf_iterator<char>());
+            } else {
+                insert_at_top =
+                    "void lava_set(unsigned int bn, unsigned int val);\n"
+                    "extern unsigned int lava_get(unsigned int);\n";
+            }
         }
 
-        // add lava_get lava_set defs if this is a file with main () in it
-        if (LavaAction == LavaInstrumentMain) {
-            // This is the file with main! insert lava_[gs]et and whatever.
-            std::string lava_funcs_path(LavaPath + "/src_clang/lava_set.c");
-            std::ifstream lava_funcs_file(lava_funcs_path);
-            std::stringbuf temp;
-            lava_funcs_file.get(temp, '\0');
-            debug << "Inserting stuff from" << lava_funcs_path << ":\n";
-            debug << temp.str();
-            new_start_of_file_src << temp.str();
-            returnCode |= INSERTED_MAIN_STUFF;
+        debug << "Inserting at top of file: \n" << insert_at_top;
+        TUReplace.Replacements.emplace_back(Filename, 0, 0, insert_at_top);
+
+        for (auto it = MatchHandlers.begin();
+                it != MatchHandlers.end(); it++) {
+            (*it)->LangOpts = &CI.getLangOpts();
         }
 
-        if (LavaAction == LavaInjectBugs && MainInstrCorrection == 0) {
-            new_start_of_file_src
-                << "void lava_set(unsigned int bn, unsigned int val);\n"
-                << "extern unsigned int lava_get(unsigned int);\n";
-        }
-
-        auto startLoc = sm.getLocForStartOfFile(sm.getMainFileID());
-        startLoc.print(debug, sm);
-
-        rewriter.InsertText(startLoc, new_start_of_file_src.str(), true, true);
-#if OVERWRITE
-        bool ret = rewriter.overwriteChangedFiles();
-#endif
-        // save the strings db
-        if (LavaAction == LavaQueries){
-            if (LavaDB != "XXX")
-                SaveDB(StringIDs, LavaDB);
-        }
+        return true;
     }
 
-    std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
-                                                     StringRef file) override {
-        rewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
-        debug << "** Creating AST consumer for: " << file << "\n";
-        if (LavaDB != "XXX")
-            StringIDs = LoadDB(LavaDB);
+    virtual void handleEndSource() override {
+        debug << "*** handleEndSource\n";
 
-        return make_unique<LavaTaintQueryASTConsumer>(rewriter,StringIDs);
+        Insert.render(CurrentCI->getSourceManager(), TUReplace.Replacements);
+        std::error_code EC;
+        llvm::raw_fd_ostream YamlFile(TUReplace.MainSourceFile + ".yaml",
+                EC, llvm::sys::fs::F_RW);
+        yaml::Output Yaml(YamlFile);
+        Yaml << TUReplace;
+    }
+
+    template<class Handler>
+    LavaMatchHandler *makeHandler() {
+        MatchHandlers.emplace_back(new Handler(Insert));
+        return MatchHandlers.back().get();
     }
 
 private:
-    std::map<std::string,uint32_t> StringIDs;
-    Rewriter rewriter;
+    Insertions Insert;
+    TranslationUnitReplacements TUReplace;
+    std::vector<std::unique_ptr<LavaMatchHandler>> MatchHandlers;
+    CompilerInstance *CurrentCI = nullptr;
 };
 
 int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
-    if (!(FN_ARG_ATP || MEM_READ_ATP || MEM_WRITE_ATP)) {
-        FN_ARG_ATP = true;
-        MEM_WRITE_ATP = true;
-        MEM_READ_ATP = true;
-    }
 
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
-
-    debug << "main instr correction = " << SMainInstrCorrection.c_str() << "\n";
-    MainInstrCorrection = atoi(SMainInstrCorrection.c_str());
 
     std::ifstream json_file(ProjectFile);
     Json::Value root;
@@ -730,10 +687,11 @@ int main(int argc, const char **argv) {
         if (LavaAction == LavaInjectBugs) {
             debug << "Error: Specify a json file with \"-project-file\".  Exiting . . .\n";
         }
-    }
-    else {
+    } else {
         json_file >> root;
     }
+
+    if (LavaDB != "XXX") StringIDs = LoadDB(LavaDB);
 
     odb::transaction *t = nullptr;
     if (LavaAction == LavaInjectBugs) {
@@ -741,35 +699,41 @@ int main(int argc, const char **argv) {
                     root["db"].asString()));
         t = new odb::transaction(db->begin());
 
+        main_files = parse_commas<std::string>(MainFileList);
+
         // get bug info for the injections we are supposed to be doing.
         debug << "LavaBugList: [" << LavaBugList << "]\n";
 
-        std::set<uint32_t> bug_ids = parse_ints(LavaBugList);
+        std::set<uint32_t> bug_ids = parse_commas<uint32_t>(LavaBugList);
         // for each bug_id, load that bug from DB and insert into bugs vector.
         std::transform(bug_ids.begin(), bug_ids.end(), std::back_inserter(bugs),
                 [&](uint32_t bug_id) { return db->load<Bug>(bug_id); });
 
         for (const Bug *bug : bugs) {
-            LavaASTLoc atp_loc = bug->atp->loc.adjust_line(MainInstrCorrection);
+            LavaASTLoc atp_loc = bug->atp->loc;
             bugs_with_atp_at[atp_loc].push_back(bug);
 
-            LavaASTLoc dua_loc = bug->trigger_lval->loc.adjust_line(MainInstrCorrection);
+            LavaASTLoc dua_loc = bug->trigger_lval->loc;
             siphons_at[dua_loc].insert(bug->trigger);
 
             for (uint64_t dua_id : bug->extra_duas) {
                 const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
-                LavaASTLoc extra_loc = dua_bytes->dua->lval->loc.adjust_line(MainInstrCorrection);
+                LavaASTLoc extra_loc = dua_bytes->dua->lval->loc;
                 siphons_at[extra_loc].insert(dua_bytes);
             }
         }
     }
-    debug << "about to call Tool.run \n";
 
-    int r = Tool.run(newFrontendActionFactory<LavaTaintQueryFrontendAction>().get());
+    debug << "about to call Tool.run \n";
+    LavaMatchFinder Matcher;
+    Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
     debug << "back from calling Tool.run \n";
+
     if (LavaAction == LavaQueries) {
         debug << "num taint queries added " << num_taint_queries << "\n";
         debug << "num atp queries added " << num_atp_queries << "\n";
+
+        if (LavaDB != "XXX") SaveDB(StringIDs, LavaDB);
     }
 
     if (t) {
@@ -777,5 +741,5 @@ int main(int argc, const char **argv) {
         delete t;
     }
 
-    return (r | returnCode);
+    return 0;
 }
