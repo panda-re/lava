@@ -1,7 +1,7 @@
 SELECT fuzzed as bug, trigger, extra_duas, atp,
-    dbt.all_labels[1] as tr,
-    dbe1.all_labels[1] as e1,
-    dbe2.all_labels[1] as e2,
+    dbt.all_labels as tr_bytes,
+    dbe1.all_labels as extra1_bytes,
+    dbe2.all_labels as extra2_bytes,
     attackpoint.loc_filename as file,
     attackpoint.loc_begin_line as line
     FROM run
