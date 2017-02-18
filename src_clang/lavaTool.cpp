@@ -48,7 +48,6 @@ extern "C" {
 
 #define DEBUG 0
 #define MATCHER_DEBUG 0
-#define OVERWRITE 1
 
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
@@ -324,15 +323,6 @@ struct Modifier {
 struct LavaMatchHandler : public MatchFinder::MatchCallback {
     LavaMatchHandler(Insertions &Insert) : Insert(Insert) {}
 
-    std::string FullPath(FullSourceLoc &loc) const {
-        const SourceManager &sm = loc.getManager();
-        char curdir[PATH_MAX] = {};
-        char *ret = getcwd(curdir, PATH_MAX);
-        std::string name = sm.getFilename(sm.getExpansionLoc(loc));
-        assert(!name.empty());
-        return std::string(curdir) + "/" + name;
-    }
-
     std::string ExprStr(const Stmt *e) {
         clang::PrintingPolicy Policy(*LangOpts);
         std::string TypeS;
@@ -345,7 +335,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         assert(!SourceDir.empty());
         FullSourceLoc fullLocStart(sm.getExpansionLoc(s->getLocStart()), sm);
         FullSourceLoc fullLocEnd(sm.getExpansionLoc(s->getLocEnd()), sm);
-        std::string src_filename = StripPrefix(FullPath(fullLocStart), SourceDir);
+        std::string src_filename = StripPrefix(getAbsolutePath(fullLocStart), SourceDir);
         return LavaASTLoc(src_filename, fullLocStart, fullLocEnd);
     }
 
@@ -627,7 +617,7 @@ public:
         if (LavaAction == LavaQueries) {
             insert_at_top = "#include \"pirate_mark_lava.h\"\n";
         } else if (LavaAction == LavaInjectBugs) {
-            if (main_files.count(Filename) > 0) {
+            if (main_files.count(getAbsolutePath(Filename)) > 0) {
                 // This is the file with main! insert lava_[gs]et and whatever.
                 std::ifstream lava_funcs_file(LavaPath + "/src_clang/lava_set.c");
                 insert_at_top.assign(

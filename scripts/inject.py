@@ -40,9 +40,13 @@ def inject_bugs_into_src(bugs, filenames, kt=False):
         '-project-file={} -main-files={} {}').format(
             lava_tool, buglist, lavadb, bugs_build, project_file,
             ",".join([join(bugs_build, f) for f in main_files]),
-            " ".join([join(bugs_build, f) for f in filenames])
+            " ".join([join(bugs_build, f) for f in set(filenames) | set(main_files)])
         )
-    return run_cmd_notimeout(cmd, None, None)
+    run_cmd_notimeout(cmd, None, None)
+    for src_dir in set([dirname(f) for f in filenames]):
+        global llvm_src
+        os.chdir(src_dir)
+        run_cmd_notimeout([join(llvm_src, 'Release', 'bin', 'clang-apply-replacements'), '-format', '.'], None, None)
 
 def get_suffix(fn):
     split = basename(fn).split(".")
@@ -225,20 +229,21 @@ if __name__ == "__main__":
 
     main_files = set(project['main_file'])
 
+    # find llvm_src dir so we can figure out where clang #includes are for btrace
+    global llvm_src
+    llvm_src = None
+    config_mak = project['lava'] + "/src_clang/config.mak"
+    print "config.mak = [%s]" % config_mak
+    for line in open(config_mak):
+        foo = re.search("LLVM_SRC_PATH := (.*)$", line)
+        if foo:
+            llvm_src = foo.groups()[0]
+            break
+    assert(not (llvm_src is None))
+
+    print "llvm_src =", llvm_src
+
     if not os.path.exists(join(bugs_build, 'compile_commands.json')):
-        # find llvm_src dir so we can figure out where clang #includes are for btrace
-        llvm_src = None
-        config_mak = project['lava'] + "/src_clang/config.mak"
-        print "config.mak = [%s]" % config_mak
-        for line in open(config_mak):
-            foo = re.search("LLVM_SRC_PATH := (.*)$", line)
-            if foo:
-                llvm_src = foo.groups()[0]
-                break
-        assert(not (llvm_src is None))
-
-        print "llvm_src =", llvm_src
-
         run([join(lava_dir, 'btrace', 'sw-btrace-to-compiledb'), llvm_src + "/Release/lib/clang/3.6.2/include"])
         run(['git', 'add', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json.'])
@@ -327,7 +332,7 @@ if __name__ == "__main__":
     print "%d source files: " % (len(src_files))
     print src_files
     print main_files
-    (exitcode, output) = inject_bugs_into_src(bugs_to_inject, src_files, True)
+    inject_bugs_into_src(bugs_to_inject, src_files, True)
 
     # ugh -- with tshark if you *dont* do this, your bug-inj source may not build, sadly
     # it looks like their makefile doesn't understand its own dependencies, in fact
