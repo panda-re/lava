@@ -28,7 +28,7 @@ $(info Using LLVM_BUILD_PATH = $(LLVM_BUILD_PATH))
 $(info Using LLVM_BIN_PATH = $(LLVM_BIN_PATH))
 $(info -----------------------------------------------)
 
-VPATH=.:../src_clang:$(PANDA_SRC_PATH)/panda/src:$(PANDA_BUILD_DIR)/i386-softmmu
+VPATH=.:../common:$(PANDA_SRC_PATH)/panda/src:$(PANDA_BUILD_DIR)/i386-softmmu
 
 CXX := $(LLVM_BIN_PATH)/clang++
 CXXFLAGS := -fexceptions -O2 -g -gdwarf-2 -std=c++14 -I/usr/include/jsoncpp

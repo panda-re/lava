@@ -275,7 +275,7 @@ def inject_bugs_into_src(project_file, lava_tool, lavadb, bugs_build, bugs,
     buglist = ','.join([str(bug.id) for bug in bugs])
     buglist = ','.join([str(bug.id) for bug in bugs])
     cmd = ('{} -action=inject -bug-list={} -lava-db={} -src-prefix={} ' + \
-        '-project-file={} -main-files=\'{}\' {} {}').format(
+        '-project-file={} -arg-dataflow=true -main-files=\'{}\' {} {}').format(
             lava_tool, buglist, lavadb, bugs_build, project_file,
             ",".join([join(bugs_build, f) for f in main_files]),
             " ".join([join(bugs_build, f) for f in all_files]),

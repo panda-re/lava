@@ -28,7 +28,6 @@ extern "C" {
 #include "clang/Driver/Options.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Lex/Lexer.h"
-#include "clang/Rewrite/Core/Rewriter.h"
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/Refactoring.h"
 #include "clang/Tooling/ReplacementsYaml.h"
@@ -98,6 +97,9 @@ static cl::opt<std::string> MainFileList("main-files",
 static cl::opt<bool> KnobTrigger("kt",
     cl::desc("Inject in Knob-Trigger style"),
     cl::cat(LavaCategory),
+    cl::init(false));
+static cl::opt<bool> ArgDataflow("arg_dataflow",
+    cl::desc("Use function args for dataflow instead of lava_[sg]et"),
     cl::init(false));
 
 uint32_t num_taint_queries = 0;
@@ -204,6 +206,8 @@ bool IsArgAttackable(const Expr *arg) {
 ///////////////// HELPER FUNCTIONS END ////////////////////
 
 LExpr traditionalAttack(const Bug *bug) {
+    if (ArgDataflow)
+      return DataFlowGet(bug) * MagicTest(bug->magic(), DataFlowGet(bug));
     return LavaGet(bug) * MagicTest(bug->magic(), LavaGet(bug));
 }
 
@@ -257,12 +261,13 @@ public:
  */
 class Modifier {
 private:
-    Insertions &Insert;
-    const LangOptions *LangOpts = nullptr;
-    const SourceManager *sm = nullptr;
     const Stmt *stmt = nullptr;
 
 public:
+    Insertions &Insert;
+    const LangOptions *LangOpts = nullptr;
+    const SourceManager *sm = nullptr;
+
     Modifier(Insertions &Insert) : Insert(Insert) {}
 
     void Reset(const LangOptions *LangOpts_, const SourceManager *sm_) {
@@ -326,6 +331,10 @@ public:
             Parenthesize();
         }
         return Operate("+", addend, parent);
+    }
+
+    void InsertAt(SourceLocation loc, std::string str) {
+        Insert.InsertBefore(loc, str);
     }
 };
 
@@ -447,7 +456,8 @@ struct PriQueryPointHandler : public LavaMatchHandler {
     std::string SiphonsForLocation(LavaASTLoc ast_loc) {
         std::stringstream result_ss;
         for (const DuaBytes *dua_bytes : map_get_default(siphons_at, ast_loc)) {
-            result_ss << LIf(dua_bytes->dua->lval->ast_name, LavaSet(dua_bytes));
+            result_ss << LIf(dua_bytes->dua->lval->ast_name,
+                    ArgDataflow ? DataFlowSet(dua_bytes) : LavaSet(dua_bytes));
         }
 
         std::string result = result_ss.str();
@@ -571,6 +581,85 @@ struct MemoryAccessHandler : public LavaMatchHandler {
     }
 };
 
+
+struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
+
+    void AddArg(const MatchFinder::MatchResult &Result, const FunctionDecl *func) {
+        SourceLocation loc = clang::Lexer::findLocationAfterToken(
+                func->getLocation(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
+        Mod.InsertAt(loc, "int *data_flow, ");
+    }
+
+    virtual void handle(const MatchFinder::MatchResult &Result) {
+        if (LavaAction != LavaInjectBugs) return;
+
+        const FunctionDecl *func =
+            Result.Nodes.getNodeAs<FunctionDecl>("funcDecl")->getCanonicalDecl();
+
+        if (func->getLocation().isInvalid()) return;
+        if (func->getNameAsString().find("lava") == 0) return;
+
+        if (func->isMain()) {
+            SourceLocation loc = func->getBody()->getLocStart().getLocWithOffset(1);
+            Mod.InsertAt(loc, "int data = 0;\n  int *data_flow = &data; ");
+        } else {
+            while (func != NULL) {
+                AddArg(Result, func);
+                func = func->getPreviousDecl();
+                errs() << "found a redeclaration\n";
+            }
+        }
+        return;
+    }
+};
+
+struct FunctionPointerFieldHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit Constructor
+
+    virtual void handle(const MatchFinder::MatchResult &Result) {
+        if (LavaAction != LavaInjectBugs) return;
+        const FieldDecl *decl = Result.Nodes.getNodeAs<FieldDecl>("fieldDecl");
+        errs() << decl->getLocEnd().printToString(*Mod.sm) << "\n";
+        Mod.InsertAt(decl->getLocEnd().getLocWithOffset(-14), "int *data_flow, ");
+    }
+};
+
+struct CallExprArgAdditionHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit Constructor
+
+    virtual void handle(const MatchFinder::MatchResult &Result) {
+        if (LavaAction == LavaInjectBugs) {
+            const FunctionDecl* func;
+            const CallExpr *call = Result.Nodes.getNodeAs<CallExpr>("callExpr");
+            func = call->getDirectCallee();
+            if (func == nullptr || func->getLocation().isInvalid()) {
+                // Function Pointer
+                errs() << " potatos\n";
+                SourceLocation loc = clang::Lexer::findLocationAfterToken(
+                        call->getLocStart(), tok::l_paren,
+                        *Mod.sm, *Mod.LangOpts, true);
+                errs() << call->getLocStart().printToString(*Mod.sm) << "\n";
+                errs() << "this many args: " << call->getNumArgs() << "\n";
+                errs() << call->getArg(0)->getLocStart().printToString(*Mod.sm) << "\n";
+                Mod.InsertAt(call->getArg(0)->getLocStart(), "data_flow, ");
+                return;
+            }
+
+            SourceLocation loc = clang::Lexer::findLocationAfterToken(
+                    call->getLocStart(), tok::l_paren,
+                    *Mod.sm, *Mod.LangOpts, true);
+
+            if (func->param_size() != 0) {
+                Mod.InsertAt(loc, "data_flow, ");
+            } else {
+                Mod.InsertAt(loc, "data_flow");
+            }
+        }
+        return;
+    }
+};
+
 namespace clang {
     namespace ast_matchers {
         AST_MATCHER(Expr, isAttackableMatcher){
@@ -638,6 +727,19 @@ public:
 
         addMatcher(memoryAccessMatcher, makeHandler<MemoryAccessHandler>());
 
+        // fortenforge's matchers (for argument addition)
+        if (ArgDataflow) {
+            addMatcher(
+                    functionDecl().bind("funcDecl"),
+                    makeHandler<FuncDeclArgAdditionHandler>());
+            addMatcher(
+                    callExpr().bind("callExpr"),
+                    makeHandler<CallExprArgAdditionHandler>());
+            addMatcher(
+                    fieldDecl(anyOf(hasName("as_number"), hasName("as_string"))).bind("fieldDecl"),
+                    makeHandler<FunctionPointerFieldHandler>());
+        }
+
         addMatcher(
                 callExpr(
                     callee(functionDecl(hasName("::printf"))),
@@ -658,7 +760,7 @@ public:
         std::string insert_at_top;
         if (LavaAction == LavaQueries) {
             insert_at_top = "#include \"pirate_mark_lava.h\"\n";
-        } else if (LavaAction == LavaInjectBugs) {
+        } else if (LavaAction == LavaInjectBugs && !ArgDataflow) {
             if (main_files.count(getAbsolutePath(Filename)) > 0) {
                 // This is the file with main! insert lava_[gs]et and whatever.
                 std::ifstream lava_funcs_file(LavaPath + "/src_clang/lava_set.c");

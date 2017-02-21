@@ -19,7 +19,8 @@ static void infix(InputIt first, InputIt last, std::ostream &os,
 
 struct LExpr {
     enum Type {
-        STR, HEX, DECIMAL, BINOP, FUNC, BLOCK, IF, CAST, INDEX, ASM, DEREF
+        STR, HEX, DECIMAL, BINOP, FUNC, BLOCK, IF, CAST, INDEX, ASM, DEREF,
+        ASSIGN
     } t;
 
     uint32_t value;
@@ -106,6 +107,8 @@ struct LExpr {
             os << ")";
         } else if (expr.t == LExpr::DEREF) {
             os << '*' << *expr.args.at(0);
+        } else if (expr.t == LExpr::ASSIGN) {
+            os << *expr.args.at(0) << " = " << *expr.args.at(1) << "\n";
         } else { assert(false && "Bad expr!"); }
 
         return os;
@@ -197,17 +200,28 @@ LExpr LDeref(LExpr ptr) {
     return LExpr(LExpr::DEREF, 0, "", { ptr });
 }
 
+LExpr LAssign(LExpr left, LExpr right) {
+    return LExpr(LExpr::ASSIGN, 0, "", { left, right });
+}
+
 LExpr LavaGet(uint64_t val) {
     return LFunc("lava_get", { LDecimal(val) });
 }
 
-LExpr LavaGet(const Bug *bug) { return LavaGet(bug->trigger->id); }
 LExpr LavaGet(const DuaBytes *dua_bytes) { return LavaGet(dua_bytes->id); }
+LExpr LavaGet(const Bug *bug) { return LavaGet(bug->trigger); }
+
+LExpr DataFlowGet(uint64_t val) {
+    return LDeref(LStr("data_flow"));
+}
+
+LExpr DataFlowGet(const DuaBytes *dua_bytes) { return DataFlowGet(dua_bytes->id); }
+LExpr DataFlowGet(const Bug *bug) { return DataFlowGet(bug->trigger); }
 
 LExpr UCharCast(LExpr arg) { return LCast("const unsigned char *", arg); }
 LExpr UIntCast(LExpr arg) { return LCast("const unsigned int *", arg); }
 
-LExpr LavaSet(const DuaBytes *dua_bytes) {
+LExpr SelectCast(const DuaBytes *dua_bytes) {
     const std::string &lval_name = dua_bytes->dua->lval->ast_name;
     Range selected = dua_bytes->selected;
     assert(selected.size() == 4);
@@ -215,7 +229,15 @@ LExpr LavaSet(const DuaBytes *dua_bytes) {
     LExpr pointer = selected.low % 4 == 0
         ? UIntCast(LStr(lval_name)) + LDecimal(selected.low / 4)
         : UIntCast(UCharCast(LStr(lval_name)) + LDecimal(selected.low));
-    return LFunc("lava_set", { LDecimal(dua_bytes->id), LDeref(pointer) });
+    return LDeref(pointer);
+}
+
+LExpr LavaSet(const DuaBytes *dua_bytes) {
+    return LFunc("lava_set", { LDecimal(dua_bytes->id), SelectCast(dua_bytes) });
+}
+
+LExpr DataFlowSet(const DuaBytes *dua_bytes) {
+    return LAssign(LDeref(LStr("data_flow")), SelectCast(dua_bytes));
 }
 
 template<typename UInt>
