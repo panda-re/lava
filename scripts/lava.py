@@ -228,36 +228,6 @@ class LavaDatabase(object):
         count = self.uninjected2(fake).count()
         return self.uninjected2(fake)[random.randrange(0, count)]
 
-    # collect num bugs AND num non-bugs
-    # with some hairy constraints
-    # we need no two bugs or non-bugs to have same file/line attack point
-    # that allows us to easily evaluate systems which say there is a bug at file/line.
-    # further, we require that no two bugs or non-bugs have same file/line dua
-    # because otherwise the db might give us all the same dua
-    def competition_bugs_and_non_bugs(self, num):
-        bugs_and_non_bugs = []
-        fileline = set()
-        def get_bugs_non_bugs(fake, limit):
-#            items = self.uninjected_random(limit)
-            items = self.uninjected_random(fake)
-            for item in items:
-                dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
-                afl = (item.atp.loc_filename, item.atp.loc_begin_line)
-                if (dfl in fileline) or (afl in fileline):
-                    continue
-                if fake:
-                    print("non-bug", end="")
-                else:
-                    print("bug    ", end="")
-                print(' dua_fl={} atp_fl={}'.format(str(dfl), str(afl)))
-                fileline.add(dfl)
-                fileline.add(afl)
-                bugs_and_non_bugs.append(item)
-                if (len(bugs_and_non_bugs) == limit):
-                    break
-        get_bugs_non_bugs(False, num)
-        get_bugs_non_bugs(True, 2*num)
-        return bugs_and_non_bugs
 
 def run_cmd(cmd, cw_dir, envv, timeout, rr=False):
     if type(cmd) in [str, unicode]:
@@ -352,8 +322,24 @@ class LavaPaths:
         self.queries_build = join(self.top_dir, self.source_root)
         self.bugs_top_dir = join(self.top_dir, 'bugs')
 
+    def __str__(self):
+        rets = ""
+        rets += "top_dir =       %s\n" % self.top_dir
+        rets += "lavadb =        %s\n" % self.lavadb
+        rets += "lava_dir =      %s\n" % self.lava_dir
+        rets += "lava_tool =     %s\n" % self.lava_tool
+        rets += "source_root =   %s\n" % self.source_root
+        rets += "queries_build = %s\n" % self.queries_build
+        rets += "bugs_top_dir =  %s\n" % self.bugs_top_dir
+        rets += "bugs_parent =   %s\n" % self.bugs_parent
+        rets += "bugs_build =    %s\n" % self.bugs_build
+        rets += "bugs_install =  %s\n" % self.bugs_install
+        return rets
+        
+
     def set_bugs_parent(self, bugs_parent):
         self.bugs_parent = bugs_parent
+        (self.bugs_top_dir, foo) = os.path.split(bugs_parent)
         self.bugs_build = join(self.bugs_parent, self.source_root)
         self.bugs_install = join(self.bugs_build, 'lava-install')
 
@@ -363,8 +349,11 @@ class LavaPaths:
 # version of the program in bug_dir
 def inject_bugs(bug_list, bugs_parent, db, lp, project_file, project, knobTrigger, update_db):
 
+#    lp.set_bugs_parent(bugs_parent)
+    print (str(lp))
+
     try:
-        os.mkdir(bugs_parent)
+        os.makedirs(bugs_parent)
     except Exception: pass
 
     print ("source_root = " + lp.source_root + "\n")
