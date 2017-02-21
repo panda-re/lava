@@ -589,7 +589,9 @@ def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db)
 
 
 # validate this set of bugs
-def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, update_db, timeout):
+def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, update_db):
+
+    timeout = project.get('timeout', 5)
 
     print ("------------\n")
     # first, try the original file
