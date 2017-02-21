@@ -131,8 +131,6 @@ if __name__ == "__main__":
 
     db = LavaDatabase(project)
 
-    timeout = project.get('timeout', 5)
-
     try:
         os.makedirs(lp.bugs_top_dir)
     except Exception: pass
@@ -150,7 +148,7 @@ if __name__ == "__main__":
     try:
         # determine which of those bugs actually cause a seg fault
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                          args.knobTrigger, update_db, timeout)
+                                          args.knobTrigger, update_db)
 
         print "real bugs: " + (str(real_bug_list))
 
