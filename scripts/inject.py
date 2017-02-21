@@ -60,8 +60,6 @@ def get_bug_list(args, db):
         update_db = True
     else: assert False
 
-    bug_list = [b.id for b in bugs_to_inject]
- 
     return(update_db, bug_list)
 
 
@@ -131,7 +129,6 @@ if __name__ == "__main__":
     # Set various paths
     lp = LavaPaths(project)
 
-    # Set up our globals now that we have a project
     db = LavaDatabase(project)
 
     timeout = project.get('timeout', 5)
@@ -152,8 +149,10 @@ if __name__ == "__main__":
 
     try:
         # determine which of those bugs actually cause a seg fault
-        real_bugs = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                      args.knobTrigger, update_db, timeout)
+        real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
+                                          args.knobTrigger, update_db, timeout)
+
+        print "real bugs: " + (str(real_bug_list))
 
     except Exception as e:
         print "TESTING FAIL"
