@@ -400,7 +400,7 @@ def inject_bugs(bug_list, bugs_parent, db, lp, project_file, project, knobTrigge
     if not os.path.exists(join(lp.bugs_build, 'compile_commands.json')):
         # find llvm_src dir so we can figure out where clang #includes are for btrace
         llvm_src = None
-        config_mak = project['lava'] + "/src_clang/config.mak"
+        config_mak = join(lp.lava_dir, "src_clang/config.mak")
         print ("config.mak = [%s]" % config_mak)
         for line in open(config_mak):
             foo = re.search("LLVM_SRC_PATH := (.*)$", line)

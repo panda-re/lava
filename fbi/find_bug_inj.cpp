@@ -740,7 +740,7 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
 
         // Need to select bytes now.
         Range selected = get_dua_dead_range(trigger_dua);
-        assert(selected.size() == LAVA_MAGIC_VALUE_SIZE);
+        assert(selected.size() >= LAVA_MAGIC_VALUE_SIZE);
         const DuaBytes *trigger = create(DuaBytes{trigger_dua, selected});
 
         // Now select extra duas. One set of extra duas per (lval, atp, type).

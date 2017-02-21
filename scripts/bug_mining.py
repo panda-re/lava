@@ -206,8 +206,10 @@ createdb_result = subprocess32.call(createdb_args, stdout=sys.stdout, stderr=sys
 print()
 if createdb_result == 0: # Created new DB; now populate
     progress("Database created. Initializing...")
+    # psql_args = ['psql', '-U', 'postgres', '-d', project['db'],
+                 # '-f', join(join(lavadir, 'include'), 'lava.sql')]
     psql_args = ['psql', '-U', 'postgres', '-d', project['db'],
-                 '-f', join(join(lavadir, 'include'), 'lava.sql')]
+                 '-f', join(join(lavadir, 'fbi'), 'lava.sql')]
     dprint ("psql invocation: [%s]" % (" ".join(psql_args)))
     subprocess32.check_call(psql_args, stdout=sys.stdout, stderr=sys.stderr)
 else:
