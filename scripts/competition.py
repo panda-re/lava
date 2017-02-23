@@ -96,6 +96,8 @@ if __name__ == "__main__":
             help = 'JSON project file')
     parser.add_argument('-m', '--many', action="store", default=-1,
             help = 'Inject this many bugs and this many non-bugs (chosen randomly)')
+    parser.add_argument('-n', '--minYield', action="store", default=-1,
+            help = 'Require at least this many real bugs')
     parser.add_argument('-l', '--buglist', action="store", default=False,
             help = 'Inject this list of bugs')
     parser.add_argument('-d', '--bugdir', action="store", default=False,
@@ -119,39 +121,44 @@ if __name__ == "__main__":
 
     shutil.rmtree(args.bugdir)
  
-    print (str(lp))
-    
+    knobTrigger = -1
 
-    if False:
+    while True:
+
         if args.buglist:
             bug_list = eval(args.buglist)
         elif args.many:
             bug_list = competition_bugs_and_non_bugs(int(args.many), db)
 
-    bug_list = [475187L, 135879L, 442734L, 555117L, 85147L, 55982L, 232105L, 353204L, 423770L, 278537L]
+        #bug_list = [114L, 138L, 3295L, 3353L, 4635L, 14355L, 21112L, 34878L, 66341L, 72856L, 205102L, 222709L, 222865L, 271819L, 387124L, 388491L, 530292L]
+        # add bugs to the source code and check that we can still compile
+        (build, input_files) = inject_bugs(bug_list, bugs_parent, db, lp, project_file, \
+                                              project, knobTrigger, False)
 
-    knobTrigger = -1
+        # bug is valid if seg fault (or bus error)
+        # AND if stack trace indicates bug manifests at trigger line we inserted
+        real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
+                                          knobTrigger, False, True)
 
-    # add all those bugs to the source code and check that it compiles
-    (build, input_files) = inject_bugs(bug_list, bugs_parent, db, lp, project_file, \
-                                          project, knobTrigger, False)
+        if len(real_bug_list) < int(args.minYield):
+            print "\n\nXXX Yield too low -- %d bugs minimum is required for competition" % int(args.minYield)
+            print "Trying again.\n"
+        else:
+            print "\n\n Yield acceptable"
+            break
 
-    # determine which of those bugs actually cause a seg fault
-    real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                      knobTrigger, False)
-
-    if len(real_bug_list) == 0:
-        print "Oops we don't have any real bugs?  Try again"
-        sys.exit(0)
+    sys.exit(0)
 
     # re-build just with the real bugs
     (build,input_files) = inject_bugs(real_bug_list, bugs_parent + "_real", db, lp, project_file, \
                                           project, -1, False)
 
     # determine which of those bugs actually cause a seg fault
+    # also this makes sure that the orig input still works
     real2_bug_list = validate_bugs(real_bug_list, db, lp, project, input_files, build, \
                                        knobTrigger, False)
-    
+
+    sys.exit(1)
     corpus_dir = lp.bugs_top_dir + "/corpora"
     subprocess32.check_call(["mkdir", "-p", corpus_dir])
 
@@ -171,9 +178,7 @@ if __name__ == "__main__":
     shutil.copytree(bd, srcdir)
     # copy over the inputs as well
     predictions = {}
-    for bug_index, bug in enumerate(bugs_to_inject):
-        if not (bug.id in real_bugs):
-            continue
+    for bug_id in real_bug_list:
         print "validating bug %d" % bug.id
         # make sure this bug actually works and
         # triggers at the attack point as expected

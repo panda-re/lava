@@ -42,4 +42,5 @@ docker run --rm -it \
     -v /etc/gshadow:/etc/gshadow:ro \
     -v "$HOME":"$HOME" \
     $docker_map_args \
+    --security-opt seccomp=unconfined \
     lava32debug sh -c "trap '' PIPE; login -f $whoami LANG=en_US.UTF-8 LANGUAGE=en_US LC_ALL=en_US.UTF-8"

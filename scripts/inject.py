@@ -50,13 +50,10 @@ def get_bug_list(args, db):
         update_db = False
     elif args.many:
         num_bugs_to_inject = int(args.many)
-        if args.corpus:
-            bug_list = [355891]
-        else:
-            print "Selecting %d bugs for injection" % num_bugs_to_inject
-            assert db.uninjected_random(False).count() >= num_bugs_to_inject
-            bugs_to_inject = db.uninjected_random(False)[:num_bugs_to_inject]
-            bug_list = [b.id for b in bugs_to_inject]
+        print "Selecting %d bugs for injection" % num_bugs_to_inject
+        assert db.uninjected_random(False).count() >= num_bugs_to_inject
+        bugs_to_inject = db.uninjected_random(False)[:num_bugs_to_inject]
+        bug_list = [b.id for b in bugs_to_inject]
         update_db = True
     else: assert False
 
@@ -115,12 +112,10 @@ if __name__ == "__main__":
             help = 'specify a knob trigger style bug, eg -k [sizeof knob offset]')
     parser.add_argument('-s', '--skipInject', action="store", default=False,
             help = 'skip the inject phase and just run the bugged binary on fuzzed inputs')
-
-    parser.add_argument('-c', dest='corpus', action='store_true',
-            help = 'package up bugs as a competition corpus')
-
     parser.add_argument('-nl', '--noLock', action="store_true", default=False,
             help = ('No need to take lock on bugs dir'))
+    parser.add_argument('-c', '--checkStacktrace', action="store_true", default=True,
+            help = ('When validating a bug, make sure it manifests at same line as lava-inserted trigger'))
 
     args = parser.parse_args()
     project = json.load(args.project)
@@ -148,7 +143,7 @@ if __name__ == "__main__":
     try:
         # determine which of those bugs actually cause a seg fault
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                          args.knobTrigger, update_db)
+                                          args.knobTrigger, update_db, args.checkStacktrace)
 
         print "real bugs: " + (str(real_bug_list))
 

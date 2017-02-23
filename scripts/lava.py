@@ -538,7 +538,49 @@ def run_modified_program(project, install_dir, input_file, timeout):
     return run_cmd(cmd, install_dir, envv, timeout)
 
 
-def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db):
+# find actual line number of attack point for this bug in source
+def get_trigger_line(lp, bug):
+    with open(join(lp.bugs_build, bug.atp.loc_filename), "r") as f:
+        atp_iter = (line_num for line_num, line in enumerate(f) if
+                    "lava_get({})".format(bug.trigger.id) in line)
+        line_num = atp_iter.next() + 1
+        return line_num
+
+# use gdb to get a stacktrace for this bug 
+def check_stacktrace_bug(lp, project, bug, fuzzed_input):
+    gdb_py_script = join(lp.lava_dir, "scripts/stacktrace_gdb.py")
+    lib_path = project['library_path'].format(install_dir=lp.bugs_install)
+    envv = {"LD_LIBRARY_PATH": lib_path}
+    cmd = project['command'].format(install_dir=lp.bugs_install,input_file=fuzzed_input)
+    gdb_cmd = "gdb --batch --silent -x {} --args {}".format(gdb_py_script, cmd)
+    full_cmd = "LD_LIBRARY_PATH={} {}".format(lib_path, gdb_cmd)
+    (rc, (out, err)) = run_cmd(gdb_cmd, lp.bugs_install, envv, 10000) # shell=True)
+    if debugging:
+        for line in out.split("\n"): print (line)
+        for line in err.split("\n"): print (line)
+    prediction = "{}:{}".format(basename(bug.atp.loc_filename),
+                             get_trigger_line(lp, bug))
+    print ("Prediction {}".format(prediction))
+    for line in out.split("\n"):
+        if line.startswith("#0"):
+            try:
+                actual = line.split(" at ")[1]
+                if actual == prediction:
+                    return True
+            except:
+                print ("Looks like stack is too corrupt to check")
+            break
+
+    return False
+#        
+#                return False
+#               print ("Actual {}".format(actual))
+#                print ("DIVERGENCE.  Exiting . . .")
+#                sys.exit(1)
+#            break
+
+
+def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db, check_stacktrace):
 
     unfuzzed_input = join(lp.top_dir, 'inputs', basename(bug.trigger.dua.inputfile))
     suff = get_suffix(unfuzzed_input)
@@ -577,9 +619,18 @@ def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db)
         # NB: Wrapping programs in bash transforms rv -> 128 - rv
         # so e.g. -11 goes to 139.
         if rv in [-6, -11, 134, 139]:
-            return fuzzed_input
-        else:
-            return None
+            print ("RV indicates memory corruption")
+            if check_stacktrace:
+                if check_stacktrace_bug(lp, project, bug, fuzzed_input):
+                    print ("... and stacktrace agrees with trigger line")
+                    return fuzzed_input
+                else:
+                    print ("... but stacktrace disagrees with trigger line")
+            else:
+                # not checking that bug manifests at same line as trigger point
+                return fuzzed_input
+        print ("RV does not indicate memory corruption")
+        return None
     else:
         # this really is supposed to be a non-bug
         # we should see a 0
@@ -589,7 +640,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db)
 
 
 # validate this set of bugs
-def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, update_db):
+def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, update_db, check_stacktrace):
 
     timeout = project.get('timeout', 5)
 
@@ -618,11 +669,13 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, up
     real_bugs = []
     fuzzed_inputs = []
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
+    n = len(bugs_to_inject)
     for bug_index, bug in enumerate(bugs_to_inject):
-        print ("testing with fuzzed input for {} of {} potential.  ".format(
+        print ("=" * 60)
+        print ("Validating bug {} of {} ". format(
                 bug_index + 1, len(bugs_to_inject)))
         fuzzed_input = validate_bug(db, lp, project, bug, bug_index, build, \
-                                        knobTrigger, update_db)
+                                        knobTrigger, update_db, check_stacktrace)
         if not (fuzzed_input is None):
             real_bugs.append(bug.id)
             fuzzed_inputs.append(fuzzed_input)
@@ -640,3 +693,5 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, up
     if update_db: db.session.commit()
 
     return real_bugs
+
+
