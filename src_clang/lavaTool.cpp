@@ -121,7 +121,8 @@ static std::map<std::string, uint32_t> StringIDs;
 
 // These two maps Insert AtBug.
 // Map of bugs with attack points at a given loc.
-std::map<LavaASTLoc, std::vector<const Bug *>> bugs_with_atp_at;
+std::map<std::pair<LavaASTLoc, AttackPoint::Type>, std::vector<const Bug *>>
+    bugs_with_atp_at;
 // Map of bugs with siphon of a given  lval name at a given loc.
 std::map<LavaASTLoc, vector_set<const DuaBytes *>> siphons_at;
 
@@ -335,7 +336,8 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         assert(!SourceDir.empty());
         FullSourceLoc fullLocStart(sm.getExpansionLoc(s->getLocStart()), sm);
         FullSourceLoc fullLocEnd(sm.getExpansionLoc(s->getLocEnd()), sm);
-        std::string src_filename = StripPrefix(getAbsolutePath(fullLocStart), SourceDir);
+        std::string src_filename = StripPrefix(
+                getAbsolutePath(sm.getFilename(fullLocStart)), SourceDir);
         return LavaASTLoc(src_filename, fullLocStart, fullLocEnd);
     }
 
@@ -355,7 +357,8 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         debug << "Inserting expression attack (AttackExpression).\n";
         if (LavaAction == LavaInjectBugs) {
             const std::vector<const Bug*> &injectable_bugs =
-                map_get_default(bugs_with_atp_at, ast_loc);
+                map_get_default(bugs_with_atp_at,
+                        std::make_pair(ast_loc, atpType));
 
             // Nothing to do if we're not at an attack point
             if (injectable_bugs.empty()) return;
@@ -373,6 +376,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                             MagicTest(bug) * LavaGet(bug->extra_duas[1]));
                 }
             }
+            bugs_with_atp_at.erase(std::make_pair(ast_loc, atpType));
         } else if (LavaAction == LavaQueries) {
             // call attack point hypercall and return 0
             pointerAddends.push_back(LavaAtpQuery(ast_loc, atpType));
@@ -455,7 +459,8 @@ struct PriQueryPointHandler : public LavaMatchHandler {
 
     std::string AttackRetBuffer(LavaASTLoc ast_loc) {
         std::stringstream result_ss;
-        for (const Bug *bug : map_get_default(bugs_with_atp_at, ast_loc)) {
+        auto key = std::make_pair(ast_loc, AttackPoint::QUERY_POINT);
+        for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
             if (bug->type == Bug::RET_BUFFER) {
                 const DuaBytes *buffer = db->load<DuaBytes>(bug->extra_duas[0]);
                 result_ss << LIf(MagicTest(bug).render(), {
@@ -464,7 +469,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                                 { "movl %0, %%esp", "ret" })});
             }
         }
-        bugs_with_atp_at.erase(ast_loc); // Only inject once.
+        bugs_with_atp_at.erase(key); // Only inject once.
         return result_ss.str();
     }
 
@@ -676,6 +681,7 @@ int main(int argc, const char **argv) {
     if (ProjectFile == "XXX") {
         if (LavaAction == LavaInjectBugs) {
             debug << "Error: Specify a json file with \"-project-file\".  Exiting . . .\n";
+            exit(1);
         }
     } else {
         json_file >> root;
@@ -701,7 +707,8 @@ int main(int argc, const char **argv) {
 
         for (const Bug *bug : bugs) {
             LavaASTLoc atp_loc = bug->atp->loc;
-            bugs_with_atp_at[atp_loc].push_back(bug);
+            auto key = std::make_pair(atp_loc, bug->atp->type);
+            bugs_with_atp_at[key].push_back(bug);
 
             LavaASTLoc dua_loc = bug->trigger_lval->loc;
             siphons_at[dua_loc].insert(bug->trigger);
@@ -724,6 +731,25 @@ int main(int argc, const char **argv) {
         debug << "num atp queries added " << num_atp_queries << "\n";
 
         if (LavaDB != "XXX") SaveDB(StringIDs, LavaDB);
+    } else if (LavaAction == LavaInjectBugs) {
+        if (!bugs_with_atp_at.empty()) {
+            std::cout << "Warning: Failed to inject attacks for bugs:\n";
+            for (const auto &keyvalue : bugs_with_atp_at) {
+                std::cout << "    At " << keyvalue.first.first << "\n";
+                for (const Bug *bug : keyvalue.second) {
+                    std::cout << "        " << *bug << "\n";
+                }
+            }
+        }
+        if (!siphons_at.empty()) {
+            std::cout << "Warning: Failed to inject siphons:\n";
+            for (const auto &keyvalue : siphons_at) {
+                std::cout << "    At " << keyvalue.first << "\n";
+                for (const DuaBytes *dua_bytes : keyvalue.second) {
+                    std::cout << "        " << *dua_bytes << "\n";
+                }
+            }
+        }
     }
 
     if (t) {

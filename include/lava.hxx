@@ -287,6 +287,11 @@ struct DuaBytes {
         return std::tie(dua->id, selected) <
             std::tie(other.dua->id, other.selected);
     }
+
+    friend std::ostream &operator<<(std::ostream &os, const DuaBytes &dua_bytes) {
+        os << "DUABytes" << dua_bytes.selected << *dua_bytes.dua;
+        return os;
+    }
 };
 
 #pragma db object
@@ -379,6 +384,11 @@ struct Bug {
         for (const DuaBytes *dua_bytes : extra_duas_) {
             extra_duas.push_back(dua_bytes->id);
         }
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const Bug &bug) {
+        os << "Bug:\n        " << *bug.trigger << "\n        " << *bug.atp;
+        return os;
     }
 
     inline uint32_t magic() const {
