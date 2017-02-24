@@ -1,7 +1,8 @@
 from __future__ import print_function
 
 import os
-from os.path import  dirname, join, abspath, split, basename
+from os.path import  dirname, join, abspath, split, basename, exists
+import shutil
 import sys
 import re
 import pipes
@@ -349,12 +350,12 @@ class LavaPaths:
 # version of the program in bug_dir
 def inject_bugs(bug_list, bugs_parent, db, lp, project_file, project, knobTrigger, update_db):
 
-#    lp.set_bugs_parent(bugs_parent)
+    lp.set_bugs_parent(bugs_parent)
     print (str(lp))
 
-    try:
-        os.makedirs(bugs_parent)
-    except Exception: pass
+    if os.path.exists(bugs_parent):
+        shutil.rmtree(bugs_parent)
+    os.makedirs(bugs_parent)
 
     print ("source_root = " + lp.source_root + "\n")
 
@@ -572,20 +573,22 @@ def check_stacktrace_bug(lp, project, bug, fuzzed_input):
             break
 
     return False
-#        
-#                return False
-#               print ("Actual {}".format(actual))
-#                print ("DIVERGENCE.  Exiting . . .")
-#                sys.exit(1)
-#            break
 
 
-def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db, check_stacktrace):
+def unfuzzed_input_for_bug(lp, bug):
+    return join(lp.top_dir, 'inputs', basename(bug.trigger.dua.inputfile))
 
-    unfuzzed_input = join(lp.top_dir, 'inputs', basename(bug.trigger.dua.inputfile))
+
+def fuzzed_input_for_bug(lp, bug):
+    unfuzzed_input = unfuzzed_input_for_bug(lp, bug)
     suff = get_suffix(unfuzzed_input)
     pref = unfuzzed_input[:-len(suff)] if suff != "" else unfuzzed_input
-    fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
+    return "{}-fuzzed-{}{}".format(pref, bug.id, suff)
+    
+
+def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db, check_stacktrace):
+    unfuzzed_input = unfuzzed_input_for_bug(lp, bug)
+    fuzzed_input = fuzzed_input_for_bug(lp, bug)
     print (str(bug))
     print ("fuzzed = [%s]" % fuzzed_input)
     mutfile_kwargs = {}
@@ -636,6 +639,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db,
         # we should see a 0
         assert (rv == 0)
         return None
+
 
 
 

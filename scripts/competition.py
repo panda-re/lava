@@ -1,6 +1,5 @@
 #!/usr/bin/python
 
-
 import argparse
 import atexit
 import datetime
@@ -18,46 +17,12 @@ import sys
 import time
 
 from math import sqrt
-from os.path import basename, dirname, join, abspath
+from os.path import basename, dirname, join, abspath, exists
 
 from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     run_cmd, run_cmd_notimeout, mutfile, inject_bugs, LavaPaths, \
-    validate_bugs, run_modified_program
-
-
-#def check_bug(bugid, jsonfile, runonfuzzedinput):
-#    cmds = [runonfuzzedinput, "-nl", "-l", "[%d]" % bugid, "-s", jsonfile]
-#    print " ".join(cmds)
-#    p = subprocess32.Popen(cmds, stdout=subprocess32.PIPE, stderr=subprocess32.PIPE)
-#    (outp,errs) = p.communicate()
-#    for line in outp.split("\n"):
-#        foo = re.search("DIVERGENCE", line)
-#        if foo:
-#            # this means there was a crash but its not on the line we expected
-#            print "divergence"
-#            return False
-#        foo = re.search("False", line)
-#        if foo:
-#            # this means there wasnt even a crash
-#            print "doesnt crash"
-#            return False
-#    return True
-
-#def get_atp_line(bug, bugs_build):
-#    print bug
-#    print bugs_build
-#    print bug.atp.loc_filename
-#    with open(join(bugs_build, bug.atp.loc_filename), "r") as f:
-#        atp_iter = (line_num for line_num, line in enumerate(f) if
-#                    "lava_get({})".format(bug.id) in line)
-#        try:
-#            line_num = atp_iter.next() + 1
-#            return line_num
-#        except StopIteration:
-#            print "lava_get({}) was not in {}".format(bug.id, bug.atp.loc_filename)
-#            raise
-
-
+    validate_bugs, run_modified_program, unfuzzed_input_for_bug, \
+    fuzzed_input_for_bug, get_trigger_line
 
 # collect num bugs AND num non-bugs
 # with some hairy constraints
@@ -100,8 +65,6 @@ if __name__ == "__main__":
             help = 'Require at least this many real bugs')
     parser.add_argument('-l', '--buglist', action="store", default=False,
             help = 'Inject this list of bugs')
-    parser.add_argument('-d', '--bugdir', action="store", default=False,
-            help = 'directory for corpus')
     
     args = parser.parse_args()
     project = json.load(args.project)
@@ -110,27 +73,34 @@ if __name__ == "__main__":
     # Set various paths
     lp = LavaPaths(project)
 
+    compdir = join(lp.top_dir, "competition")
+    bugdir = join(compdir, "bugs")
+
     db = LavaDatabase(project)
 
+#    try:
+#        os.makedirs(args.bugdir)
+#    except Exception: pass
+
+    bugs_parent = bugdir
+    lp.set_bugs_parent(bugdir)
+
     try:
-        os.makedirs(args.bugdir)
-    except Exception: pass
+        shutil.rmtree(bugdir)
+    except:
+        pass
 
-    bugs_parent = args.bugdir
-    lp.set_bugs_parent(args.bugdir)
-
-    shutil.rmtree(args.bugdir)
- 
     knobTrigger = -1
 
     while True:
 
-        if args.buglist:
-            bug_list = eval(args.buglist)
-        elif args.many:
-            bug_list = competition_bugs_and_non_bugs(int(args.many), db)
+        if True:
+            if args.buglist:
+                bug_list = eval(args.buglist)
+            elif args.many:
+                bug_list = competition_bugs_and_non_bugs(int(args.many), db)
 
-        #bug_list = [114L, 138L, 3295L, 3353L, 4635L, 14355L, 21112L, 34878L, 66341L, 72856L, 205102L, 222709L, 222865L, 271819L, 387124L, 388491L, 530292L]
+#        bug_list = [114L, 138L, 3295L, 3353L, 4635L, 14355L, 21112L, 34878L, 66341L, 72856L, 205102L, 222709L, 222865L, 271819L, 387124L, 388491L, 530292L]
         # add bugs to the source code and check that we can still compile
         (build, input_files) = inject_bugs(bug_list, bugs_parent, db, lp, project_file, \
                                               project, knobTrigger, False)
@@ -147,22 +117,14 @@ if __name__ == "__main__":
             print "\n\n Yield acceptable"
             break
 
-    sys.exit(0)
-
     # re-build just with the real bugs
-    (build,input_files) = inject_bugs(real_bug_list, bugs_parent + "_real", db, lp, project_file, \
-                                          project, -1, False)
+    (build,input_files) = inject_bugs(real_bug_list, bugs_parent, db, lp, project_file, \
+                                          project, knobTrigger, False)
 
-    # determine which of those bugs actually cause a seg fault
-    # also this makes sure that the orig input still works
-    real2_bug_list = validate_bugs(real_bug_list, db, lp, project, input_files, build, \
-                                       knobTrigger, False)
 
-    sys.exit(1)
-    corpus_dir = lp.bugs_top_dir + "/corpora"
+    corpus_dir = join(compdir, "corpora")
     subprocess32.check_call(["mkdir", "-p", corpus_dir])
 
-    print "created corpus dir " + corpus_dir + "\n"
     # original bugs src dir
     bd = join(lp.bugs_parent, lp.source_root)
     # directory for this corpus
@@ -176,26 +138,21 @@ if __name__ == "__main__":
     srcdir = join(corpdir, "src")
     # copy src
     shutil.copytree(bd, srcdir)
-    # copy over the inputs as well
+
     predictions = {}
-    for bug_id in real_bug_list:
-        print "validating bug %d" % bug.id
-        # make sure this bug actually works and
-        # triggers at the attack point as expected
-        if (check_bug(bug.id, sys.argv[-1], project['lava'] + "/scripts/run-on-fuzzed-input.py")):
-            print "  -- works and triggers in the right place"
-            prediction = "{}:{}".format(basename(bug.atp.loc_filename),
-                                        get_atp_line(bug, bugs_build))
-            print prediction
-            if prediction in predictions:
-                print "... but we already have a bug for that attack point"
-            else:
-                fuzzed_input = "{}-fuzzed-{}{}".format(pref, bug.id, suff)
-                (dc, fi) = os.path.split(fuzzed_input)
-                shutil.copy(fuzzed_input, inputsdir)
-                predictions[prediction] = fi
-        else:
-            print "  -- either doesnt work or triggers in wrong place"
+
+
+    for bug in  db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all():
+        prediction = "{}:{}".format(basename(bug.atp.loc_filename),
+                                    get_trigger_line(lp, bug))
+#        print "Bug %d: prediction = [%s]" % (bug.id, prediction)
+        assert not (prediction in predictions)
+        unfuzzed_input = unfuzzed_input_for_bug(lp, bug)
+        fuzzed_input = fuzzed_input_for_bug(lp, bug)
+        (dc, fi) = os.path.split(fuzzed_input)
+        shutil.copy(fuzzed_input, inputsdir)
+        predictions[prediction] = fi
+
     print "Answer key:"
     ans = open(join(corpdir, "ans"), "w")
     for prediction in predictions:
