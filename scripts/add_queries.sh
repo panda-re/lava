@@ -128,7 +128,7 @@ $c_files
 for i in $c_dirs; do
     echo "  Applying replacements to $i"
     pushd $i
-    $llvm_src/Release/bin/clang-apply-replacements -format .
+    $llvm_src/Release/bin/clang-apply-replacements .
     popd
 done
 
