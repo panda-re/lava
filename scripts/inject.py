@@ -332,6 +332,7 @@ if __name__ == "__main__":
     print "%d source files: " % (len(src_files))
     print src_files
     print main_files
+    os.chdir(bugs_build)
     inject_bugs_into_src(bugs_to_inject, src_files, True)
 
     # ugh -- with tshark if you *dont* do this, your bug-inj source may not build, sadly
