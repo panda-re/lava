@@ -268,19 +268,22 @@ public:
 
 struct Modifier {
     Insertions &Insert;
-    const LangOptions &LangOpts;
-    const SourceManager &sm;
-    const Expr *expr;
+    const LangOptions *LangOpts = nullptr;
+    const SourceManager *sm = nullptr;
+    const Expr *expr = nullptr;
 
-    Modifier(Insertions &Insert, const LangOptions &LangOpts,
-             const SourceManager &sm, const Expr *expr) :
-        Insert(Insert), sm(sm), LangOpts(LangOpts), expr(expr) {}
+    Modifier(Insertions &Insert) : Insert(Insert) {}
+
+    void Reset(const LangOptions *LangOpts_, const SourceManager *sm_) {
+        LangOpts = LangOpts_;
+        sm = sm_;
+    }
 
     SourceLocation insertionLoc(SourceLocation loc) const {
-        if (sm.isMacroArgExpansion(loc)) {
-            return sm.getMacroArgExpandedLocation(loc);
-        } else if (sm.isMacroBodyExpansion(loc)) {
-            return sm.getExpansionLoc(loc);
+        if (sm->isMacroArgExpansion(loc)) {
+            return sm->getMacroArgExpandedLocation(loc);
+        } else if (sm->isMacroBodyExpansion(loc)) {
+            return sm->getExpansionLoc(loc);
         } else return loc;
     }
 
@@ -294,8 +297,13 @@ struct Modifier {
         // so to get character range for replacement, we need to add start of
         // last token.
         SourceLocation end = insertionLoc(expr->getLocEnd());
-        unsigned lastTokenSize = Lexer::MeasureTokenLength(end, sm, LangOpts);
+        unsigned lastTokenSize = Lexer::MeasureTokenLength(end, *sm, *LangOpts);
         return end.getLocWithOffset(lastTokenSize);
+    }
+
+    const Modifier &Change(const Expr *expr_) {
+        expr = expr_;
+        return *this;
     }
 
     void Parenthesize() const {
@@ -322,7 +330,8 @@ struct Modifier {
  * Matcher Handlers
  *******************************/
 struct LavaMatchHandler : public MatchFinder::MatchCallback {
-    LavaMatchHandler(Insertions &Insert) : Insert(Insert) {}
+    LavaMatchHandler(Insertions &Insert, Modifier &Mod) :
+        Insert(Insert) , Mod(Mod) {}
 
     std::string ExprStr(const Stmt *e) {
         clang::PrintingPolicy Policy(*LangOpts);
@@ -387,15 +396,13 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         // already paren expression, do not add parens
         if (!pointerAddends.empty()) {
             LExpr addToPointer = LBinop("+", std::move(pointerAddends));
-            Modifier(Insert, *LangOpts, sm, toAttack)
-                .Add(addToPointer, parent);
+            Mod.Change(toAttack).Add(addToPointer, parent);
         }
 
         if (!valueAddends.empty()) {
             assert(rhs);
             LExpr addToValue = LBinop("+", std::move(valueAddends));
-            Modifier(Insert, *LangOpts, sm, rhs)
-                .Add(addToValue, false);
+            Mod.Change(rhs).Add(addToValue, false);
         }
     }
 
@@ -433,6 +440,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
 protected:
     Insertions &Insert;
+    Modifier &Mod;
 };
 
 struct PriQueryPointHandler : public LavaMatchHandler {
@@ -571,7 +579,7 @@ namespace clang {
 
 class LavaMatchFinder : public MatchFinder, public SourceFileCallbacks {
 public:
-    LavaMatchFinder() {
+    LavaMatchFinder() : Mod(Insert) {
         StatementMatcher memoryAccessMatcher =
             allOf(
                 expr(anyOf(
@@ -612,6 +620,7 @@ public:
 
     virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
         Insert.clear();
+        Mod.Reset(&CI.getLangOpts(), &CI.getSourceManager());
         TUReplace.Replacements.clear();
         TUReplace.MainSourceFile = Filename;
         CurrentCI = &CI;
@@ -659,12 +668,13 @@ public:
 
     template<class Handler>
     LavaMatchHandler *makeHandler() {
-        MatchHandlers.emplace_back(new Handler(Insert));
+        MatchHandlers.emplace_back(new Handler(Insert, Mod));
         return MatchHandlers.back().get();
     }
 
 private:
     Insertions Insert;
+    Modifier Mod;
     TranslationUnitReplacements TUReplace;
     std::vector<std::unique_ptr<LavaMatchHandler>> MatchHandlers;
     CompilerInstance *CurrentCI = nullptr;
