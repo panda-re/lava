@@ -30,11 +30,9 @@ $(info -----------------------------------------------)
 
 VPATH=.:../src_clang:$(PANDA_SRC_PATH)/panda/src:$(PANDA_BUILD_DIR)/i386-softmmu
 
-#CXX := g++
-#CXXFLAGS := -fexceptions -fno-rtti -O0 -g -std=c++11 -I/usr/include/jsoncpp
 CXX := $(LLVM_BIN_PATH)/clang++
-CXXFLAGS := -fexceptions -O2 -g -gdwarf-2 -std=c++14 -I/usr/include/jsoncpp -fno-omit-frame-pointer
-CXXFLAGS += -I../include
+CXXFLAGS := -fexceptions -O2 -g -gdwarf-2 -std=c++14 -I/usr/include/jsoncpp
+CXXFLAGS += -fno-omit-frame-pointer -I../include -frtti
 
 PLUGIN_CXXFLAGS := -fpic -fexceptions
 
@@ -103,15 +101,17 @@ $(BUILDDIR)/%.o: %.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 $(BUILDDIR)/includes.h.gch: includes.h
-	$(CXX) -c -o $@ $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $^
+	$(CXX) -c -o $@ $(CXXFLAGS) $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $<
 
 $(BUILDDIR)/lavaTool: $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
-$(BUILDDIR)/lavaTool.o: lava-odb.hxx lexpr.hxx
+$(BUILDDIR)/lavaTool.o: lava-odb.hxx lexpr.hxx Makefile
+
+$(BUILDDIR)/%.o: Makefile
 
 $(BUILDDIR)/attackPoints: $(BUILDDIR)/attackPoints.o
-	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS)
+	$(CXX) -o $@ $< $(CLANG_LIBS) $(LLVM_LDFLAGS)
 
 %-odb.cxx %-odb.hxx: ../include/%.hxx Makefile
 	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o . \
