@@ -302,13 +302,6 @@ if [ $make -eq 1 ]; then
     echo "make complete $time_diff seconds"
 fi
 
-inputs_dir="$directory/$name/inputs"
-$( mkdir -p $inputs_dir )
-for input in $inputs
-do
-    $( cp $input $inputs_dir )
-done
-
 
 if [ $taint -eq 1 ]; then
     tick
@@ -320,7 +313,7 @@ if [ $taint -eq 1 ]; then
         progress 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
         run_remote "$pandahost" "$python $scripts/bug_mining.py $json $input >& $lf"
         echo -n "Num Bugs in db: "
-        run_remote "$pandahost" "/usr/bin/psql -d $db -U postgres -c 'select count(*) from bug' | head -3 | tail -1"
+        run_remote "$pandahost" "/usr/bin/psql -At -d $db -U postgres -c 'select count(*) from bug'"
     done
     tock
     echo "bug_mining complete $time_diff seconds"
