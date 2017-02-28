@@ -289,7 +289,7 @@ struct DuaBytes {
     }
 
     friend std::ostream &operator<<(std::ostream &os, const DuaBytes &dua_bytes) {
-        os << "DUABytes" << dua_bytes.selected << *dua_bytes.dua;
+        os << "DUABytes " << dua_bytes.selected << " of " << *dua_bytes.dua;
         return os;
     }
 };

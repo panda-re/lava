@@ -1,9 +1,8 @@
+#include <cstdint>
+#include <fstream>
 #include <map>
 #include <string>
-#include <fstream>
-#include <stdlib.h>
-#include <stdint.h>
-
+#include <tuple>
 
 std::map<uint32_t,std::string> InvertDB(std::map<std::string,uint32_t> &n2ind) {
     std::map<uint32_t,std::string> ind2n;
@@ -12,7 +11,6 @@ std::map<uint32_t,std::string> InvertDB(std::map<std::string,uint32_t> &n2ind) {
     }
     return ind2n;
 }
-
 
 std::map<std::string,uint32_t> LoadDB(std::string dbfile) {
     // Parse the db
@@ -30,15 +28,19 @@ std::map<std::string,uint32_t> LoadDB(std::string dbfile) {
     return StringIDs;
 }
 
-void SaveDB(std::map<std::string,uint32_t> StringIDs, std::string dbfile) {
-    FILE *f = fopen(dbfile.c_str(), "wb");
+void SaveDB(const std::map<std::string,uint32_t> &StringIDs, std::string dbfile) {
+    std::ofstream db(dbfile);
     for (auto p : StringIDs) {
-        fprintf(f, "%u", p.second);
-        fwrite("\0", 1, 1, f);
-        fprintf(f, "%s", p.first.c_str());
-        fwrite("\0", 1, 1, f);
+        db << p.second << '\0' << p.first << '\0';
     }
-    fclose(f);
+}
+
+uint32_t GetStringID(std::map<std::string, uint32_t> &StringIDs, std::string s) {
+    std::map<std::string, uint32_t>::iterator it;
+    // This does nothing if s is already in StringIDs.
+    std::tie(it, std::ignore) =
+        StringIDs.insert(std::make_pair(s, StringIDs.size()));
+    return it->second;
 }
 
 #ifdef DBTEST
@@ -47,8 +49,6 @@ int main(int argc, char **argv) {
     for (auto p : db) {
         printf ("%s => %u\n", p.first.c_str(), p.second);
     }
-    db["my_test_string"] = db.size();
-    SaveDB(db, argv[2]);
     return 0;
 }
 #endif

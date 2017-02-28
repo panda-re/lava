@@ -1,3 +1,8 @@
+// This makes sure assertions actually occur.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+
 #include <cassert>
 #include <cstdlib>
 #include <fstream>
@@ -40,11 +45,6 @@ extern "C" {
 #include "lava-odb.hxx"
 #include "lexpr.hxx"
 #include "vector_set.hxx"
-
-// This makes sure assertions actually occur.
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
 
 #define DEBUG 0
 #define MATCHER_DEBUG 0
@@ -128,14 +128,6 @@ std::map<LavaASTLoc, vector_set<const DuaBytes *>> siphons_at;
 
 #define MAX_STRNLEN 64
 ///////////////// HELPER FUNCTIONS BEGIN ////////////////////
-uint32_t GetStringID(std::string s) {
-    std::map<std::string, uint32_t>::iterator it;
-    // This does nothing if s is already in StringIDs.
-    std::tie(it, std::ignore) =
-        StringIDs.insert(std::make_pair(s, s.size()));
-    return it->second;
-}
-
 template<typename K, typename V>
 const V &map_get_default(const std::map<K, V> &map, K key) {
     static const V default_val;
@@ -205,19 +197,6 @@ bool IsArgAttackable(const Expr *arg) {
         }
         if ((t->isIntegerType() || t->isCharType()) && (!t->isEnumeralType())) {
             return true;
-        }
-    }
-    return false;
-}
-
-bool IsAttackPoint(const CallExpr *e) {
-    for ( auto it = e->arg_begin(); it != e->arg_end(); ++it) {
-        const Stmt *stmt = dyn_cast<Stmt>(*it);
-        if (stmt) {
-            const Expr *arg = dyn_cast<Expr>(*it);
-            // can't fail, right?
-            assert (arg);
-            if (IsArgAttackable(arg)) return true;
         }
     }
     return false;
