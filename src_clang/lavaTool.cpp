@@ -258,24 +258,21 @@ struct Modifier {
         sm = sm_;
     }
 
-    SourceLocation insertionLoc(SourceLocation loc) const {
-        if (sm->isMacroArgExpansion(loc)) {
-            return sm->getMacroArgExpandedLocation(loc);
-        } else if (sm->isMacroBodyExpansion(loc)) {
-            return sm->getExpansionLoc(loc);
-        } else return loc;
+    std::pair<SourceLocation, SourceLocation> range() const {
+        auto startRange = sm->getExpansionRange(expr->getLocStart());
+        auto endRange = sm->getExpansionRange(expr->getLocEnd());
+        return std::make_pair(startRange.first, endRange.second);
     }
 
     SourceLocation before() const {
-        return insertionLoc(expr->getLocStart());
+        return range().first;
     }
 
-    // Get location for end of expr.
     SourceLocation after() const {
         // clang stores ranges as start of first token -> start of last token.
         // so to get character range for replacement, we need to add start of
         // last token.
-        SourceLocation end = insertionLoc(expr->getLocEnd());
+        SourceLocation end = range().second;
         unsigned lastTokenSize = Lexer::MeasureTokenLength(end, *sm, *LangOpts);
         return end.getLocWithOffset(lastTokenSize);
     }
@@ -290,18 +287,24 @@ struct Modifier {
         Insert.insertAfter(after(), ")");
     }
 
-    const Modifier &Operate(std::string op, const LExpr &addend, bool outerParens) const {
-        if (isa<BinaryOperator>(expr)
-                || isa<AbstractConditionalOperator>(expr)) {
+    const Modifier &Operate(std::string op, const LExpr &addend, const Expr *parent) const {
+        Insert.insertAfter(after(), " " + op + " " + addend.render());
+        if (parent && !isa<ArraySubscriptExpr>(parent)
+                && !isa<ParenExpr>(parent)) {
             Parenthesize();
         }
-        Insert.insertAfter(after(), " " + op + " " + addend.render());
-        if (outerParens) { Parenthesize(); }
         return *this;
     }
 
-    const Modifier &Add(const LExpr &addend, bool parens) const {
-        return Operate("+", addend, parens);
+    const Modifier &Add(const LExpr &addend, const Expr *parent) const {
+        // If inner expr has lower precedence than addition, add parens.
+        const BinaryOperator *binop = dyn_cast<BinaryOperator>(expr);
+        if (isa<AbstractConditionalOperator>(expr)
+                || (binop && !binop->isMultiplicativeOp()
+                    && !binop->isAdditiveOp())) {
+            Parenthesize();
+        }
+        return Operate("+", addend, parent);
     }
 };
 
@@ -332,7 +335,8 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
     LExpr LavaAtpQuery(LavaASTLoc ast_loc, AttackPoint::Type atpType) {
         return LBlock({
                 LFunc("vm_lava_attack_point2",
-                    { LDecimal(GetStringID(ast_loc)), LDecimal(0), LDecimal(atpType) }),
+                    { LDecimal(GetStringID(StringIDs, ast_loc)), LDecimal(0),
+                        LDecimal(atpType) }),
                 LDecimal(0) });
     }
 
@@ -347,9 +351,6 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             const std::vector<const Bug*> &injectable_bugs =
                 map_get_default(bugs_with_atp_at,
                         std::make_pair(ast_loc, atpType));
-
-            // Nothing to do if we're not at an attack point
-            if (injectable_bugs.empty()) return;
 
             // this should be a function bug -> LExpr to add.
             auto pointerAttack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
@@ -371,8 +372,6 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             num_atp_queries++;
         }
 
-        // Insert the new addition expression, and if parent expression is
-        // already paren expression, do not add parens
         if (!pointerAddends.empty()) {
             LExpr addToPointer = LBinop("+", std::move(pointerAddends));
             Mod.Change(toAttack).Add(addToPointer, parent);
@@ -381,7 +380,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         if (!valueAddends.empty()) {
             assert(rhs);
             LExpr addToValue = LBinop("+", std::move(valueAddends));
-            Mod.Change(rhs).Add(addToValue, false);
+            Mod.Change(rhs).Add(addToValue, nullptr);
         }
     }
 
@@ -397,13 +396,10 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 #endif
         for (auto &keyValue : nodesMap) {
             const Stmt *stmt = keyValue.second.get<Stmt>();
-            SourceLocation start = stmt->getLocStart(), end = stmt->getLocEnd();
-            SourceRange range(start, end);
+            SourceLocation start = stmt->getLocStart();
             if (stmt) {
-                if (sm.isInMainFile(start) && sm.isInMainFile(end)
-                        && sm.getExpansionRange(start).first == start
-                        && sm.getExpansionRange(end).second == end
-                        && Rewriter::isRewritable(start)) {
+                if (!sm.getFilename(start).empty() && sm.isInMainFile(start)
+                        && !sm.isMacroArgExpansion(start)) {
 #if MATCHER_DEBUG
                     debug << keyValue.first << ": " << ExprStr(stmt) << " ";
                     stmt->getLocStart().print(debug, sm);
@@ -470,7 +466,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         std::string before;
         if (LavaAction == LavaQueries) {
             before = "; " + LFunc("vm_lava_pri_query_point", {
-                LDecimal(GetStringID(ast_loc)),
+                LDecimal(GetStringID(StringIDs, ast_loc)),
                 LDecimal(ast_loc.begin.line),
                 LDecimal(SourceLval::BEFORE_OCCURRENCE)}).render() + "; ";
 
@@ -524,10 +520,6 @@ struct MemoryAccessHandler : public LavaMatchHandler {
 
 namespace clang {
     namespace ast_matchers {
-        AST_MATCHER(CallExpr, isAttackPointMatcher){
-            const CallExpr *ce = &Node;
-            return IsAttackPoint(ce);
-        }
         AST_MATCHER(Expr, isAttackableMatcher){
             const Expr *ce = &Node;
             return IsArgAttackable(ce);
@@ -591,9 +583,6 @@ public:
                 makeHandler<FunctionArgHandler>()
                 );
 
-        // an array subscript expression is composed of base[index]
-        // matches all nodes of: *innerExprParent(innerExpr) = rhs
-        // and matches all nodes of: base[innerExprParent(innerExpr)] = rhs
         addMatcher(memoryAccessMatcher, makeHandler<MemoryAccessHandler>());
     }
 
@@ -702,10 +691,12 @@ int main(int argc, const char **argv) {
             LavaASTLoc dua_loc = bug->trigger_lval->loc;
             siphons_at[dua_loc].insert(bug->trigger);
 
-            for (uint64_t dua_id : bug->extra_duas) {
-                const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
-                LavaASTLoc extra_loc = dua_bytes->dua->lval->loc;
-                siphons_at[extra_loc].insert(dua_bytes);
+            if (bug->type != Bug::RET_BUFFER) {
+                for (uint64_t dua_id : bug->extra_duas) {
+                    const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
+                    LavaASTLoc extra_loc = dua_bytes->dua->lval->loc;
+                    siphons_at[extra_loc].insert(dua_bytes);
+                }
             }
         }
     }
