@@ -191,7 +191,7 @@ struct LabelSet {
 
     std::vector<uint32_t> labels;
 
-#pragma db index("LabelSetUniq") unique members(ptr, inputfile, labels)
+#pragma db index("LabelSetUniq") unique members(ptr, inputfile)
 
     bool operator<(const LabelSet &other) const {
         return std::tie(ptr, inputfile, labels) <
@@ -306,6 +306,7 @@ struct AttackPoint {
         POINTER_READ,
         POINTER_WRITE,
         QUERY_POINT,
+        PRINTF_LEAK,
         TYPE_END
     } type;
 
@@ -328,6 +329,7 @@ struct AttackPoint {
             "ATP_POINTER_READ",
             "ATP_POINTER_WRITE",
             "ATP_QUERY_POINT",
+            "ATP_PRINTF_LEAK",
         };
         os << "ATP [" << m.loc.filename << " " << m.loc.begin << "] {";
         os << names[m.type] << "}";
@@ -344,6 +346,7 @@ struct Bug {
         PTR_ADD,
         RET_BUFFER,
         REL_WRITE,
+        PRINTF_LEAK,
         TYPE_END
     } type;
 

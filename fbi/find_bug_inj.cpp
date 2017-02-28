@@ -740,7 +740,7 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
 
         // Need to select bytes now.
         Range selected = get_dua_dead_range(trigger_dua);
-        assert(selected.size() == LAVA_MAGIC_VALUE_SIZE);
+        assert(selected.size() >= LAVA_MAGIC_VALUE_SIZE);
         const DuaBytes *trigger = create(DuaBytes{trigger_dua, selected});
 
         // Now select extra duas. One set of extra duas per (lval, atp, type).
@@ -839,11 +839,18 @@ void attack_point_lval_usage(Panda__LogEntry *ple) {
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
 
     // Don't decimate PTR_ADD bugs.
-    record_injectable_bugs_at<Bug::PTR_ADD>(atp, is_new_atp, { });
-    if ((AttackPoint::Type)pleatp->info == AttackPoint::POINTER_WRITE) {
+    switch ((AttackPoint::Type)pleatp->info) {
+    case AttackPoint::POINTER_WRITE:
         record_injectable_bugs_at<Bug::REL_WRITE>(atp, is_new_atp, { });
+	// fall through
+    case AttackPoint::POINTER_READ:
+    case AttackPoint::FUNCTION_ARG:
+        record_injectable_bugs_at<Bug::PTR_ADD>(atp, is_new_atp, { });
+	break;
+    case AttackPoint::PRINTF_LEAK:
+        record_injectable_bugs_at<Bug::PRINTF_LEAK>(atp, is_new_atp, { });
+	break;
     }
-
     t.commit();
 }
 

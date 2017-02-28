@@ -207,6 +207,7 @@ run_remote() {
         -v /etc/group:/etc/group:ro \
         -v /etc/shadow:/etc/shadow:ro \
         -v /etc/gshadow:/etc/gshadow:ro \
+        --security-opt seccomp=unconfined \
         $docker_map_args \
         $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"$command\""
   else

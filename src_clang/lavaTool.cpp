@@ -39,7 +39,7 @@ extern "C" {
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchersInternal.h"
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
-
+#include "clang/Lex/Lexer.h"
 #include "lavaDB.h"
 #include "lava.hxx"
 #include "lava-odb.hxx"
@@ -493,6 +493,43 @@ struct FunctionArgHandler : public LavaMatchHandler {
     }
 };
 
+struct ReadDisclosureHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
+
+    virtual void handle(const MatchFinder::MatchResult &Result) {
+        const SourceManager &sm = *Result.SourceManager;
+        const CallExpr *callExpr = Result.Nodes.getNodeAs<CallExpr>("call_expression");
+
+        LExpr addend = LDecimal(0);
+        // iterate through all the arguments in the call expression
+        for (auto it = callExpr->arg_begin(); it != callExpr->arg_end(); ++it) {
+            const Expr *arg = dyn_cast<Expr>(*it);
+            if (arg) {
+                if (arg->getType()->isIntegerType()) {
+                    LavaASTLoc ast_loc = GetASTLoc(sm, arg);
+                    Mod.Change(arg);
+                    if (LavaAction == LavaQueries)  {
+                        addend = LavaAtpQuery(GetASTLoc(sm, arg),
+                                AttackPoint::PRINTF_LEAK);
+                        Mod.Add(addend, nullptr);
+                    } else if (LavaAction == LavaInjectBugs) {
+                        const std::vector<const Bug*> &injectable_bugs =
+                            map_get_default(bugs_with_atp_at,
+                                    std::make_pair(ast_loc, AttackPoint::PRINTF_LEAK));
+                        for (const Bug *bug : injectable_bugs) {
+                            Mod.Parenthesize();
+                            Insert.insertBefore(Mod.before(),
+                                    MagicTest(bug).render() +
+                                    " ? &(" + ExprStr(arg) + ") : ");
+                        }
+                    }
+
+                }
+            }
+        }
+    }
+};
+
 struct MemoryAccessHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
@@ -584,6 +621,13 @@ public:
                 );
 
         addMatcher(memoryAccessMatcher, makeHandler<MemoryAccessHandler>());
+
+        addMatcher(
+                callExpr(
+                    callee(functionDecl(hasName("::printf"))),
+                    unless(argumentCountIs(1))).bind("call_expression"),
+                makeHandler<ReadDisclosureHandler>()
+                );
     }
 
     virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
