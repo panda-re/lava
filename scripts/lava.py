@@ -264,7 +264,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug_id, kt=False, knob=0):
     # change first 4 bytes in dua to magic value
     for fuzz_labels in fuzz_labels_list:
         for (i, offset) in zip(range(4), fuzz_labels):
-            print("i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes)))
+            #print("i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes)))
             file_bytes[offset] = magic_val[i]
     with open(new_filename, 'w') as fuzzed_f:
         fuzzed_f.write(file_bytes)
@@ -287,8 +287,7 @@ def inject_bugs_into_src(project_file, lava_tool, lavadb, bugs_build, bugs,
 
     clang_apply = join(llvm_src, 'Release', 'bin', 'clang-apply-replacements')
     for src_dir in set([dirname(f) for f in all_files]):
-        run_cmd_notimeout([clang_apply, '-format', '.'],
-                            join(bugs_build, src_dir), None)
+        run_cmd_notimeout([clang_apply, '.'], join(bugs_build, src_dir), None)
 
 class LavaPaths:
 
@@ -514,18 +513,13 @@ def check_stacktrace_bug(lp, project, bug, fuzzed_input):
     if debugging:
         for line in out.split("\n"): print(line)
         for line in err.split("\n"): print(line)
-    prediction = "{}:{}".format(basename(bug.atp.loc_filename),
+    prediction = " at {}:{}".format(basename(bug.atp.loc_filename),
                              get_trigger_line(lp, bug))
     print("Prediction {}".format(prediction))
-    for line in out.split("\n"):
-        if line.startswith("#0"):
-            try:
-                actual = line.split(" at ")[1]
-                if actual == prediction:
-                    return True
-            except:
-                print("Looks like stack is too corrupt to check")
-            break
+    for line in out.splitlines():
+        # Function call bugs are valid if they happen anywhere in call stack.
+        if line.startswith("#0") or bug.atp.typ == AttackPoint.FUNCTION_CALL:
+            if line.endswith(prediction): return True
 
     return False
 

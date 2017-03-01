@@ -61,9 +61,9 @@ def event_handler (event):
         if isinstance(event, gdb.SignalEvent):
             if event.stop_signal in ["SIGSEGV", "SIGABRT"]:
                 print "Found a SIG {}".format(event.stop_signal)
-                print gdb.execute("p $_siginfo._sifields._sigfault.si_addr",
-                            to_string=True)
-                print gdb.execute("info proc mappings", to_string=True)
+                #print gdb.execute("p $_siginfo._sifields._sigfault.si_addr",
+                #            to_string=True)
+                #print gdb.execute("info proc mappings", to_string=True)
                 gdb.execute("bt")
                 gdb.execute("p/x $eip")
                 gdb.execute("q")
