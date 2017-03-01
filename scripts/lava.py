@@ -496,10 +496,14 @@ def run_modified_program(project, install_dir, input_file, timeout):
 # find actual line number of attack point for this bug in source
 def get_trigger_line(lp, bug):
     with open(join(lp.bugs_build, bug.atp.loc_filename), "r") as f:
-        atp_iter = (line_num for line_num, line in enumerate(f) if
-                    "lava_get({})".format(bug.trigger.id) in line)
-        line_num = atp_iter.next() + 1
-        return line_num
+        lava_get = "lava_get({})".format(bug.trigger.id)
+        atp_lines = [line_num + 1 for line_num, line in enumerate(f) if
+                    lava_get in line]
+        # return closest to original begin line.
+        distances = [
+            (abs(line - bug.atp.loc_begin_line), line) for line in atp_lines
+        ]
+        return min(distances)[1]
 
 # use gdb to get a stacktrace for this bug
 def check_stacktrace_bug(lp, project, bug, fuzzed_input):
@@ -508,18 +512,27 @@ def check_stacktrace_bug(lp, project, bug, fuzzed_input):
     envv = {"LD_LIBRARY_PATH": lib_path}
     cmd = project['command'].format(install_dir=lp.bugs_install,input_file=fuzzed_input)
     gdb_cmd = "gdb --batch --silent -x {} --args {}".format(gdb_py_script, cmd)
-    full_cmd = "LD_LIBRARY_PATH={} {}".format(lib_path, gdb_cmd)
     (rc, (out, err)) = run_cmd(gdb_cmd, lp.bugs_install, envv, 10000) # shell=True)
     if debugging:
-        for line in out.split("\n"): print(line)
-        for line in err.split("\n"): print(line)
+        for line in out.splitlines(): print(line)
+        for line in err.splitlines(): print(line)
     prediction = " at {}:{}".format(basename(bug.atp.loc_filename),
                              get_trigger_line(lp, bug))
     print("Prediction {}".format(prediction))
     for line in out.splitlines():
-        # Function call bugs are valid if they happen anywhere in call stack.
-        if line.startswith("#0") or bug.atp.typ == AttackPoint.FUNCTION_CALL:
-            if line.endswith(prediction): return True
+        if bug.type == Bug.RET_BUFFER:
+            # These should go into garbage code if they trigger.
+            if line.startswith("#0") and line.endswith(" in ?? ()"):
+                return True
+        elif bug.type == Bug.PRINTF_LEAK:
+            # FIXME: Validate this!
+            return True
+        else: # PTR_ADD or REL_WRITE for now.
+            if line.startswith("#0") or \
+                    bug.atp.typ == AttackPoint.FUNCTION_CALL:
+                # Function call bugs are valid if they happen anywhere in
+                # call stack.
+                if line.endswith(prediction): return True
 
     return False
 
@@ -588,9 +601,6 @@ def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db,
         assert (rv == 0)
         return None
 
-
-
-
 # validate this set of bugs
 def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, update_db, check_stacktrace):
 
@@ -639,8 +649,6 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, up
         1.96 * math.sqrt(f * (1 - f) / len(bugs_to_inject)))
     )
     print("TESTING COMPLETE")
-    if len(bugs_to_inject) > 1:
-        print("list of real validated bugs:", real_bugs)
 
     if update_db: db.session.commit()
 
