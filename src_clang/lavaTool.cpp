@@ -119,7 +119,6 @@ static std::set<std::string> main_files;
 
 static std::map<std::string, uint32_t> StringIDs;
 
-// These two maps Insert AtBug.
 // Map of bugs with attack points at a given loc.
 std::map<std::pair<LavaASTLoc, AttackPoint::Type>, std::vector<const Bug *>>
     bugs_with_atp_at;
@@ -221,6 +220,9 @@ LExpr knobTriggerAttack(const Bug *bug) {
         + (lava_get_upper * MagicTest(magic_value, lava_get_lower));
 }
 
+/*
+ * Keeps track of a list of insertions and makes sure conflicts are resolved.
+ */
 class Insertions {
 private:
     std::map<SourceLocation, std::string> impl;
@@ -228,13 +230,15 @@ private:
 public:
     void clear() { impl.clear(); }
 
-    void insertAfter(SourceLocation loc, std::string str) {
-        impl[loc].append(str);
+    void InsertAfter(SourceLocation loc, std::string str) {
+        if (!str.empty()) impl[loc].append(str);
     }
 
-    void insertBefore(SourceLocation loc, std::string str) {
-        str.append(impl[loc]);
-        impl[loc] = str;
+    void InsertBefore(SourceLocation loc, std::string str) {
+        if (!str.empty()) {
+            str.append(impl[loc]);
+            impl[loc] = str;
+        }
     }
 
     void render(const SourceManager &sm, std::vector<Replacement> &out) {
@@ -245,12 +249,20 @@ public:
     }
 };
 
-struct Modifier {
+/*
+ * Contains all the machinery necessary to insert and tries to create some
+ * high-level constructs around insertion.
+ * Fluent interface to make usage easier. Use Modifier::Change to point at a
+ * specific clang expression and the insertion methods to make changes there.
+ */
+class Modifier {
+private:
     Insertions &Insert;
     const LangOptions *LangOpts = nullptr;
     const SourceManager *sm = nullptr;
-    const Expr *expr = nullptr;
+    const Stmt *stmt = nullptr;
 
+public:
     Modifier(Insertions &Insert) : Insert(Insert) {}
 
     void Reset(const LangOptions *LangOpts_, const SourceManager *sm_) {
@@ -259,8 +271,8 @@ struct Modifier {
     }
 
     std::pair<SourceLocation, SourceLocation> range() const {
-        auto startRange = sm->getExpansionRange(expr->getLocStart());
-        auto endRange = sm->getExpansionRange(expr->getLocEnd());
+        auto startRange = sm->getExpansionRange(stmt->getLocStart());
+        auto endRange = sm->getExpansionRange(stmt->getLocEnd());
         return std::make_pair(startRange.first, endRange.second);
     }
 
@@ -277,18 +289,27 @@ struct Modifier {
         return end.getLocWithOffset(lastTokenSize);
     }
 
-    const Modifier &Change(const Expr *expr_) {
-        expr = expr_;
+    const Modifier &InsertBefore(std::string str) const {
+        Insert.InsertBefore(before(), str);
         return *this;
     }
 
-    void Parenthesize() const {
-        Insert.insertBefore(before(), "(");
-        Insert.insertAfter(after(), ")");
+    const Modifier &InsertAfter(std::string str) const {
+        Insert.InsertAfter(after(), str);
+        return *this;
     }
 
-    const Modifier &Operate(std::string op, const LExpr &addend, const Expr *parent) const {
-        Insert.insertAfter(after(), " " + op + " " + addend.render());
+    const Modifier &Change(const Stmt *stmt_) {
+        stmt = stmt_;
+        return *this;
+    }
+
+    const Modifier &Parenthesize() const {
+        return InsertBefore("(").InsertAfter(")");
+    }
+
+    const Modifier &Operate(std::string op, const LExpr &addend, const Stmt *parent) const {
+        InsertAfter(" " + op + " " + addend.render());
         if (parent && !isa<ArraySubscriptExpr>(parent)
                 && !isa<ParenExpr>(parent)) {
             Parenthesize();
@@ -296,10 +317,10 @@ struct Modifier {
         return *this;
     }
 
-    const Modifier &Add(const LExpr &addend, const Expr *parent) const {
-        // If inner expr has lower precedence than addition, add parens.
-        const BinaryOperator *binop = dyn_cast<BinaryOperator>(expr);
-        if (isa<AbstractConditionalOperator>(expr)
+    const Modifier &Add(const LExpr &addend, const Stmt *parent) const {
+        // If inner stmt has lower precedence than addition, add parens.
+        const BinaryOperator *binop = dyn_cast<BinaryOperator>(stmt);
+        if (isa<AbstractConditionalOperator>(stmt)
                 || (binop && !binop->isMultiplicativeOp()
                     && !binop->isAdditiveOp())) {
             Parenthesize();
@@ -312,8 +333,7 @@ struct Modifier {
  * Matcher Handlers
  *******************************/
 struct LavaMatchHandler : public MatchFinder::MatchCallback {
-    LavaMatchHandler(Insertions &Insert, Modifier &Mod) :
-        Insert(Insert) , Mod(Mod) {}
+    LavaMatchHandler(Modifier &Mod) : Mod(Mod) {}
 
     std::string ExprStr(const Stmt *e) {
         clang::PrintingPolicy Policy(*LangOpts);
@@ -414,7 +434,6 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
     const LangOptions *LangOpts = nullptr;
 
 protected:
-    Insertions &Insert;
     Modifier &Mod;
 };
 
@@ -474,9 +493,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         } else if (LavaAction == LavaInjectBugs) {
             before = SiphonsForLocation(ast_loc) + AttackRetBuffer(ast_loc);
         }
-        if (!before.empty()) {
-            Insert.insertBefore(sm.getExpansionLoc(toSiphon->getLocStart()), before);
-        }
+        Mod.Change(toSiphon).InsertBefore(before);
     }
 };
 
@@ -517,10 +534,9 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
                             map_get_default(bugs_with_atp_at,
                                     std::make_pair(ast_loc, AttackPoint::PRINTF_LEAK));
                         for (const Bug *bug : injectable_bugs) {
-                            Mod.Parenthesize();
-                            Insert.insertBefore(Mod.before(),
-                                    MagicTest(bug).render() +
-                                    " ? &(" + ExprStr(arg) + ") : ");
+                            Mod.Parenthesize()
+                                .InsertBefore(MagicTest(bug).render() +
+                                        " ? &(" + ExprStr(arg) + ") : ");
                         }
                     }
 
@@ -680,7 +696,7 @@ public:
 
     template<class Handler>
     LavaMatchHandler *makeHandler() {
-        MatchHandlers.emplace_back(new Handler(Insert, Mod));
+        MatchHandlers.emplace_back(new Handler(Mod));
         return MatchHandlers.back().get();
     }
 
