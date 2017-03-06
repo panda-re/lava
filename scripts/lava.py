@@ -486,7 +486,6 @@ def run_modified_program(project, install_dir, input_file, timeout):
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
     return run_cmd(cmd, install_dir, envv, timeout)
 
-
 # find actual line number of attack point for this bug in source
 def get_trigger_line(lp, bug):
     with open(join(lp.bugs_build, bug.atp.loc_filename), "r") as f:
@@ -541,7 +540,8 @@ def fuzzed_input_for_bug(lp, bug):
     pref = unfuzzed_input[:-len(suff)] if suff != "" else unfuzzed_input
     return "{}-fuzzed-{}{}".format(pref, bug.id, suff)
 
-def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db, check_stacktrace):
+def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger,
+                 update_db, check_stacktrace, unfuzzed_outputs):
     unfuzzed_input = unfuzzed_input_for_bug(lp, bug)
     fuzzed_input = fuzzed_input_for_bug(lp, bug)
     print(str(bug))
@@ -562,39 +562,38 @@ def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db,
     (rv, outp) = run_modified_program(project, lp.bugs_install, fuzzed_input, \
                                           timeout)
     print("retval = %d" % rv)
-    print("output:")
-    lines = outp[0] + " ; " + outp[1]
-#                print lines
     if update_db:
         db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
-                           output=lines.encode('string-escape'), success=True))
+                           output=outp[0] + '\n' + outp[1], success=True))
     if bug.trigger.dua.fake_dua == False:
         if bug.type == Bug.PRINTF_LEAK:
-            if outp != inputs_and_outputs[bug.trigger.dua.inputfile]:
-                real_bugs.append(bug.id)
-                fuzzed_inputs.append(fuzzed_input)
-        # this really is supposed to be a bug
-        # we should see a seg fault or something
-        # NB: Wrapping programs in bash transforms rv -> 128 - rv
-        # so e.g. -11 goes to 139.
-        if rv in [-6, -11, 134, 139]:
-            print("RV indicates memory corruption")
-            if check_stacktrace:
-                if check_stacktrace_bug(lp, project, bug, fuzzed_input):
-                    print("... and stacktrace agrees with trigger line")
-                    return fuzzed_input
+            if outp != unfuzzed_outputs[bug.trigger.dua.inputfile]:
+                return True
+        else:
+            # this really is supposed to be a bug
+            # we should see a seg fault or something
+            # NB: Wrapping programs in bash transforms rv -> 128 - rv
+            # so e.g. -11 goes to 139.
+            if rv in [-6, -11, 134, 139]:
+                print("RV indicates memory corruption")
+                if check_stacktrace:
+                    if check_stacktrace_bug(lp, project, bug, fuzzed_input):
+                        print("... and stacktrace agrees with trigger line")
+                        return True
+                    else:
+                        print("... but stacktrace disagrees with trigger line")
+                        return False
                 else:
-                    print("... but stacktrace disagrees with trigger line")
+                    # not checking that bug manifests at same line as trigger point
+                    return True
             else:
-                # not checking that bug manifests at same line as trigger point
-                return fuzzed_input
-        print("RV does not indicate memory corruption")
-        return None
+                print("RV does not indicate memory corruption")
+                return False
     else:
         # this really is supposed to be a non-bug
         # we should see a 0
-        assert (rv == 0)
-        return None
+        assert rv == 0
+        return False
 
 # validate this set of bugs
 def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, update_db, check_stacktrace):
@@ -602,12 +601,14 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, up
     timeout = project.get('timeout', 5)
 
     print("------------\n")
-    # first, try the original file
+    # first, try the original files
     print("TESTING -- ORIG INPUT")
+    unfuzzed_outputs = {}
     for input_file in input_files:
         unfuzzed_input = join(lp.top_dir, 'inputs', basename(input_file))
-        (rv, outp) = run_modified_program(project, lp.bugs_install, \
-                                              unfuzzed_input, timeout)
+        (rv, outp) = run_modified_program(project, lp.bugs_install,
+                                          unfuzzed_input, timeout)
+        unfuzzed_outputs[unfuzzed_input] = outp
         if rv != 0:
             print("***** buggy program fails on original input!")
             assert False
@@ -624,19 +625,17 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, up
     # second, try each of the fuzzed inputs and validate
     print("TESTING -- FUZZED INPUTS")
     real_bugs = []
-    fuzzed_inputs = []
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
     n = len(bugs_to_inject)
     for bug_index, bug in enumerate(bugs_to_inject):
         print("=" * 60)
         print("Validating bug {} of {} ". format(
-                bug_index + 1, len(bugs_to_inject)))
-        fuzzed_input = validate_bug(db, lp, project, bug, bug_index, build, \
-                                        knobTrigger, update_db, check_stacktrace)
-        if not (fuzzed_input is None):
+            bug_index + 1, len(bugs_to_inject)))
+        validated = validate_bug(db, lp, project, bug, bug_index, build,
+                                 knobTrigger, update_db, check_stacktrace,
+                                 unfuzzed_outputs)
+        if validated:
             real_bugs.append(bug.id)
-            fuzzed_inputs.append(fuzzed_input)
-        print("{} real. bug {}".format(len(real_bugs), bug.id))
         print()
     f = float(len(real_bugs)) / len(bugs_to_inject)
     print(u"yield {:.2f} ({} out of {}) real bugs (95% CI +/- {:.2f}) ".format(
@@ -648,5 +647,3 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, up
     if update_db: db.session.commit()
 
     return real_bugs
-
-
