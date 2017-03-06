@@ -84,7 +84,7 @@ def get_bugs_parent(lp):
             except lockfile.AlreadyLocked:
                 candidate += 1
 
-    if (not args.noLock):
+    if not args.noLock:
         atexit.register(bugs_lock.release)
         for sig in [signal.SIGINT, signal.SIGTERM]:
             signal.signal(sig, lambda s, f: sys.exit(0))
@@ -92,7 +92,6 @@ def get_bugs_parent(lp):
     print "Using dir", bugs_parent
     lp.set_bugs_parent(bugs_parent)
     return bugs_parent
-
 
 if __name__ == "__main__":
     update_db = False
@@ -137,15 +136,15 @@ if __name__ == "__main__":
     (update_db, bug_list) = get_bug_list(args, db)
 
     # add all those bugs to the source code and check that it compiles
-    (build, input_files) = inject_bugs(bug_list, bugs_parent, db, lp, project_file, \
-                                          project, args.knobTrigger, update_db)
+    (build, input_files) = inject_bugs(bug_list, db, lp, project_file,
+                                       project, args.knobTrigger, update_db)
 
     try:
         # determine which of those bugs actually cause a seg fault
-        real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                          args.knobTrigger, update_db, args.checkStacktrace)
+        real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build,
+                                      args.knobTrigger, update_db, args.checkStacktrace)
 
-        print "real bugs: " + (str(real_bug_list))
+        print "real bugs:", real_bug_list
 
     except Exception as e:
         print "TESTING FAIL"

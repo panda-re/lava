@@ -25,7 +25,7 @@ from composite import Composite
 
 Base = declarative_base()
 
-debugging = True
+debugging = False
 
 class Loc(Composite):
     column = Integer
@@ -289,7 +289,7 @@ def inject_bugs_into_src(project_file, lava_tool, lavadb, bugs_build, bugs,
     for src_dir in set([dirname(f) for f in all_files]):
         run_cmd_notimeout([clang_apply, '.'], join(bugs_build, src_dir), None)
 
-class LavaPaths:
+class LavaPaths(object):
 
     def __init__(self, project):
         self.top_dir = join(project['directory'], project['name'])
@@ -319,21 +319,18 @@ class LavaPaths:
         return rets
 
     def set_bugs_parent(self, bugs_parent):
+        assert self.bugs_top_dir == dirname(bugs_parent)
         self.bugs_parent = bugs_parent
-        (self.bugs_top_dir, foo) = os.path.split(bugs_parent)
         self.bugs_build = join(self.bugs_parent, self.source_root)
         self.bugs_install = join(self.bugs_build, 'lava-install')
 
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
-def inject_bugs(bug_list, bugs_parent, db, lp, project_file, project, knobTrigger, update_db):
-
-    lp.set_bugs_parent(bugs_parent)
+def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db):
     print(lp)
 
-    if os.path.exists(bugs_parent):
-        shutil.rmtree(bugs_parent)
-    os.makedirs(bugs_parent)
+    if not os.path.exists(lp.bugs_parent):
+        os.makedirs(lp.bugs_parent)
 
     print("source_root = " + lp.source_root + "\n")
 
@@ -343,12 +340,11 @@ def inject_bugs(bug_list, bugs_parent, db, lp, project_file, project, knobTrigge
             print("run(", args, ")")
         else:
             print("run(", subprocess32.list2cmdline(args), ")")
-        subprocess32.check_call(args, cwd=lp.bugs_build,
-                stdout=sys.stdout, stderr=sys.stderr, **kwargs)
-    if not os.path.exists(lp.bugs_build):
+        subprocess32.check_call(args, cwd=lp.bugs_build, **kwargs)
+    if not os.path.isdir(lp.bugs_build):
         print("Untarring...")
         subprocess32.check_call(['tar', '--no-same-owner', '-xf', project['tarfile'],
-            '-C', bugs_parent], stderr=sys.stderr)
+            '-C', lp.bugs_parent], stderr=sys.stderr)
     if not os.path.exists(join(lp.bugs_build, '.git')):
         print("Initializing git repo...")
         run(['git', 'init'])
@@ -364,21 +360,19 @@ def inject_bugs(bug_list, bugs_parent, db, lp, project_file, project, knobTrigge
     sys.stderr.flush()
 
     main_files = set(project['main_file'])
+    llvm_src = None
+    # find llvm_src dir so we can figure out where clang #includes are for btrace
+    config_mak = join(lp.lava_dir, "src_clang/config.mak")
+    print("config.mak = [%s]" % config_mak)
+    for line in open(config_mak):
+        foo = re.search("LLVM_SRC_PATH := (.*)$", line)
+        if foo:
+            llvm_src = foo.groups()[0]
+            break
+    assert llvm_src is not None
+    print("llvm_src =" + llvm_src)
 
     if not os.path.exists(join(lp.bugs_build, 'compile_commands.json')):
-        # find llvm_src dir so we can figure out where clang #includes are for btrace
-        llvm_src = None
-        config_mak = join(lp.lava_dir, "src_clang/config.mak")
-        print("config.mak = [%s]" % config_mak)
-        for line in open(config_mak):
-            foo = re.search("LLVM_SRC_PATH := (.*)$", line)
-            if foo:
-                llvm_src = foo.groups()[0]
-                break
-        assert llvm_src is not None
-
-        print("llvm_src =" + llvm_src)
-
         run([join(lp.lava_dir, 'btrace', 'sw-btrace-to-compiledb'),
             llvm_src + "/Release/lib/clang/3.6.2/include"])
         # also insert instr for main() fn in all files that need it
@@ -557,10 +551,11 @@ def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger, update_db,
         print("Knob size: {}".format(knobTrigger))
         mutfile_kwargs = { 'kt': True, 'knob': knobTrigger }
 
-    extra_query = db.session.query(DuaBytes)\
-        .filter(DuaBytes.id.in_(bug.extra_duas))
     fuzz_labels_list = [bug.trigger.all_labels]
-    fuzz_labels_list.extend([d.all_labels for d in extra_query])
+    if len(bug.extra_duas) > 0:
+        extra_query = db.session.query(DuaBytes)\
+            .filter(DuaBytes.id.in_(bug.extra_duas))
+        fuzz_labels_list.extend([d.all_labels for d in extra_query])
     mutfile(unfuzzed_input, fuzz_labels_list, fuzzed_input, bug.id,
             **mutfile_kwargs)
     timeout = project.get('timeout', 5)
