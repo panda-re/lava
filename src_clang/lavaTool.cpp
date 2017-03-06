@@ -216,8 +216,8 @@ LExpr knobTriggerAttack(const Bug *bug) {
     // to mask it
     uint16_t magic_value = bug->magic_kt();
 
-    return (lava_get_lower * MagicTest(magic_value, lava_get_upper))
-        + (lava_get_upper * MagicTest(magic_value, lava_get_lower));
+    return (lava_get_lower * MagicTest<uint16_t>(magic_value, lava_get_upper))
+        + (lava_get_upper * MagicTest<uint16_t>(magic_value, lava_get_lower));
 }
 
 /*

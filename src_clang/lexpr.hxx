@@ -219,17 +219,8 @@ LExpr LavaSet(const DuaBytes *dua_bytes) {
 }
 
 template<typename UInt>
-UInt BSwap(UInt x);
-
-template<>
-uint32_t BSwap<uint32_t>(uint32_t x) { return __builtin_bswap32(x); }
-template<>
-uint16_t BSwap<uint16_t>(uint16_t x) { return __builtin_bswap16(x); }
-
-template<typename UInt>
 LExpr MagicTest(UInt magic_value, LExpr maskedLavaGet) {
-    return LHex(magic_value) == maskedLavaGet ||
-        LHex(BSwap<UInt>(magic_value)) == maskedLavaGet;
+    return LHex(magic_value) == maskedLavaGet;
 }
 
 LExpr MagicTest(const Bug *bug) {
