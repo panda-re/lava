@@ -1,6 +1,6 @@
 include panda.mak
 
-VPATH=.:$(PANDA_SRC_PATH)/panda/src:$(PANDA_BUILD_DIR)/i386-softmmu
+VPATH=.:$(PANDA_SRC_PATH)/panda/src:$(PANDA_BUILD_DIR)/i386-softmmu:../src_clang
 
 CXX ?= clang++
 CC ?= clang
