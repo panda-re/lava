@@ -250,7 +250,7 @@ def main():
             not isfile('/usr/lib/libodb.so'):
         os.chdir(BUILD_DIR)
         run("wget {}/libodb-{}.tar.gz".format(odb_baseurl, odb_version))
-        run("tar -xzvf libodb-{}.tar.gz".format(odb_version))
+        run("tar -xf libodb-{}.tar.gz".format(odb_version))
         os.chdir("libodb-{}/".format(odb_version))
         run("sh configure")
         run(['make', '-j', str(cpu_count())])
@@ -260,7 +260,7 @@ def main():
             not isfile('/usr/lib/libodb-pgsql.so'):
         os.chdir(BUILD_DIR)
         run("wget {}/libodb-pgsql-{}.tar.gz".format(odb_baseurl, odb_version))
-        run("tar -xzvf libodb-pgsql-{}.tar.gz".format(odb_version))
+        run("tar -xf libodb-pgsql-{}.tar.gz".format(odb_version))
         os.chdir("libodb-pgsql-{}/".format(odb_version))
         run("sh configure")
         run(['make', '-j', str(cpu_count())])
