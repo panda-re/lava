@@ -1,8 +1,7 @@
 from __future__ import print_function
 
 import os
-from os.path import  dirname, join, abspath, split, basename, exists
-import shutil
+from os.path import  dirname, join, abspath, basename
 import sys
 import re
 import pipes
@@ -142,7 +141,7 @@ class AttackPoint(Base):
 build_bugs = \
     Table('build_bugs', Base.metadata,
           Column('object_id', BigInteger, ForeignKey('build.id')),
-          Column('index', BigInteger),
+          Column('index', BigInteger, default=0),
           Column('value', BigInteger, ForeignKey('bug.id')))
 
 class Bug(Base):
@@ -401,7 +400,6 @@ def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db)
     # collect set of src files into which we must inject code
     src_files = set()
     input_files = set()
-    i = 0
 
     for bug_index, bug in enumerate(bugs_to_inject):
         print("------------\n")
@@ -449,7 +447,8 @@ def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db)
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
     (rv, outp) = run_cmd_notimeout(project['make'], lp.bugs_build, None)
-    build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]))
+    build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
+                  bugs=bugs_to_inject)
     if rv!=0:
         # build failed
         print(outp)
@@ -619,14 +618,13 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, up
         lines = outp[0] + " ; " + outp[1]
         if update_db:
             db.session.add(Run(build=build, fuzzed=None, exitcode=rv,
-                            output='', success=True))
+                            output=lines, success=True))
     print("ORIG INPUT STILL WORKS\n")
 
     # second, try each of the fuzzed inputs and validate
     print("TESTING -- FUZZED INPUTS")
     real_bugs = []
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
-    n = len(bugs_to_inject)
     for bug_index, bug in enumerate(bugs_to_inject):
         print("=" * 60)
         print("Validating bug {} of {} ". format(

@@ -161,7 +161,7 @@ many=100
 
 if [[ $demo -eq 1 ]]
 then
-    gnome-terminal --geometry=90x40  -x python ./lava_mon.py $1 &
+    gnome-terminal --geometry=90x40  -x bash -c "python $(dirname $0)/demo.py $json; read" &
 fi
 
 deldir () {
@@ -261,8 +261,9 @@ if [ $reset -eq 1 ]; then
     # remove all plog files in the directory
     deldir "$directory/$name/*.plog"
     progress 0 "Truncating logs..."
-    for i in "$logs"/*.log; do
-        echo > "$i"
+    /bin/mkdir -p "$logs"
+    for i in $(ls "$logs" | grep '.log$'); do
+        echo > "$logs/$i"
     done
     lf="$logs/dbwipe.log"
     progress 1  "Setting up lava db -- logging to $lf"
@@ -270,7 +271,6 @@ if [ $reset -eq 1 ]; then
     run_remote "$pandahost" "createdb -U postgres $db 2>&1 >> $lf || true"
     run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres >& $lf"
     run_remote "$pandahost" "echo dbwipe complete >> $lf"
-    /bin/mkdir -p $logs
     tock
     echo "reset complete $time_diff seconds"
 fi
@@ -301,6 +301,7 @@ if [ $make -eq 1 ]; then
     run_remote "$buildhost" "cd $sourcedir && $install   &>> $lf"
     tock
     echo "make complete $time_diff seconds"
+    echo "make complete $time_diff seconds" >> "$lf"
 fi
 
 

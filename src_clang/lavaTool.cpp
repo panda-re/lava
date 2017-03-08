@@ -767,8 +767,8 @@ int main(int argc, const char **argv) {
     debug << "back from calling Tool.run \n";
 
     if (LavaAction == LavaQueries) {
-        debug << "num taint queries added " << num_taint_queries << "\n";
-        debug << "num atp queries added " << num_atp_queries << "\n";
+        std::cout << "num taint queries added " << num_taint_queries << "\n";
+        std::cout << "num atp queries added " << num_atp_queries << "\n";
 
         if (LavaDB != "XXX") SaveDB(StringIDs, LavaDB);
     } else if (LavaAction == LavaInjectBugs) {
