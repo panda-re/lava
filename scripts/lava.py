@@ -563,7 +563,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger,
     print("retval = %d" % rv)
     if update_db:
         db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
-                           output=outp[0] + '\n' + outp[1], success=True))
+                           output=(outp[0] + '\n' + outp[1]).decode('ascii', 'ignore'), success=True))
     if bug.trigger.dua.fake_dua == False:
         if bug.type == Bug.PRINTF_LEAK:
             if outp != unfuzzed_outputs[bug.trigger.dua.inputfile]:
@@ -607,7 +607,7 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, up
         unfuzzed_input = join(lp.top_dir, 'inputs', basename(input_file))
         (rv, outp) = run_modified_program(project, lp.bugs_install,
                                           unfuzzed_input, timeout)
-        unfuzzed_outputs[unfuzzed_input] = outp
+        unfuzzed_outputs[basename(input_file)] = outp
         if rv != 0:
             print("***** buggy program fails on original input!")
             assert False
