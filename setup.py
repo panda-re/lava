@@ -135,9 +135,10 @@ for d in DOCKER_MAP_DIRS:
 map_dirs_args = sum([['-v', '{0}:{0}'.format(d)] for d in map_dirs_dedup], [])
 map_files_args = sum([['-v', '{0}:{0}:ro'.format(d)] for d in DOCKER_MAP_FILES], [])
 
-ENV_VARS = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']
+ENV_VARS = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'no_proxy']
 env_map = { k: os.environ[k] for k in ENV_VARS if k in os.environ }
 env_var_args = sum([['-e', '{}={}'.format(k, v)] for k, v in env_map.iteritems()], [])
+build_args = sum([['--build-arg', '{}={}'.format(k, v)] for k, v in env_map.iteritems()], [])
 
 ALREADY_IN_DOCKER_GROUP = user_in_docker(getpass.getuser())
 
@@ -200,7 +201,7 @@ def main():
     if not IGNORE_DOCKER:
         progress("Checking that {} docker is properly built".format(DOCKER_NAME))
         sudo_args = [] if ALREADY_IN_DOCKER_GROUP else ['sudo']
-        run(sudo_args + ['docker', 'build', '-t', DOCKER_NAME, join(LAVA_DIR, 'docker')])
+        run(sudo_args + ['docker', 'build', '-t', DOCKER_NAME, join(LAVA_DIR, 'docker')] + build_args)
         compile_cmd = ['cd', join(LAVA_DIR, 'btrace'), '&&', 'bash', 'compile.sh']
         run_docker(['bash', '-c', subprocess.list2cmdline(compile_cmd)])
 
