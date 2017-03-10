@@ -48,7 +48,10 @@ def dprint(msg):
 
 def progress(msg):
     print()
-    print(Fore.GREEN + '[bug_mining.py] ' + Fore.RESET + Style.BRIGHT + msg + Style.RESET_ALL)
+    if sys.stdout.isatty():
+        print(Fore.GREEN + '[bug_mining.py] ' + Fore.RESET + Style.BRIGHT + msg + Style.RESET_ALL)
+    else:
+        print('[bug_mining.py] ' + msg)
 
 if len(sys.argv) < 3:
     print("Usage: python project.json inputfile", file=sys.stderr)
