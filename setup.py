@@ -178,8 +178,7 @@ def main():
         postgres_pkg = [d for d in postgres_depends if re.match(r'postgresql-[0-9]+.[0-9]+', d)][0]
         postgres_version = postgres_pkg.replace('postgresql-', '')
         pg_hba = "/etc/postgresql/{}/main/pg_hba.conf".format(postgres_version)
-        progress('Please enter a password for the postgres database.')
-        postgres_password = getpass.getpass()
+        postgres_password = 'postgrespostgres'
         run(['sudo', 'sed', '-i.bak', '-E', r's/^(local\s+all\s+postgres\s+)md5$/\1peer/', pg_hba])
         run("sudo service postgresql reload")
         password_sql = "ALTER USER postgres WITH PASSWORD '{}';".format(postgres_password)
