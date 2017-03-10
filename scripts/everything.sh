@@ -165,64 +165,72 @@ then
 fi
 
 deldir () {
-  deldir=$1
-  progress 0 "Deleting $deldir.  Type ok to go ahead."
-  if [[ $ok -eq 0 ]]
-  then
-      # they have to actually type 'ok'
-      read ans
-  else
-      ans=ok
-  fi
-  if [[ "$ans" = "ok" ]]
-  then
-      echo "...deleting"
-      rm -rf $deldir || true
-  else
-      echo "exiting"
-      exit
-  fi
+    deldir=$1
+    progress 0 "Deleting $deldir.    Type ok to go ahead."
+    if [[ $ok -eq 0 ]]
+    then
+        # they have to actually type 'ok'
+        read ans
+    else
+        ans=ok
+    fi
+    if [[ "$ans" = "ok" ]]
+    then
+        echo "...deleting"
+        rm -rf $deldir || true
+    else
+        echo "exiting"
+        exit
+    fi
 }
 
 run_remote() {
-  remote_machine=$1
-  command=$2
-  docker_map_args="-v $lava:$lava -v $tarfiledir:$tarfiledir"
-  if [[ "$directory" = "$tarfiledir"* ]]; then true; else
-    docker_map_args="$docker_map_args -v $directory:$directory"
-  fi
-  if [ "$remote_machine" == "localhost" ]; then
-    echo "$command"
-    bash -c "$command"
-  elif [ "$remote_machine" == "docker" ]; then
-    echo docker run $dockername sh -c "$command"
-    docker run --rm -it \
-        -e "HTTP_PROXY=$HTTP_PROXY" \
-        -e "HTTPS_PROXY=$HTTPS_PROXY" \
-        -e "http_proxy=$http_proxy" \
-        -e "https_proxy=$https_proxy" \
-        -v /var/run/postgresql:/var/run/postgresql \
-        -v "$HOME/.pgpass:$HOME/.pgpass" \
-        -v /etc/passwd:/etc/passwd:ro \
-        -v /etc/group:/etc/group:ro \
-        -v /etc/shadow:/etc/shadow:ro \
-        -v /etc/gshadow:/etc/gshadow:ro \
-        --security-opt seccomp=unconfined \
-        $docker_map_args \
-        $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"$command\""
-  else
-    echo "ssh $remote_machine $command"
-    ssh $remote_machine $command
-  fi
-  ret_code=$?
-  if [ $ret_code != 0 ]; then
-    echo "exit code was $ret_code"
-    exit $ret_code
-  fi
-  #return $ret_code
+    remote_machine=$1
+    command=$2
+    logfile=$3
+    set +e
+    docker_map_args="-v $lava:$lava -v $tarfiledir:$tarfiledir"
+    if [[ "$directory" = "$tarfiledir"* ]]; then true; else
+        docker_map_args="$docker_map_args -v $directory:$directory"
+    fi
+    if [ "$remote_machine" == "localhost" ]; then
+        echo "$command"
+        bash -c "$command" >> "$logfile" 2>&1
+    elif [ "$remote_machine" == "docker" ]; then
+        echo docker run $dockername sh -c "$command"
+        docker run --rm -it \
+            -e "HTTP_PROXY=$HTTP_PROXY" \
+            -e "HTTPS_PROXY=$HTTPS_PROXY" \
+            -e "http_proxy=$http_proxy" \
+            -e "https_proxy=$https_proxy" \
+            -v /var/run/postgresql:/var/run/postgresql \
+            -v "$HOME/.pgpass:$HOME/.pgpass" \
+            -v /etc/passwd:/etc/passwd:ro \
+            -v /etc/group:/etc/group:ro \
+            -v /etc/shadow:/etc/shadow:ro \
+            -v /etc/gshadow:/etc/gshadow:ro \
+            --security-opt seccomp=unconfined \
+            $docker_map_args \
+            $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"$command\"" \
+            >> "$logfile" 2>&1
+    else
+        echo "ssh $remote_machine $command"
+        ssh $remote_machine $command 2>&1 >> "$logfile"
+    fi
+    ret_code=$?
+    if [ $ret_code != 0 ]; then
+        echo "command failed! exit code was $ret_code"
+        echo "========== end of logfile $lf: ========== "
+        echo
+        tail -n 30 "$lf"
+        exit $ret_code
+    fi
+    set -e
 }
 
-
+truncate() {
+    echo -n > "$1"
+}
 
 progress 1 "JSON file is $json"
 dockername="lava32"
@@ -249,8 +257,7 @@ sourcedir="$directory/$name/$source"
 bugsdir="$directory/$name/bugs"
 logs="$directory/$name/logs"
 
-/bin/mkdir -p $logs
-
+/bin/mkdir -p "$logs"
 
 if [ $reset -eq 1 ]; then
     tick
@@ -261,16 +268,16 @@ if [ $reset -eq 1 ]; then
     # remove all plog files in the directory
     deldir "$directory/$name/*.plog"
     progress 0 "Truncating logs..."
-    /bin/mkdir -p "$logs"
     for i in $(ls "$logs" | grep '.log$'); do
-        echo > "$logs/$i"
+        truncate "$logs/$i"
     done
     lf="$logs/dbwipe.log"
+    truncate "$lf"
     progress 1  "Setting up lava db -- logging to $lf"
-    run_remote "$pandahost" "dropdb -U postgres $db >& $lf || true"
-    run_remote "$pandahost" "createdb -U postgres $db 2>&1 >> $lf || true"
-    run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres >& $lf"
-    run_remote "$pandahost" "echo dbwipe complete >> $lf"
+    run_remote "$pandahost" "dropdb -U postgres $db || true" "$lf"
+    run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
+    run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
+    run_remote "$pandahost" "echo dbwipe complete" "$lf"
     tock
     echo "reset complete $time_diff seconds"
 fi
@@ -279,12 +286,14 @@ if [ $add_queries -eq 1 ]; then
     tick
     progress 1  "Add queries step -- btrace lavatool and fixups"
     lf="$logs/add_queries.log"
+    truncate "$lf"
     progress 1 "Adding queries to source -- logging to $lf"
-    run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $json >& $lf"
+    run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $json" "$lf"
     if [ "$fixupscript" != "null" ]; then
         lf="$logs/fixups.log"
+        truncate "$lf"
         progress 1 "Fixups -- logging to $lf"
-        run_remote "$buildhost" "( $fixupscript ) >& $lf"
+        run_remote "$buildhost" "( $fixupscript )" "$lf"
     else
         progress 1 "No fixups"
     fi
@@ -297,8 +306,9 @@ if [ $make -eq 1 ]; then
     tick
     progress 1 "Make step -- making 32-bit version with queries"
     lf="$logs/make.log"
-    run_remote "$buildhost" "cd $sourcedir && $makecmd  >& $lf"
-    run_remote "$buildhost" "cd $sourcedir && $install   &>> $lf"
+    truncate "$lf"
+    run_remote "$buildhost" "cd $sourcedir && $makecmd" "$lf"
+    run_remote "$buildhost" "cd $sourcedir && $install" "$lf"
     tock
     echo "make complete $time_diff seconds"
     echo "make complete $time_diff seconds" >> "$lf"
@@ -312,8 +322,9 @@ if [ $taint -eq 1 ]; then
     do
         i=`echo $input | sed 's/\//-/g'`
         lf="$logs/bug_mining-$i.log"
+        truncate "$lf"
         progress 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
-        run_remote "$pandahost" "$python $scripts/bug_mining.py $json $input >& $lf"
+        run_remote "$pandahost" "$python $scripts/bug_mining.py $json $input" "$lf"
         echo -n "Num Bugs in db: "
         run_remote "$pandahost" "/usr/bin/psql -At -d $db -U postgres -c 'select count(*) from bug'"
     done
@@ -328,9 +339,10 @@ if [ $inject -eq 1 ]; then
     for i in `seq $num_trials`
     do
         lf="$logs/inject-$i.log"
+        truncate "$lf"
         progress 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many $kt $json >& $lf"
-    grep yield $lf
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many $kt $json" "$lf"
+    grep yield "$lf"
     done
 fi
 
