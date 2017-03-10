@@ -35,7 +35,7 @@ bug_mining_log = join(log_dir, "bug_mining-{}.log".format(input_file))
 
 # directory tarball explodes into often has version num as part of name
 tar_files = sb.check_output(['tar', 'tf', project['tarfile']])
-target_name = basename(tar_files.splitlines()[0].rstrip(os.path.sep))
+target_name = tar_files.splitlines()[0].split(os.path.sep)[0]
 
 plog = join(project_dir, "queries-{}-{}.iso.plog".format(
     target_name, basename(project['inputs'][0])))
@@ -135,25 +135,10 @@ def volcano(lock, mon, done_event):
             addstr(lock, mon, int(digit_r), int(digit_c), digit)
         time.sleep(0.2)
 
-def monitor_lava(stdscr):
-    curses.curs_set(0)
-    assert curses.has_colors()
-
-    mon = curses.newwin(30, 80, 4, 4)
-    mon.hline(0,1,'-',78)
-    mon.hline(29,1,'-',78)
-    mon.vline(1,0,'|',28)
-    mon.vline(1,79,'|',28)
-
-    lock = Lock()
-    done_event = Event()
-
+def main_thread(lock, mon, done_event):
     v0=2
     addstr(lock, mon, v0, 11, "LAVA: Large-scale Automated Vulnerability Addition", curses.A_BOLD)
     addstr(lock, mon, v0+1, 17, "target: %s" % target_name)
-
-    volcano_thread = Thread(target=volcano, args=(lock, mon, done_event))
-    volcano_thread.start()
 
     v1=5
     # stage 1 -- instrument source
@@ -366,7 +351,30 @@ def monitor_lava(stdscr):
 
     done_event.set()
     try: sb.check_call(['killall', 'sleep'])
-    except Exception: pass
+    except sb.CalledProcessError: pass
+
+def monitor_lava(stdscr):
+    curses.curs_set(0)
+    assert curses.has_colors()
+
+    mon = curses.newwin(30, 80, 4, 4)
+    mon.hline(0,1,'-',78)
+    mon.hline(29,1,'-',78)
+    mon.vline(1,0,'|',28)
+    mon.vline(1,79,'|',28)
+
+    lock = Lock()
+    done_event = Event()
+
+    volcano_thread = Thread(target=volcano, args=(lock, mon, done_event))
+    volcano_thread.start()
+
+    try:
+        main_thread(lock, mon, done_event)
+    except:
+        done_event.set()
+        raise
+
     volcano_thread.join(1)
 
 curses.wrapper(monitor_lava)
