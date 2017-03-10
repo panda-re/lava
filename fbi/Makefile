@@ -1,17 +1,19 @@
 include panda.mak
 
-VPATH=.:$(PANDA_SRC_PATH)/panda/src:$(PANDA_BUILD_DIR)/i386-softmmu:../src_clang
+VPATH=.:$(PANDA_SRC_PATH)/panda/src:$(PANDA_BUILD_DIR)/i386-softmmu:../common
 
 CXX ?= clang++
 CC ?= clang
 
+PKGS=libodb libodb-pgsql jsoncpp
+
 LDFLAGS= -L/usr/local/lib -lprotobuf-c -lz -lpq -ljsoncpp -lodb-pgsql -lodb
 CFLAGS= -I$(PANDA_SRC_PATH)/panda/include \
 		-I$(PANDA_BUILD_DIR)/i386-softmmu \
-		-I../include -I../src_clang \
-		-D PLOG_READER -O3 -g \
-		-I/usr/include/jsoncpp -D LAVA -D PANDA_LAVA \
+		-I../include -D PLOG_READER -O3 -g \
+		-D LAVA -D PANDA_LAVA \
 		-I/usr/lib/odb/x86_64-linux-gnu/include
+CFLAGS+= $(shell pkg-config $(PKGS) --cflags)
 CXXFLAGS=$(CFLAGS) -std=c++14
 
 all: fbi
