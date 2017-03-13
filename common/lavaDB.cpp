@@ -4,12 +4,16 @@
 #include <string>
 #include <tuple>
 #include <vector>
+#include <algorithm>
 
 std::vector<std::string> InvertDB(std::map<std::string, uint32_t> &n2ind) {
     std::vector<std::string> ind2n;
-    ind2n.reserve(n2ind.size() + 1);
+    uint32_t max_index = 0;
     for ( auto kvp : n2ind ) {
-        ind2n.reserve(kvp.second + 1);
+        max_index = std::max(max_index, kvp.second);
+    }
+    ind2n.resize(max_index + 1);
+    for ( auto kvp : n2ind ) {
         ind2n[kvp.second] = kvp.first;
     }
     return ind2n;
