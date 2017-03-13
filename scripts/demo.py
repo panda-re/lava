@@ -81,6 +81,7 @@ def wait_for(pattern, hostfile):
     while True:
         if check_for(pattern, hostfile):
             return
+        time.sleep(0.05)
 
 # extracts last
 def extract_float(pattern, hostfile):
