@@ -425,8 +425,8 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 #endif
         for (auto &keyValue : nodesMap) {
             const Stmt *stmt = keyValue.second.get<Stmt>();
-            SourceLocation start = stmt->getLocStart();
             if (stmt) {
+                SourceLocation start = stmt->getLocStart();
                 if (!sm.getFilename(start).empty() && sm.isInMainFile(start)
                         && !sm.isMacroArgExpansion(start)) {
 #if MATCHER_DEBUG
