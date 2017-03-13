@@ -10,9 +10,9 @@ PKGS=libodb libodb-pgsql jsoncpp
 LDFLAGS= -L/usr/local/lib -lprotobuf-c -lz -lpq -ljsoncpp -lodb-pgsql -lodb
 CFLAGS= -I$(PANDA_SRC_PATH)/panda/include \
 		-I$(PANDA_BUILD_DIR)/i386-softmmu \
-		-I../include -D PLOG_READER -O3 -g \
+		-I../include -D PLOG_READER -O3 -g -fno-omit-frame-pointer \
 		-D LAVA -D PANDA_LAVA \
-		-I/usr/lib/odb/x86_64-linux-gnu/include
+		-I/usr/lib/odb/x86_64-linux-gnu/include -flto
 CFLAGS+= $(shell pkg-config $(PKGS) --cflags)
 CXXFLAGS=$(CFLAGS) -std=c++14
 
@@ -40,7 +40,7 @@ find_bug_inj.o: lava-odb.hxx ../include/lava.hxx
 fbi_objs=$(addsuffix .o,$(basename $(fbi_sources)))
 
 fbi: $(fbi_objs)
-	$(CXX) -o $@ $^ $(LDFLAGS)
+	$(CXX) -o $@ $^ $(LDFLAGS) -flto -fuse-ld=gold
 
 clean:
 	rm -f $(fbi_objs) fbi
