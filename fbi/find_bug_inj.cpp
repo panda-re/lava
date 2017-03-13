@@ -29,7 +29,6 @@ extern "C" {
 #include <fstream>
 #include <map>
 #include <set>
-#include <unordered_set>
 #include <vector>
 #include <sstream>
 #include <algorithm>
@@ -57,9 +56,8 @@ extern "C" {
 #define FAKE_DUA_BYTE_FLAG 777
 
 std::string inputfile;
-std::string src_pfx;
 // Map LavaDB string indices to actual strings.
-std::map<uint32_t, std::string> ind2str;
+std::vector<std::string> ind2str;
 
 uint64_t num_fake_bugs = 0;
 uint64_t num_bugs_added_to_db = 0;
@@ -238,13 +236,11 @@ static const T* create(T no_id) {
     return create_full(no_id).first;
 }
 
-std::map<uint32_t,std::string> LoadIDB(std::string fn) {
+std::vector<std::string> LoadIDB(std::string fn) {
     std::string sfn = std::string(fn);
     std::map<std::string,uint32_t> x = LoadDB(sfn);
     return InvertDB(x);
 }
-
-
 
 void update_unique_taint_sets(const Panda__TaintQueryUniqueLabelSet *tquls) {
     if (debug) {
@@ -759,7 +755,6 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
                 recent_duas_by_instr.end(), trigger_dua, less_by_instr);
         auto begin_it = recent_duas_by_instr.begin();
         auto distance = std::distance(begin_it, end_it);
-        bool skip_this_trigger = false;
         if (num_extra_duas < distance) { // do we have enough other duas??
             for (int i = 0; i < num_extra_duas; i++) {
                 const DuaBytes *extra;
@@ -842,14 +837,14 @@ void attack_point_lval_usage(Panda__LogEntry *ple) {
     switch ((AttackPoint::Type)pleatp->info) {
     case AttackPoint::POINTER_WRITE:
         record_injectable_bugs_at<Bug::REL_WRITE>(atp, is_new_atp, { });
-	// fall through
+        // fall through
     case AttackPoint::POINTER_READ:
     case AttackPoint::FUNCTION_ARG:
         record_injectable_bugs_at<Bug::PTR_ADD>(atp, is_new_atp, { });
-	break;
+        break;
     case AttackPoint::PRINTF_LEAK:
         record_injectable_bugs_at<Bug::PRINTF_LEAK>(atp, is_new_atp, { });
-	break;
+        break;
     }
     t.commit();
 }
@@ -859,9 +854,8 @@ void record_call(Panda__LogEntry *ple) { }
 void record_ret(Panda__LogEntry *ple) { }
 
 int main (int argc, char **argv) {
-    if (argc != 5) {
-        printf("usage: fbi project.json src_pfx pandalog inputfile\n");
-        printf("    src_pfx: Prefix of source tree from lavaTool queries, so we can strip it\n");
+    if (argc != 4) {
+        printf("usage: fbi project.json pandalog inputfile\n");
         printf("    JSON file should have properties:\n");
         printf("        max_liveness: Maximum liveness for DUAs\n");
         printf("        max_cardinality: Maximum cardinality for labelsets on DUAs\n");
@@ -883,14 +877,12 @@ int main (int argc, char **argv) {
     std::string name = root["name"].asString();
     std::string directory = root_directory + "/" + name;
 
-    std::string plog(argv[3]);
+    std::string plog = argv[2];
     std::string lavadb = directory + "/lavadb";
 
-    // panda log file
-    const char *plf = plog.c_str();
     // maps from ind -> (filename, lvalname, attackpointname)
     ind2str = LoadIDB(lavadb);
-    printf("%d strings in lavadb\n", (int) ind2str.size());
+    printf("%d strings in lavadb\n", (int)ind2str.size());
 
     max_liveness = root["max_liveness"].asUInt();
     printf("maximum liveness score of %lu\n", max_liveness);
@@ -900,8 +892,7 @@ int main (int argc, char **argv) {
     printf("max tcn for addr = %d\n", max_tcn);
     max_lval = root["max_lval_size"].asUInt();
     printf("max lval size = %d\n", max_lval);
-    inputfile = std::string(argv[4]);
-    src_pfx = std::string(argv[2]);
+    inputfile = std::string(argv[3]);
 
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
                 root["db"].asString()));
@@ -909,7 +900,7 @@ int main (int argc, char **argv) {
      re-read pandalog, this time focusing on taint queries.  Look for
      dead available data, attack points, and thus bug injection oppotunities
     */
-    pandalog_open(plf, "r");
+    pandalog_open(plog.c_str(), "r");
     uint64_t num_entries_read = 0;
 
     while (1) {

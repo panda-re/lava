@@ -109,13 +109,13 @@ struct LavaASTLoc {
     }
 
     bool operator==(const LavaASTLoc &other) const {
-        return std::tie(filename, begin, end)
-            == std::tie(other.filename, other.begin, other.end);
+        return std::tie(begin, end, filename)
+            == std::tie(other.begin, other.end, other.filename);
     }
 
     bool operator<(const LavaASTLoc &other) const {
-        return std::tie(filename, begin, end)
-            < std::tie(other.filename, other.begin, other.end);
+        return std::tie(begin, end, filename)
+            < std::tie(other.begin, other.end, other.filename);
     }
 };
 
@@ -313,8 +313,8 @@ struct AttackPoint {
 #pragma db index("AttackPointUniq") unique members(loc, type)
 
     bool operator<(const AttackPoint &other) const {
-        return std::tie(loc, type) <
-            std::tie(other.loc, other.type);
+        return std::tie(type, loc) <
+            std::tie(other.type, other.loc);
     }
 
     operator std::string() const {

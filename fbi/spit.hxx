@@ -2,10 +2,10 @@
 #define __FBI_SPIT_HXX
 
 #include <cstdint>
-#include <map>
+#include <vector>
 #include <string>
 
-extern std::map<uint32_t,std::string> ind2str;
+extern std::vector<std::string> ind2str;
 
 static void spit_tquls(const Panda__TaintQueryUniqueLabelSet *tquls) {
     printf("tquls=[ptr=0x%" PRIx64 ",n_label=%d,label=[", tquls->ptr, (int) tquls->n_label);

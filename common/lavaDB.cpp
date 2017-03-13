@@ -3,10 +3,13 @@
 #include <map>
 #include <string>
 #include <tuple>
+#include <vector>
 
-std::map<uint32_t,std::string> InvertDB(std::map<std::string,uint32_t> &n2ind) {
-    std::map<uint32_t,std::string> ind2n;
+std::vector<std::string> InvertDB(std::map<std::string, uint32_t> &n2ind) {
+    std::vector<std::string> ind2n;
+    ind2n.reserve(n2ind.size() + 1);
     for ( auto kvp : n2ind ) {
+        ind2n.reserve(kvp.second + 1);
         ind2n[kvp.second] = kvp.first;
     }
     return ind2n;
@@ -28,7 +31,7 @@ std::map<std::string,uint32_t> LoadDB(std::string dbfile) {
     return StringIDs;
 }
 
-void SaveDB(const std::map<std::string,uint32_t> &StringIDs, std::string dbfile) {
+void SaveDB(const std::map<std::string, uint32_t> &StringIDs, std::string dbfile) {
     std::ofstream db(dbfile);
     for (auto p : StringIDs) {
         db << p.second << '\0' << p.first << '\0';
