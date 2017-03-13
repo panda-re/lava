@@ -188,6 +188,9 @@ run_remote() {
     remote_machine=$1
     command=$2
     logfile=$3
+    if [ -z "$logfile" ]; then
+        logfile=/dev/stdout
+    fi
     set +e
     docker_map_args="-v $lava:$lava -v $tarfiledir:$tarfiledir"
     if [[ "$directory" = "$tarfiledir"* ]]; then true; else
@@ -274,7 +277,7 @@ if [ $reset -eq 1 ]; then
     lf="$logs/dbwipe.log"
     truncate "$lf"
     progress 1  "Setting up lava db -- logging to $lf"
-    run_remote "$pandahost" "dropdb -U postgres $db || true" "$lf"
+    run_remote "$pandahost" "dropdb --if-exists -U postgres $db" "$lf"
     run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
     run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
     run_remote "$pandahost" "echo dbwipe complete" "$lf"
