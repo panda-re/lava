@@ -204,16 +204,23 @@ bool IsArgAttackable(const Expr *arg) {
 
 ///////////////// HELPER FUNCTIONS END ////////////////////
 
+template<typename T>
+LExpr Get(T x) {
+    return ArgDataflow ? DataFlowGet(x) : LavaGet(x);
+}
+
+LExpr Test(const Bug *bug) {
+    return MagicTest<Get>(bug);
+}
+
 LExpr traditionalAttack(const Bug *bug) {
-    if (ArgDataflow)
-      return DataFlowGet(bug) * MagicTest(bug->magic(), DataFlowGet(bug));
-    return LavaGet(bug) * MagicTest(bug->magic(), LavaGet(bug));
+    return Get(bug) * Test(bug);
 }
 
 LExpr knobTriggerAttack(const Bug *bug) {
-    LExpr lava_get_lower = LavaGet(bug) & LHex(0x0000ffff);
+    LExpr lava_get_lower = Get(bug) & LHex(0x0000ffff);
     //LExpr lava_get_upper = (LavaGet(bug) >> LDecimal(16)) & LHex(0xffff);
-    LExpr lava_get_upper = (LavaGet(bug) & LHex(0xffff0000)) >> LDecimal(16);
+    LExpr lava_get_upper = (Get(bug) & LHex(0xffff0000)) >> LDecimal(16);
     // this is the magic value that will trigger the bug
     // we already know that magic_kt returns uint16_t so we don't have
     // to mask it
@@ -388,9 +395,9 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                     pointerAddends.push_back(pointerAttack(bug));
                 } else if (bug->type == Bug::REL_WRITE) {
                     pointerAddends.push_back(
-                            MagicTest(bug) * LavaGet(bug->extra_duas[0]));
+                            Test(bug) * Get(bug->extra_duas[0]));
                     valueAddends.push_back(
-                            MagicTest(bug) * LavaGet(bug->extra_duas[1]));
+                            Test(bug) * Get(bug->extra_duas[1]));
                 }
             }
             bugs_with_atp_at.erase(std::make_pair(ast_loc, atpType));
@@ -470,7 +477,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
             if (bug->type == Bug::RET_BUFFER) {
                 const DuaBytes *buffer = db->load<DuaBytes>(bug->extra_duas[0]);
-                result_ss << LIf(MagicTest(bug).render(), {
+                result_ss << LIf(Test(bug).render(), {
                         LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
                                 LDecimal(buffer->selected.low), },
                                 { "movl %0, %%esp", "ret" })});
@@ -540,7 +547,7 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
                                     std::make_pair(ast_loc, AttackPoint::PRINTF_LEAK));
                         for (const Bug *bug : injectable_bugs) {
                             Mod.Parenthesize()
-                                .InsertBefore(MagicTest(bug).render() +
+                                .InsertBefore(Test(bug).render() +
                                         " ? &(" + ExprStr(arg) + ") : ");
                         }
                     }
@@ -636,16 +643,18 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
 
         if (func == nullptr || func->getLocation().isInvalid()) {
             // Function Pointer
-            debug(FNARG) << "FUNCTION POINTER USE!";
+            debug(FNARG) << "FUNCTION POINTER USE: ";
             call->getLocStart().print(debug(FNARG), *Mod.sm);
             debug(FNARG) << "this many args: " << call->getNumArgs() << "\n";
-            call->getArg(0)->getLocStart().print(debug(FNARG), *Mod.sm);
-            Mod.InsertAt(call->getArg(0)->getLocStart(), ARG_NAME ", ");
+            loc = call->getArg(0)->getLocStart();
         } else if (Mod.sm->isInSystemHeader(func->getLocation())) {
-          // System Function
-          return;
-        } else if (func->param_size() == 0) {
-            Mod.InsertAt(loc, ARG_NAME);
+            return;
+        }
+
+        loc.print(debug(FNARG), *Mod.sm);
+
+        if (func->param_size() == 0) {
+            Mod.InsertAt(loc, "ARG_NAME");
         } else {
             Mod.InsertAt(loc, ARG_NAME ", ");
         }
