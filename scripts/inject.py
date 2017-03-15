@@ -26,7 +26,6 @@ def get_bug_list(args, db):
     bug_list = []
     if args.bugid != -1:
         bug_id = int(args.bugid)
-        score = 0
         bug_list.append(bug_id)
     elif args.randomize:
         print "Remaining to inj:", db.uninjected().count()
@@ -102,7 +101,7 @@ if __name__ == "__main__":
             help = 'skip the inject phase and just run the bugged binary on fuzzed inputs')
     parser.add_argument('-nl', '--noLock', action="store_true", default=False,
             help = ('No need to take lock on bugs dir'))
-    parser.add_argument('-c', '--checkStacktrace', action="store_true", default=True,
+    parser.add_argument('-c', '--checkStacktrace', action="store_true", default=False,
             help = ('When validating a bug, make sure it manifests at same line as lava-inserted trigger'))
 
     args = parser.parse_args()

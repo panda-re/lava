@@ -245,8 +245,9 @@ LExpr MagicTest(UInt magic_value, LExpr maskedLavaGet) {
     return LHex(magic_value) == maskedLavaGet;
 }
 
+template<LExpr Get(const Bug *)>
 LExpr MagicTest(const Bug *bug) {
-    return MagicTest(bug->magic(), LavaGet(bug));
+    return MagicTest(bug->magic(), Get(bug));
 }
 
 // RangeTest and rangeStyleAttack are currently unused, but they're good examples of
