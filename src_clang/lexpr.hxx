@@ -108,7 +108,7 @@ struct LExpr {
         } else if (expr.t == LExpr::DEREF) {
             os << '*' << *expr.args.at(0);
         } else if (expr.t == LExpr::ASSIGN) {
-            os << *expr.args.at(0) << " = " << *expr.args.at(1) << "\n";
+            os << *expr.args.at(0) << " = " << *expr.args.at(1);
         } else { assert(false && "Bad expr!"); }
 
         return os;
