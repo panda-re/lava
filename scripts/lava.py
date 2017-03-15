@@ -270,23 +270,17 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug_id, kt=False, knob=0):
 
 # run lavatool on this file to inject any parts of this list of bugs
 def inject_bugs_into_src(project_file, lava_tool, lavadb, bugs_build, bugs,
-                             llvm_src, main_files, filenames, kt=False):
-    all_files = set(filenames) | set(main_files)
+                             llvm_src, main_files, filename, kt=False):
     buglist = ','.join([str(bug.id) for bug in bugs])
     buglist = ','.join([str(bug.id) for bug in bugs])
     cmd = ('{} -action=inject -bug-list={} -lava-db={} -src-prefix={} ' + \
         '-project-file={} -main-files=\'{}\' {} {}').format(
             lava_tool, buglist, lavadb, bugs_build, project_file,
             ",".join([join(bugs_build, f) for f in main_files]),
-            " ".join([join(bugs_build, f) for f in all_files]),
-            "-kt" if kt else ""
+            join(bugs_build, filename), "-kt" if kt else ""
         )
     (exitcode, output) = run_cmd_notimeout(cmd, None, None)
     if exitcode != 0: raise RuntimeError("Injection failed!")
-
-    clang_apply = join(llvm_src, 'Release', 'bin', 'clang-apply-replacements')
-    for src_dir in set([dirname(f) for f in all_files]):
-        run_cmd_notimeout([clang_apply, '.'], join(bugs_build, src_dir), None)
 
 class LavaPaths(object):
 
@@ -433,10 +427,16 @@ def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db)
     main_files = set(project['main_file'])
     print("main_files:", main_files)
 
-    inject_bugs_into_src(
-        project_file, lp.lava_tool, lp.lavadb, lp.bugs_build, bugs_to_inject,
-        llvm_src, main_files, src_files, knobTrigger != -1
-    )
+    all_files = main_files | src_files
+    for filename in all_files:
+        inject_bugs_into_src(
+            project_file, lp.lava_tool, lp.lavadb, lp.bugs_build, bugs_to_inject,
+            llvm_src, main_files, filename, knobTrigger != -1
+        )
+
+    clang_apply = join(llvm_src, 'Release', 'bin', 'clang-apply-replacements')
+    for src_dir in set([dirname(f) for f in all_files]):
+        run_cmd_notimeout([clang_apply, '.'], join(lp.bugs_build, src_dir), None)
 
     # paranoid clean -- some build systems need this
     if ('makeclean' in project) and (project['makeclean']):
