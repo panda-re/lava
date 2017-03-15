@@ -2,26 +2,16 @@
 
 import argparse
 import atexit
-import datetime
 import json
 import lockfile
 import os
-import pipes
-import re
-import shlex
-import shutil
 import signal
-import string
-import subprocess32
 import sys
 import time
 
-from math import sqrt
-from os.path import basename, dirname, join, abspath
+from os.path import join
 
-from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
-    run_cmd, run_cmd_notimeout, mutfile, inject_bugs, LavaPaths, \
-    validate_bugs, run_modified_program
+from lava import LavaDatabase, Run, inject_bugs, LavaPaths, validate_bugs
 
 start_time = time.time()
 
