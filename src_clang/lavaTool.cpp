@@ -50,6 +50,8 @@ extern "C" {
 #define FNARG (1 << 2)
 #define DEBUG_FLAGS 0 // MATCHER | INJECT | FNARG
 
+#define ARG_NAME "data_flow"
+
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
 
@@ -580,7 +582,11 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
     void AddArg(const FunctionDecl *func) {
         SourceLocation loc = clang::Lexer::findLocationAfterToken(
                 func->getLocation(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
-        Mod.InsertAt(loc, "int *data_flow, ");
+        if (func->getNumParams() == 0) {
+          Mod.InsertAt(loc, "int *" ARG_NAME);
+        } else {
+          Mod.InsertAt(loc, "int *" ARG_NAME ", ");
+        }
     }
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
@@ -596,7 +602,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
                 assert(body);
                 Stmt *first = *body->body_begin();
                 assert(first);
-                Mod.InsertAt(first->getLocStart(), "int data = 0;\n    int *data_flow = &data;\n");
+                Mod.InsertAt(first->getLocStart(), "int data = 0;\n    int *" ARG_NAME " = &data;\n");
             }
         } else {
             while (func != NULL) {
@@ -615,7 +621,7 @@ struct FunctionPointerFieldHandler : public LavaMatchHandler {
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const FieldDecl *decl = Result.Nodes.getNodeAs<FieldDecl>("fieldDecl");
         debug(FNARG) << decl->getLocEnd().printToString(*Mod.sm) << "\n";
-        Mod.InsertAt(decl->getLocEnd().getLocWithOffset(-14), "int *data_flow, ");
+        Mod.InsertAt(decl->getLocEnd().getLocWithOffset(-14), "int *" ARG_NAME ", ");
     }
 };
 
@@ -627,17 +633,21 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         const FunctionDecl *func = call->getDirectCallee();
         SourceLocation loc = clang::Lexer::findLocationAfterToken(
                 call->getLocStart(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
+
         if (func == nullptr || func->getLocation().isInvalid()) {
             // Function Pointer
             debug(FNARG) << "FUNCTION POINTER USE!";
             call->getLocStart().print(debug(FNARG), *Mod.sm);
             debug(FNARG) << "this many args: " << call->getNumArgs() << "\n";
             call->getArg(0)->getLocStart().print(debug(FNARG), *Mod.sm);
-            Mod.InsertAt(call->getArg(0)->getLocStart(), "data_flow, ");
+            Mod.InsertAt(call->getArg(0)->getLocStart(), ARG_NAME ", ");
+        } else if (Mod.sm->isInSystemHeader(func->getLocation())) {
+          // System Function
+          return;
         } else if (func->param_size() == 0) {
-            Mod.InsertAt(loc, "data_flow");
+            Mod.InsertAt(loc, ARG_NAME);
         } else {
-            Mod.InsertAt(loc, "data_flow, ");
+            Mod.InsertAt(loc, ARG_NAME ", ");
         }
     }
 };
@@ -742,7 +752,7 @@ public:
         std::string insert_at_top;
         if (LavaAction == LavaQueries) {
             insert_at_top = "#include \"pirate_mark_lava.h\"\n";
-        } else if (LavaAction == LavaInjectBugs && !ArgDataflow) {
+        } else if (LavaAction == LavaInjectBugs && !ArgDataflow && ArgDataflow) {
             if (main_files.count(getAbsolutePath(Filename)) > 0) {
                 // This is the file with main! insert lava_[gs]et and whatever.
                 std::ifstream lava_funcs_file(LavaPath + "/src_clang/lava_set.c");

@@ -114,6 +114,8 @@ if __name__ == "__main__":
             help = ('No need to take lock on bugs dir'))
     parser.add_argument('-c', '--checkStacktrace', action="store_true", default=True,
             help = ('When validating a bug, make sure it manifests at same line as lava-inserted trigger'))
+    parser.add_argument('-d', '--arg_dataflow', action="store_true", default=False,
+            help = ('Inject bugs using function args instead of globals'))
 
     args = parser.parse_args()
     global project
@@ -138,7 +140,6 @@ if __name__ == "__main__":
     # add all those bugs to the source code and check that it compiles
     (build, input_files) = inject_bugs(bug_list, db, lp, project_file,
                                        project, args.knobTrigger, update_db)
-
     try:
         # determine which of those bugs actually cause a seg fault
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build,

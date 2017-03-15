@@ -270,13 +270,13 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug_id, kt=False, knob=0):
 
 # run lavatool on this file to inject any parts of this list of bugs
 def inject_bugs_into_src(project_file, lava_tool, lavadb, bugs_build, bugs,
-                             llvm_src, main_files, filenames, kt=False):
+                             llvm_src, main_files, filenames, kt=False, arg_dataflow=False):
     all_files = set(filenames) | set(main_files)
     buglist = ','.join([str(bug.id) for bug in bugs])
     buglist = ','.join([str(bug.id) for bug in bugs])
     cmd = ('{} -action=inject -bug-list={} -lava-db={} -src-prefix={} ' + \
-        '-project-file={} -arg_dataflow=true -main-files=\'{}\' {} {}').format(
-            lava_tool, buglist, lavadb, bugs_build, project_file,
+        '-project-file={} -arg_dataflow={} -main-files=\'{}\' {} {}').format(
+            lava_tool, buglist, lavadb, bugs_build, project_file, arg_dataflow,
             ",".join([join(bugs_build, f) for f in main_files]),
             " ".join([join(bugs_build, f) for f in all_files]),
             "-kt" if kt else ""
