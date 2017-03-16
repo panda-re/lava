@@ -117,13 +117,15 @@ done
 
 
 progress "Inserting queries..."
-$lava/src_clang/build/lavaTool -action=query \
--lava-db="$directory/$name/lavadb" \
--p="$source/compile_commands.json" \
--src-prefix=$(readlink -f "$source") \
-$ATP_TYPE \
--project-file="$json" \
-$c_files
+for i in $c_files; do
+    $lava/src_clang/build/lavaTool -action=query \
+    -lava-db="$directory/$name/lavadb" \
+    -p="$source/compile_commands.json" \
+    -src-prefix=$(readlink -f "$source") \
+    $ATP_TYPE \
+    -project-file="$json" \
+    $i
+done
 
 for i in $c_dirs; do
     echo "  Applying replacements to $i"
