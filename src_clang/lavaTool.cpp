@@ -181,7 +181,7 @@ bool QueriableType(const Type *lval_type) {
 
 bool IsArgAttackable(const Expr *arg) {
     debug(MATCHER) << "IsArgAttackable \n";
-    if (DEBUG_FLAGS | MATCHER) arg->dump();
+    if (DEBUG_FLAGS & MATCHER) arg->dump();
 
     const Type *t = arg->IgnoreParenImpCasts()->getType().getTypePtr();
     if (dyn_cast<OpaqueValueExpr>(arg) || t->isStructureType() || t->isEnumeralType() || t->isIncompleteType()) {
@@ -653,7 +653,7 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
 
         loc.print(debug(FNARG), *Mod.sm);
 
-        if (func->param_size() == 0) {
+        if (call->getNumArgs() == 0) {
             Mod.InsertAt(loc, "ARG_NAME");
         } else {
             Mod.InsertAt(loc, ARG_NAME ", ");
