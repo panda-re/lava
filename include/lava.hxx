@@ -158,20 +158,13 @@ struct SourceLval { // was DuaKey
 
     std::string ast_name;
 
-    // When did we see taint?
-    enum Timing {
-        NULL_TIMING = 0,
-        BEFORE_OCCURRENCE = 1,
-        AFTER_OCCURRENCE = 2
-    } timing;
-
     uint32_t len_bytes;
 
-#pragma db index("SourceLvalUniq") unique members(loc, ast_name, timing)
+#pragma db index("SourceLvalUniq") unique members(loc, ast_name)
 
     bool operator<(const SourceLval &other) const {
-        return std::tie(loc, ast_name, timing) <
-            std::tie(other.loc, other.ast_name, other.timing);
+        return std::tie(loc, ast_name) <
+            std::tie(other.loc, other.ast_name);
     }
 
     friend std::ostream &operator<<(std::ostream &os, const SourceLval &m) {

@@ -162,8 +162,7 @@ struct eq_query<SourceLval> {
             q::loc.begin.column == q::_ref(param->loc.begin.column) &&
             q::loc.end.line == q::_ref(param->loc.end.line) &&
             q::loc.end.column == q::_ref(param->loc.end.column) &&
-            q::ast_name == q::_ref(param->ast_name) &&
-            q::timing == q::_ref(param->timing);
+            q::ast_name == q::_ref(param->ast_name);
     }
 };
 
@@ -516,8 +515,8 @@ void taint_query_pri(Panda__LogEntry *ple) {
         LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
         assert(ast_loc.filename.size() > 0);
 
-        const SourceLval *lval = create(SourceLval{0, ast_loc, si->astnodename,
-                (SourceLval::Timing)si->insertionpoint, len});
+        const SourceLval *lval = create(SourceLval{0,
+                ast_loc, si->astnodename, len});
 
         if (debug) {
             infix(all_labels.begin(), all_labels.end(), std::cout,
@@ -683,11 +682,19 @@ def collect_bugs(attack_point):
 struct BugParam {
     unsigned long atp_id;
     Bug::Type type;
+
+    bool operator<(const BugParam &other) const {
+        return std::tie(atp_id, type) < std::tie(other.atp_id, other.type);
+    }
 };
+
+std::map<BugParam, std::vector<uint64_t>> cached_skip_lists;
+
 template<Bug::Type bug_type>
 void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         std::initializer_list<const DuaBytes *> extra_duas_prechosen) {
-    std::vector<unsigned long> skip_trigger_lvals;
+    std::vector<uint64_t> empty;
+    std::vector<uint64_t> *skip_trigger_lvals = &empty;
     if (!is_new_atp) {
         // This means that all bug opportunities here might be repeats: same
         // atp/lval/type combo. Let's head that off at the pass.

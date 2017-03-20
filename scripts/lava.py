@@ -45,12 +45,6 @@ class SourceLval(Base):
     id = Column(Integer, primary_key=True)
     loc = ASTLoc.composite('loc')
     ast_name = Column(Text)
-    timing = Column(Integer)
-
-    NULL_TIMING = 0
-    BEFORE_OCCURRENCE = 1
-    AFTER_OCCURRENCE = 2
-
 
     def __str__(self):
         timing_strs = ["NULL", "BEFORE", "AFTER"]
