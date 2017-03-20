@@ -487,7 +487,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             before = "; " + LFunc("vm_lava_pri_query_point", {
                 LDecimal(GetStringID(StringIDs, ast_loc)),
                 LDecimal(ast_loc.begin.line),
-                LDecimal(SourceLval::BEFORE_OCCURRENCE)}).render() + "; ";
+                LDecimal(0)}).render() + "; ";
 
             num_taint_queries += 1;
         } else if (LavaAction == LavaInjectBugs) {

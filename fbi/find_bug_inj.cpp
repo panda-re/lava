@@ -717,9 +717,9 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         param->type = bug_type;
 
         auto result = pq.execute();
-        skip_trigger_lvals.reserve(result.size());
+        skip_trigger_lvals->reserve(result.size());
         for (auto it = result.begin(); it != result.end(); it++) {
-            skip_trigger_lvals.push_back(it->trigger_lval);
+            skip_trigger_lvals->push_back(it->trigger_lval);
         }
     }
 
@@ -727,16 +727,16 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
     // NB: recent_dead_duas sorted by lval_id
     // so we can do set-subtraction (recent_dead_duas - skip_trigger_lvals)
     // in linear time
-    auto skip_it = skip_trigger_lvals.begin();
+    auto skip_it = skip_trigger_lvals->begin();
     int num_extra_duas = Bug::num_extra_duas[bug_type] -
         extra_duas_prechosen.size();
     assert(num_extra_duas >= 0);
     for ( const auto &kvp : recent_dead_duas ) {
         unsigned long lval_id = kvp.first;
         // fast-forward skip_it so *skip_it >= lval_id
-        while (skip_it != skip_trigger_lvals.end() && *skip_it < lval_id) skip_it++;
+        while (skip_it != skip_trigger_lvals->end() && *skip_it < lval_id) skip_it++;
         // skip this dua if it is in skip list.
-        if (skip_it != skip_trigger_lvals.end() && *skip_it == lval_id) continue;
+        if (skip_it != skip_trigger_lvals->end() && *skip_it == lval_id) continue;
 
         // lval skip list guarantees this is a new (lval, atp) combo not seen before.
         const Dua *trigger_dua = kvp.second;
