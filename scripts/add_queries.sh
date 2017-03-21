@@ -130,7 +130,7 @@ done
 for i in $c_dirs; do
     echo "  Applying replacements to $i"
     pushd $i
-    $llvm_src/Release/bin/clang-apply-replacements .
+    $lava/src_clang/build/clang-apply-replacements .
     popd
 done
 
