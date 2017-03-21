@@ -47,10 +47,8 @@ class SourceLval(Base):
     ast_name = Column(Text)
 
     def __str__(self):
-        timing_strs = ["NULL", "BEFORE", "AFTER"]
-        return 'Lval[{}](loc={}:{}, ast="{}", timing={})'.format(
-            self.id, self.loc.filename, self.loc.begin.line, self.ast_name,
-            timing_strs[self.timing]
+        return 'Lval[{}](loc={}:{}, ast="{}")'.format(
+            self.id, self.loc.filename, self.loc.begin.line, self.ast_name
         )
 
 class LabelSet(Base):
