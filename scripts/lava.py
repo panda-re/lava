@@ -426,7 +426,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db)
             llvm_src, main_files, filename, knobTrigger != -1
         )
 
-    clang_apply = join(llvm_src, 'Release', 'bin', 'clang-apply-replacements')
+    clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
     for src_dir in set([dirname(f) for f in all_files]):
         run_cmd_notimeout([clang_apply, '.'], join(lp.bugs_build, src_dir), None)
 
