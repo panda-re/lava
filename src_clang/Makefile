@@ -28,7 +28,7 @@ $(info Using LLVM_BUILD_PATH = $(LLVM_BUILD_PATH))
 $(info Using LLVM_BIN_PATH = $(LLVM_BIN_PATH))
 $(info -----------------------------------------------)
 
-VPATH=.:../src_clang:$(PANDA_SRC_PATH)/panda/src:$(PANDA_BUILD_DIR)/i386-softmmu
+VPATH=.:../common:$(PANDA_SRC_PATH)/panda/src:$(PANDA_BUILD_DIR)/i386-softmmu
 
 CXX := $(LLVM_BIN_PATH)/clang++
 CXXFLAGS := -fexceptions -O2 -g -gdwarf-2 -std=c++14 -I/usr/include/jsoncpp
@@ -50,11 +50,13 @@ CLANG_INCLUDES := \
 CLANG_LIBS := -Wl,--start-group \
 	-lclangAST \
 	-lclangAnalysis \
+	-lclangApplyReplacements \
 	-lclangBasic \
 	-lclangDriver \
 	-lclangEdit \
 	-lclangFrontend \
 	-lclangFrontendTool \
+	-lclangFormat \
 	-lclangLex \
 	-lclangParse \
 	-lclangSema \
@@ -72,16 +74,12 @@ CLANG_LIBS := -Wl,--start-group \
 
 BUILDDIR := build
 
-.PHONY: all lavatool attackpoints
-all: lavatool attackpoints
+.PHONY: all lavatool
+all: lavatool build/clang-apply-replacements
 
 lavatool: make_builddir \
 	emit_build_config \
 	$(BUILDDIR)/lavaTool
-
-attackpoints: make_builddir \
-	emit_build_config \
-	$(BUILDDIR)/attackPoints
 
 .PHONY: emit_build_config
 emit_build_config: make_builddir
@@ -101,6 +99,9 @@ $(BUILDDIR)/%.o: %.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 $(BUILDDIR)/lavaTool: $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o
+	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
+
+$(BUILDDIR)/clang-apply-replacements: $(BUILDDIR)/ClangApplyReplacementsMain.o $(BUILDDIR)/ApplyReplacements.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
 $(BUILDDIR)/lavaTool.o: lava-odb.hxx lexpr.hxx Makefile
