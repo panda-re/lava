@@ -299,8 +299,9 @@ uint32_t count_nonzero(std::vector<T> arr) {
     return count;
 }
 
-// get first 4-or-larger dead range.
-inline Range get_dua_dead_range(const Dua *dua) {
+// get first 4-or-larger dead range. to_avoid is a sorted vector of labels that
+// can't be used
+inline Range get_dua_dead_range(const Dua *dua, const std::vector<uint32_t> &to_avoid) {
     const auto &viable_bytes = dua->viable_bytes;
     dprintf("checking viability of dua: currently %u viable bytes\n",
             count_nonzero(viable_bytes));
@@ -313,12 +314,16 @@ inline Range get_dua_dead_range(const Dua *dua) {
         bool byte_viable = true;
         const LabelSet *ls = viable_bytes[i];
         if (ls) {
-            for (auto l : ls->labels) {
-                if (liveness[l] > max_liveness) {
-                    dprintf("byte offset is nonviable b/c label %d has liveness %lu\n",
-                            l, liveness[l]);
-                    byte_viable = false;
-                    break;
+            if (!disjoint(ls->labels, to_avoid)) {
+                byte_viable = false;
+            } else {
+                for (auto l : ls->labels) {
+                    if (liveness[l] > max_liveness) {
+                        dprintf("byte offset is nonviable b/c label %d has liveness %lu\n",
+                                l, liveness[l]);
+                        byte_viable = false;
+                        break;
+                    }
                 }
             }
             if (byte_viable) {
@@ -338,7 +343,9 @@ inline Range get_dua_dead_range(const Dua *dua) {
     }
     dprintf("%s\ndua has %u viable bytes\n", std::string(*dua).c_str(),
             current_run.size());
-    // dua is viable iff it has more than one viable byte
+
+    if (current_run.size() < LAVA_MAGIC_VALUE_SIZE) return Range{0, 0};
+
     return current_run;
 }
 
@@ -369,12 +376,15 @@ inline Range get_dua_exploit_pad(const Dua *dua) {
         largest_run = current_run;
     }
 
+    // Reserve 4 bytes for trigger at start
+    if (largest_run.size() >= 20) largest_run.low += 4;
+
     return largest_run;
 }
 
 // determine if this dua is viable at all.
 inline bool is_dua_dead(const Dua *dua) {
-    return get_dua_dead_range(dua).size() == LAVA_MAGIC_VALUE_SIZE;
+    return get_dua_dead_range(dua, {}).size() == LAVA_MAGIC_VALUE_SIZE;
 }
 
 template<Bug::Type bug_type>
@@ -731,6 +741,13 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
     int num_extra_duas = Bug::num_extra_duas[bug_type] -
         extra_duas_prechosen.size();
     assert(num_extra_duas >= 0);
+    std::vector<uint32_t> prechosen_labels;
+
+    for (const DuaBytes* extra : extra_duas_prechosen) {
+        merge_into(extra->all_labels.begin(), extra->all_labels.end(),
+                prechosen_labels);
+    }
+
     for ( const auto &kvp : recent_dead_duas ) {
         unsigned long lval_id = kvp.first;
         // fast-forward skip_it so *skip_it >= lval_id
@@ -742,17 +759,21 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         const Dua *trigger_dua = kvp.second;
 
         // Need to select bytes now.
-        Range selected = get_dua_dead_range(trigger_dua);
+        Range selected = get_dua_dead_range(trigger_dua, prechosen_labels);
+        if (selected.empty()) {
+            // This means prechosen_labels conflicts with trigger
+            continue;
+        }
+
         assert(selected.size() >= LAVA_MAGIC_VALUE_SIZE);
         const DuaBytes *trigger = create(DuaBytes{trigger_dua, selected});
 
         // Now select extra duas. One set of extra duas per (lval, atp, type).
         std::vector<const DuaBytes *> extra_duas = extra_duas_prechosen;
-        std::vector<uint32_t> labels_so_far = trigger->all_labels;
-        for (const DuaBytes* extra : extra_duas_prechosen) {
-            merge_into(extra->all_labels.begin(), extra->all_labels.end(),
-                    labels_so_far);
-        }
+        std::vector<uint32_t> labels_so_far = prechosen_labels;
+
+        merge_into(trigger->all_labels.begin(), trigger->all_labels.end(),
+                labels_so_far);
 
         // Get list of duas observed before chosen trigger.
         // Otherwise a bug might partially trigger - some duas might not be
@@ -772,7 +793,8 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
                     auto it = begin_it;
                     std::advance(it, rand() % distance);
                     const Dua *extra_dua = *it;
-                    Range selected = get_dua_dead_range(extra_dua);
+                    Range selected = get_dua_dead_range(extra_dua, labels_so_far);
+                    if (selected.empty()) continue;
                     extra = create(DuaBytes(extra_dua, selected));
                     if (disjoint(labels_so_far, extra->all_labels)) break;
                 }
