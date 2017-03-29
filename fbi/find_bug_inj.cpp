@@ -162,8 +162,7 @@ struct eq_query<SourceLval> {
             q::loc.begin.column == q::_ref(param->loc.begin.column) &&
             q::loc.end.line == q::_ref(param->loc.end.line) &&
             q::loc.end.column == q::_ref(param->loc.end.column) &&
-            q::ast_name == q::_ref(param->ast_name) &&
-            q::timing == q::_ref(param->timing);
+            q::ast_name == q::_ref(param->ast_name);
     }
 };
 
@@ -300,8 +299,9 @@ uint32_t count_nonzero(std::vector<T> arr) {
     return count;
 }
 
-// get first 4-or-larger dead range.
-inline Range get_dua_dead_range(const Dua *dua) {
+// get first 4-or-larger dead range. to_avoid is a sorted vector of labels that
+// can't be used
+inline Range get_dua_dead_range(const Dua *dua, const std::vector<uint32_t> &to_avoid) {
     const auto &viable_bytes = dua->viable_bytes;
     dprintf("checking viability of dua: currently %u viable bytes\n",
             count_nonzero(viable_bytes));
@@ -314,12 +314,16 @@ inline Range get_dua_dead_range(const Dua *dua) {
         bool byte_viable = true;
         const LabelSet *ls = viable_bytes[i];
         if (ls) {
-            for (auto l : ls->labels) {
-                if (liveness[l] > max_liveness) {
-                    dprintf("byte offset is nonviable b/c label %d has liveness %lu\n",
-                            l, liveness[l]);
-                    byte_viable = false;
-                    break;
+            if (!disjoint(ls->labels, to_avoid)) {
+                byte_viable = false;
+            } else {
+                for (auto l : ls->labels) {
+                    if (liveness[l] > max_liveness) {
+                        dprintf("byte offset is nonviable b/c label %d has liveness %lu\n",
+                                l, liveness[l]);
+                        byte_viable = false;
+                        break;
+                    }
                 }
             }
             if (byte_viable) {
@@ -339,7 +343,9 @@ inline Range get_dua_dead_range(const Dua *dua) {
     }
     dprintf("%s\ndua has %u viable bytes\n", std::string(*dua).c_str(),
             current_run.size());
-    // dua is viable iff it has more than one viable byte
+
+    if (current_run.size() < LAVA_MAGIC_VALUE_SIZE) return Range{0, 0};
+
     return current_run;
 }
 
@@ -370,12 +376,15 @@ inline Range get_dua_exploit_pad(const Dua *dua) {
         largest_run = current_run;
     }
 
+    // Reserve 4 bytes for trigger at start
+    if (largest_run.size() >= 20) largest_run.low += 4;
+
     return largest_run;
 }
 
 // determine if this dua is viable at all.
 inline bool is_dua_dead(const Dua *dua) {
-    return get_dua_dead_range(dua).size() == LAVA_MAGIC_VALUE_SIZE;
+    return get_dua_dead_range(dua, {}).size() == LAVA_MAGIC_VALUE_SIZE;
 }
 
 template<Bug::Type bug_type>
@@ -516,8 +525,8 @@ void taint_query_pri(Panda__LogEntry *ple) {
         LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
         assert(ast_loc.filename.size() > 0);
 
-        const SourceLval *lval = create(SourceLval{0, ast_loc, si->astnodename,
-                (SourceLval::Timing)si->insertionpoint, len});
+        const SourceLval *lval = create(SourceLval{0,
+                ast_loc, si->astnodename, len});
 
         if (debug) {
             infix(all_labels.begin(), all_labels.end(), std::cout,
@@ -683,11 +692,19 @@ def collect_bugs(attack_point):
 struct BugParam {
     unsigned long atp_id;
     Bug::Type type;
+
+    bool operator<(const BugParam &other) const {
+        return std::tie(atp_id, type) < std::tie(other.atp_id, other.type);
+    }
 };
+
+std::map<BugParam, std::vector<uint64_t>> cached_skip_lists;
+
 template<Bug::Type bug_type>
 void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         std::initializer_list<const DuaBytes *> extra_duas_prechosen) {
-    std::vector<unsigned long> skip_trigger_lvals;
+    std::vector<uint64_t> empty;
+    std::vector<uint64_t> *skip_trigger_lvals = &empty;
     if (!is_new_atp) {
         // This means that all bug opportunities here might be repeats: same
         // atp/lval/type combo. Let's head that off at the pass.
@@ -710,9 +727,9 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         param->type = bug_type;
 
         auto result = pq.execute();
-        skip_trigger_lvals.reserve(result.size());
+        skip_trigger_lvals->reserve(result.size());
         for (auto it = result.begin(); it != result.end(); it++) {
-            skip_trigger_lvals.push_back(it->trigger_lval);
+            skip_trigger_lvals->push_back(it->trigger_lval);
         }
     }
 
@@ -720,32 +737,43 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
     // NB: recent_dead_duas sorted by lval_id
     // so we can do set-subtraction (recent_dead_duas - skip_trigger_lvals)
     // in linear time
-    auto skip_it = skip_trigger_lvals.begin();
+    auto skip_it = skip_trigger_lvals->begin();
     int num_extra_duas = Bug::num_extra_duas[bug_type] -
         extra_duas_prechosen.size();
     assert(num_extra_duas >= 0);
+    std::vector<uint32_t> prechosen_labels;
+
+    for (const DuaBytes* extra : extra_duas_prechosen) {
+        merge_into(extra->all_labels.begin(), extra->all_labels.end(),
+                prechosen_labels);
+    }
+
     for ( const auto &kvp : recent_dead_duas ) {
         unsigned long lval_id = kvp.first;
         // fast-forward skip_it so *skip_it >= lval_id
-        while (skip_it != skip_trigger_lvals.end() && *skip_it < lval_id) skip_it++;
+        while (skip_it != skip_trigger_lvals->end() && *skip_it < lval_id) skip_it++;
         // skip this dua if it is in skip list.
-        if (skip_it != skip_trigger_lvals.end() && *skip_it == lval_id) continue;
+        if (skip_it != skip_trigger_lvals->end() && *skip_it == lval_id) continue;
 
         // lval skip list guarantees this is a new (lval, atp) combo not seen before.
         const Dua *trigger_dua = kvp.second;
 
         // Need to select bytes now.
-        Range selected = get_dua_dead_range(trigger_dua);
+        Range selected = get_dua_dead_range(trigger_dua, prechosen_labels);
+        if (selected.empty()) {
+            // This means prechosen_labels conflicts with trigger
+            continue;
+        }
+
         assert(selected.size() >= LAVA_MAGIC_VALUE_SIZE);
         const DuaBytes *trigger = create(DuaBytes{trigger_dua, selected});
 
         // Now select extra duas. One set of extra duas per (lval, atp, type).
         std::vector<const DuaBytes *> extra_duas = extra_duas_prechosen;
-        std::vector<uint32_t> labels_so_far = trigger->all_labels;
-        for (const DuaBytes* extra : extra_duas_prechosen) {
-            merge_into(extra->all_labels.begin(), extra->all_labels.end(),
-                    labels_so_far);
-        }
+        std::vector<uint32_t> labels_so_far = prechosen_labels;
+
+        merge_into(trigger->all_labels.begin(), trigger->all_labels.end(),
+                labels_so_far);
 
         // Get list of duas observed before chosen trigger.
         // Otherwise a bug might partially trigger - some duas might not be
@@ -765,7 +793,8 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
                     auto it = begin_it;
                     std::advance(it, rand() % distance);
                     const Dua *extra_dua = *it;
-                    Range selected = get_dua_dead_range(extra_dua);
+                    Range selected = get_dua_dead_range(extra_dua, labels_so_far);
+                    if (selected.empty()) continue;
                     extra = create(DuaBytes(extra_dua, selected));
                     if (disjoint(labels_so_far, extra->all_labels)) break;
                 }

@@ -140,6 +140,16 @@ const V &map_get_default(const std::map<K, V> &map, K key) {
     }
 }
 
+std::set<std::string> parse_commas_strings(std::string list) {
+    std::istringstream ss(list);
+    std::set<std::string> result;
+    std::string i;
+    while(std::getline(ss, i, ',')) {
+        result.insert(i);
+    }
+    return result;
+}
+
 template<typename Elem>
 std::set<Elem> parse_commas(std::string list) {
     std::istringstream ss(list);
@@ -499,7 +509,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             before = "; " + LFunc("vm_lava_pri_query_point", {
                 LDecimal(GetStringID(StringIDs, ast_loc)),
                 LDecimal(ast_loc.begin.line),
-                LDecimal(SourceLval::BEFORE_OCCURRENCE)}).render() + "; ";
+                LDecimal(0)}).render() + "; ";
 
             num_taint_queries += 1;
         } else if (LavaAction == LavaInjectBugs) {
@@ -836,7 +846,7 @@ int main(int argc, const char **argv) {
                     root["db"].asString()));
         t = new odb::transaction(db->begin());
 
-        main_files = parse_commas<std::string>(MainFileList);
+        main_files = parse_commas_strings(MainFileList);
 
         // get bug info for the injections we are supposed to be doing.
         debug(INJECT) << "LavaBugList: [" << LavaBugList << "]\n";
