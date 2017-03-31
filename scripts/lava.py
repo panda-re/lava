@@ -261,16 +261,16 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug_id, kt=False, knob=0):
         fuzzed_f.write(file_bytes)
 
 # run lavatool on this file to inject any parts of this list of bugs
-def inject_bugs_into_src(project_file, lava_tool, lavadb, bugs_build, bugs,
-                             llvm_src, main_files, filename, kt=False, arg_dataflow=False):
-    buglist = ','.join([str(bug.id) for bug in bugs])
-    buglist = ','.join([str(bug.id) for bug in bugs])
-    cmd = ('{} -action=inject -bug-list={} -lava-db={} -src-prefix={} ' + \
-        '-project-file={} -arg_dataflow={} -main-files=\'{}\' {} {}').format(
-            lava_tool, buglist, lavadb, bugs_build, project_file, arg_dataflow,
-            ",".join([join(bugs_build, f) for f in main_files]),
-            join(bugs_build, filename), "-kt" if kt else ""
-        )
+def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename):
+    bug_list_str = ','.join([str(bug.id) for bug in bug_list])
+    main_files = ','.join([join(lp.bugs_build, f) for f in project['main_file']])
+    cmd = [
+        lp.lava_tool, '-action=inject', '-bug-list=' + bug_list_str,
+        '-src-prefix=' + lp.bugs_build, '-project-file=' + project_file,
+        '-main-files=' + main_files, join(lp.bugs_build, filename)
+    ]
+    if args.arg_dataflow: cmd.append('-arg_dataflow')
+    if args.knobTrigger != -1: cmd.append('-kt')
     (exitcode, output) = run_cmd_notimeout(cmd, None, None)
     if exitcode != 0: raise RuntimeError("Injection failed!")
 
@@ -311,7 +311,7 @@ class LavaPaths(object):
 
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
-def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db):
+def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
     print(lp)
 
     if not os.path.exists(lp.bugs_parent):
@@ -344,7 +344,6 @@ def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db)
     sys.stdout.flush()
     sys.stderr.flush()
 
-    main_files = set(project['main_file'])
     llvm_src = None
     # find llvm_src dir so we can figure out where clang #includes are for btrace
     config_mak = join(lp.lava_dir, "src_clang/config.mak")
@@ -416,14 +415,11 @@ def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db)
     print("INJECTING BUGS INTO SOURCE")
     print("%d source files: " % (len(src_files)))
     print(src_files)
-    main_files = set(project['main_file'])
-    print("main_files:", main_files)
 
-    all_files = main_files | src_files
+    all_files = src_files | set(project['main_file'])
     for filename in all_files:
-        inject_bugs_into_src(
-            project_file, lp.lava_tool, lp.lavadb, lp.bugs_build, bugs_to_inject,
-            llvm_src, main_files, filename, knobTrigger != -1
+        run_lavatool(
+            bugs_to_inject, lp, project_file, project, args, llvm_src, filename
         )
 
     clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
@@ -531,16 +527,16 @@ def fuzzed_input_for_bug(lp, bug):
     pref = unfuzzed_input[:-len(suff)] if suff != "" else unfuzzed_input
     return "{}-fuzzed-{}{}".format(pref, bug.id, suff)
 
-def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger,
-                 update_db, check_stacktrace, unfuzzed_outputs):
+def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
+                 unfuzzed_outputs):
     unfuzzed_input = unfuzzed_input_for_bug(lp, bug)
     fuzzed_input = fuzzed_input_for_bug(lp, bug)
     print(str(bug))
     print("fuzzed = [%s]" % fuzzed_input)
     mutfile_kwargs = {}
-    if knobTrigger != -1:
-        print("Knob size: {}".format(knobTrigger))
-        mutfile_kwargs = { 'kt': True, 'knob': knobTrigger }
+    if args.knobTrigger != -1:
+        print("Knob size: {}".format(args.knobTrigger))
+        mutfile_kwargs = { 'kt': True, 'knob': args.knobTrigger }
 
     fuzz_labels_list = [bug.trigger.all_labels]
     if len(bug.extra_duas) > 0:
@@ -567,7 +563,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger,
             # so e.g. -11 goes to 139.
             if rv in [-6, -11, 134, 139]:
                 print("RV indicates memory corruption")
-                if check_stacktrace:
+                if args.checkStacktrace:
                     if check_stacktrace_bug(lp, project, bug, fuzzed_input):
                         print("... and stacktrace agrees with trigger line")
                         return True
@@ -587,7 +583,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger,
         return False
 
 # validate this set of bugs
-def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, update_db, check_stacktrace):
+def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db):
 
     timeout = project.get('timeout', 5)
 
@@ -622,8 +618,7 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, up
         print("Validating bug {} of {} ". format(
             bug_index + 1, len(bugs_to_inject)))
         validated = validate_bug(db, lp, project, bug, bug_index, build,
-                                 knobTrigger, update_db, check_stacktrace,
-                                 unfuzzed_outputs)
+                                 args, update_db, unfuzzed_outputs)
         if validated:
             real_bugs.append(bug.id)
         print()

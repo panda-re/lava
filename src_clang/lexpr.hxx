@@ -208,22 +208,15 @@ LExpr LavaGet(uint64_t val) {
     return LFunc("lava_get", { LDecimal(val) });
 }
 
-LExpr LavaGet(const DuaBytes *dua_bytes) { return LavaGet(dua_bytes->id); }
-LExpr LavaGet(const Bug *bug) { return LavaGet(bug->trigger); }
-
 LExpr DataFlowGet(uint64_t val) {
     return LDeref(LStr("data_flow"));
 }
 
-LExpr DataFlowGet(const DuaBytes *dua_bytes) { return DataFlowGet(dua_bytes->id); }
-LExpr DataFlowGet(const Bug *bug) { return DataFlowGet(bug->trigger); }
-
 LExpr UCharCast(LExpr arg) { return LCast("const unsigned char *", arg); }
 LExpr UIntCast(LExpr arg) { return LCast("const unsigned int *", arg); }
 
-LExpr SelectCast(const DuaBytes *dua_bytes) {
-    const std::string &lval_name = dua_bytes->dua->lval->ast_name;
-    Range selected = dua_bytes->selected;
+LExpr SelectCast(const SourceLval *lval, Range selected) {
+    const std::string &lval_name = lval->ast_name;
     assert(selected.size() == 4);
 
     LExpr pointer = selected.low % 4 == 0
@@ -232,12 +225,12 @@ LExpr SelectCast(const DuaBytes *dua_bytes) {
     return LDeref(pointer);
 }
 
-LExpr LavaSet(const DuaBytes *dua_bytes) {
-    return LFunc("lava_set", { LDecimal(dua_bytes->id), SelectCast(dua_bytes) });
+LExpr LavaSet(const SourceLval *lval, Range selected, uint32_t slot) {
+    return LFunc("lava_set", { LDecimal(slot), SelectCast(lval, selected) });
 }
 
-LExpr DataFlowSet(const DuaBytes *dua_bytes) {
-    return LAssign(LDeref(LStr("data_flow")), SelectCast(dua_bytes));
+LExpr DataFlowSet(const SourceLval *lval, Range selected, uint32_t slot) {
+    return LAssign(LIndex(LStr("data_flow"), slot), SelectCast(lval, selected));
 }
 
 template<typename UInt>
@@ -248,19 +241,6 @@ LExpr MagicTest(UInt magic_value, LExpr maskedLavaGet) {
 template<LExpr Get(const Bug *)>
 LExpr MagicTest(const Bug *bug) {
     return MagicTest(bug->magic(), Get(bug));
-}
-
-// RangeTest and rangeStyleAttack are currently unused, but they're good examples of
-// how to use LExpr's.
-LExpr RangeTest(uint32_t magic_value, uint32_t range_size, LExpr value) {
-    return LHex(magic_value - range_size) < value &&
-        value < LHex(magic_value + range_size);
-}
-
-template<uint32_t num_bits>
-LExpr rangeStyleAttack(const Bug *bug) {
-    return LavaGet(bug) * (RangeTest(bug->magic(), 1U << num_bits, LavaGet(bug)) ||
-        RangeTest(__builtin_bswap32(bug->magic()), 1U << num_bits, LavaGet(bug)));
 }
 
 #endif

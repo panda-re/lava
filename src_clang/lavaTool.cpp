@@ -58,8 +58,14 @@ std::unique_ptr<odb::pgsql::database> db;
 using namespace clang;
 using namespace clang::ast_matchers;
 using namespace clang::driver;
-using namespace clang::tooling;
 using namespace llvm;
+
+using clang::tooling::CommonOptionsParser;
+using clang::tooling::SourceFileCallbacks;
+using clang::tooling::Replacement;
+using clang::tooling::TranslationUnitReplacements;
+using clang::tooling::ClangTool;
+using clang::tooling::getAbsolutePath;
 
 static cl::OptionCategory
     LavaCategory("LAVA Taint Query and Attack Point Tool Options");
@@ -102,6 +108,7 @@ static cl::opt<bool> KnobTrigger("kt",
     cl::init(false));
 static cl::opt<bool> ArgDataflow("arg_dataflow",
     cl::desc("Use function args for dataflow instead of lava_[sg]et"),
+    cl::cat(LavaCategory),
     cl::init(false));
 
 std::string LavaPath;
@@ -124,8 +131,30 @@ static std::map<std::string, uint32_t> StringIDs;
 // Map of bugs with attack points at a given loc.
 std::map<std::pair<LavaASTLoc, AttackPoint::Type>, std::vector<const Bug *>>
     bugs_with_atp_at;
+
+struct LvalBytes {
+    const SourceLval *lval;
+    Range selected;
+
+    LvalBytes(const SourceLval *lval, Range selected)
+        : lval(lval), selected(selected) {}
+    LvalBytes(const DuaBytes *dua_bytes)
+        : lval(dua_bytes->dua->lval), selected(dua_bytes->selected) {}
+
+    bool operator<(const LvalBytes &other) const {
+        return std::tie(lval->id, selected)
+            < std::tie(other.lval->id, other.selected);
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const LvalBytes &lval_bytes) {
+        os << "LvalBytes " << lval_bytes.selected << " of " << *lval_bytes.lval;
+        return os;
+    }
+};
+
 // Map of bugs with siphon of a given  lval name at a given loc.
-std::map<LavaASTLoc, vector_set<const DuaBytes *>> siphons_at;
+std::map<LavaASTLoc, vector_set<LvalBytes>> siphons_at;
+std::map<LvalBytes, uint32_t> data_slots;
 
 #define MAX_STRNLEN 64
 ///////////////// HELPER FUNCTIONS BEGIN ////////////////////
@@ -214,10 +243,19 @@ bool IsArgAttackable(const Expr *arg) {
 
 ///////////////// HELPER FUNCTIONS END ////////////////////
 
-template<typename T>
-LExpr Get(T x) {
-    return ArgDataflow ? DataFlowGet(x) : LavaGet(x);
+uint32_t Slot(LvalBytes lval_bytes) {
+    return data_slots.at(lval_bytes);
 }
+
+LExpr Get(LvalBytes x) {
+    return ArgDataflow ? DataFlowGet(Slot(x)) : LavaGet(Slot(x));
+}
+LExpr Get(const Bug *bug) { return Get(bug->trigger); }
+
+LExpr Set(LvalBytes x) {
+    return (ArgDataflow ? DataFlowSet : LavaSet)(x.lval, x.selected, Slot(x));
+}
+LExpr Set(const Bug *bug) { return Set(bug->trigger); }
 
 LExpr Test(const Bug *bug) {
     return MagicTest<Get>(bug);
@@ -404,10 +442,10 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                 if (bug->type == Bug::PTR_ADD) {
                     pointerAddends.push_back(pointerAttack(bug));
                 } else if (bug->type == Bug::REL_WRITE) {
-                    pointerAddends.push_back(
-                            Test(bug) * Get(bug->extra_duas[0]));
-                    valueAddends.push_back(
-                            Test(bug) * Get(bug->extra_duas[1]));
+                    const DuaBytes *where = db->load<DuaBytes>(bug->extra_duas[0]);
+                    const DuaBytes *what = db->load<DuaBytes>(bug->extra_duas[1]);
+                    pointerAddends.push_back(Test(bug) * Get(where));
+                    valueAddends.push_back(Test(bug) * Get(what));
                 }
             }
             bugs_with_atp_at.erase(std::make_pair(ast_loc, atpType));
@@ -467,9 +505,8 @@ struct PriQueryPointHandler : public LavaMatchHandler {
     // Each lval gets an if clause containing one siphon
     std::string SiphonsForLocation(LavaASTLoc ast_loc) {
         std::stringstream result_ss;
-        for (const DuaBytes *dua_bytes : map_get_default(siphons_at, ast_loc)) {
-            result_ss << LIf(dua_bytes->dua->lval->ast_name,
-                    ArgDataflow ? DataFlowSet(dua_bytes) : LavaSet(dua_bytes));
+        for (const LvalBytes &lval_bytes : map_get_default(siphons_at, ast_loc)) {
+            result_ss << LIf(lval_bytes.lval->ast_name, Set(lval_bytes));
         }
 
         std::string result = result_ss.str();
@@ -619,7 +656,11 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
                 assert(body);
                 Stmt *first = *body->body_begin();
                 assert(first);
-                Mod.InsertAt(first->getLocStart(), "int data = 0;\n    int *" ARG_NAME " = &data;\n");
+
+                std::stringstream data_array;
+                data_array << "int data[" << data_slots.size() << "] = {0};\n";
+                data_array << "int *" ARG_NAME << "= &data;\n";
+                Mod.InsertAt(first->getLocStart(), data_array.str());
             }
         } else {
             while (func != NULL) {
@@ -771,13 +812,17 @@ public:
         std::string insert_at_top;
         if (LavaAction == LavaQueries) {
             insert_at_top = "#include \"pirate_mark_lava.h\"\n";
-        } else if (LavaAction == LavaInjectBugs && !ArgDataflow && ArgDataflow) {
+        } else if (LavaAction == LavaInjectBugs && !ArgDataflow) {
             if (main_files.count(getAbsolutePath(Filename)) > 0) {
-                // This is the file with main! insert lava_[gs]et and whatever.
-                std::ifstream lava_funcs_file(LavaPath + "/src_clang/lava_set.c");
-                insert_at_top.assign(
-                        std::istreambuf_iterator<char>(lava_funcs_file),
-                        std::istreambuf_iterator<char>());
+                std::stringstream top;
+                top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
+                    << "void lava_set(unsigned int, unsigned int);\n"
+                    << "__attribute__((visibility(\"default\")))\n"
+                    << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val; }\n"
+                    << "unsigned int lava_get(unsigned int);\n"
+                    << "__attribute__((visibility(\"default\")))\n"
+                    << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
+                insert_at_top = top.str();
             } else {
                 insert_at_top =
                     "void lava_set(unsigned int bn, unsigned int val);\n"
@@ -821,6 +866,14 @@ private:
     CompilerInstance *CurrentCI = nullptr;
 };
 
+void mark_for_siphon(const DuaBytes *dua_bytes) {
+    LvalBytes lval_bytes(dua_bytes);
+    siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
+
+    // if insert fails do nothing. we already have a slot for this one.
+    data_slots.insert(std::make_pair(lval_bytes, data_slots.size()));
+}
+
 int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
@@ -861,14 +914,12 @@ int main(int argc, const char **argv) {
             auto key = std::make_pair(atp_loc, bug->atp->type);
             bugs_with_atp_at[key].push_back(bug);
 
-            LavaASTLoc dua_loc = bug->trigger_lval->loc;
-            siphons_at[dua_loc].insert(bug->trigger);
+            mark_for_siphon(bug->trigger);
 
             if (bug->type != Bug::RET_BUFFER) {
                 for (uint64_t dua_id : bug->extra_duas) {
                     const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
-                    LavaASTLoc extra_loc = dua_bytes->dua->lval->loc;
-                    siphons_at[extra_loc].insert(dua_bytes);
+                    mark_for_siphon(dua_bytes);
                 }
             }
         }
@@ -898,8 +949,8 @@ int main(int argc, const char **argv) {
             std::cout << "Warning: Failed to inject siphons:\n";
             for (const auto &keyvalue : siphons_at) {
                 std::cout << "    At " << keyvalue.first << "\n";
-                for (const DuaBytes *dua_bytes : keyvalue.second) {
-                    std::cout << "        " << *dua_bytes << "\n";
+                for (const LvalBytes &lval_bytes : keyvalue.second) {
+                    std::cout << "        " << lval_bytes << "\n";
                 }
             }
         }
