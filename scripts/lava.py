@@ -18,7 +18,9 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.sql.expression import func
 
-from subprocess32 import PIPE
+from subprocess32 import PIPE, check_call
+from multiprocessing import cpu_count
+from multiprocessing.pool import ThreadPool
 
 from composite import Composite
 
@@ -221,22 +223,27 @@ class LavaDatabase(object):
         return self.uninjected2(fake)[random.randrange(0, count)]
 
 
-def run_cmd(cmd, cw_dir, envv, timeout, rr=False):
+def run_cmd(cmd, timeout=10, check=True, **kwargs):
     if type(cmd) in [str, unicode]:
         cmd = shlex.split(cmd)
     if debugging:
         print("run_cmd(" + subprocess32.list2cmdline(cmd) + ")")
-    p = subprocess32.Popen(cmd, cwd=cw_dir, env=envv, stdout=PIPE, stderr=PIPE)
+    p = subprocess32.Popen(cmd, stdout=PIPE, stderr=PIPE, **kwargs)
     try:
-        output = p.communicate(timeout) # returns tuple (stdout, stderr)
+        # returns tuple (stdout, stderr)
+        output = p.communicate(timeout=timeout)
     except subprocess32.TimeoutExpired:
         print("Killing process due to timeout expiration.")
         p.terminate()
         return (-9, "timeout expired")
+    if check and p.returncode != 0:
+        print(output[0])
+        print(output[1])
+        raise RuntimeError("Subprocess failed!")
     return (p.returncode, output)
 
-def run_cmd_notimeout(cmd, cw_dir, envv):
-    return run_cmd(cmd, cw_dir, envv, 1000000)
+def run_cmd_notimeout(cmd, **kwargs):
+    return run_cmd(cmd, timeout=None, **kwargs)
 
 lava = 0x6c617661
 
@@ -262,6 +269,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug_id, kt=False, knob=0):
 
 # run lavatool on this file to inject any parts of this list of bugs
 def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename):
+    print("Running lavaTool on [{}]...".format(filename))
     bug_list_str = ','.join([str(bug.id) for bug in bug_list])
     main_files = ','.join([join(lp.bugs_build, f) for f in project['main_file']])
     cmd = [
@@ -271,8 +279,7 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename):
     ]
     if args.arg_dataflow: cmd.append('-arg_dataflow')
     if args.knobTrigger != -1: cmd.append('-kt')
-    (exitcode, output) = run_cmd_notimeout(cmd, None, None)
-    if exitcode != 0: raise RuntimeError("Injection failed!")
+    return run_cmd_notimeout(cmd)
 
 class LavaPaths(object):
 
@@ -312,8 +319,6 @@ class LavaPaths(object):
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
 def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
-    print(lp)
-
     if not os.path.exists(lp.bugs_parent):
         os.makedirs(lp.bugs_parent)
 
@@ -321,15 +326,12 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
 
     # Make sure directories and btrace is ready for bug injection.
     def run(args, **kwargs):
-        if type(args) in [str, unicode]:
-            print("run(", args, ")")
-        else:
-            print("run(", subprocess32.list2cmdline(args), ")")
-        subprocess32.check_call(args, cwd=lp.bugs_build, **kwargs)
+        print("run(", subprocess32.list2cmdline(args), ")")
+        check_call(args, cwd=lp.bugs_build, **kwargs)
     if not os.path.isdir(lp.bugs_build):
         print("Untarring...")
-        subprocess32.check_call(['tar', '--no-same-owner', '-xf', project['tarfile'],
-            '-C', lp.bugs_parent], stderr=sys.stderr)
+        check_call(['tar', '--no-same-owner', '-xf', project['tarfile']],
+                   cwd=lp.bugs_parent)
     if not os.path.exists(join(lp.bugs_build, '.git')):
         print("Initializing git repo...")
         run(['git', 'init'])
@@ -364,17 +366,17 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
         run(['git', 'commit', '-m', 'Add compile_commands.json.'])
         run(shlex.split(project['make']))
         try:
-            run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \\;"))
+            run(['find', '.', '-name', '*.[ch]', '-exec', 'git', 'add', '{}', ';'])
             run(['git', 'commit', '-m', 'Adding source files'])
         except subprocess32.CalledProcessError:
             pass
         if not os.path.exists(lp.bugs_install):
-            run(project['install'], shell=True)
+            check_call(project['install'], cwd=lp.bugs_build, shell=True)
 
         # ugh binutils readelf.c will not be lavaTool-able without
         # bfd.h which gets created by make.
-        run_cmd_notimeout(project["make"], lp.bugs_build, None)
-        run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \\;"))
+        run(shlex.split(project["make"]))
+        run(['find', '.', '-name', '*.[ch]', '-exec', 'git', 'add', '{}', ';'])
         try:
             run(['git', 'commit', '-m', 'Adding any make-generated source files'])
         except subprocess32.CalledProcessError:
@@ -409,7 +411,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
     # cleanup
     print("------------\n")
     print("CLEAN UP SRC")
-    run_cmd_notimeout("/usr/bin/git checkout -f", lp.bugs_build, None)
+    run_cmd_notimeout("git checkout -f", cwd=lp.bugs_build)
 
     print("------------\n")
     print("INJECTING BUGS INTO SOURCE")
@@ -417,37 +419,38 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
     print(src_files)
 
     all_files = src_files | set(project['main_file'])
-    for filename in all_files:
+    pool = ThreadPool(cpu_count())
+    def modify_source(filename):
         run_lavatool(
             bugs_to_inject, lp, project_file, project, args, llvm_src, filename
         )
+    pool.map(modify_source, all_files)
 
     clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
-    for src_dir in set([dirname(f) for f in all_files]):
-        run_cmd_notimeout([clang_apply, '.'], join(lp.bugs_build, src_dir), None)
+    def apply_replacements(src_dir):
+        run_cmd_notimeout([clang_apply, '.'], cwd=join(lp.bugs_build, src_dir))
+    pool.map(apply_replacements, set([dirname(f) for f in all_files]))
 
     # paranoid clean -- some build systems need this
-    if ('makeclean' in project) and (project['makeclean']):
-        run_cmd_notimeout("make clean", lp.bugs_build, None)
+    if 'makeclean' in project and project['makeclean']:
+        if type(project['makeclean']) == bool:
+            print(lp.bugs_build)
+            run_cmd_notimeout("make clean", cwd=lp.bugs_build)
+        else:
+            check_call(project['makeclean'], cwd=lp.bugs_build, shell=True)
 
     # compile
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
-    (rv, outp) = run_cmd_notimeout(project['make'], lp.bugs_build, None)
+    (rv, outp) = run_cmd_notimeout(project['make'], cwd=lp.bugs_build,
+                                   check=False)
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
-    if rv!=0:
-        # build failed
-        print(outp)
-        print("build failed")
-        sys.exit(1)
-    else:
+    if rv == 0:
         # build success
         print("build succeeded")
-        (rv, outp) = run_cmd_notimeout("make install", lp.bugs_build, None)
-        assert rv == 0 # really how can this fail if build succeeds?
-        print("make install succeeded")
+        check_call(project['install'], cwd=lp.bugs_build, shell=True)
 
     # add a row to the build table in the db
     if update_db:
@@ -471,7 +474,7 @@ def run_modified_program(project, install_dir, input_file, timeout):
     envv = {}
     lib_path = project['library_path'].format(install_dir=install_dir)
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
-    return run_cmd(cmd, install_dir, envv, timeout)
+    return run_cmd(cmd, cwd=install_dir, env=envv, timeout=timeout, check=False)
 
 # find actual line number of attack point for this bug in source
 def get_trigger_line(lp, bug):
@@ -492,7 +495,7 @@ def check_stacktrace_bug(lp, project, bug, fuzzed_input):
     envv = {"LD_LIBRARY_PATH": lib_path}
     cmd = project['command'].format(install_dir=lp.bugs_install,input_file=fuzzed_input)
     gdb_cmd = "gdb --batch --silent -x {} --args {}".format(gdb_py_script, cmd)
-    (rc, (out, err)) = run_cmd(gdb_cmd, lp.bugs_install, envv, 10000) # shell=True)
+    (rc, (out, err)) = run_cmd(gdb_cmd, cwd=lp.bugs_install, env=envv) # shell=True)
     if debugging:
         for line in out.splitlines(): print(line)
         for line in err.splitlines(): print(line)
@@ -546,8 +549,8 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     mutfile(unfuzzed_input, fuzz_labels_list, fuzzed_input, bug.id,
             **mutfile_kwargs)
     timeout = project.get('timeout', 5)
-    (rv, outp) = run_modified_program(project, lp.bugs_install, fuzzed_input, \
-                                          timeout)
+    (rv, outp) = run_modified_program(project, lp.bugs_install, fuzzed_input,
+                                      timeout)
     print("retval = %d" % rv)
     if update_db:
         db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
