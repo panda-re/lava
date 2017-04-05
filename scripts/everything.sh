@@ -238,8 +238,7 @@ truncate() {
 progress 1 "JSON file is $json"
 dockername="lava32"
 
-#lava="$(jq -r .lava $json)"
-lava="$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )")"
+lava=$(dirname $(dirname $(readlink -f "$0")))
 db="$(jq -r .db $json)"
 tarfile="$(jq -r .tarfile $json)"
 tarfiledir="$(dirname $tarfile)"
