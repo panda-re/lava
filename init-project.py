@@ -76,7 +76,6 @@ def main():
     name = "file_{}".format(os.environ["USER"])
     # populate configs
     json_configs = {}
-    json_configs["PANDA_HOST"] = "localhost"
     json_configs["PANDA_BUILD_DIR"] = PANDA_BUILD_DIR
     json_configs["QCOW"] = join(PROJ_HOME, basename(QCOW_URL))
     json_configs["DIRECTORY"] = PROJ_HOME
@@ -87,8 +86,6 @@ def main():
     json_configs["DB_NAME"] = name
     json_configs["MAIN_FILE"] = main_file
     json_configs["INPUT"] = input_file
-    json_configs["LIB_PATH"] = "{install_dir}/lib"
-    json_configs["COMMENT"] = "sed -r -i.bak 's/^.*\\\\((tstatbuf|s[tb])\\\\)(->|\\\\.)__pad.*$//' src/*.c"
 
     # write out json file
     out_json = join(PROJ_HOME, "{}.json".format(name))

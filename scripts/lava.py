@@ -472,7 +472,8 @@ def run_modified_program(project, install_dir, input_file, timeout):
     cmd = '/bin/bash -c '+ pipes.quote(cmd)
     print(cmd)
     envv = {}
-    lib_path = project['library_path'].format(install_dir=install_dir)
+    lib_path = project.get('library_path', '{install_dir}/lib')
+    lib_path = lib_path.format(install_dir=install_dir)
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
     return run_cmd(cmd, cwd=install_dir, env=envv, timeout=timeout, check=False)
 
@@ -491,7 +492,8 @@ def get_trigger_line(lp, bug):
 # use gdb to get a stacktrace for this bug
 def check_stacktrace_bug(lp, project, bug, fuzzed_input):
     gdb_py_script = join(lp.lava_dir, "scripts/stacktrace_gdb.py")
-    lib_path = project['library_path'].format(install_dir=lp.bugs_install)
+    lib_path = project.get('library_path', '{install_dir}/lib')
+    lib_path = lib_path.format(install_dir=lp.bugs_install)
     envv = {"LD_LIBRARY_PATH": lib_path}
     cmd = project['command'].format(install_dir=lp.bugs_install,input_file=fuzzed_input)
     gdb_cmd = "gdb --batch --silent -x {} --args {}".format(gdb_py_script, cmd)
