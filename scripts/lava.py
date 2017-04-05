@@ -421,14 +421,14 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
     all_files = src_files | set(project['main_file'])
     pool = ThreadPool(cpu_count())
     def modify_source(filename):
-        run_lavatool(
-            bugs_to_inject, lp, project_file, project, args, llvm_src, filename
-        )
+        run_lavatool(bugs_to_inject, lp, project_file, project, args,
+                     llvm_src, filename)
     pool.map(modify_source, all_files)
 
     clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
     def apply_replacements(src_dir):
-        run_cmd_notimeout([clang_apply, '.'], cwd=join(lp.bugs_build, src_dir))
+        run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
+                          cwd=join(lp.bugs_build, src_dir))
     pool.map(apply_replacements, set([dirname(f) for f in all_files]))
 
     # paranoid clean -- some build systems need this
