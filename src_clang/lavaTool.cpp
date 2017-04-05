@@ -649,6 +649,8 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
 
         if (func->getLocation().isInvalid()) return;
         if (func->getNameAsString().find("lava") == 0) return;
+        if (Mod.sm->isInSystemHeader(func->getLocation())) return;
+        if (Mod.sm->getFilename(func->getLocation()).empty()) return;
 
         if (func->isMain()) {
             if (func->hasBody()) { // no prototype for main.
@@ -674,7 +676,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
 };
 
 struct FunctionPointerFieldHandler : public LavaMatchHandler {
-    using LavaMatchHandler::LavaMatchHandler; // Inherit Constructor
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const FieldDecl *decl = Result.Nodes.getNodeAs<FieldDecl>("fieldDecl");
@@ -684,7 +686,7 @@ struct FunctionPointerFieldHandler : public LavaMatchHandler {
 };
 
 struct CallExprArgAdditionHandler : public LavaMatchHandler {
-    using LavaMatchHandler::LavaMatchHandler; // Inherit Constructor
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const CallExpr *call = Result.Nodes.getNodeAs<CallExpr>("callExpr");
@@ -705,7 +707,7 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         loc.print(debug(FNARG), *Mod.sm);
 
         if (call->getNumArgs() == 0) {
-            Mod.InsertAt(loc, "ARG_NAME");
+            Mod.InsertAt(loc, ARG_NAME);
         } else {
             Mod.InsertAt(loc, ARG_NAME ", ");
         }
