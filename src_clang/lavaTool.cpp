@@ -476,9 +476,13 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             if (bug->type == Bug::RET_BUFFER) {
                 const DuaBytes *buffer = db->load<DuaBytes>(bug->extra_duas[0]);
                 result_ss << LIf(MagicTest(bug).render(), {
-                        LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
-                                LDecimal(buffer->selected.low), },
-                                { "movl %0, %%esp", "ret" })});
+                            LIfDef("__x86_64__", {
+                                LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
+                                    LDecimal(buffer->selected.low), },
+                                    { "movq %0, %%rsp", "ret" }),
+                                LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
+                                    LDecimal(buffer->selected.low), },
+                                    { "movl %0, %%esp", "ret" })})});
             }
         }
         bugs_with_atp_at.erase(key); // Only inject once.
