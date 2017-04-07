@@ -220,6 +220,16 @@ struct Dua {
 
 #pragma db index("DuaUniq") unique members(lval, inputfile, instr, fake_dua)
 
+    Dua() {}
+    inline Dua(const SourceLval *lval, std::vector<const LabelSet*> &&viable_bytes,
+            std::vector<uint32_t> &&byte_tcn, std::vector<uint32_t> &&all_labels,
+            std::string inputfile, uint32_t max_tcn, uint32_t max_cardinality,
+            uint64_t instr, bool fake_dua)
+        : id(0), lval(lval), viable_bytes(std::move(viable_bytes)),
+            byte_tcn(std::move(byte_tcn)), all_labels(std::move(all_labels)),
+            inputfile(inputfile), max_tcn(max_tcn),
+            max_cardinality(max_cardinality), instr(instr), fake_dua(fake_dua) {}
+
     bool operator<(const Dua &other) const {
          return std::tie(lval->id, inputfile, instr, fake_dua) <
              std::tie(other.lval->id, other.inputfile, other.instr,
