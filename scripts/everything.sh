@@ -218,6 +218,7 @@ run_remote() {
             -v /etc/shadow:/etc/shadow:ro \
             -v /etc/gshadow:/etc/gshadow:ro \
             --security-opt seccomp=unconfined \
+            $docker_map_args \
             $extradockerargs \
             $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"$command\"" \
             >> "$logfile" 2>&1
