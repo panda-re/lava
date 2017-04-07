@@ -193,6 +193,11 @@ run_remote() {
     fi
     set +e
     docker_map_args="-v $lava:$lava -v $tarfiledir:$tarfiledir"
+
+    if [ "$extradockerargs" = "null" ]; then
+        extradockerargs="";
+    fi
+
     if [[ "$directory" = "$tarfiledir"* ]]; then true; else
         docker_map_args="$docker_map_args -v $directory:$directory"
     fi
@@ -213,7 +218,7 @@ run_remote() {
             -v /etc/shadow:/etc/shadow:ro \
             -v /etc/gshadow:/etc/gshadow:ro \
             --security-opt seccomp=unconfined \
-            $docker_map_args \
+            $extradockerargs \
             $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"$command\"" \
             >> "$logfile" 2>&1
     else
@@ -237,10 +242,10 @@ truncate() {
 
 progress 1 "JSON file is $json"
 dockername="lava32"
-
 #lava="$(jq -r .lava $json)"
 lava="$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )")"
 db="$(jq -r .db $json)"
+extradockerargs="$(jq -r .extradockerargs $json)"
 tarfile="$(jq -r .tarfile $json)"
 tarfiledir="$(dirname $tarfile)"
 directory="$(jq -r .directory $json)"
