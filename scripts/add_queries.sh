@@ -1,5 +1,5 @@
-# Query insertion script.
 #!/bin/bash
+# Query insertion script.
 #
 # Takes one argument, a json project file.
 # That json file must contain all of the following
