@@ -12,13 +12,14 @@ except:
 try:
     import gdb
 except:
-    print "Either your gdb is not > gdb 7"
-    print "Or you are trying to run this without gdb"
-    print "Exiting . . ."
+    print("Either your gdb is not > gdb 7")
+    print("Or you are trying to run this without gdb")
+    print("Exiting . . .")
     sys.exit(1)
 
 if not "ATP" in os.environ:
-    print "Must define ATP breakpoint locations. Exiting . . ."
+    print(os.environ)
+    print("Must define ATP breakpoint locations. Exiting . . .")
     sys.exit(1)
 else:
     # define dua and atp break point locations
@@ -35,16 +36,17 @@ def get_instr_count():
     data = gdb.execute("info record", to_string=True)
     m = re.search(record_regex, data)
     if m == None:
-        print "coulnd't find instruction count in [info record] command"
-        print data
+        print("coulnd't find instruction count in [info record] command")
+        print(data)
     return int(m.groups()[0])
 
 def get_event_count():
     data = gdb.execute("when", to_string=True)
     m = re.search(event_regex, data)
     if m == None:
-        print "coulnd't find event count in when command"
-        print data
+        print("coulnd't find event count in when command")
+        print(data)
+        assert 0
     return int(m.groups()[0])
 
 # bp_num is int
@@ -101,9 +103,9 @@ class ATP_Breakpoint(gdb.Breakpoint):
             # gdb.execute("record stop")
         # gdb.execute("record full")
         gdb.execute("when")
-        print "!! Hit ATP !!"
+        print("!! Hit ATP !!")
         # print "Instruction Count =", SIG_EVENT_COUNT - get_event_count()
-        print "Events =", SIG_EVENT_COUNT, get_event_count()
+        print("Events =", SIG_EVENT_COUNT, get_event_count())
         gdb.execute("q")
         sys.exit(0)
         return True
@@ -112,8 +114,8 @@ class Exit_Breakpoint(gdb.Breakpoint):
     def stop(self):
         ret_data = gdb.execute("info arg", to_string=True)
         ret_code = int(ret_data.split(" = ")[1])
-        print "At program exit normal with status: {}".format(ret_code)
-        print "Instruction Count = {}".format(get_instr_count())
+        print("At program exit normal with status: {}".format(ret_code))
+        print("Instruction Count = {}".format(get_instr_count()))
         gdb.execute("when")
         # print "Instruction Count = {}".format(get_instr_count())
         ATP_Breakpoint(atp_loc)
@@ -140,15 +142,15 @@ def event_handler (event):
     def handle_sig_event (event):
         if isinstance(event, gdb.SignalEvent):
             if event.stop_signal in ["SIGSEGV", "SIGABRT"]:
-                print "Found a SIG {}".format(event.stop_signal)
-                print gdb.execute("p $_siginfo._sifields._sigfault.si_addr",
-                            to_string=True)
+                print("Found a SIG {}".format(event.stop_signal))
+                print(gdb.execute("p $_siginfo._sifields._sigfault.si_addr",
+                            to_string=True))
                 # print gdb.execute("info proc mappings", to_string=True)
                 gdb.execute("when")
                 # print "Instruction Count = {}".format(get_instr_count())
                 ATP_Breakpoint(atp_loc)
                 def print_fn(s):
-                    print s
+                    print(s)
                     return True
                 # gdb.post_event(lambda s: print_fn("hello") and gdb.execute("reverse-continue"))
                 # gdb.post_event(lambda s: print_fn("hello2") and gdb.execute("reverse-continue"))
@@ -161,7 +163,7 @@ def event_handler (event):
                     global SIG_EVENT_COUNT
                     if SIG_EVENT_COUNT == None:
                         SIG_EVENT_COUNT = get_event_count()
-                        print "SIG_EVENT_COUNT: {}".format(SIG_EVENT_COUNT)
+                        print("SIG_EVENT_COUNT: {}".format(SIG_EVENT_COUNT))
                     gdb.execute("reverse-continue")
                     gdb.execute("reverse-continue")
                 except gdb.error:
@@ -171,8 +173,8 @@ def event_handler (event):
                 # sys.exit(1)
             else:
                 # print "Instruction Count = {}".format(get_instr_count())
-                print "Reached unhandled signal event: {}".format(event.stop_signal)
-                print "Exiting . . ."
+                print("Reached unhandled signal event: {}".format(event.stop_signal))
+                print("Exiting . . .")
                 gdb.execute("q")
                 sys.exit(1)
 

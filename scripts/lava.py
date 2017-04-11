@@ -225,7 +225,8 @@ def run_cmd(cmd, cw_dir, envv, timeout, rr=False):
     if type(cmd) in [str, unicode]:
         cmd = shlex.split(cmd)
     if debugging:
-        print("run_cmd(" + subprocess32.list2cmdline(cmd) + ")")
+        env_string = " ".join(["{}='{}'".format(k, v) for k, v in envv.iteritems()])
+        print("run_cmd(" + env_string + " " + subprocess32.list2cmdline(cmd) + ")")
     p = subprocess32.Popen(cmd, cwd=cw_dir, env=envv, stdout=PIPE, stderr=PIPE)
     try:
         output = p.communicate(timeout) # returns tuple (stdout, stderr)
