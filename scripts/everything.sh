@@ -79,6 +79,7 @@ function tock() {
 # defaults
 ok=0
 reset=0
+reset_db=0
 add_queries=0
 make=0
 taint=0
@@ -91,7 +92,7 @@ ATP_TYPE=""
 # -i 15 means inject 15 bugs (default is 1)
 echo
 progress 0 "Parsing args"
-while getopts  "arqmtb:i:z:kd" flag
+while getopts  "arcqmtb:i:z:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -105,6 +106,11 @@ do
   if [ "$flag" = "r" ]; then
       reset=1
       progress 0 "Reset step will be executed"
+  fi
+  if [ "$flag" = "c" ]; then
+      # note, this step, or option is not executed with -a flag
+      reset_db=1
+      progress 0 "Reset (clean) just databse step will be executed"
   fi
   if [ "$flag" = "q" ]; then
       add_queries=1
@@ -290,6 +296,17 @@ if [ $reset -eq 1 ]; then
     run_remote "$pandahost" "echo dbwipe complete" "$lf"
     tock
     echo "reset complete $time_diff seconds"
+fi
+
+if [ $reset_db -eq 1 ]; then
+    lf="$logs/dbwipe.log"
+    truncate "$lf"
+    progress 1  "Resetting (cleaning) up lava db -- logging to $lf"
+    run_remote "$pandahost" "dropdb --if-exists -U postgres $db" "$lf"
+    run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
+    run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
+    run_remote "$pandahost" "echo dbwipe complete" "$lf"
+
 fi
 
 if [ $add_queries -eq 1 ]; then
