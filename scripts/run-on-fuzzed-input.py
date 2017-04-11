@@ -301,6 +301,8 @@ if __name__ == "__main__":
                     '-6 or -11'))
     parser.add_argument('-nl', '--noLock', action="store_true", default=False,
             help = ('No need to take lock on bugs dir'))
+    parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
+            help = ('Expected exit code when program exits without crashing. Default 0'))
 
 
     args = parser.parse_args()
@@ -437,7 +439,7 @@ if __name__ == "__main__":
         print "TESTING -- ORIG INPUT"
         orig_input = join(top_dir, 'inputs', basename(bug.dua.inputfile))
         (rv, outp) = run_modified_program(bugs_install, orig_input, timeout)
-        if rv != 0:
+        if rv != args.exitCode
             print "***** buggy program fails on original input!"
             assert False
         else:

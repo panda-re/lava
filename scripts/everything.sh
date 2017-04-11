@@ -246,7 +246,8 @@ dockername="lava32"
 #lava="$(jq -r .lava $json)"
 lava="$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )")"
 db="$(jq -r .db $json)"
-extradockerargs="$(jq -r .extradockerargs $json)"
+extradockerargs="$(jq -r .extra_docker_args $json)"
+exitCode="$(jq -r .expected_exit_code $json)"
 tarfile="$(jq -r .tarfile $json)"
 tarfiledir="$(dirname $tarfile)"
 directory="$(jq -r .directory $json)"
@@ -345,12 +346,15 @@ fi
 na=1
 if [ $inject -eq 1 ]; then
     progress 1 "Injecting step -- $num_trials trials"
+    if [ "$exitCode" = "null" ]; then
+        exitCode="0";
+    fi
     for i in `seq $num_trials`
     do
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many $kt $json" "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode $kt $json" "$lf"
     grep yield "$lf"
     done
 fi

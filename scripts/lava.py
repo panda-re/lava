@@ -587,7 +587,8 @@ def validate_bug(db, lp, project, bug, bug_index, build, knobTrigger,
         return False
 
 # validate this set of bugs
-def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, update_db, check_stacktrace):
+def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, update_db, check_stacktrace,
+                  expected_exit_code):
 
     timeout = project.get('timeout', 5)
 
@@ -600,12 +601,12 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, up
         (rv, outp) = run_modified_program(project, lp.bugs_install,
                                           unfuzzed_input, timeout)
         unfuzzed_outputs[basename(input_file)] = outp
-        if rv != 0:
-            print("***** buggy program fails on original input!")
+        if rv != expected_exit_code:
+            print("***** buggy program fails on original input - Exit code {} does not match expected {}".format(rv,
+                  expected_exit_code))
             assert False
         else:
-            print("buggy program succeeds on original input", input_file)
-        print("retval = %d" % rv)
+            print("buggy program succeeds on original input {} with exit code {}".format(input_file, rv))
         print("output:")
         lines = outp[0] + " ; " + outp[1]
         if update_db:

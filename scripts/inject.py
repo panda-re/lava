@@ -114,6 +114,8 @@ if __name__ == "__main__":
             help = ('No need to take lock on bugs dir'))
     parser.add_argument('-c', '--checkStacktrace', action="store_true", default=False,
             help = ('When validating a bug, make sure it manifests at same line as lava-inserted trigger'))
+    parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
+            help = ('Expected exit code when program exits without crashing. Default 0'))
 
     args = parser.parse_args()
     global project
@@ -142,7 +144,8 @@ if __name__ == "__main__":
     try:
         # determine which of those bugs actually cause a seg fault
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build,
-                                      args.knobTrigger, update_db, args.checkStacktrace)
+                                      args.knobTrigger, update_db, args.checkStacktrace, args.exitCode)
+                                      # TODO - get exit code from project file
 
         print "real bugs:", real_bug_list
 
