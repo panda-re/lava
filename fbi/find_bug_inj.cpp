@@ -75,6 +75,7 @@ uint64_t max_liveness = 0;
 uint32_t max_card = 0;
 uint32_t max_tcn = 0;
 uint32_t max_lval = 0;
+bool chaff_bugs = false;
 
 uint32_t num_potential_bugs = 0;
 uint32_t num_potential_nonbugs = 0;
@@ -488,22 +489,24 @@ void taint_query_pri(Panda__LogEntry *ple) {
     }
 
     // create a fake dua if we can
-    if (!is_dua && tqh->len - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
+    if (chaff_bugs && !is_dua
+            && tqh->len - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
         dprintf("not enough taint -- what about non-taint?\n");
         dprintf("len=%d num_tainted=%d\n", len, num_tainted);
         viable_byte.assign(viable_byte.size(), nullptr);
         uint32_t count = 0;
         Panda__TaintQuery **tqp = tqh->taint_query;
+        Panda__TaintQuery **tqp_end = tqp + tqh->n_taint_query;
         for (uint32_t i = 0; i < viable_byte.size(); i++) {
             // Assume these are sorted by offset.
             // Keep two iterators, one in viable_byte, one in tqh->taint_query.
             // Iterate over both and fill gaps in tqh into viable_byte.
-            if ((*tqp)->offset < i) {
+            if (tqp && tqp < tqp_end && (*tqp)->offset < i) {
                 tqp++;
             }
-            Panda__TaintQuery *tq = *tqp;
-            assert(tq->offset >= i);
-            if (tq->offset > i || !tq->ptr) {
+            Panda__TaintQuery *tq = (tqp && tqp < tqp_end) ? *tqp : nullptr;
+            assert(!tq || tq->offset >= i);
+            if (!tq || tq->offset > i || !tq->ptr) {
                 // if untainted, we can guarantee that we can use the untainted
                 // bytes to produce a bug that definitely won't trigger.
                 // so we create a fake, empty labelset.
@@ -925,6 +928,7 @@ int main (int argc, char **argv) {
     printf("max tcn for addr = %d\n", max_tcn);
     max_lval = root["max_lval_size"].asUInt();
     printf("max lval size = %d\n", max_lval);
+    chaff_bugs = root.get("chaff", false).asBool();
     inputfile = std::string(argv[3]);
 
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
