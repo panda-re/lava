@@ -20,7 +20,7 @@ static void infix(InputIt first, InputIt last, std::ostream &os,
 struct LExpr {
     enum Type {
         STR, HEX, DECIMAL, BINOP, FUNC, BLOCK, IF, CAST, INDEX, ASM, DEREF,
-        ASSIGN
+        ASSIGN, IFDEF
     } t;
 
     uint32_t value;
@@ -98,6 +98,9 @@ struct LExpr {
             os << arg;
             if (arg.t == LExpr::CAST) os << ")";
             os << "[" << expr.value << "]";
+        } else if (expr.t == LExpr::IFDEF) {
+            os << "\n#ifdef " << expr.str;
+            expr.infix(os, "\n", "\n#else\n", "\n#endif\n");
         } else if (expr.t == LExpr::ASM) {
             os << "__asm__(";
             ::infix(expr.instrs.cbegin(), expr.instrs.cend(), os,
@@ -176,6 +179,10 @@ LExpr LIf(std::string cond, std::initializer_list<LExpr> stmts) {
 
 LExpr LIf(std::string cond, LExpr stmt) {
     return LExpr(LExpr::IF, 0, cond, { stmt });
+}
+
+LExpr LIfDef(std::string cond, std::initializer_list<LExpr> stmts) {
+    return LExpr(LExpr::IFDEF, 0, cond, stmts);
 }
 
 LExpr LCast(std::string type, LExpr value) {

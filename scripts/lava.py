@@ -227,7 +227,8 @@ def run_cmd(cmd, timeout=10, check=True, **kwargs):
     if type(cmd) in [str, unicode]:
         cmd = shlex.split(cmd)
     if debugging:
-        print("run_cmd(" + subprocess32.list2cmdline(cmd) + ")")
+        env_string = " ".join(["{}={}".format(k, pipes.quote(v)) for k, v in kwargs.get('env', {}).iteritems()])
+        print("run_cmd(" + env_string + " " + subprocess32.list2cmdline(cmd) + ")")
     p = subprocess32.Popen(cmd, stdout=PIPE, stderr=PIPE, **kwargs)
     try:
         # returns tuple (stdout, stderr)
@@ -601,12 +602,12 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
         (rv, outp) = run_modified_program(project, lp.bugs_install,
                                           unfuzzed_input, timeout)
         unfuzzed_outputs[basename(input_file)] = outp
-        if rv != 0:
-            print("***** buggy program fails on original input!")
+        if rv != args.exitCode:
+            print("***** buggy program fails on original input - Exit code {} does not match expected {}".format(rv,
+                  args.exitCode))
             assert False
         else:
-            print("buggy program succeeds on original input", input_file)
-        print("retval = %d" % rv)
+            print("buggy program succeeds on original input {} with exit code {}".format(input_file, rv))
         print("output:")
         lines = outp[0] + " ; " + outp[1]
         if update_db:

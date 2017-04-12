@@ -4,6 +4,7 @@ json="$(readlink -f $1)"
 
 lava="$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )")"
 db="$(jq -r .db $json)"
+extradockerargs="$(jq -r .extra_docker_args $json)"
 tarfile="$(jq -r .tarfile $json)"
 tarfiledir="$(dirname $tarfile)"
 directory="$(jq -r .directory $json)"
@@ -25,6 +26,8 @@ if ! ( docker images lava32debug | grep -q lava32debug ); then
     docker build -t lava32debug "$(dirname $(dirname $(readlink -f $0)))/docker/debug"
 fi
 
+[ "$extradockerargs" = "null" ] && extradockerargs="";
+
 whoami="$(whoami)"
 set +x
 docker run --rm -it \
@@ -43,4 +46,5 @@ docker run --rm -it \
     -v "$HOME":"$HOME" \
     --security-opt seccomp=unconfined \
     $docker_map_args \
+    $extradockerargs \
     lava32debug sh -c "trap '' PIPE; login -f $whoami LANG=en_US.UTF-8 LANGUAGE=en_US LC_ALL=en_US.UTF-8"

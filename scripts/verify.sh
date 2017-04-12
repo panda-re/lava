@@ -23,10 +23,13 @@ fi
 
 directory="$(jq -r .directory $json)"
 name="$(jq -r .name $json)"
+exitCode="$(jq -r .expected_exit_code $json)"
 logs=$directory/$name/logs
 inject_log="$logs/$(ls -t $logs | grep -E "inject-[0-9]+.log" | head -n 1)"
+
+[ "$exitCode" = "null" ] && exitCode="0";
 
 buglist=$(grep "list of real validated bugs" $inject_log | grep -Eo "\[.*\]")
 echo "Verifying these bugs found in: $inject_log"
 echo "$buglist"
-$DIR/run-on-fuzzed-input.py -l "$buglist" -s $json
+$DIR/run-on-fuzzed-input.py -l "$buglist" -s -e $exitCode $json

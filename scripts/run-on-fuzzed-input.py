@@ -10,9 +10,11 @@ import sys
 import time
 import difflib
 import itertools
+from colorama import Fore
 assert itertools
 from sqlalchemy.orm import joinedload_all
 import re
+import shutil
 assert re
 # need random to evaluate expressions for knobRange input
 # allows user to express knob randome as random samples of a particular range
@@ -108,7 +110,7 @@ def confirm_bug_in_executable(install_dir):
     cmd = project['command'].format(install_dir=install_dir,input_file="foo")
     nm_cmd = ('nm {}').format(cmd.split()[0])
 
-    (exitcode, output) = run_cmd_notimeout(nm_cmd, None, None)
+    (exitcode, output) = run_cmd_notimeout(nm_cmd, None, {})
     if exitcode != 0:
         exit_error("Error running cmd confirm injection: {}".format(nm_cmd))
     else:
@@ -144,15 +146,15 @@ def rr_get_tick_from_event(rr_trace_dir, event_num):
         sys.exit(1)
 
 def get_atp_line(bug, bugs_build):
-    with open(join(bugs_build, bug.atp.file), "r") as f:
-        atp_iter = (line_num for line_num, line in enumerate(f) if
-                    "lava_get({})".format(bug.id) in line)
+    with open(join(bugs_build, bug.atp.loc_filename), "r") as f:
+        atp_iter = (line_num + 1 for line_num, line in enumerate(f) if
+                    "lava_get({})".format(bug.trigger.id) in line)
         try:
-            line_num = atp_iter.next() + 1
+            line_num = atp_iter.next()
             return line_num
         except StopIteration:
-            exit_error("lava_get({}) was not in {}".format(bug.id,
-                                                        bug.atp.file))
+            exit_error("lava_get({}) was not in {}".format(bug.trigger.id,
+                                                        bug.atp.loc_filename))
 
 def do_function(inp):
     global timeout
@@ -173,17 +175,22 @@ def do_function(inp):
     else:
         rr_trace_dir = ""
 
-    orig_input = join(top_dir, 'inputs', basename(bug.dua.inputfile))
+    orig_input = join(top_dir, 'inputs', basename(bug.trigger.dua.inputfile))
     suff = get_suffix(orig_input)
     pref = orig_input[:-len(suff)] if suff != "" else orig_input
 
     fuzzed_input = "{}-fuzzed-{}{}".format(pref, run_id, suff)
 
+    fuzz_labels_list = [bug.trigger.all_labels]
+    if len(bug.extra_duas) > 0:
+        extra_query = db.session.query(DuaBytes)\
+            .filter(DuaBytes.id.in_(bug.extra_duas))
+        fuzz_labels_list.extend([d.all_labels for d in extra_query])
     if not fuzzed_input in mutfile_cache:
         if KT:
-            mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id, True, knobSize)
+            mutfile(orig_input, fuzz_labels_list, fuzzed_input, bug.id, kt=True, knob=knobSize)
         else:
-            mutfile(orig_input, bug.dua.labels, fuzzed_input, bug.id)
+            mutfile(orig_input, fuzz_labels_list, fuzzed_input, bug.id)
     # only run on rr if we will eventually run the program in gdb for crash
     # state information
     rr = args.gdb
@@ -213,7 +220,7 @@ def do_function(inp):
         # real_bugs.append(bug.id)
         if args.gdb:
             line_num = get_atp_line(bug, bugs_build)
-            atp_loc = "{}:{}".format(bug.atp.file, line_num)
+            atp_loc = "{}:{}".format(bug.atp.loc_filename, line_num)
             atp_prefix = " ATP=\"{}\"".format(atp_loc)
             gdb_py_script = join(lava_dir, "scripts/signal_analysis_gdb.py")
             lib_path = project['library_path'].format(install_dir=bugs_install)
@@ -226,7 +233,7 @@ def do_function(inp):
             full_cmd = lib_prefix + atp_prefix + rr_cmd
             envv = {"LD_LIBRARY_PATH": lib_path}
             envv["ATP"] = atp_loc
-            (_, out) = run_cmd(rr_cmd, bugs_install, envv, 10000) # shell=True)
+            (_, out) = run_cmd(rr_cmd, bugs_install, envv, 5) # shell=True)
             # hasInstrCount = lambda line: "Instruction Count = " in line
             hasInstrCount = lambda line: "Events = " in line
             instr_iter = (out_type for out_type in out if hasInstrCount(out_type))
@@ -261,7 +268,7 @@ def do_function(inp):
             if VERBOSE:
                 print out.split("\n")[-2], err
             else:
-                prediction = "{}:{}".format(basename(bug.atp.file),
+                prediction = "{}:{}".format(basename(bug.atp.loc_filename),
                                          get_atp_line(bug, bugs_build))
                 print "Prediction {}".format(prediction)
                 for line in out.split("\n"):
@@ -301,6 +308,8 @@ if __name__ == "__main__":
                     '-6 or -11'))
     parser.add_argument('-nl', '--noLock', action="store_true", default=False,
             help = ('No need to take lock on bugs dir'))
+    parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
+            help = ('Expected exit code when program exits without crashing. Default 0'))
 
 
     args = parser.parse_args()
@@ -405,9 +414,8 @@ if __name__ == "__main__":
         bugs_to_inject.append(db.session.query(Bug).filter_by(id=bug_id).one())
     elif args.buglist:
         buglist = eval(args.buglist)
-        for b in db.session.query(Bug).filter(Bug.id.in_(buglist)).options(joinedload_all('*')).all():
-            bugs_to_inject.append(b)
-        UPDATE_DB = False
+        bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(buglist)).all()
+        # UPDATE_DB = False
     else: assert False
 
     # exits if lava_val does not appear in executable
@@ -418,13 +426,13 @@ if __name__ == "__main__":
     # for bug_index, bug in enumerate(bugs_to_inject):
          # print "------------\n"
          # print "SELECTED BUG {} : {}".format(bug_index, bug.id)#
-         # print "   (%d,%d)" % (bug.dua.id, bug.atp.id)
+         # print "   (%d,%d)" % (bug.trigger.dua.id, bug.atp.id)
          # print "DUA:"
-         # print "   ", bug.dua
+         # print "   ", bug.trigger.dua
          # print "ATP:"
          # print "   ", bug.atp
          # print "max_tcn={}  max_liveness={}".format(
-             # bug.dua.max_liveness, bug.dua.max_tcn)
+             # bug.trigger.dua.max_liveness, bug.trigger.dua.max_tcn)
 
     # make a "fresh" RR tracedir for the current run
     if os.path.exists(RR_TRACES_TOP_DIR):
@@ -435,9 +443,9 @@ if __name__ == "__main__":
         print "------------\n"
         # first, try the original file
         print "TESTING -- ORIG INPUT"
-        orig_input = join(top_dir, 'inputs', basename(bug.dua.inputfile))
+        orig_input = join(top_dir, 'inputs', basename(bug.trigger.dua.inputfile))
         (rv, outp) = run_modified_program(bugs_install, orig_input, timeout)
-        if rv != 0:
+        if rv != args.exitCode
             print "***** buggy program fails on original input!"
             assert False
         else:

@@ -105,6 +105,8 @@ if __name__ == "__main__":
             help = ('When validating a bug, make sure it manifests at same line as lava-inserted trigger'))
     parser.add_argument('-d', '--arg_dataflow', action="store_true", default=False,
             help = ('Inject bugs using function args instead of globals'))
+    parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
+            help = ('Expected exit code when program exits without crashing. Default 0'))
 
     args = parser.parse_args()
     global project
