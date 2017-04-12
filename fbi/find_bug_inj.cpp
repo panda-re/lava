@@ -814,7 +814,7 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
             // Skip this trigger/type combo.
             continue;
         }
-        if (!trigger->fake_dua) {
+        if (!trigger->dua->fake_dua) {
             assert(labels_so_far.size() >= 4 * Bug::num_extra_duas[bug_type]);
         }
 
