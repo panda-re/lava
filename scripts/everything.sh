@@ -353,7 +353,9 @@ if [ $taint -eq 1 ]; then
         progress 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
         run_remote "$pandahost" "$python $scripts/bug_mining.py $json $input" "$lf"
         echo -n "Num Bugs in db: "
-        run_remote "$pandahost" "/usr/bin/psql -At -d $db -U postgres -c 'select count(*) from bug'"
+        run_remote "$pandahost" "psql -At $db -U postgres -c 'select count(*) from bug'"
+        echo
+        run_remote "$pandahost" "psql $db -U postgres -c 'select count(*), type from bug group by type order by type'"
     done
     tock
     echo "bug_mining complete $time_diff seconds"
@@ -371,7 +373,7 @@ if [ $inject -eq 1 ]; then
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode $kt $json" "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -d -m $many -e $exitCode $kt $json" "$lf"
     grep yield "$lf"
     done
 fi
