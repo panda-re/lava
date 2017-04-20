@@ -225,7 +225,10 @@ def run_cmd(cmd, cw_dir, envv, timeout, rr=False):
     if type(cmd) in [str, unicode]:
         cmd = shlex.split(cmd)
     if debugging:
-        env_string = " ".join(["{}='{}'".format(k, v) for k, v in envv.iteritems()])
+        env_string = "(none)"
+        if envv:
+            env_string = " ".join(["{}='{}'".format(k, v) for k, v in envv.iteritems()])
+
         print("run_cmd(" + env_string + " " + subprocess32.list2cmdline(cmd) + ")")
     p = subprocess32.Popen(cmd, cwd=cw_dir, env=envv, stdout=PIPE, stderr=PIPE)
     try:
@@ -370,6 +373,8 @@ def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db)
             run(['git', 'commit', '-m', 'Adding source files'])
         except subprocess32.CalledProcessError:
             pass
+
+        # Here we run make install but it may also run again later
         if not os.path.exists(lp.bugs_install):
             run(project['install'], shell=True)
 
@@ -450,6 +455,9 @@ def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db)
     else:
         # build success
         print("build succeeded")
+
+        # Before we run make install for a second time, delete all files in the install directory
+        run_cmd_notimeout("rm -rf {}".format(lp.bugs_install), lp.bugs_build, None)
         (rv, outp) = run_cmd_notimeout("make install", lp.bugs_build, None)
         assert rv == 0 # really how can this fail if build succeeds?
         print("make install succeeded")

@@ -134,6 +134,9 @@ if __name__ == "__main__":
     # this is where buggy source code will be
     bugs_parent = get_bugs_parent(lp)
 
+    # Remove all old YAML files
+    run_cmd("rm {}/*.yaml".format(lp.bugs_build), "/", None, 10)
+
     # obtain list of bugs to inject based on cmd-line args and consulting db
     (update_db, bug_list) = get_bug_list(args, db)
 
@@ -145,7 +148,6 @@ if __name__ == "__main__":
         # determine which of those bugs actually cause a seg fault
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build,
                                       args.knobTrigger, update_db, args.checkStacktrace, args.exitCode)
-                                      # TODO - get exit code from project file
 
         print "real bugs:", real_bug_list
 

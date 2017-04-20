@@ -335,6 +335,7 @@ if [ $make -eq 1 ]; then
     lf="$logs/make.log"
     truncate "$lf"
     run_remote "$buildhost" "cd $sourcedir && $makecmd" "$lf"
+    run_remote "$buildhost" "cd $sourcedir && rm -rf lava-install" "$lf"
     run_remote "$buildhost" "cd $sourcedir && $install" "$lf"
     tock
     echo "make complete $time_diff seconds"
