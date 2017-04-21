@@ -221,16 +221,16 @@ class LavaDatabase(object):
         return self.uninjected2(fake)[random.randrange(0, count)]
 
 
-def run_cmd(cmd, cw_dir, envv, timeout, rr=False):
-    if type(cmd) in [str, unicode]:
+def run_cmd(cmd, cw_dir, envv, timeout, rr=False, shell=False):
+    if type(cmd) in [str, unicode] and not shell:
         cmd = shlex.split(cmd)
     if debugging:
-        env_string = "(none)"
+        env_string = ""
         if envv:
             env_string = " ".join(["{}='{}'".format(k, v) for k, v in envv.iteritems()])
 
         print("run_cmd(" + env_string + " " + subprocess32.list2cmdline(cmd) + ")")
-    p = subprocess32.Popen(cmd, cwd=cw_dir, env=envv, stdout=PIPE, stderr=PIPE)
+    p = subprocess32.Popen(cmd, cwd=cw_dir, env=envv, stdout=PIPE, stderr=PIPE, shell=shell)
     try:
         output = p.communicate(timeout) # returns tuple (stdout, stderr)
     except subprocess32.TimeoutExpired:
