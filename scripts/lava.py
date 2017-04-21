@@ -434,7 +434,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db)
 
     clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
     for src_dir in set([dirname(f) for f in all_files]):
-        run_cmd_notimeout([clang_apply, '.'], join(lp.bugs_build, src_dir), None)
+        run_cmd_notimeout([clang_apply, '-format', '.'], join(lp.bugs_build, src_dir), None)
 
     # paranoid clean -- some build systems need this
     if ('makeclean' in project) and (project['makeclean']):
