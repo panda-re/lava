@@ -1,6 +1,7 @@
 #!/bin/bash
 
 json="$(readlink -f $1)"
+cmd=$2
 
 lava="$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )")"
 db="$(jq -r .db $json)"
@@ -29,6 +30,11 @@ fi
 [ "$extradockerargs" = "null" ] && extradockerargs="";
 
 whoami="$(whoami)"
+cmd="sudo -u $whoami $cmd"
+if [ -z "$2" ] ; then
+    cmd="login -f $whoami LANG=en_US.UTF-8 LANGUAGE=en_US LC_ALL=en_US.UTF-8"
+fi
+
 set +x
 docker run --rm -it \
     -e "HTTP_PROXY=$HTTP_PROXY" \
@@ -47,4 +53,4 @@ docker run --rm -it \
     --security-opt seccomp=unconfined \
     $docker_map_args \
     $extradockerargs \
-    lava32debug sh -c "trap '' PIPE; login -f $whoami LANG=en_US.UTF-8 LANGUAGE=en_US LC_ALL=en_US.UTF-8"
+    lava32debug sh -c "trap '' PIPE; $cmd"
