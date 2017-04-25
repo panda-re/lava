@@ -765,7 +765,7 @@ public:
                                     hasOperatorName("="),
                                     hasRHS(ignoringImpCasts(
                                             expr().bind("rhs"))),
-                                    hasLHS(hasDescendant(expr(
+                                    hasLHS(ignoringImpCasts(expr(
                                                 equalsBoundNode("lhs")))))))),
                     anything()), // this is a "maybe" construction.
                 hasAncestor(functionDecl()), // makes sure that we are't in a global variable declaration
