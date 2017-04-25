@@ -354,7 +354,7 @@ inline Range get_dua_exploit_pad(const Dua *dua) {
         const LabelSet *ls = viable_bytes[i];
         // This test means tainted, uncomplicated, dead.
         if (ls && ls->labels.size() == 1 && dua->byte_tcn[i] == 0
-                && liveness[*ls->labels.begin()] == 0) {
+                && liveness[*ls->labels.begin()] <= 10) {
             if (current_run.empty()) {
                 current_run = Range{i, i + 1};
             } else {
