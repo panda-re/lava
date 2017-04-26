@@ -216,7 +216,7 @@ LExpr LavaGet(uint64_t val) {
 }
 
 LExpr DataFlowGet(uint64_t val) {
-    return LDeref(LStr("data_flow"));
+    return LIndex(LStr("data_flow"), val);
 }
 
 LExpr UCharCast(LExpr arg) { return LCast("const unsigned char *", arg); }
