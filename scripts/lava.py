@@ -465,14 +465,23 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
                                    check=False)
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
-    if rv == 0:
-        # build success
-        print("build succeeded")
-        check_call(project['install'], cwd=lp.bugs_build, shell=True)
 
     # add a row to the build table in the db
     if update_db:
         db.session.add(build)
+
+    if rv == 0:
+        # build success
+        print("build succeeded")
+        check_call(project['install'], cwd=lp.bugs_build, shell=True)
+    else:
+        print()
+        print("===================================")
+        print("build of injected bug failed!!!!!!!")
+        print("===================================")
+        print()
+        print(outp[1])
+        raise RuntimeError("")
 
     return (build, input_files)
 

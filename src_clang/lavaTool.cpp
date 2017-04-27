@@ -283,26 +283,37 @@ LExpr knobTriggerAttack(const Bug *bug) {
  */
 class Insertions {
 private:
-    std::map<SourceLocation, std::string> impl;
+    // TODO: use map and "beforeness" concept to robustly avoid duplicate
+    // insertions.
+    std::map<SourceLocation, std::list<std::string>> impl;
 
 public:
     void clear() { impl.clear(); }
 
     void InsertAfter(SourceLocation loc, std::string str) {
-        if (!str.empty()) impl[loc].append(str);
+        if (!str.empty()) {
+            std::list<std::string> &strs = impl[loc];
+            if (strs.empty() || strs.back() != str) {
+                impl[loc].push_back(str);
+            }
+        }
     }
 
     void InsertBefore(SourceLocation loc, std::string str) {
         if (!str.empty()) {
-            str.append(impl[loc]);
-            impl[loc] = str;
+            std::list<std::string> &strs = impl[loc];
+            if (strs.empty() || strs.front() != str) {
+                impl[loc].push_front(str);
+            }
         }
     }
 
     void render(const SourceManager &sm, std::vector<Replacement> &out) {
         out.reserve(impl.size() + out.size());
         for (const auto &keyvalue : impl) {
-            out.emplace_back(sm, keyvalue.first, 0, keyvalue.second);
+            std::stringstream ss;
+            for (const std::string &s : keyvalue.second) ss << s;
+            out.emplace_back(sm, keyvalue.first, 0, ss.str());
         }
     }
 };
@@ -484,6 +495,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                     debug(MATCHER) << keyValue.first << ": " << ExprStr(stmt) << " ";
                     stmt->getLocStart().print(debug(MATCHER), sm);
                     debug(MATCHER) << "\n";
+                    if (DEBUG_FLAGS & MATCHER) stmt->dump();
                 } else return;
             }
         }
@@ -651,13 +663,20 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         const FunctionDecl *func =
             Result.Nodes.getNodeAs<FunctionDecl>("funcDecl")->getCanonicalDecl();
 
+        debug(FNARG) << "adding arg to " << func->getNameAsString() << "\n";
+
+        if (func->isThisDeclarationADefinition()) debug(FNARG) << "has body\n";
+        if (func->getBody()) debug(FNARG) << "can find body\n";
+
         if (func->getLocation().isInvalid()) return;
         if (func->getNameAsString().find("lava") == 0) return;
         if (Mod.sm->isInSystemHeader(func->getLocation())) return;
         if (Mod.sm->getFilename(func->getLocation()).empty()) return;
 
+        debug(FNARG) << "actually adding arg\n";
+
         if (func->isMain()) {
-            if (func->hasBody()) { // no prototype for main.
+            if (func->isThisDeclarationADefinition()) { // no prototype for main.
                 CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
                 assert(body);
                 Stmt *first = *body->body_begin();
@@ -669,6 +688,9 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
                 Mod.InsertAt(first->getLocStart(), data_array.str());
             }
         } else {
+            const FunctionDecl *bodyDecl = nullptr;
+            func->hasBody(bodyDecl);
+            if (bodyDecl) AddArg(bodyDecl);
             while (func != NULL) {
                 AddArg(func);
                 func = func->getPreviousDecl();

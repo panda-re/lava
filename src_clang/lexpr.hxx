@@ -97,7 +97,7 @@ struct LExpr {
             if (arg.t == LExpr::CAST) os << "(";
             os << arg;
             if (arg.t == LExpr::CAST) os << ")";
-            os << "[" << expr.value << "]";
+            os << "[" << std::dec << expr.value << "]";
         } else if (expr.t == LExpr::IFDEF) {
             os << "\n#ifdef " << expr.str;
             expr.infix(os, "\n", "\n#else\n", "\n#endif\n");
