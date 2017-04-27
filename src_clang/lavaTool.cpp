@@ -597,7 +597,7 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
         for (auto it = callExpr->arg_begin(); it != callExpr->arg_end(); ++it) {
             const Expr *arg = dyn_cast<Expr>(*it);
             if (arg) {
-                if (arg->getType()->isIntegerType()) {
+                if (arg->isLValue() && arg->getType()->isIntegerType()) {
                     LavaASTLoc ast_loc = GetASTLoc(sm, arg);
                     Mod.Change(arg);
                     if (LavaAction == LavaQueries)  {
