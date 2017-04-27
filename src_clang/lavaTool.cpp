@@ -495,6 +495,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                     debug(MATCHER) << keyValue.first << ": " << ExprStr(stmt) << " ";
                     stmt->getLocStart().print(debug(MATCHER), sm);
                     debug(MATCHER) << "\n";
+                    if (DEBUG_FLAGS & MATCHER) stmt->dump();
                 } else return;
             }
         }
@@ -662,13 +663,20 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         const FunctionDecl *func =
             Result.Nodes.getNodeAs<FunctionDecl>("funcDecl")->getCanonicalDecl();
 
+        debug(FNARG) << "adding arg to " << func->getNameAsString() << "\n";
+
+        if (func->isThisDeclarationADefinition()) debug(FNARG) << "has body\n";
+        if (func->getBody()) debug(FNARG) << "can find body\n";
+
         if (func->getLocation().isInvalid()) return;
         if (func->getNameAsString().find("lava") == 0) return;
         if (Mod.sm->isInSystemHeader(func->getLocation())) return;
         if (Mod.sm->getFilename(func->getLocation()).empty()) return;
 
+        debug(FNARG) << "actually adding arg\n";
+
         if (func->isMain()) {
-            if (func->hasBody()) { // no prototype for main.
+            if (func->isThisDeclarationADefinition()) { // no prototype for main.
                 CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
                 assert(body);
                 Stmt *first = *body->body_begin();
@@ -680,6 +688,9 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
                 Mod.InsertAt(first->getLocStart(), data_array.str());
             }
         } else {
+            const FunctionDecl *bodyDecl = nullptr;
+            func->hasBody(bodyDecl);
+            if (bodyDecl) AddArg(bodyDecl);
             while (func != NULL) {
                 AddArg(func);
                 func = func->getPreviousDecl();
