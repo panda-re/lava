@@ -190,6 +190,7 @@ class Run(Base):
     exitcode = Column(Integer)
     output = Column(Text)
     success = Column(Boolean)
+    validated = Column(Boolean)    
 
     build = relationship("Build")
     fuzzed = relationship("Bug")
@@ -215,8 +216,24 @@ class LavaDatabase(object):
             .join(DuaBytes.dua)\
             .filter(Dua.fake_dua == fake)
 
+    def uninjected2_bytype(self, fake, typ):
+        return self.uninjected()\
+            .join(Bug.trigger)\
+            .join(DuaBytes.dua)\
+            .filter(Dua.fake_dua == fake)\
+            .filter(Bug.type == typ)
+
     def uninjected_random(self, fake):
         return self.uninjected2(fake).order_by(func.random())
+
+    def uninjected_random_balance(self, fake, num_required):
+        bugs = []
+        num_per = num_required / (len(Bug.type_strings))
+        for i in range(len(Bug.type_strings)):
+            bugst = self.uninjected2_bytype(fake, i)
+            print("found %d bugs of type %d" % (bugst.count(), i))
+            bugs.extend(bugst[:num_per+1])
+        return bugs
 
     def next_bug_random(self, fake):
         count = self.uninjected2(fake).count()
@@ -555,13 +572,13 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     (rv, outp) = run_modified_program(project, lp.bugs_install, fuzzed_input,
                                       timeout)
     print("retval = %d" % rv)
-    if update_db:
-        db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
-                           output=(outp[0] + '\n' + outp[1]).decode('ascii', 'ignore'), success=True))
+    validated = False
     if bug.trigger.dua.fake_dua == False:
+        print ("bug type is " + Bug.type_strings[bug.type])
         if bug.type == Bug.PRINTF_LEAK:
             if outp != unfuzzed_outputs[bug.trigger.dua.inputfile]:
-                return True
+                print ("printf bug which we dont know how to validate..")
+                validated = True
         else:
             # this really is supposed to be a bug
             # we should see a seg fault or something
@@ -572,21 +589,28 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
                 if args.checkStacktrace:
                     if check_stacktrace_bug(lp, project, bug, fuzzed_input):
                         print("... and stacktrace agrees with trigger line")
-                        return True
+                        validated = True
                     else:
                         print("... but stacktrace disagrees with trigger line")
-                        return False
+                        validated = False
                 else:
                     # not checking that bug manifests at same line as trigger point
-                    return True
+                    validated = True
             else:
                 print("RV does not indicate memory corruption")
-                return False
+                validated = False
     else:
         # this really is supposed to be a non-bug
         # we should see a 0
+        print("RV is zero which is good b/c this used a fake dua")
         assert rv == 0
-        return False
+        validated = False
+
+    if update_db:
+        db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
+                           output=(outp[0] + '\n' + outp[1]).decode('ascii', 'ignore'), success=True, validated=validated))
+
+    return validated
 
 # validate this set of bugs
 def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db):
@@ -612,7 +636,7 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
         lines = outp[0] + " ; " + outp[1]
         if update_db:
             db.session.add(Run(build=build, fuzzed=None, exitcode=rv,
-                            output=lines, success=True))
+                            output=lines, success=True, validated=False))
     print("ORIG INPUT STILL WORKS\n")
 
     # second, try each of the fuzzed inputs and validate
@@ -638,3 +662,9 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
     if update_db: db.session.commit()
 
     return real_bugs
+
+def get_bugs(db, bug_id_list):
+    bugs = []
+    for bug_id in bug_id_list:
+        bugs.append(db.session.query(Bug).filter(Bug.id == bug_id).all()[0])
+    return bugs
