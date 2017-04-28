@@ -467,6 +467,11 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
     # add a row to the build table in the db
     if update_db:
         db.session.add(build)
+        db.session.commit()
+        assert build.id is not None
+        run(['git', 'commit', '-am', 'Bugs for build {}.'.format(build.id)])
+        run(['git', 'branch', 'build' + str(build.id), 'master'])
+        run(['git', 'reset', 'HEAD~'])
 
     if rv == 0:
         # build success
