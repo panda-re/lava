@@ -11,7 +11,7 @@ import time
 
 from os.path import join
 
-from lava import LavaDatabase, Run, inject_bugs, LavaPaths, validate_bugs
+from lava import LavaDatabase, Run, Bug, inject_bugs, LavaPaths, validate_bugs, get_bugs
 
 start_time = time.time()
 
@@ -40,7 +40,10 @@ def get_bug_list(args, db):
         num_bugs_to_inject = int(args.many)
         print "Selecting %d bugs for injection" % num_bugs_to_inject
         assert db.uninjected_random(False).count() >= num_bugs_to_inject
-        bugs_to_inject = db.uninjected_random(False)[:num_bugs_to_inject]
+        if args.balancebugtype:
+            bugs_to_inject = db.uninjected_random_balance(False, num_bugs_to_inject)
+        else:
+            bugs_to_inject = db.uninjected_random(False)[:num_bugs_to_inject]
         bug_list = [b.id for b in bugs_to_inject]
         update_db = True
     else: assert False
@@ -107,6 +110,9 @@ if __name__ == "__main__":
             help = ('Inject bugs using function args instead of globals'))
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
             help = ('Expected exit code when program exits without crashing. Default 0'))
+    parser.add_argument('-bb', '--balancebugtype', action="store_true", default=False, 
+            help = ('Attempt to balance bug types, i.e. inject as many of each type'))
+
 
     args = parser.parse_args()
     global project
@@ -127,7 +133,7 @@ if __name__ == "__main__":
 
     # obtain list of bugs to inject based on cmd-line args and consulting db
     (update_db, bug_list) = get_bug_list(args, db)
-
+    
     # add all those bugs to the source code and check that it compiles
     (build, input_files) = inject_bugs(bug_list, db, lp, project_file,
                                        project, args, update_db)
@@ -136,7 +142,26 @@ if __name__ == "__main__":
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build,
                                       args, update_db)
 
-        print "real bugs:", real_bug_list
+
+        def count_bug_types(id_list):
+            tcount = {}
+            buglist = {}
+            for bug in get_bugs(db, id_list):
+                if not bug.type in tcount:
+                    tcount[bug.type] = 0
+                    buglist[bug.type] = []
+                tcount[bug.type] += 1
+                buglist[bug.type].append(bug.id)
+            for t in tcount.keys():
+                print("%d c(%s)=%d" % (t, Bug.type_strings[t], tcount[t]))
+                print(str(buglist[t]))
+        
+        print "\nBug types in original, potential set"
+        count_bug_types(bug_list)
+
+        print "\nBug types in validated set"
+        count_bug_types(real_bug_list)
+
 
     except Exception as e:
         print "TESTING FAIL"

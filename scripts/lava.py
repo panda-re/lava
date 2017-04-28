@@ -586,7 +586,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
         print ("bug type is " + Bug.type_strings[bug.type])
         if bug.type == Bug.PRINTF_LEAK:
             if outp != unfuzzed_outputs[bug.trigger.dua.inputfile]:
-                print ("printf bug which we dont know how to validate..")
+                print ("printf bug -- outputs disagree\n")
                 validated = True
         else:
             # this really is supposed to be a bug
