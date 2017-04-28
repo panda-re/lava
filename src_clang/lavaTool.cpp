@@ -293,7 +293,7 @@ public:
     void InsertAfter(SourceLocation loc, std::string str) {
         if (!str.empty()) {
             std::list<std::string> &strs = impl[loc];
-            if (strs.empty() || strs.back() != str || str == ')') {
+            if (strs.empty() || strs.back() != str || str == ")") {
                 impl[loc].push_back(str);
             }
         }
@@ -302,7 +302,7 @@ public:
     void InsertBefore(SourceLocation loc, std::string str) {
         if (!str.empty()) {
             std::list<std::string> &strs = impl[loc];
-            if (strs.empty() || strs.front() != str || str == '(') {
+            if (strs.empty() || strs.front() != str || str == "(") {
                 impl[loc].push_front(str);
             }
         }
