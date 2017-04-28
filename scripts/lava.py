@@ -159,6 +159,7 @@ class Bug(Base):
     trigger_lval = relationship("SourceLval")
 
     max_liveness = Column(Float)
+    magic = Column(Integer)
 
     atp = relationship("AttackPoint")
 
@@ -263,18 +264,15 @@ def run_cmd(cmd, timeout=10, check=True, **kwargs):
 def run_cmd_notimeout(cmd, **kwargs):
     return run_cmd(cmd, timeout=None, **kwargs)
 
-lava = 0x6c617661
-
 # fuzz_labels_list is a list of listof tainted byte offsets within file filename.
 # replace those bytes with random in a new file named new_filename
-def mutfile(filename, fuzz_labels_list, new_filename, bug_id, kt=False, knob=0):
+def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0):
     if kt:
         assert (knob < 2**16-1)
-        lava_lower = lava & 0xffff
-        bug_trigger = ((lava_lower - bug_id) & 0xffff)
+        bug_trigger = bug.magic & 0xffff
         magic_val = struct.pack("<I", (knob << 16) | bug_trigger)
     else:
-        magic_val = struct.pack("<I", lava - bug_id)
+        magic_val = struct.pack("<I", bug.magic)
     # collect set of tainted offsets in file.
     file_bytes = bytearray(open(filename).read())
     # change first 4 bytes in dua to magic value
@@ -575,7 +573,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
         extra_query = db.session.query(DuaBytes)\
             .filter(DuaBytes.id.in_(bug.extra_duas))
         fuzz_labels_list.extend([d.all_labels for d in extra_query])
-    mutfile(unfuzzed_input, fuzz_labels_list, fuzzed_input, bug.id,
+    mutfile(unfuzzed_input, fuzz_labels_list, fuzzed_input, bug,
             **mutfile_kwargs)
     timeout = project.get('timeout', 5)
     (rv, outp) = run_modified_program(project, lp.bugs_install, fuzzed_input,

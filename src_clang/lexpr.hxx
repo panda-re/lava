@@ -247,7 +247,7 @@ LExpr MagicTest(UInt magic_value, LExpr maskedLavaGet) {
 
 template<LExpr Get(const Bug *)>
 LExpr MagicTest(const Bug *bug) {
-    return MagicTest(bug->magic(), Get(bug));
+    return MagicTest(bug->magic, Get(bug));
 }
 
 #endif

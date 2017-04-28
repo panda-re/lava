@@ -375,6 +375,8 @@ struct Bug {
     // Actually id's of DuaBytes.
     std::vector<uint64_t> extra_duas;
 
+    uint32_t magic;
+
 #pragma db index("BugUniq") unique members(type, atp, trigger_lval)
 #pragma db index("BugLvalsQuery") members(atp, type)
 
@@ -382,7 +384,14 @@ struct Bug {
     Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
             const AttackPoint *atp, std::vector<uint64_t> extra_duas)
         : id(0), type(type), trigger(trigger), trigger_lval(trigger->dua->lval),
-            atp(atp), max_liveness(max_liveness), extra_duas(extra_duas) {}
+            atp(atp), max_liveness(max_liveness), extra_duas(extra_duas),
+            magic(0) {
+        for (int i = 0; i < 4; i++) {
+            magic <<= 8;
+            magic |= rand() % 26 + 0x60;
+            magic ^= rand() & 0x20; // maybe flip case
+        }
+    }
 
     Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
             const AttackPoint *atp, std::vector<const DuaBytes *> extra_duas_)
@@ -397,10 +406,6 @@ struct Bug {
         return os;
     }
 
-    inline uint32_t magic() const {
-        return 0x6c617661 - id;
-    }
-
     // this logic is complicated.  TODO: understand/fix this
     // magic for kt has to be 2 bytes and we could
     // can either be (LAVA - id) & 0xffff
@@ -409,7 +414,7 @@ struct Bug {
     // LAVA & 0xffff because we get wrap arounds that still create unique
     // magic values
     inline uint16_t magic_kt() const {
-        return ((uint16_t) (0x6c617661 & 0xffff)) - id;
+        return (uint16_t)magic;
     }
 };
 
