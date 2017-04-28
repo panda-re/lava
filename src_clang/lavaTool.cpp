@@ -293,7 +293,7 @@ public:
     void InsertAfter(SourceLocation loc, std::string str) {
         if (!str.empty()) {
             std::list<std::string> &strs = impl[loc];
-            if (strs.empty() || strs.back() != str) {
+            if (strs.empty() || strs.back() != str || str == ')') {
                 impl[loc].push_back(str);
             }
         }
@@ -302,7 +302,7 @@ public:
     void InsertBefore(SourceLocation loc, std::string str) {
         if (!str.empty()) {
             std::list<std::string> &strs = impl[loc];
-            if (strs.empty() || strs.front() != str) {
+            if (strs.empty() || strs.front() != str || str == '(') {
                 impl[loc].push_front(str);
             }
         }
@@ -597,7 +597,7 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
         for (auto it = callExpr->arg_begin(); it != callExpr->arg_end(); ++it) {
             const Expr *arg = dyn_cast<Expr>(*it);
             if (arg) {
-                if (arg->getType()->isIntegerType()) {
+                if (arg->isLValue() && arg->getType()->isIntegerType()) {
                     LavaASTLoc ast_loc = GetASTLoc(sm, arg);
                     Mod.Change(arg);
                     if (LavaAction == LavaQueries)  {

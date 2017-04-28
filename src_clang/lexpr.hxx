@@ -211,12 +211,12 @@ LExpr LAssign(LExpr left, LExpr right) {
     return LExpr(LExpr::ASSIGN, 0, "", { left, right });
 }
 
-LExpr LavaGet(uint64_t val) {
-    return LFunc("lava_get", { LDecimal(val) });
+LExpr LavaGet(uint32_t slot) {
+    return LFunc("lava_get", { LDecimal(slot) });
 }
 
-LExpr DataFlowGet(uint64_t val) {
-    return LIndex(LStr("data_flow"), val);
+LExpr DataFlowGet(uint32_t slot) {
+    return LIndex(LStr("data_flow"), slot);
 }
 
 LExpr UCharCast(LExpr arg) { return LCast("const unsigned char *", arg); }
