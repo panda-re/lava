@@ -68,7 +68,7 @@ uint64_t num_bugs_of_type[Bug::TYPE_END] = {0};
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
 
-bool debug = false;
+bool debug = true;
 #define dprintf(...) if (debug) { printf(__VA_ARGS__); fflush(stdout); }
 
 uint64_t max_liveness = 0;
@@ -846,6 +846,9 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
 void attack_point_lval_usage(Panda__LogEntry *ple) {
     assert (ple != NULL);
     Panda__AttackPoint *pleatp = ple->attack_point;
+    if (pleatp->src_info->has_ast_loc_id) 
+        dprintf ("attack point id = %d\n", pleatp->src_info->ast_loc_id);
+
     assert (pleatp != NULL);
     Panda__SrcInfo *si = pleatp->src_info;
     // ignore duas in header files

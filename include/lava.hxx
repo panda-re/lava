@@ -448,6 +448,7 @@ struct Run {
     int exitcode;           // exit code of program
     std::string output;     // output of program
     bool success;           // true unless python script failed somehow.
+    bool validated;         // true if bug successfully triggered by inject.py
 
     bool operator<(const Run &other) const {
         return std::tie(build->id, fuzzed->id, exitcode, output, success) <
