@@ -167,7 +167,7 @@ if __name__ == "__main__":
         print "TESTING FAIL"
         if update_db:
             db.session.add(Run(build=build, fuzzed=None, exitcode=-22,
-                               output=str(e), success=False))
+                               output=str(e), success=False, validated=False))
             db.session.commit()
         raise
 

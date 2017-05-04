@@ -648,7 +648,7 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
         lines = outp[0] + " ; " + outp[1]
         if update_db:
             db.session.add(Run(build=build, fuzzed=None, exitcode=rv,
-                            output=lines, success=True, validated=False))
+                            output=lines.decode('ascii', 'ignore'), success=True, validated=False))
     print("ORIG INPUT STILL WORKS\n")
 
     # second, try each of the fuzzed inputs and validate
