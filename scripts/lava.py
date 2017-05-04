@@ -208,32 +208,29 @@ class LavaDatabase(object):
         self.session = self.Session()
 
     def uninjected(self):
-        return self.session.query(Bug).filter(~Bug.builds.any()).join(Bug.atp)
+        return self.session.query(Bug).filter(~Bug.builds.any())
 
     # returns uninjected (not yet in the build table) possibly fake bugs
     def uninjected2(self, fake):
         return self.uninjected()\
+            .join(Bug.atp)\
             .join(Bug.trigger)\
             .join(DuaBytes.dua)\
             .filter(Dua.fake_dua == fake)
-
-    def uninjected2_bytype(self, fake, typ):
-        return self.uninjected()\
-            .join(Bug.trigger)\
-            .join(DuaBytes.dua)\
-            .filter(Dua.fake_dua == fake)\
-            .filter(Bug.type == typ)
 
     def uninjected_random(self, fake):
         return self.uninjected2(fake).order_by(func.random())
 
     def uninjected_random_balance(self, fake, num_required):
         bugs = []
-        num_per = num_required / (len(Bug.type_strings))
-        for i in range(len(Bug.type_strings)):
-            bugst = self.uninjected2_bytype(fake, i)
-            print("found %d bugs of type %d" % (bugst.count(), i))
-            bugs.extend(bugst[:num_per+1])
+        types_present = self.session.query(Bug.type)\
+            .filter(~Bug.builds.any())\
+            .group_by(Bug.type)
+        num_per = num_required / types_present.count()
+        for (i,) in types_present:
+            bug_query = self.uninjected_random(fake).filter(Bug.type == i)
+            print("found %d bugs of type %d" % (bug_query.count(), i))
+            bugs.extend(bug_query[:num_per])
         return bugs
 
     def next_bug_random(self, fake):
