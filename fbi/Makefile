@@ -27,7 +27,7 @@ all: fbi
 %.o: %.c Makefile
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-fbi_sources=find_bug_inj.cpp lavaDB.cpp plog.c plog.pb-c.c lava-odb.cxx
+fbi_sources=find_bug_inj.cpp lavaDB.cpp plog.c plog-cc.cpp plog.pb-c.c plog.pb.h plog.pb.cc lava-odb.cxx
 
 %-odb.cxx %-odb.hxx: ../include/%.hxx Makefile
 	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o . \
@@ -40,7 +40,7 @@ find_bug_inj.o: lava-odb.hxx ../include/lava.hxx
 fbi_objs=$(addsuffix .o,$(basename $(fbi_sources)))
 
 fbi: $(fbi_objs)
-	$(CXX) -o $@ $^ $(LDFLAGS) -flto -fuse-ld=gold
+	$(CXX) -o $@ $^ $(LDFLAGS) -flto -fuse-ld=gold -lprotobuf
 
 clean:
 	rm -f $(fbi_objs) fbi

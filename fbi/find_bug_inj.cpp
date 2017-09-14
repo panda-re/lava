@@ -20,6 +20,7 @@ extern "C" {
 #include <unistd.h>
 
 #include "panda/plog.h"
+#include "panda/plog-cc-bridge.h"
 #include "panda/plog_print.h"
 }
 
