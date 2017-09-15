@@ -12,6 +12,7 @@
     "makeclean": true,
     "install": "make install",
     "command": "$CMD",
+    "expect_prompt": "root@debian-i386:~#",
 
     "db": "$DB_NAME",
 
