@@ -290,7 +290,7 @@ if [ $reset -eq 1 ]; then
     lf="$logs/dbwipe.log"
     truncate "$lf"
     progress 1  "Setting up lava db -- logging to $lf"
-    run_remote "$pandahost" "dropdb --if-exists -U postgres $db" "$lf"
+    run_remote "$pandahost" "dropdb -U postgres $db" "$lf"
     run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
     run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
     run_remote "$pandahost" "echo dbwipe complete" "$lf"

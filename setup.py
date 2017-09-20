@@ -47,7 +47,7 @@ from colorama import Fore, Style
 # this is set to denote user is already in docker group
 ALREADY_IN_DOCKER_GROUP = False
 LLVM_VERSION = "3.6.2"
-DOCKER_NAME = "lava32"
+DOCKER_NAME = "lava32-zekun"
 
 LAVA_DIR = dirname(abspath(sys.argv[0]))
 os.chdir(LAVA_DIR)

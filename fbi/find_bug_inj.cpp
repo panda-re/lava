@@ -64,9 +64,9 @@ uint64_t num_bugs_added_to_db = 0;
 uint64_t num_bugs_of_type[Bug::TYPE_END] = {0};
 
 using namespace odb::core;
-std::unique_ptr<odb::pgsql::database> db;
+odb::pgsql::database* db;
 
-bool debug = false;
+bool debug = true;
 #define dprintf(...) if (debug) { printf(__VA_ARGS__); fflush(stdout); }
 
 uint64_t max_liveness = 0;
@@ -923,8 +923,8 @@ int main (int argc, char **argv) {
     printf("max lval size = %d\n", max_lval);
     inputfile = std::string(argv[3]);
 
-    db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
-                root["db"].asString()));
+    db = new odb::pgsql::database("postgres", "postgrespostgres",
+                root["db"].asString());
     /*
      re-read pandalog, this time focusing on taint queries.  Look for
      dead available data, attack points, and thus bug injection oppotunities
@@ -943,12 +943,21 @@ int main (int argc, char **argv) {
             std::cout << num_bugs_added_to_db << " added to db "
                 << recent_dead_duas.size() << " duas\n" << std::flush;
         }
-
+        uint8_t count = (ple->taint_query_pri != 0 ) + (ple->tainted_branch!=0) \
+                        + (ple->attack_point != 0 ) + (ple->dwarf_call != 0) \
+                        + (ple->dwarf_ret != 0);
+        
+        if (count > 1) {
+            printf("Bug: %d\n", count);
+            continue;
+        }
         if (ple->taint_query_pri) {
+	    // Debug: ple->taint_query_pri is 0x9
             taint_query_pri(ple);
         } else if (ple->tainted_branch) {
             update_liveness(ple);
         } else if (ple->attack_point) {
+	    // Debug: ple->attack_point->src_info is null
             attack_point_lval_usage(ple);
         } else if (ple->dwarf_call) {
             record_call(ple);

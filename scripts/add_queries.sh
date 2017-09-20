@@ -82,7 +82,9 @@ git init
 git config user.name LAVA
 git config user.email "nobody@nowhere"
 git add -A .
+echo `pwd`
 git commit -m 'Unmodified source.'
+echo `pwd`
 
 progress "Configuring..."
 mkdir -p lava-install
