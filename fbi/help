@@ -1,0 +1,2 @@
+C=gcc-4.9 CXX=g++-4.9 make
+-L/usr/lib in Makefile

@@ -1,0 +1,890 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+BugParam	find_bug_inj.cpp	/^struct BugParam {$/;"	s	file:
+CBNO_CRD_BIT	find_bug_inj.cpp	50;"	d	file:
+CBNO_LVN_BIT	find_bug_inj.cpp	51;"	d	file:
+CBNO_TCN_BIT	find_bug_inj.cpp	49;"	d	file:
+CC	Makefile	/^CC ?= clang$/;"	m
+CFLAGS	Makefile	/^CFLAGS= -I$(PANDA_SRC_PATH)\/panda\/include \\$/;"	m
+CXX	Makefile	/^CXX ?= clang++$/;"	m
+CXXFLAGS	Makefile	/^CXXFLAGS=$(CFLAGS) -std=c++1y -ggdb $/;"	m
+FAKE_DUA_BYTE_FLAG	find_bug_inj.cpp	56;"	d	file:
+LAVA_MAGIC_VALUE_SIZE	find_bug_inj.cpp	54;"	d	file:
+LAVA_ODB_HXX	lava-odb.hxx	6;"	d
+LDFLAGS	Makefile	/^LDFLAGS= -L\/usr\/local\/lib -lprotobuf-c -lz -lpq -ljsoncpp -lodb-pgsql -lodb -L\/usr\/lib -ggdb$/;"	m
+LoadIDB	find_bug_inj.cpp	/^std::vector<std::string> LoadIDB(std::string fn) {$/;"	f
+PANDA_BUILD_DIR	panda.mak	/^PANDA_BUILD_DIR := \/home\/zekun\/Workspace\/panda\/build$/;"	m
+PANDA_SRC_PATH	panda.mak	/^PANDA_SRC_PATH := \/home\/zekun\/Workspace\/panda$/;"	m
+PKGS	Makefile	/^PKGS=libodb libodb-pgsql jsoncpp$/;"	m
+Params	find_bug_inj.cpp	/^    typedef AttackPoint Params;$/;"	t	struct:eq_query	file:
+Params	find_bug_inj.cpp	/^    typedef SourceLval Params;$/;"	t	struct:eq_query	file:
+Ptr	find_bug_inj.cpp	/^typedef uint64_t Ptr;$/;"	t	file:
+VPATH	Makefile	/^VPATH=.:$(PANDA_SRC_PATH)\/panda\/src:$(PANDA_BUILD_DIR)\/i386-softmmu:..\/common$/;"	m
+__FBI_SPIT_HXX	spit.hxx	2;"	d
+__STDC_FORMAT_MACROS	find_bug_inj.cpp	14;"	d	file:
+abstract	lava-odb.hxx	/^    static const bool abstract = false;$/;"	m	class:odb::access::object_traits
+alias_traits	lava-odb.hxx	/^  struct alias_traits<$/;"	s	namespace:odb
+all_labels	lava-odb.hxx	/^    static const all_labels_type_ all_labels;$/;"	m	struct:odb::pointer_query_columns
+all_labels	lava-odb.hxx	/^    static const all_labels_type_ all_labels;$/;"	m	struct:odb::query_columns
+all_labels_null	lava-odb.hxx	/^      bool all_labels_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+all_labels_size	lava-odb.hxx	/^      std::size_t all_labels_size;$/;"	m	struct:odb::access::object_traits_impl::image_type
+all_labels_type_	lava-odb.hxx	/^    all_labels_type_;$/;"	t	struct:odb::pointer_query_columns
+all_labels_type_	lava-odb.hxx	/^    all_labels_type_;$/;"	t	struct:odb::query_columns
+all_labels_value	lava-odb.hxx	/^      details::buffer all_labels_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+ast_name	lava-odb.hxx	/^    static const ast_name_type_ ast_name;$/;"	m	struct:odb::query_columns
+ast_name_null	lava-odb.hxx	/^      bool ast_name_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+ast_name_size	lava-odb.hxx	/^      std::size_t ast_name_size;$/;"	m	struct:odb::access::object_traits_impl::image_type
+ast_name_type_	lava-odb.hxx	/^    ast_name_type_;$/;"	t	struct:odb::query_columns
+ast_name_value	lava-odb.hxx	/^      details::buffer ast_name_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+atp	lava-odb.hxx	/^    static const atp_type_ atp;$/;"	m	struct:odb::pointer_query_columns
+atp	lava-odb.hxx	/^    static const atp_type_ atp;$/;"	m	struct:odb::query_columns
+atp_alias_	lava-odb.hxx	/^    atp_alias_;$/;"	t	struct:odb::query_columns_base
+atp_column_type_	lava-odb.hxx	/^    atp_column_type_;$/;"	t	struct:odb::query_columns
+atp_id	find_bug_inj.cpp	/^    unsigned long atp_id;$/;"	m	struct:BugParam	file:
+atp_null	lava-odb.hxx	/^      bool atp_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+atp_pointer_type_	lava-odb.hxx	/^    atp_pointer_type_;$/;"	t	struct:odb::query_columns
+atp_type_	lava-odb.hxx	/^      atp_type_ (const char* t, const char* c, const char* conv)$/;"	f	struct:odb::query_columns::atp_type_
+atp_type_	lava-odb.hxx	/^    atp_type_;$/;"	t	struct:odb::pointer_query_columns
+atp_type_	lava-odb.hxx	/^    struct atp_type_: atp_pointer_type_, atp_column_type_$/;"	s	struct:odb::query_columns
+atp_value	lava-odb.hxx	/^      long long atp_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+attack_point_lval_usage	find_bug_inj.cpp	/^void attack_point_lval_usage(Panda__LogEntry *ple) {$/;"	f
+attackpoint	lava.sql	/^CREATE TABLE "attackpoint" ($/;"	t
+attackpoint.AttackPointUniq	lava.sql	/^CREATE UNIQUE INDEX "AttackPointUniq"$/;"	i
+attackpoint.id	lava.sql	/^CREATE TABLE "attackpoint" ($/;"	F
+attackpoint.loc_begin_column	lava.sql	/^  "loc_begin_line" INTEGER NOT NULL,$/;"	F
+attackpoint.loc_begin_line	lava.sql	/^  "loc_filename" TEXT NOT NULL,$/;"	F
+attackpoint.loc_end_column	lava.sql	/^  "loc_end_line" INTEGER NOT NULL,$/;"	F
+attackpoint.loc_end_line	lava.sql	/^  "loc_begin_column" INTEGER NOT NULL,$/;"	F
+attackpoint.loc_filename	lava.sql	/^  "id" BIGSERIAL NOT NULL PRIMARY KEY,$/;"	F
+attackpoint.type	lava.sql	/^  "loc_end_column" INTEGER NOT NULL,$/;"	F
+auto_id	lava-odb.hxx	/^    static const bool auto_id = true;$/;"	m	class:odb::access::object_traits
+begin	lava-odb.hxx	/^      static const begin_class_1_ begin;$/;"	m	struct:odb::query_columns::loc_class_
+begin	lava-odb.hxx	/^  query_columns< ::AttackPoint, id_pgsql, A >::loc_class_::begin;$/;"	m	class:odb::query_columns::loc_class_
+begin	lava-odb.hxx	/^  query_columns< ::SourceFunction, id_pgsql, A >::loc_class_::begin;$/;"	m	class:odb::query_columns::loc_class_
+begin	lava-odb.hxx	/^  query_columns< ::SourceLval, id_pgsql, A >::loc_class_::begin;$/;"	m	class:odb::query_columns::loc_class_
+begin_class_1_	lava-odb.hxx	/^        begin_class_1_ ()$/;"	f	struct:odb::query_columns::loc_class_::begin_class_1_
+begin_class_1_	lava-odb.hxx	/^      struct begin_class_1_$/;"	s	struct:odb::query_columns::loc_class_
+begin_value	lava-odb.hxx	/^      composite_value_traits< ::Loc, id_pgsql >::image_type begin_value;$/;"	m	struct:odb::access::composite_value_traits::image_type
+bind	lava-odb.cxx	/^  bind (pgsql::bind* b, id_image_type& i)$/;"	f	class:odb::access::object_traits_impl
+bind	lava-odb.cxx	/^  bind (pgsql::bind* b,$/;"	f	class:odb::access::composite_value_traits
+bind	lava-odb.cxx	/^  bind (pgsql::bind* b,$/;"	f	class:odb::access::object_traits_impl
+bind	lava-odb.cxx	/^  bind (pgsql::bind* b,$/;"	f	class:odb::access::object_traits_impl::bugs_traits
+bind	lava-odb.cxx	/^  bind (pgsql::bind* b,$/;"	f	class:odb::access::object_traits_impl::viable_bytes_traits
+bind	lava-odb.cxx	/^  bind (pgsql::bind* b,$/;"	f	class:odb::access::view_traits_impl
+bug	lava.sql	/^CREATE TABLE "bug" ($/;"	t
+bug.BugLvalsQuery	lava.sql	/^CREATE INDEX "BugLvalsQuery"$/;"	i
+bug.BugUniq	lava.sql	/^CREATE UNIQUE INDEX "BugUniq"$/;"	i
+bug.atp	lava.sql	/^  "trigger_lval" BIGINT NOT NULL,$/;"	F
+bug.extra_duas	lava.sql	/^  "max_liveness" BIGINT NOT NULL,$/;"	F
+bug.id	lava.sql	/^CREATE TABLE "bug" ($/;"	F
+bug.max_liveness	lava.sql	/^  "atp" BIGINT NOT NULL,$/;"	F
+bug.trigger	lava.sql	/^  "type" INTEGER NOT NULL,$/;"	F
+bug.trigger_lval	lava.sql	/^  "trigger" BIGINT NOT NULL,$/;"	F
+bug.type	lava.sql	/^  "id" BIGSERIAL NOT NULL PRIMARY KEY,$/;"	F
+bugs	lava-odb.cxx	/^    pgsql::container_statements_impl< bugs_traits > bugs;$/;"	m	struct:odb::access::object_traits_impl::extra_statement_cache_type	file:
+bugs_traits	lava-odb.hxx	/^    struct bugs_traits$/;"	s	class:odb::access::object_traits_impl
+build	lava-odb.hxx	/^    static const build_type_ build;$/;"	m	struct:odb::pointer_query_columns
+build	lava-odb.hxx	/^    static const build_type_ build;$/;"	m	struct:odb::query_columns
+build	lava.sql	/^CREATE TABLE "build" ($/;"	t
+build.compile	lava.sql	/^  "output" TEXT NOT NULL,$/;"	F
+build.id	lava.sql	/^CREATE TABLE "build" ($/;"	F
+build.output	lava.sql	/^  "id" BIGSERIAL NOT NULL PRIMARY KEY,$/;"	F
+build_alias_	lava-odb.hxx	/^    build_alias_;$/;"	t	struct:odb::query_columns_base
+build_bugs	lava.sql	/^CREATE TABLE "build_bugs" ($/;"	t
+build_bugs.build_bugs_index_i	lava.sql	/^CREATE INDEX "build_bugs_index_i"$/;"	i
+build_bugs.build_bugs_object_id_i	lava.sql	/^CREATE INDEX "build_bugs_object_id_i"$/;"	i
+build_bugs.index	lava.sql	/^  "object_id" BIGINT NOT NULL,$/;"	F
+build_bugs.object_id	lava.sql	/^CREATE TABLE "build_bugs" ($/;"	F
+build_bugs.value	lava.sql	/^  "index" BIGINT NOT NULL,$/;"	F
+build_column_type_	lava-odb.hxx	/^    build_column_type_;$/;"	t	struct:odb::query_columns
+build_null	lava-odb.hxx	/^      bool build_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+build_pointer_type_	lava-odb.hxx	/^    build_pointer_type_;$/;"	t	struct:odb::query_columns
+build_type_	lava-odb.hxx	/^      build_type_ (const char* t, const char* c, const char* conv)$/;"	f	struct:odb::query_columns::build_type_
+build_type_	lava-odb.hxx	/^    build_type_;$/;"	t	struct:odb::pointer_query_columns
+build_type_	lava-odb.hxx	/^    struct build_type_: build_pointer_type_, build_column_type_$/;"	s	struct:odb::query_columns
+build_value	lava-odb.hxx	/^      long long build_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+byte_tcn	lava-odb.hxx	/^    static const byte_tcn_type_ byte_tcn;$/;"	m	struct:odb::pointer_query_columns
+byte_tcn	lava-odb.hxx	/^    static const byte_tcn_type_ byte_tcn;$/;"	m	struct:odb::query_columns
+byte_tcn_null	lava-odb.hxx	/^      bool byte_tcn_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+byte_tcn_size	lava-odb.hxx	/^      std::size_t byte_tcn_size;$/;"	m	struct:odb::access::object_traits_impl::image_type
+byte_tcn_type_	lava-odb.hxx	/^    byte_tcn_type_;$/;"	t	struct:odb::pointer_query_columns
+byte_tcn_type_	lava-odb.hxx	/^    byte_tcn_type_;$/;"	t	struct:odb::query_columns
+byte_tcn_value	lava-odb.hxx	/^      details::buffer byte_tcn_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+cached_skip_lists	find_bug_inj.cpp	/^std::map<BugParam, std::vector<uint64_t>> cached_skip_lists;$/;"	v
+call	lava.sql	/^CREATE TABLE "call" ($/;"	t
+call.CallUniq	lava.sql	/^CREATE UNIQUE INDEX "CallUniq"$/;"	i
+call.call_instr	lava.sql	/^  "id" BIGSERIAL NOT NULL PRIMARY KEY,$/;"	F
+call.called_function	lava.sql	/^  "ret_instr" BIGINT NOT NULL,$/;"	F
+call.callsite_file	lava.sql	/^  "called_function" BIGINT NOT NULL,$/;"	F
+call.callsite_line	lava.sql	/^  "callsite_file" TEXT NOT NULL,$/;"	F
+call.id	lava.sql	/^CREATE TABLE "call" ($/;"	F
+call.ret_instr	lava.sql	/^  "call_instr" BIGINT NOT NULL,$/;"	F
+call_instr	lava-odb.hxx	/^    static const call_instr_type_ call_instr;$/;"	m	struct:odb::pointer_query_columns
+call_instr	lava-odb.hxx	/^    static const call_instr_type_ call_instr;$/;"	m	struct:odb::query_columns
+call_instr_null	lava-odb.hxx	/^      bool call_instr_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+call_instr_type_	lava-odb.hxx	/^    call_instr_type_;$/;"	t	struct:odb::pointer_query_columns
+call_instr_type_	lava-odb.hxx	/^    call_instr_type_;$/;"	t	struct:odb::query_columns
+call_instr_value	lava-odb.hxx	/^      long long call_instr_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+called_function	lava-odb.hxx	/^    static const called_function_type_ called_function;$/;"	m	struct:odb::pointer_query_columns
+called_function	lava-odb.hxx	/^    static const called_function_type_ called_function;$/;"	m	struct:odb::query_columns
+called_function_alias_	lava-odb.hxx	/^    called_function_alias_;$/;"	t	struct:odb::query_columns_base
+called_function_column_type_	lava-odb.hxx	/^    called_function_column_type_;$/;"	t	struct:odb::query_columns
+called_function_null	lava-odb.hxx	/^      bool called_function_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+called_function_pointer_type_	lava-odb.hxx	/^    called_function_pointer_type_;$/;"	t	struct:odb::query_columns
+called_function_type_	lava-odb.hxx	/^      called_function_type_ (const char* t, const char* c, const char* conv)$/;"	f	struct:odb::query_columns::called_function_type_
+called_function_type_	lava-odb.hxx	/^    called_function_type_;$/;"	t	struct:odb::pointer_query_columns
+called_function_type_	lava-odb.hxx	/^    struct called_function_type_: called_function_pointer_type_, called_function_column_type_$/;"	s	struct:odb::query_columns
+called_function_value	lava-odb.hxx	/^      long long called_function_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+callsite_file	lava-odb.hxx	/^    static const callsite_file_type_ callsite_file;$/;"	m	struct:odb::pointer_query_columns
+callsite_file	lava-odb.hxx	/^    static const callsite_file_type_ callsite_file;$/;"	m	struct:odb::query_columns
+callsite_file_null	lava-odb.hxx	/^      bool callsite_file_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+callsite_file_size	lava-odb.hxx	/^      std::size_t callsite_file_size;$/;"	m	struct:odb::access::object_traits_impl::image_type
+callsite_file_type_	lava-odb.hxx	/^    callsite_file_type_;$/;"	t	struct:odb::pointer_query_columns
+callsite_file_type_	lava-odb.hxx	/^    callsite_file_type_;$/;"	t	struct:odb::query_columns
+callsite_file_value	lava-odb.hxx	/^      details::buffer callsite_file_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+callsite_line	lava-odb.hxx	/^    static const callsite_line_type_ callsite_line;$/;"	m	struct:odb::pointer_query_columns
+callsite_line	lava-odb.hxx	/^    static const callsite_line_type_ callsite_line;$/;"	m	struct:odb::query_columns
+callsite_line_null	lava-odb.hxx	/^      bool callsite_line_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+callsite_line_type_	lava-odb.hxx	/^    callsite_line_type_;$/;"	t	struct:odb::pointer_query_columns
+callsite_line_type_	lava-odb.hxx	/^    callsite_line_type_;$/;"	t	struct:odb::query_columns
+callsite_line_value	lava-odb.hxx	/^      int callsite_line_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+class_traits	lava-odb.hxx	/^  struct class_traits< ::AttackPoint >$/;"	s	namespace:odb
+class_traits	lava-odb.hxx	/^  struct class_traits< ::Bug >$/;"	s	namespace:odb
+class_traits	lava-odb.hxx	/^  struct class_traits< ::BugLval >$/;"	s	namespace:odb
+class_traits	lava-odb.hxx	/^  struct class_traits< ::Build >$/;"	s	namespace:odb
+class_traits	lava-odb.hxx	/^  struct class_traits< ::Call >$/;"	s	namespace:odb
+class_traits	lava-odb.hxx	/^  struct class_traits< ::Dua >$/;"	s	namespace:odb
+class_traits	lava-odb.hxx	/^  struct class_traits< ::DuaBytes >$/;"	s	namespace:odb
+class_traits	lava-odb.hxx	/^  struct class_traits< ::LabelSet >$/;"	s	namespace:odb
+class_traits	lava-odb.hxx	/^  struct class_traits< ::Run >$/;"	s	namespace:odb
+class_traits	lava-odb.hxx	/^  struct class_traits< ::SourceFunction >$/;"	s	namespace:odb
+class_traits	lava-odb.hxx	/^  struct class_traits< ::SourceLval >$/;"	s	namespace:odb
+column	lava-odb.hxx	/^        static const column_type_ column;$/;"	m	struct:odb::query_columns::loc_class_::begin_class_1_
+column	lava-odb.hxx	/^        static const column_type_ column;$/;"	m	struct:odb::query_columns::loc_class_::end_class_1_
+column_count	lava-odb.hxx	/^    static const std::size_t column_count = 1UL;$/;"	m	class:odb::access::view_traits_impl
+column_count	lava-odb.hxx	/^    static const std::size_t column_count = 2UL;$/;"	m	class:odb::access::composite_value_traits
+column_count	lava-odb.hxx	/^    static const std::size_t column_count = 3UL;$/;"	m	class:odb::access::object_traits_impl
+column_count	lava-odb.hxx	/^    static const std::size_t column_count = 4UL;$/;"	m	class:odb::access::object_traits_impl
+column_count	lava-odb.hxx	/^    static const std::size_t column_count = 5UL;$/;"	m	class:odb::access::composite_value_traits
+column_count	lava-odb.hxx	/^    static const std::size_t column_count = 5UL;$/;"	m	class:odb::access::object_traits_impl
+column_count	lava-odb.hxx	/^    static const std::size_t column_count = 6UL;$/;"	m	class:odb::access::object_traits_impl
+column_count	lava-odb.hxx	/^    static const std::size_t column_count = 7UL;$/;"	m	class:odb::access::object_traits_impl
+column_count	lava-odb.hxx	/^    static const std::size_t column_count = 8UL;$/;"	m	class:odb::access::object_traits_impl
+column_count	lava-odb.hxx	/^    static const std::size_t column_count = 9UL;$/;"	m	class:odb::access::object_traits_impl
+column_null	lava-odb.hxx	/^      bool column_null;$/;"	m	struct:odb::access::composite_value_traits::image_type
+column_type_	lava-odb.hxx	/^        column_type_;$/;"	t	struct:odb::query_columns::loc_class_::begin_class_1_
+column_type_	lava-odb.hxx	/^        column_type_;$/;"	t	struct:odb::query_columns::loc_class_::end_class_1_
+column_value	lava-odb.hxx	/^      int column_value;$/;"	m	struct:odb::access::composite_value_traits::image_type
+compile	lava-odb.hxx	/^    static const compile_type_ compile;$/;"	m	struct:odb::query_columns
+compile_null	lava-odb.hxx	/^      bool compile_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+compile_type_	lava-odb.hxx	/^    compile_type_;$/;"	t	struct:odb::query_columns
+compile_value	lava-odb.hxx	/^      bool compile_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+composite_value_traits	lava-odb.hxx	/^  class access::composite_value_traits< ::LavaASTLoc, id_pgsql >$/;"	c	class:odb::access
+composite_value_traits	lava-odb.hxx	/^  class access::composite_value_traits< ::Loc, id_pgsql >$/;"	c	class:odb::access
+composite_value_traits	lava-odb.hxx	/^  class access::composite_value_traits< ::Range, id_pgsql >$/;"	c	class:odb::access
+container_traits_type	lava-odb.hxx	/^      container_traits_type;$/;"	t	struct:odb::access::object_traits_impl::bugs_traits
+container_traits_type	lava-odb.hxx	/^      container_traits_type;$/;"	t	struct:odb::access::object_traits_impl::viable_bytes_traits
+container_type	lava-odb.hxx	/^      typedef ::std::vector< const ::Bug* > container_type;$/;"	t	struct:odb::access::object_traits_impl::bugs_traits
+container_type	lava-odb.hxx	/^      typedef ::std::vector< const ::LabelSet* > container_type;$/;"	t	struct:odb::access::object_traits_impl::viable_bytes_traits
+count_nonzero	find_bug_inj.cpp	/^uint32_t count_nonzero(std::vector<T> arr) {$/;"	f
+create	find_bug_inj.cpp	/^static const T* create(T no_id) {$/;"	f	file:
+create_full	find_bug_inj.cpp	/^static std::pair<const T*, bool> create_full(T no_id) {$/;"	f	file:
+create_full	find_bug_inj.cpp	/^static std::pair<const U*, bool> create_full(T no_id) {$/;"	f	file:
+data_column_count	lava-odb.hxx	/^      static const std::size_t data_column_count = 3UL;$/;"	m	struct:odb::access::object_traits_impl::bugs_traits
+data_column_count	lava-odb.hxx	/^      static const std::size_t data_column_count = 3UL;$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits
+data_image_type	lava-odb.hxx	/^      struct data_image_type$/;"	s	struct:odb::access::object_traits_impl::bugs_traits
+data_image_type	lava-odb.hxx	/^      struct data_image_type$/;"	s	struct:odb::access::object_traits_impl::viable_bytes_traits
+debug	find_bug_inj.cpp	/^bool debug = true;$/;"	v
+decimate	find_bug_inj.cpp	/^inline bool decimate(double ratio) {$/;"	f
+decimate_by_type	find_bug_inj.cpp	/^inline bool decimate_by_type(Bug::Type bug_type) {$/;"	f
+decimation_ratio	find_bug_inj.cpp	/^inline double decimation_ratio(Bug::Type bug_type, uint64_t potential) {$/;"	f
+delete_	lava-odb.cxx	/^  delete_ (void* d)$/;"	f	class:odb::access::object_traits_impl::bugs_traits
+delete_	lava-odb.cxx	/^  delete_ (void* d)$/;"	f	class:odb::access::object_traits_impl::viable_bytes_traits
+delete_name	lava-odb.cxx	/^  delete_name[] = "delete_build_bugs";$/;"	m	class:odb::access::object_traits_impl::bugs_traits	file:
+delete_name	lava-odb.cxx	/^  delete_name[] = "delete_dua_viable_bytes";$/;"	m	class:odb::access::object_traits_impl::viable_bytes_traits	file:
+delete_name	lava-odb.hxx	/^      static const char delete_name[];$/;"	m	struct:odb::access::object_traits_impl::bugs_traits
+delete_name	lava-odb.hxx	/^      static const char delete_name[];$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits
+delete_statement	lava-odb.cxx	/^  delete_statement[] =$/;"	m	class:odb::access::object_traits_impl::bugs_traits	file:
+delete_statement	lava-odb.cxx	/^  delete_statement[] =$/;"	m	class:odb::access::object_traits_impl::viable_bytes_traits	file:
+delete_statement	lava-odb.hxx	/^      static const char delete_statement[];$/;"	m	struct:odb::access::object_traits_impl::bugs_traits
+delete_statement	lava-odb.hxx	/^      static const char delete_statement[];$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits
+disabled	find_bug_inj.cpp	/^    typedef T disabled;$/;"	t	struct:eq_query	file:
+disjoint	find_bug_inj.cpp	/^inline bool disjoint(InputIt1 first1, InputIt1 last1,$/;"	f
+disjoint	find_bug_inj.cpp	/^inline bool disjoint(const DuaBytes *db1, const DuaBytes *db2) {$/;"	f
+disjoint	find_bug_inj.cpp	/^inline bool disjoint(const T1 &range1, const T2 &range2) {$/;"	f
+dprintf	find_bug_inj.cpp	70;"	d	file:
+dua	lava-odb.hxx	/^    static const dua_type_ dua;$/;"	m	struct:odb::pointer_query_columns
+dua	lava-odb.hxx	/^    static const dua_type_ dua;$/;"	m	struct:odb::query_columns
+dua	lava.sql	/^CREATE TABLE "dua" ($/;"	t
+dua.DuaUniq	lava.sql	/^CREATE UNIQUE INDEX "DuaUniq"$/;"	i
+dua.all_labels	lava.sql	/^  "byte_tcn" INTEGER[] NOT NULL,$/;"	F
+dua.byte_tcn	lava.sql	/^  "lval" BIGINT NOT NULL,$/;"	F
+dua.fake_dua	lava.sql	/^  "instr" BIGINT NOT NULL,$/;"	F
+dua.id	lava.sql	/^CREATE TABLE "dua" ($/;"	F
+dua.inputfile	lava.sql	/^  "all_labels" INTEGER[] NOT NULL,$/;"	F
+dua.instr	lava.sql	/^  "max_cardinality" INTEGER NOT NULL,$/;"	F
+dua.lval	lava.sql	/^  "id" BIGSERIAL NOT NULL PRIMARY KEY,$/;"	F
+dua.max_cardinality	lava.sql	/^  "max_tcn" INTEGER NOT NULL,$/;"	F
+dua.max_tcn	lava.sql	/^  "inputfile" TEXT NOT NULL,$/;"	F
+dua_alias_	lava-odb.hxx	/^    dua_alias_;$/;"	t	struct:odb::query_columns_base
+dua_column_type_	lava-odb.hxx	/^    dua_column_type_;$/;"	t	struct:odb::query_columns
+dua_dependencies	find_bug_inj.cpp	/^std::map<uint32_t, std::set<const Dua *> > dua_dependencies;$/;"	v
+dua_null	lava-odb.hxx	/^      bool dua_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+dua_pointer_type_	lava-odb.hxx	/^    dua_pointer_type_;$/;"	t	struct:odb::query_columns
+dua_type_	lava-odb.hxx	/^      dua_type_ (const char* t, const char* c, const char* conv)$/;"	f	struct:odb::query_columns::dua_type_
+dua_type_	lava-odb.hxx	/^    dua_type_;$/;"	t	struct:odb::pointer_query_columns
+dua_type_	lava-odb.hxx	/^    struct dua_type_: dua_pointer_type_, dua_column_type_$/;"	s	struct:odb::query_columns
+dua_value	lava-odb.hxx	/^      long long dua_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+dua_viable_bytes	lava.sql	/^CREATE TABLE "dua_viable_bytes" ($/;"	t
+dua_viable_bytes.dua_viable_bytes_index_i	lava.sql	/^CREATE INDEX "dua_viable_bytes_index_i"$/;"	i
+dua_viable_bytes.dua_viable_bytes_object_id_i	lava.sql	/^CREATE INDEX "dua_viable_bytes_object_id_i"$/;"	i
+dua_viable_bytes.index	lava.sql	/^  "object_id" BIGINT NOT NULL,$/;"	F
+dua_viable_bytes.object_id	lava.sql	/^CREATE TABLE "dua_viable_bytes" ($/;"	F
+dua_viable_bytes.value	lava.sql	/^  "index" BIGINT NOT NULL,$/;"	F
+duabytes	lava.sql	/^CREATE TABLE "duabytes" ($/;"	t
+duabytes.DuaBytesUniq	lava.sql	/^CREATE UNIQUE INDEX "DuaBytesUniq"$/;"	i
+duabytes.all_labels	lava.sql	/^  "selected_high" INTEGER NOT NULL,$/;"	F
+duabytes.dua	lava.sql	/^  "id" BIGSERIAL NOT NULL PRIMARY KEY,$/;"	F
+duabytes.id	lava.sql	/^CREATE TABLE "duabytes" ($/;"	F
+duabytes.selected_high	lava.sql	/^  "selected_low" INTEGER NOT NULL,$/;"	F
+duabytes.selected_low	lava.sql	/^  "dua" BIGINT NOT NULL,$/;"	F
+end	lava-odb.hxx	/^      static const end_class_1_ end;$/;"	m	struct:odb::query_columns::loc_class_
+end	lava-odb.hxx	/^  query_columns< ::AttackPoint, id_pgsql, A >::loc_class_::end;$/;"	m	class:odb::query_columns::loc_class_
+end	lava-odb.hxx	/^  query_columns< ::SourceFunction, id_pgsql, A >::loc_class_::end;$/;"	m	class:odb::query_columns::loc_class_
+end	lava-odb.hxx	/^  query_columns< ::SourceLval, id_pgsql, A >::loc_class_::end;$/;"	m	class:odb::query_columns::loc_class_
+end_class_1_	lava-odb.hxx	/^        end_class_1_ ()$/;"	f	struct:odb::query_columns::loc_class_::end_class_1_
+end_class_1_	lava-odb.hxx	/^      struct end_class_1_$/;"	s	struct:odb::query_columns::loc_class_
+end_value	lava-odb.hxx	/^      composite_value_traits< ::Loc, id_pgsql >::image_type end_value;$/;"	m	struct:odb::access::composite_value_traits::image_type
+eq_query	find_bug_inj.cpp	/^struct eq_query {$/;"	s	file:
+eq_query	find_bug_inj.cpp	/^struct eq_query<AttackPoint> {$/;"	s	file:
+eq_query	find_bug_inj.cpp	/^struct eq_query<SourceLval> {$/;"	s	file:
+erase	lava-odb.cxx	/^  erase (database& db, const id_type& id)$/;"	f	class:odb::access::object_traits_impl
+erase	lava-odb.cxx	/^  erase (statements_type& sts)$/;"	f	class:odb::access::object_traits_impl::bugs_traits
+erase	lava-odb.cxx	/^  erase (statements_type& sts)$/;"	f	class:odb::access::object_traits_impl::viable_bytes_traits
+erase_query	lava-odb.cxx	/^  erase_query (database&, const query_base_type& q)$/;"	f	class:odb::access::object_traits_impl
+erase_query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::AttackPoint, id_pgsql >::erase_query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Bug, id_pgsql >::erase_query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Build, id_pgsql >::erase_query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Call, id_pgsql >::erase_query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Dua, id_pgsql >::erase_query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::DuaBytes, id_pgsql >::erase_query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::LabelSet, id_pgsql >::erase_query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Run, id_pgsql >::erase_query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::SourceFunction, id_pgsql >::erase_query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::SourceLval, id_pgsql >::erase_query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement	lava-odb.hxx	/^    static const char erase_query_statement[];$/;"	m	class:odb::access::object_traits_impl
+erase_query_statement_name	lava-odb.cxx	/^  erase_query_statement_name[] = "erase_query_attackpoint";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement_name	lava-odb.cxx	/^  erase_query_statement_name[] = "erase_query_bug";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement_name	lava-odb.cxx	/^  erase_query_statement_name[] = "erase_query_build";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement_name	lava-odb.cxx	/^  erase_query_statement_name[] = "erase_query_call";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement_name	lava-odb.cxx	/^  erase_query_statement_name[] = "erase_query_dua";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement_name	lava-odb.cxx	/^  erase_query_statement_name[] = "erase_query_duabytes";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement_name	lava-odb.cxx	/^  erase_query_statement_name[] = "erase_query_labelset";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement_name	lava-odb.cxx	/^  erase_query_statement_name[] = "erase_query_run";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement_name	lava-odb.cxx	/^  erase_query_statement_name[] = "erase_query_sourcefunction";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement_name	lava-odb.cxx	/^  erase_query_statement_name[] = "erase_query_sourcelval";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_query_statement_name	lava-odb.hxx	/^    static const char erase_query_statement_name[];$/;"	m	class:odb::access::object_traits_impl
+erase_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::AttackPoint, id_pgsql >::erase_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Bug, id_pgsql >::erase_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Build, id_pgsql >::erase_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Call, id_pgsql >::erase_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Dua, id_pgsql >::erase_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::DuaBytes, id_pgsql >::erase_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::LabelSet, id_pgsql >::erase_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Run, id_pgsql >::erase_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::SourceFunction, id_pgsql >::erase_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::SourceLval, id_pgsql >::erase_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement	lava-odb.hxx	/^    static const char erase_statement[];$/;"	m	class:odb::access::object_traits_impl
+erase_statement_name	lava-odb.cxx	/^  erase_statement_name[] = "erase_attackpoint";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement_name	lava-odb.cxx	/^  erase_statement_name[] = "erase_bug";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement_name	lava-odb.cxx	/^  erase_statement_name[] = "erase_build";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement_name	lava-odb.cxx	/^  erase_statement_name[] = "erase_call";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement_name	lava-odb.cxx	/^  erase_statement_name[] = "erase_dua";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement_name	lava-odb.cxx	/^  erase_statement_name[] = "erase_duabytes";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement_name	lava-odb.cxx	/^  erase_statement_name[] = "erase_labelset";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement_name	lava-odb.cxx	/^  erase_statement_name[] = "erase_run";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement_name	lava-odb.cxx	/^  erase_statement_name[] = "erase_sourcefunction";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement_name	lava-odb.cxx	/^  erase_statement_name[] = "erase_sourcelval";$/;"	m	class:odb::access::object_traits_impl	file:
+erase_statement_name	lava-odb.hxx	/^    static const char erase_statement_name[];$/;"	m	class:odb::access::object_traits_impl
+execute_query	lava-odb.cxx	/^  execute_query (prepared_query_impl& q)$/;"	f	class:odb::access::object_traits_impl
+execute_query	lava-odb.cxx	/^  execute_query (prepared_query_impl& q)$/;"	f	class:odb::access::view_traits_impl
+exitcode	lava-odb.hxx	/^    static const exitcode_type_ exitcode;$/;"	m	struct:odb::pointer_query_columns
+exitcode	lava-odb.hxx	/^    static const exitcode_type_ exitcode;$/;"	m	struct:odb::query_columns
+exitcode_null	lava-odb.hxx	/^      bool exitcode_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+exitcode_type_	lava-odb.hxx	/^    exitcode_type_;$/;"	t	struct:odb::pointer_query_columns
+exitcode_type_	lava-odb.hxx	/^    exitcode_type_;$/;"	t	struct:odb::query_columns
+exitcode_value	lava-odb.hxx	/^      int exitcode_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+extra_duas	lava-odb.hxx	/^    static const extra_duas_type_ extra_duas;$/;"	m	struct:odb::pointer_query_columns
+extra_duas	lava-odb.hxx	/^    static const extra_duas_type_ extra_duas;$/;"	m	struct:odb::query_columns
+extra_duas_null	lava-odb.hxx	/^      bool extra_duas_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+extra_duas_size	lava-odb.hxx	/^      std::size_t extra_duas_size;$/;"	m	struct:odb::access::object_traits_impl::image_type
+extra_duas_type_	lava-odb.hxx	/^    extra_duas_type_;$/;"	t	struct:odb::pointer_query_columns
+extra_duas_type_	lava-odb.hxx	/^    extra_duas_type_;$/;"	t	struct:odb::query_columns
+extra_duas_value	lava-odb.hxx	/^      details::buffer extra_duas_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+extra_statement_cache_type	lava-odb.cxx	/^    extra_statement_cache_type ($/;"	f	struct:odb::access::object_traits_impl::extra_statement_cache_type
+extra_statement_cache_type	lava-odb.cxx	/^  struct access::object_traits_impl< ::AttackPoint, id_pgsql >::extra_statement_cache_type$/;"	s	class:odb::access::object_traits_impl	file:
+extra_statement_cache_type	lava-odb.cxx	/^  struct access::object_traits_impl< ::Bug, id_pgsql >::extra_statement_cache_type$/;"	s	class:odb::access::object_traits_impl	file:
+extra_statement_cache_type	lava-odb.cxx	/^  struct access::object_traits_impl< ::Build, id_pgsql >::extra_statement_cache_type$/;"	s	class:odb::access::object_traits_impl	file:
+extra_statement_cache_type	lava-odb.cxx	/^  struct access::object_traits_impl< ::Call, id_pgsql >::extra_statement_cache_type$/;"	s	class:odb::access::object_traits_impl	file:
+extra_statement_cache_type	lava-odb.cxx	/^  struct access::object_traits_impl< ::Dua, id_pgsql >::extra_statement_cache_type$/;"	s	class:odb::access::object_traits_impl	file:
+extra_statement_cache_type	lava-odb.cxx	/^  struct access::object_traits_impl< ::DuaBytes, id_pgsql >::extra_statement_cache_type$/;"	s	class:odb::access::object_traits_impl	file:
+extra_statement_cache_type	lava-odb.cxx	/^  struct access::object_traits_impl< ::LabelSet, id_pgsql >::extra_statement_cache_type$/;"	s	class:odb::access::object_traits_impl	file:
+extra_statement_cache_type	lava-odb.cxx	/^  struct access::object_traits_impl< ::Run, id_pgsql >::extra_statement_cache_type$/;"	s	class:odb::access::object_traits_impl	file:
+extra_statement_cache_type	lava-odb.cxx	/^  struct access::object_traits_impl< ::SourceFunction, id_pgsql >::extra_statement_cache_type$/;"	s	class:odb::access::object_traits_impl	file:
+extra_statement_cache_type	lava-odb.cxx	/^  struct access::object_traits_impl< ::SourceLval, id_pgsql >::extra_statement_cache_type$/;"	s	class:odb::access::object_traits_impl	file:
+fake_dua	lava-odb.hxx	/^    static const fake_dua_type_ fake_dua;$/;"	m	struct:odb::pointer_query_columns
+fake_dua	lava-odb.hxx	/^    static const fake_dua_type_ fake_dua;$/;"	m	struct:odb::query_columns
+fake_dua_null	lava-odb.hxx	/^      bool fake_dua_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+fake_dua_type_	lava-odb.hxx	/^    fake_dua_type_;$/;"	t	struct:odb::pointer_query_columns
+fake_dua_type_	lava-odb.hxx	/^    fake_dua_type_;$/;"	t	struct:odb::query_columns
+fake_dua_value	lava-odb.hxx	/^      bool fake_dua_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+fbi_objs	Makefile	/^fbi_objs=$(addsuffix .o,$(basename $(fbi_sources)))$/;"	m
+fbi_sources	Makefile	/^fbi_sources=find_bug_inj.cpp lavaDB.cpp plog.c plog.pb-c.c lava-odb.cxx$/;"	m
+filename	lava-odb.hxx	/^      static const filename_type_ filename;$/;"	m	struct:odb::query_columns::loc_class_
+filename_null	lava-odb.hxx	/^      bool filename_null;$/;"	m	struct:odb::access::composite_value_traits::image_type
+filename_size	lava-odb.hxx	/^      std::size_t filename_size;$/;"	m	struct:odb::access::composite_value_traits::image_type
+filename_type_	lava-odb.hxx	/^      filename_type_;$/;"	t	struct:odb::query_columns::loc_class_
+filename_value	lava-odb.hxx	/^      details::buffer filename_value;$/;"	m	struct:odb::access::composite_value_traits::image_type
+find	lava-odb.cxx	/^  find (database& db, const id_type& id)$/;"	f	class:odb::access::object_traits_impl
+find	lava-odb.cxx	/^  find (database& db, const id_type& id, object_type& obj)$/;"	f	class:odb::access::object_traits_impl
+find_	lava-odb.cxx	/^  find_ (statements_type& sts,$/;"	f	class:odb::access::object_traits_impl
+find_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::AttackPoint, id_pgsql >::find_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Bug, id_pgsql >::find_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Build, id_pgsql >::find_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Call, id_pgsql >::find_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Dua, id_pgsql >::find_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::DuaBytes, id_pgsql >::find_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::LabelSet, id_pgsql >::find_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Run, id_pgsql >::find_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::SourceFunction, id_pgsql >::find_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::SourceLval, id_pgsql >::find_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement	lava-odb.hxx	/^    static const char find_statement[];$/;"	m	class:odb::access::object_traits_impl
+find_statement_name	lava-odb.cxx	/^  find_statement_name[] = "find_attackpoint";$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement_name	lava-odb.cxx	/^  find_statement_name[] = "find_bug";$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement_name	lava-odb.cxx	/^  find_statement_name[] = "find_build";$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement_name	lava-odb.cxx	/^  find_statement_name[] = "find_call";$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement_name	lava-odb.cxx	/^  find_statement_name[] = "find_dua";$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement_name	lava-odb.cxx	/^  find_statement_name[] = "find_duabytes";$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement_name	lava-odb.cxx	/^  find_statement_name[] = "find_labelset";$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement_name	lava-odb.cxx	/^  find_statement_name[] = "find_run";$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement_name	lava-odb.cxx	/^  find_statement_name[] = "find_sourcefunction";$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement_name	lava-odb.cxx	/^  find_statement_name[] = "find_sourcelval";$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement_name	lava-odb.hxx	/^    static const char find_statement_name[];$/;"	m	class:odb::access::object_traits_impl
+find_statement_types	lava-odb.cxx	/^  find_statement_types[] =$/;"	m	class:odb::access::object_traits_impl	file:
+find_statement_types	lava-odb.hxx	/^    static const unsigned int find_statement_types[];$/;"	m	class:odb::access::object_traits_impl
+functions_type	lava-odb.hxx	/^      typedef ordered_functions<index_type, value_type> functions_type;$/;"	t	struct:odb::access::object_traits_impl::bugs_traits
+functions_type	lava-odb.hxx	/^      typedef ordered_functions<index_type, value_type> functions_type;$/;"	t	struct:odb::access::object_traits_impl::viable_bytes_traits
+fuzzed	lava-odb.hxx	/^    static const fuzzed_type_ fuzzed;$/;"	m	struct:odb::pointer_query_columns
+fuzzed	lava-odb.hxx	/^    static const fuzzed_type_ fuzzed;$/;"	m	struct:odb::query_columns
+fuzzed_alias_	lava-odb.hxx	/^    fuzzed_alias_;$/;"	t	struct:odb::query_columns_base
+fuzzed_column_type_	lava-odb.hxx	/^    fuzzed_column_type_;$/;"	t	struct:odb::query_columns
+fuzzed_null	lava-odb.hxx	/^      bool fuzzed_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+fuzzed_pointer_type_	lava-odb.hxx	/^    fuzzed_pointer_type_;$/;"	t	struct:odb::query_columns
+fuzzed_type_	lava-odb.hxx	/^      fuzzed_type_ (const char* t, const char* c, const char* conv)$/;"	f	struct:odb::query_columns::fuzzed_type_
+fuzzed_type_	lava-odb.hxx	/^    fuzzed_type_;$/;"	t	struct:odb::pointer_query_columns
+fuzzed_type_	lava-odb.hxx	/^    struct fuzzed_type_: fuzzed_pointer_type_, fuzzed_column_type_$/;"	s	struct:odb::query_columns
+fuzzed_value	lava-odb.hxx	/^      long long fuzzed_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+get_dua_dead_range	find_bug_inj.cpp	/^inline Range get_dua_dead_range(const Dua *dua, const std::vector<uint32_t> &to_avoid) {$/;"	f
+get_dua_exploit_pad	find_bug_inj.cpp	/^inline Range get_dua_exploit_pad(const Dua *dua) {$/;"	f
+grow	lava-odb.cxx	/^  grow (data_image_type& i,$/;"	f	class:odb::access::object_traits_impl::bugs_traits
+grow	lava-odb.cxx	/^  grow (data_image_type& i,$/;"	f	class:odb::access::object_traits_impl::viable_bytes_traits
+grow	lava-odb.cxx	/^  grow (image_type& i,$/;"	f	class:odb::access::composite_value_traits
+grow	lava-odb.cxx	/^  grow (image_type& i,$/;"	f	class:odb::access::object_traits_impl
+grow	lava-odb.cxx	/^  grow (image_type& i,$/;"	f	class:odb::access::view_traits_impl
+high	lava-odb.hxx	/^      static const high_type_ high;$/;"	m	struct:odb::pointer_query_columns::selected_class_
+high	lava-odb.hxx	/^      static const high_type_ high;$/;"	m	struct:odb::query_columns::selected_class_
+high_null	lava-odb.hxx	/^      bool high_null;$/;"	m	struct:odb::access::composite_value_traits::image_type
+high_type_	lava-odb.hxx	/^      high_type_;$/;"	t	struct:odb::pointer_query_columns::selected_class_
+high_type_	lava-odb.hxx	/^      high_type_;$/;"	t	struct:odb::query_columns::selected_class_
+high_value	lava-odb.hxx	/^      int high_value;$/;"	m	struct:odb::access::composite_value_traits::image_type
+id	lava-odb.cxx	/^  id (const id_image_type& i)$/;"	f	class:odb::access::object_traits_impl
+id	lava-odb.cxx	/^  id (const image_type& i)$/;"	f	class:odb::access::object_traits_impl
+id	lava-odb.hxx	/^    static const id_type_ id;$/;"	m	struct:odb::pointer_query_columns
+id	lava-odb.hxx	/^    static const id_type_ id;$/;"	m	struct:odb::query_columns
+id_column_count	lava-odb.hxx	/^      static const std::size_t id_column_count = 1UL;$/;"	m	struct:odb::access::object_traits_impl::bugs_traits
+id_column_count	lava-odb.hxx	/^      static const std::size_t id_column_count = 1UL;$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits
+id_column_count	lava-odb.hxx	/^    static const std::size_t id_column_count = 1UL;$/;"	m	class:odb::access::object_traits_impl
+id_image_type	lava-odb.hxx	/^    struct id_image_type$/;"	s	class:odb::access::object_traits_impl
+id_null	lava-odb.hxx	/^      bool id_null;$/;"	m	struct:odb::access::object_traits_impl::id_image_type
+id_null	lava-odb.hxx	/^      bool id_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+id_type	lava-odb.hxx	/^    typedef ::uint64_t id_type;$/;"	t	class:odb::access::object_traits
+id_type_	lava-odb.hxx	/^    id_type_;$/;"	t	struct:odb::pointer_query_columns
+id_type_	lava-odb.hxx	/^    id_type_;$/;"	t	struct:odb::query_columns
+id_value	lava-odb.hxx	/^      long long id_value;$/;"	m	struct:odb::access::object_traits_impl::id_image_type
+id_value	lava-odb.hxx	/^      long long id_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+image_type	lava-odb.hxx	/^    struct image_type$/;"	s	class:odb::access::composite_value_traits
+image_type	lava-odb.hxx	/^    struct image_type$/;"	s	class:odb::access::object_traits_impl
+image_type	lava-odb.hxx	/^    struct image_type$/;"	s	class:odb::access::view_traits_impl
+ind2str	find_bug_inj.cpp	/^std::vector<std::string> ind2str;$/;"	v
+index_null	lava-odb.hxx	/^        bool index_null;$/;"	m	struct:odb::access::object_traits_impl::bugs_traits::data_image_type
+index_null	lava-odb.hxx	/^        bool index_null;$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits::data_image_type
+index_type	lava-odb.hxx	/^      typedef container_traits_type::index_type index_type;$/;"	t	struct:odb::access::object_traits_impl::bugs_traits
+index_type	lava-odb.hxx	/^      typedef container_traits_type::index_type index_type;$/;"	t	struct:odb::access::object_traits_impl::viable_bytes_traits
+index_value	lava-odb.hxx	/^        long long index_value;$/;"	m	struct:odb::access::object_traits_impl::bugs_traits::data_image_type
+index_value	lava-odb.hxx	/^        long long index_value;$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits::data_image_type
+infix	find_bug_inj.cpp	/^static void infix(InputIt first, InputIt last, std::ostream &os,$/;"	f	file:
+init	lava-odb.cxx	/^  init (data_image_type& i,$/;"	f	class:odb::access::object_traits_impl::bugs_traits
+init	lava-odb.cxx	/^  init (data_image_type& i,$/;"	f	class:odb::access::object_traits_impl::viable_bytes_traits
+init	lava-odb.cxx	/^  init (id_image_type& i, const id_type& id)$/;"	f	class:odb::access::object_traits_impl
+init	lava-odb.cxx	/^  init (image_type& i,$/;"	f	class:odb::access::composite_value_traits
+init	lava-odb.cxx	/^  init (image_type& i,$/;"	f	class:odb::access::object_traits_impl
+init	lava-odb.cxx	/^  init (index_type& j,$/;"	f	class:odb::access::object_traits_impl::bugs_traits
+init	lava-odb.cxx	/^  init (index_type& j,$/;"	f	class:odb::access::object_traits_impl::viable_bytes_traits
+init	lava-odb.cxx	/^  init (object_type& o,$/;"	f	class:odb::access::object_traits_impl
+init	lava-odb.cxx	/^  init (value_type& o,$/;"	f	class:odb::access::composite_value_traits
+init	lava-odb.cxx	/^  init (view_type& o,$/;"	f	class:odb::access::view_traits_impl
+inputfile	find_bug_inj.cpp	/^std::string inputfile;$/;"	v
+inputfile	lava-odb.hxx	/^    static const inputfile_type_ inputfile;$/;"	m	struct:odb::pointer_query_columns
+inputfile	lava-odb.hxx	/^    static const inputfile_type_ inputfile;$/;"	m	struct:odb::query_columns
+inputfile_null	lava-odb.hxx	/^      bool inputfile_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+inputfile_size	lava-odb.hxx	/^      std::size_t inputfile_size;$/;"	m	struct:odb::access::object_traits_impl::image_type
+inputfile_type_	lava-odb.hxx	/^    inputfile_type_;$/;"	t	struct:odb::pointer_query_columns
+inputfile_type_	lava-odb.hxx	/^    inputfile_type_;$/;"	t	struct:odb::query_columns
+inputfile_value	lava-odb.hxx	/^      details::buffer inputfile_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+insert	lava-odb.cxx	/^  insert (index_type i, const value_type& v, void* d)$/;"	f	class:odb::access::object_traits_impl::bugs_traits
+insert	lava-odb.cxx	/^  insert (index_type i, const value_type& v, void* d)$/;"	f	class:odb::access::object_traits_impl::viable_bytes_traits
+insert_name	lava-odb.cxx	/^  insert_name[] = "insert_build_bugs";$/;"	m	class:odb::access::object_traits_impl::bugs_traits	file:
+insert_name	lava-odb.cxx	/^  insert_name[] = "insert_dua_viable_bytes";$/;"	m	class:odb::access::object_traits_impl::viable_bytes_traits	file:
+insert_name	lava-odb.hxx	/^      static const char insert_name[];$/;"	m	struct:odb::access::object_traits_impl::bugs_traits
+insert_name	lava-odb.hxx	/^      static const char insert_name[];$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits
+insert_statement	lava-odb.cxx	/^  insert_statement[] =$/;"	m	class:odb::access::object_traits_impl::bugs_traits	file:
+insert_statement	lava-odb.cxx	/^  insert_statement[] =$/;"	m	class:odb::access::object_traits_impl::viable_bytes_traits	file:
+insert_statement	lava-odb.hxx	/^      static const char insert_statement[];$/;"	m	struct:odb::access::object_traits_impl::bugs_traits
+insert_statement	lava-odb.hxx	/^      static const char insert_statement[];$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits
+insert_types	lava-odb.cxx	/^  insert_types[] =$/;"	m	class:odb::access::object_traits_impl::bugs_traits	file:
+insert_types	lava-odb.cxx	/^  insert_types[] =$/;"	m	class:odb::access::object_traits_impl::viable_bytes_traits	file:
+insert_types	lava-odb.hxx	/^      static const unsigned int insert_types[];$/;"	m	struct:odb::access::object_traits_impl::bugs_traits
+insert_types	lava-odb.hxx	/^      static const unsigned int insert_types[];$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits
+instr	lava-odb.hxx	/^    static const instr_type_ instr;$/;"	m	struct:odb::pointer_query_columns
+instr	lava-odb.hxx	/^    static const instr_type_ instr;$/;"	m	struct:odb::query_columns
+instr_null	lava-odb.hxx	/^      bool instr_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+instr_type_	lava-odb.hxx	/^    instr_type_;$/;"	t	struct:odb::pointer_query_columns
+instr_type_	lava-odb.hxx	/^    instr_type_;$/;"	t	struct:odb::query_columns
+instr_value	lava-odb.hxx	/^      long long instr_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+inverse_column_count	lava-odb.hxx	/^    static const std::size_t inverse_column_count = 0UL;$/;"	m	class:odb::access::object_traits_impl
+is_dua_dead	find_bug_inj.cpp	/^inline bool is_dua_dead(const Dua *dua) {$/;"	f
+is_header_file	find_bug_inj.cpp	/^bool is_header_file(std::string filename) {$/;"	f
+kind	lava-odb.hxx	/^    static const class_kind kind = class_object;$/;"	m	struct:odb::class_traits
+kind	lava-odb.hxx	/^    static const class_kind kind = class_view;$/;"	m	struct:odb::class_traits
+labels	lava-odb.hxx	/^    static const labels_type_ labels;$/;"	m	struct:odb::query_columns
+labels_null	lava-odb.hxx	/^      bool labels_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+labels_size	lava-odb.hxx	/^      std::size_t labels_size;$/;"	m	struct:odb::access::object_traits_impl::image_type
+labels_type_	lava-odb.hxx	/^    labels_type_;$/;"	t	struct:odb::query_columns
+labels_value	lava-odb.hxx	/^      details::buffer labels_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+labelset	lava.sql	/^CREATE TABLE "labelset" ($/;"	t
+labelset.LabelSetUniq	lava.sql	/^CREATE UNIQUE INDEX "LabelSetUniq"$/;"	i
+labelset.id	lava.sql	/^CREATE TABLE "labelset" ($/;"	F
+labelset.inputfile	lava.sql	/^  "ptr" BIGINT NOT NULL,$/;"	F
+labelset.labels	lava.sql	/^  "inputfile" TEXT NOT NULL,$/;"	F
+labelset.ptr	lava.sql	/^  "id" BIGSERIAL NOT NULL PRIMARY KEY,$/;"	F
+len_bytes	lava-odb.hxx	/^    static const len_bytes_type_ len_bytes;$/;"	m	struct:odb::query_columns
+len_bytes_null	lava-odb.hxx	/^      bool len_bytes_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+len_bytes_type_	lava-odb.hxx	/^    len_bytes_type_;$/;"	t	struct:odb::query_columns
+len_bytes_value	lava-odb.hxx	/^      int len_bytes_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+less_by_instr	find_bug_inj.cpp	/^bool less_by_instr(const Dua *a, const Dua *b) {$/;"	f
+line	lava-odb.hxx	/^        static const line_type_ line;$/;"	m	struct:odb::query_columns::loc_class_::begin_class_1_
+line	lava-odb.hxx	/^        static const line_type_ line;$/;"	m	struct:odb::query_columns::loc_class_::end_class_1_
+line_null	lava-odb.hxx	/^      bool line_null;$/;"	m	struct:odb::access::composite_value_traits::image_type
+line_type_	lava-odb.hxx	/^        line_type_;$/;"	t	struct:odb::query_columns::loc_class_::begin_class_1_
+line_type_	lava-odb.hxx	/^        line_type_;$/;"	t	struct:odb::query_columns::loc_class_::end_class_1_
+line_value	lava-odb.hxx	/^      int line_value;$/;"	m	struct:odb::access::composite_value_traits::image_type
+liveness	find_bug_inj.cpp	/^std::vector<uint64_t> liveness;$/;"	v
+load	lava-odb.cxx	/^  load (container_type& c,$/;"	f	class:odb::access::object_traits_impl::bugs_traits
+load	lava-odb.cxx	/^  load (container_type& c,$/;"	f	class:odb::access::object_traits_impl::viable_bytes_traits
+load_	lava-odb.cxx	/^  load_ (statements_type& sts,$/;"	f	class:odb::access::object_traits_impl
+loc	lava-odb.hxx	/^    static const loc_class_ loc;$/;"	m	struct:odb::query_columns
+loc	lava-odb.hxx	/^  query_columns< ::AttackPoint, id_pgsql, A >::loc;$/;"	m	class:odb::query_columns
+loc	lava-odb.hxx	/^  query_columns< ::SourceFunction, id_pgsql, A >::loc;$/;"	m	class:odb::query_columns
+loc	lava-odb.hxx	/^  query_columns< ::SourceLval, id_pgsql, A >::loc;$/;"	m	class:odb::query_columns
+loc_class_	lava-odb.hxx	/^      loc_class_ ()$/;"	f	struct:odb::query_columns::loc_class_
+loc_class_	lava-odb.hxx	/^    struct loc_class_$/;"	s	struct:odb::query_columns
+loc_value	lava-odb.hxx	/^      composite_value_traits< ::LavaASTLoc, id_pgsql >::image_type loc_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+low	lava-odb.hxx	/^      static const low_type_ low;$/;"	m	struct:odb::pointer_query_columns::selected_class_
+low	lava-odb.hxx	/^      static const low_type_ low;$/;"	m	struct:odb::query_columns::selected_class_
+low_null	lava-odb.hxx	/^      bool low_null;$/;"	m	struct:odb::access::composite_value_traits::image_type
+low_type_	lava-odb.hxx	/^      low_type_;$/;"	t	struct:odb::pointer_query_columns::selected_class_
+low_type_	lava-odb.hxx	/^      low_type_;$/;"	t	struct:odb::query_columns::selected_class_
+low_value	lava-odb.hxx	/^      int low_value;$/;"	m	struct:odb::access::composite_value_traits::image_type
+lval	lava-odb.hxx	/^    static const lval_type_ lval;$/;"	m	struct:odb::pointer_query_columns
+lval	lava-odb.hxx	/^    static const lval_type_ lval;$/;"	m	struct:odb::query_columns
+lval_alias_	lava-odb.hxx	/^    lval_alias_;$/;"	t	struct:odb::query_columns_base
+lval_column_type_	lava-odb.hxx	/^    lval_column_type_;$/;"	t	struct:odb::query_columns
+lval_null	lava-odb.hxx	/^      bool lval_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+lval_pointer_type_	lava-odb.hxx	/^    lval_pointer_type_;$/;"	t	struct:odb::query_columns
+lval_type_	lava-odb.hxx	/^      lval_type_ (const char* t, const char* c, const char* conv)$/;"	f	struct:odb::query_columns::lval_type_
+lval_type_	lava-odb.hxx	/^    lval_type_;$/;"	t	struct:odb::pointer_query_columns
+lval_type_	lava-odb.hxx	/^    struct lval_type_: lval_pointer_type_, lval_column_type_$/;"	s	struct:odb::query_columns
+lval_value	lava-odb.hxx	/^      long long lval_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+main	find_bug_inj.cpp	/^int main (int argc, char **argv) {$/;"	f
+managed_optimistic_column_count	lava-odb.hxx	/^    static const std::size_t managed_optimistic_column_count = 0UL;$/;"	m	class:odb::access::object_traits_impl
+max_card	find_bug_inj.cpp	/^uint32_t max_card = 0;$/;"	v
+max_cardinality	lava-odb.hxx	/^    static const max_cardinality_type_ max_cardinality;$/;"	m	struct:odb::pointer_query_columns
+max_cardinality	lava-odb.hxx	/^    static const max_cardinality_type_ max_cardinality;$/;"	m	struct:odb::query_columns
+max_cardinality_null	lava-odb.hxx	/^      bool max_cardinality_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+max_cardinality_type_	lava-odb.hxx	/^    max_cardinality_type_;$/;"	t	struct:odb::pointer_query_columns
+max_cardinality_type_	lava-odb.hxx	/^    max_cardinality_type_;$/;"	t	struct:odb::query_columns
+max_cardinality_value	lava-odb.hxx	/^      int max_cardinality_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+max_liveness	find_bug_inj.cpp	/^uint64_t max_liveness = 0;$/;"	v
+max_liveness	lava-odb.hxx	/^    static const max_liveness_type_ max_liveness;$/;"	m	struct:odb::pointer_query_columns
+max_liveness	lava-odb.hxx	/^    static const max_liveness_type_ max_liveness;$/;"	m	struct:odb::query_columns
+max_liveness_null	lava-odb.hxx	/^      bool max_liveness_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+max_liveness_type_	lava-odb.hxx	/^    max_liveness_type_;$/;"	t	struct:odb::pointer_query_columns
+max_liveness_type_	lava-odb.hxx	/^    max_liveness_type_;$/;"	t	struct:odb::query_columns
+max_liveness_value	lava-odb.hxx	/^      long long max_liveness_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+max_lval	find_bug_inj.cpp	/^uint32_t max_lval = 0;$/;"	v
+max_tcn	find_bug_inj.cpp	/^uint32_t max_tcn = 0;$/;"	v
+max_tcn	lava-odb.hxx	/^    static const max_tcn_type_ max_tcn;$/;"	m	struct:odb::pointer_query_columns
+max_tcn	lava-odb.hxx	/^    static const max_tcn_type_ max_tcn;$/;"	m	struct:odb::query_columns
+max_tcn_null	lava-odb.hxx	/^      bool max_tcn_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+max_tcn_type_	lava-odb.hxx	/^    max_tcn_type_;$/;"	t	struct:odb::pointer_query_columns
+max_tcn_type_	lava-odb.hxx	/^    max_tcn_type_;$/;"	t	struct:odb::query_columns
+max_tcn_value	lava-odb.hxx	/^      int max_tcn_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+name	find_bug_inj.cpp	/^    static constexpr const char *name = "attackpoint-value";$/;"	m	struct:eq_query	file:
+name	find_bug_inj.cpp	/^    static constexpr const char *name = "sourcelval-value";$/;"	m	struct:eq_query	file:
+name	lava-odb.hxx	/^    static const name_type_ name;$/;"	m	struct:odb::query_columns
+name_null	lava-odb.hxx	/^      bool name_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+name_size	lava-odb.hxx	/^      std::size_t name_size;$/;"	m	struct:odb::access::object_traits_impl::image_type
+name_type_	lava-odb.hxx	/^    name_type_;$/;"	t	struct:odb::query_columns
+name_value	lava-odb.hxx	/^      details::buffer name_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+num_bugs_added_to_db	find_bug_inj.cpp	/^uint64_t num_bugs_added_to_db = 0;$/;"	v
+num_bugs_of_type	find_bug_inj.cpp	/^uint64_t num_bugs_of_type[Bug::TYPE_END] = {0};$/;"	v
+num_fake_bugs	find_bug_inj.cpp	/^uint64_t num_fake_bugs = 0;$/;"	v
+num_potential_bugs	find_bug_inj.cpp	/^uint32_t num_potential_bugs = 0;$/;"	v
+num_potential_nonbugs	find_bug_inj.cpp	/^uint32_t num_potential_nonbugs = 0;$/;"	v
+object_traits	lava-odb.hxx	/^  class access::object_traits< ::AttackPoint >$/;"	c	class:odb::access
+object_traits	lava-odb.hxx	/^  class access::object_traits< ::Bug >$/;"	c	class:odb::access
+object_traits	lava-odb.hxx	/^  class access::object_traits< ::Build >$/;"	c	class:odb::access
+object_traits	lava-odb.hxx	/^  class access::object_traits< ::Call >$/;"	c	class:odb::access
+object_traits	lava-odb.hxx	/^  class access::object_traits< ::Dua >$/;"	c	class:odb::access
+object_traits	lava-odb.hxx	/^  class access::object_traits< ::DuaBytes >$/;"	c	class:odb::access
+object_traits	lava-odb.hxx	/^  class access::object_traits< ::LabelSet >$/;"	c	class:odb::access
+object_traits	lava-odb.hxx	/^  class access::object_traits< ::Run >$/;"	c	class:odb::access
+object_traits	lava-odb.hxx	/^  class access::object_traits< ::SourceFunction >$/;"	c	class:odb::access
+object_traits	lava-odb.hxx	/^  class access::object_traits< ::SourceLval >$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::AttackPoint, id_common >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::AttackPoint, id_pgsql >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::Bug, id_common >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::Bug, id_pgsql >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::Build, id_common >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::Build, id_pgsql >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::Call, id_common >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::Call, id_pgsql >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::Dua, id_common >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::Dua, id_pgsql >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::DuaBytes, id_common >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::DuaBytes, id_pgsql >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::LabelSet, id_common >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::LabelSet, id_pgsql >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::Run, id_common >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::Run, id_pgsql >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::SourceFunction, id_common >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::SourceFunction, id_pgsql >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::SourceLval, id_common >:$/;"	c	class:odb::access
+object_traits_impl	lava-odb.hxx	/^  class access::object_traits_impl< ::SourceLval, id_pgsql >:$/;"	c	class:odb::access
+object_type	lava-odb.hxx	/^    typedef ::AttackPoint object_type;$/;"	t	class:odb::access::object_traits
+object_type	lava-odb.hxx	/^    typedef ::Bug object_type;$/;"	t	class:odb::access::object_traits
+object_type	lava-odb.hxx	/^    typedef ::Build object_type;$/;"	t	class:odb::access::object_traits
+object_type	lava-odb.hxx	/^    typedef ::Call object_type;$/;"	t	class:odb::access::object_traits
+object_type	lava-odb.hxx	/^    typedef ::Dua object_type;$/;"	t	class:odb::access::object_traits
+object_type	lava-odb.hxx	/^    typedef ::DuaBytes object_type;$/;"	t	class:odb::access::object_traits
+object_type	lava-odb.hxx	/^    typedef ::LabelSet object_type;$/;"	t	class:odb::access::object_traits
+object_type	lava-odb.hxx	/^    typedef ::Run object_type;$/;"	t	class:odb::access::object_traits
+object_type	lava-odb.hxx	/^    typedef ::SourceFunction object_type;$/;"	t	class:odb::access::object_traits
+object_type	lava-odb.hxx	/^    typedef ::SourceLval object_type;$/;"	t	class:odb::access::object_traits
+odb	lava-odb.cxx	/^namespace odb$/;"	n	file:
+odb	lava-odb.hxx	/^namespace odb$/;"	n
+operator <	find_bug_inj.cpp	/^    bool operator<(const BugParam &other) const {$/;"	f	struct:BugParam
+output	lava-odb.hxx	/^    static const output_type_ output;$/;"	m	struct:odb::pointer_query_columns
+output	lava-odb.hxx	/^    static const output_type_ output;$/;"	m	struct:odb::query_columns
+output_null	lava-odb.hxx	/^      bool output_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+output_size	lava-odb.hxx	/^      std::size_t output_size;$/;"	m	struct:odb::access::object_traits_impl::image_type
+output_type_	lava-odb.hxx	/^    output_type_;$/;"	t	struct:odb::pointer_query_columns
+output_type_	lava-odb.hxx	/^    output_type_;$/;"	t	struct:odb::query_columns
+output_value	lava-odb.hxx	/^      details::buffer output_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+persist	lava-odb.cxx	/^  persist (const container_type& c,$/;"	f	class:odb::access::object_traits_impl::bugs_traits
+persist	lava-odb.cxx	/^  persist (const container_type& c,$/;"	f	class:odb::access::object_traits_impl::viable_bytes_traits
+persist	lava-odb.cxx	/^  persist (database& db, object_type& obj)$/;"	f	class:odb::access::object_traits_impl
+persist_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::AttackPoint, id_pgsql >::persist_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Bug, id_pgsql >::persist_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Build, id_pgsql >::persist_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Call, id_pgsql >::persist_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Dua, id_pgsql >::persist_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::DuaBytes, id_pgsql >::persist_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::LabelSet, id_pgsql >::persist_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Run, id_pgsql >::persist_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::SourceFunction, id_pgsql >::persist_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::SourceLval, id_pgsql >::persist_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement	lava-odb.hxx	/^    static const char persist_statement[];$/;"	m	class:odb::access::object_traits_impl
+persist_statement_name	lava-odb.cxx	/^  persist_statement_name[] = "persist_attackpoint";$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement_name	lava-odb.cxx	/^  persist_statement_name[] = "persist_bug";$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement_name	lava-odb.cxx	/^  persist_statement_name[] = "persist_build";$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement_name	lava-odb.cxx	/^  persist_statement_name[] = "persist_call";$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement_name	lava-odb.cxx	/^  persist_statement_name[] = "persist_dua";$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement_name	lava-odb.cxx	/^  persist_statement_name[] = "persist_duabytes";$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement_name	lava-odb.cxx	/^  persist_statement_name[] = "persist_labelset";$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement_name	lava-odb.cxx	/^  persist_statement_name[] = "persist_run";$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement_name	lava-odb.cxx	/^  persist_statement_name[] = "persist_sourcefunction";$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement_name	lava-odb.cxx	/^  persist_statement_name[] = "persist_sourcelval";$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement_name	lava-odb.hxx	/^    static const char persist_statement_name[];$/;"	m	class:odb::access::object_traits_impl
+persist_statement_types	lava-odb.cxx	/^  persist_statement_types[] =$/;"	m	class:odb::access::object_traits_impl	file:
+persist_statement_types	lava-odb.hxx	/^    static const unsigned int persist_statement_types[];$/;"	m	class:odb::access::object_traits_impl
+pointer_cache_traits	lava-odb.hxx	/^    pointer_cache_traits;$/;"	t	class:odb::access::object_traits
+pointer_query_columns	lava-odb.hxx	/^  struct pointer_query_columns< ::AttackPoint, id_pgsql, A >:$/;"	s	namespace:odb
+pointer_query_columns	lava-odb.hxx	/^  struct pointer_query_columns< ::Bug, id_pgsql, A >$/;"	s	namespace:odb
+pointer_query_columns	lava-odb.hxx	/^  struct pointer_query_columns< ::Build, id_pgsql, A >:$/;"	s	namespace:odb
+pointer_query_columns	lava-odb.hxx	/^  struct pointer_query_columns< ::Call, id_pgsql, A >$/;"	s	namespace:odb
+pointer_query_columns	lava-odb.hxx	/^  struct pointer_query_columns< ::Dua, id_pgsql, A >$/;"	s	namespace:odb
+pointer_query_columns	lava-odb.hxx	/^  struct pointer_query_columns< ::DuaBytes, id_pgsql, A >$/;"	s	namespace:odb
+pointer_query_columns	lava-odb.hxx	/^  struct pointer_query_columns< ::LabelSet, id_pgsql, A >:$/;"	s	namespace:odb
+pointer_query_columns	lava-odb.hxx	/^  struct pointer_query_columns< ::Run, id_pgsql, A >$/;"	s	namespace:odb
+pointer_query_columns	lava-odb.hxx	/^  struct pointer_query_columns< ::SourceFunction, id_pgsql, A >:$/;"	s	namespace:odb
+pointer_query_columns	lava-odb.hxx	/^  struct pointer_query_columns< ::SourceLval, id_pgsql, A >:$/;"	s	namespace:odb
+pointer_traits	lava-odb.hxx	/^    typedef odb::pointer_traits<pointer_type> pointer_traits;$/;"	t	class:odb::access::object_traits
+pointer_type	lava-odb.hxx	/^    typedef ::AttackPoint* pointer_type;$/;"	t	class:odb::access::object_traits
+pointer_type	lava-odb.hxx	/^    typedef ::Bug* pointer_type;$/;"	t	class:odb::access::object_traits
+pointer_type	lava-odb.hxx	/^    typedef ::BugLval* pointer_type;$/;"	t	class:odb::access::view_traits
+pointer_type	lava-odb.hxx	/^    typedef ::Build* pointer_type;$/;"	t	class:odb::access::object_traits
+pointer_type	lava-odb.hxx	/^    typedef ::Call* pointer_type;$/;"	t	class:odb::access::object_traits
+pointer_type	lava-odb.hxx	/^    typedef ::Dua* pointer_type;$/;"	t	class:odb::access::object_traits
+pointer_type	lava-odb.hxx	/^    typedef ::DuaBytes* pointer_type;$/;"	t	class:odb::access::object_traits
+pointer_type	lava-odb.hxx	/^    typedef ::LabelSet* pointer_type;$/;"	t	class:odb::access::object_traits
+pointer_type	lava-odb.hxx	/^    typedef ::Run* pointer_type;$/;"	t	class:odb::access::object_traits
+pointer_type	lava-odb.hxx	/^    typedef ::SourceFunction* pointer_type;$/;"	t	class:odb::access::object_traits
+pointer_type	lava-odb.hxx	/^    typedef ::SourceLval* pointer_type;$/;"	t	class:odb::access::object_traits
+polymorphic	lava-odb.hxx	/^    static const bool polymorphic = false;$/;"	m	class:odb::access::object_traits
+prepare_query	lava-odb.cxx	/^  prepare_query (connection& c, const char* n, const query_base_type& q)$/;"	f	class:odb::access::object_traits_impl
+prepare_query	lava-odb.cxx	/^  prepare_query (connection& c, const char* n, const query_base_type& q)$/;"	f	class:odb::access::view_traits_impl
+ptr	lava-odb.hxx	/^    static const ptr_type_ ptr;$/;"	m	struct:odb::query_columns
+ptr_null	lava-odb.hxx	/^      bool ptr_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+ptr_to_labelset	find_bug_inj.cpp	/^std::map<Ptr, const LabelSet*> ptr_to_labelset;$/;"	v
+ptr_type_	lava-odb.hxx	/^    ptr_type_;$/;"	t	struct:odb::query_columns
+ptr_value	lava-odb.hxx	/^      long long ptr_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+query	find_bug_inj.cpp	/^    static const auto query(const Params *param) {$/;"	f	struct:eq_query
+query	lava-odb.cxx	/^  query (database&, const query_base_type& q)$/;"	f	class:odb::access::object_traits_impl
+query	lava-odb.cxx	/^  query (database&, const query_base_type& q)$/;"	f	class:odb::access::view_traits_impl
+query_base_type	lava-odb.hxx	/^    typedef pgsql::query_base query_base_type;$/;"	t	class:odb::access::object_traits_impl
+query_base_type	lava-odb.hxx	/^    typedef pgsql::query_base query_base_type;$/;"	t	class:odb::access::view_traits_impl
+query_columns	lava-odb.hxx	/^  struct access::view_traits_impl< ::BugLval, id_pgsql >::query_columns:$/;"	s	class:odb::access::view_traits_impl
+query_columns	lava-odb.hxx	/^  struct query_columns< ::AttackPoint, id_pgsql, A >$/;"	s	namespace:odb
+query_columns	lava-odb.hxx	/^  struct query_columns< ::Bug, id_pgsql, A >:$/;"	s	namespace:odb
+query_columns	lava-odb.hxx	/^  struct query_columns< ::Build, id_pgsql, A >$/;"	s	namespace:odb
+query_columns	lava-odb.hxx	/^  struct query_columns< ::Call, id_pgsql, A >:$/;"	s	namespace:odb
+query_columns	lava-odb.hxx	/^  struct query_columns< ::Dua, id_pgsql, A >:$/;"	s	namespace:odb
+query_columns	lava-odb.hxx	/^  struct query_columns< ::DuaBytes, id_pgsql, A >:$/;"	s	namespace:odb
+query_columns	lava-odb.hxx	/^  struct query_columns< ::LabelSet, id_pgsql, A >$/;"	s	namespace:odb
+query_columns	lava-odb.hxx	/^  struct query_columns< ::Run, id_pgsql, A >:$/;"	s	namespace:odb
+query_columns	lava-odb.hxx	/^  struct query_columns< ::SourceFunction, id_pgsql, A >$/;"	s	namespace:odb
+query_columns	lava-odb.hxx	/^  struct query_columns< ::SourceLval, id_pgsql, A >$/;"	s	namespace:odb
+query_columns_base	lava-odb.hxx	/^  struct query_columns_base< ::Bug, id_pgsql >$/;"	s	namespace:odb
+query_columns_base	lava-odb.hxx	/^  struct query_columns_base< ::Call, id_pgsql >$/;"	s	namespace:odb
+query_columns_base	lava-odb.hxx	/^  struct query_columns_base< ::Dua, id_pgsql >$/;"	s	namespace:odb
+query_columns_base	lava-odb.hxx	/^  struct query_columns_base< ::DuaBytes, id_pgsql >$/;"	s	namespace:odb
+query_columns_base	lava-odb.hxx	/^  struct query_columns_base< ::Run, id_pgsql >$/;"	s	namespace:odb
+query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::AttackPoint, id_pgsql >::query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Bug, id_pgsql >::query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Build, id_pgsql >::query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Call, id_pgsql >::query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Dua, id_pgsql >::query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::DuaBytes, id_pgsql >::query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::LabelSet, id_pgsql >::query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Run, id_pgsql >::query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::SourceFunction, id_pgsql >::query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::SourceLval, id_pgsql >::query_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement	lava-odb.cxx	/^  query_statement (const query_base_type& q)$/;"	f	class:odb::access::view_traits_impl
+query_statement	lava-odb.hxx	/^    static const char query_statement[];$/;"	m	class:odb::access::object_traits_impl
+query_statement_name	lava-odb.cxx	/^  query_statement_name[] = "query_attackpoint";$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement_name	lava-odb.cxx	/^  query_statement_name[] = "query_bug";$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement_name	lava-odb.cxx	/^  query_statement_name[] = "query_buglval";$/;"	m	class:odb::access::view_traits_impl	file:
+query_statement_name	lava-odb.cxx	/^  query_statement_name[] = "query_build";$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement_name	lava-odb.cxx	/^  query_statement_name[] = "query_call";$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement_name	lava-odb.cxx	/^  query_statement_name[] = "query_dua";$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement_name	lava-odb.cxx	/^  query_statement_name[] = "query_duabytes";$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement_name	lava-odb.cxx	/^  query_statement_name[] = "query_labelset";$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement_name	lava-odb.cxx	/^  query_statement_name[] = "query_run";$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement_name	lava-odb.cxx	/^  query_statement_name[] = "query_sourcefunction";$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement_name	lava-odb.cxx	/^  query_statement_name[] = "query_sourcelval";$/;"	m	class:odb::access::object_traits_impl	file:
+query_statement_name	lava-odb.hxx	/^    static const char query_statement_name[];$/;"	m	class:odb::access::object_traits_impl
+query_statement_name	lava-odb.hxx	/^    static const char query_statement_name[];$/;"	m	class:odb::access::view_traits_impl
+readonly_column_count	lava-odb.hxx	/^    static const std::size_t readonly_column_count = 0UL;$/;"	m	class:odb::access::object_traits_impl
+recent_dead_duas	find_bug_inj.cpp	/^std::map<unsigned long, const Dua*> recent_dead_duas;$/;"	v
+recent_duas_by_instr	find_bug_inj.cpp	/^std::vector<const Dua *> recent_duas_by_instr;$/;"	v
+record_call	find_bug_inj.cpp	/^void record_call(Panda__LogEntry *ple) { }$/;"	f
+record_injectable_bugs_at	find_bug_inj.cpp	/^void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,$/;"	f
+record_ret	find_bug_inj.cpp	/^void record_ret(Panda__LogEntry *ple) { }$/;"	f
+reference_cache_traits	lava-odb.hxx	/^    reference_cache_traits;$/;"	t	class:odb::access::object_traits
+reload	lava-odb.cxx	/^  reload (database& db, object_type& obj)$/;"	f	class:odb::access::object_traits_impl
+ret_instr	lava-odb.hxx	/^    static const ret_instr_type_ ret_instr;$/;"	m	struct:odb::pointer_query_columns
+ret_instr	lava-odb.hxx	/^    static const ret_instr_type_ ret_instr;$/;"	m	struct:odb::query_columns
+ret_instr_null	lava-odb.hxx	/^      bool ret_instr_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+ret_instr_type_	lava-odb.hxx	/^    ret_instr_type_;$/;"	t	struct:odb::pointer_query_columns
+ret_instr_type_	lava-odb.hxx	/^    ret_instr_type_;$/;"	t	struct:odb::query_columns
+ret_instr_value	lava-odb.hxx	/^      long long ret_instr_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+run	lava.sql	/^CREATE TABLE "run" ($/;"	t
+run.build	lava.sql	/^  "id" BIGSERIAL NOT NULL PRIMARY KEY,$/;"	F
+run.exitcode	lava.sql	/^  "fuzzed" BIGINT NULL,$/;"	F
+run.fuzzed	lava.sql	/^  "build" BIGINT NOT NULL,$/;"	F
+run.id	lava.sql	/^CREATE TABLE "run" ($/;"	F
+run.output	lava.sql	/^  "exitcode" INTEGER NOT NULL,$/;"	F
+run.success	lava.sql	/^  "output" TEXT NOT NULL,$/;"	F
+select	lava-odb.cxx	/^  select (index_type& i, value_type& v, void* d)$/;"	f	class:odb::access::object_traits_impl::bugs_traits
+select	lava-odb.cxx	/^  select (index_type& i, value_type& v, void* d)$/;"	f	class:odb::access::object_traits_impl::viable_bytes_traits
+select_name	lava-odb.cxx	/^  select_name[] = "select_build_bugs";$/;"	m	class:odb::access::object_traits_impl::bugs_traits	file:
+select_name	lava-odb.cxx	/^  select_name[] = "select_dua_viable_bytes";$/;"	m	class:odb::access::object_traits_impl::viable_bytes_traits	file:
+select_name	lava-odb.hxx	/^      static const char select_name[];$/;"	m	struct:odb::access::object_traits_impl::bugs_traits
+select_name	lava-odb.hxx	/^      static const char select_name[];$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits
+select_statement	lava-odb.cxx	/^  select_statement[] =$/;"	m	class:odb::access::object_traits_impl::bugs_traits	file:
+select_statement	lava-odb.cxx	/^  select_statement[] =$/;"	m	class:odb::access::object_traits_impl::viable_bytes_traits	file:
+select_statement	lava-odb.hxx	/^      static const char select_statement[];$/;"	m	struct:odb::access::object_traits_impl::bugs_traits
+select_statement	lava-odb.hxx	/^      static const char select_statement[];$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits
+selected	lava-odb.hxx	/^    static const selected_class_ selected;$/;"	m	struct:odb::pointer_query_columns
+selected	lava-odb.hxx	/^    static const selected_class_ selected;$/;"	m	struct:odb::query_columns
+selected	lava-odb.hxx	/^  pointer_query_columns< ::DuaBytes, id_pgsql, A >::selected;$/;"	m	class:odb::pointer_query_columns
+selected	lava-odb.hxx	/^  query_columns< ::DuaBytes, id_pgsql, A >::selected;$/;"	m	class:odb::query_columns
+selected_class_	lava-odb.hxx	/^      selected_class_ ()$/;"	f	struct:odb::pointer_query_columns::selected_class_
+selected_class_	lava-odb.hxx	/^      selected_class_ ()$/;"	f	struct:odb::query_columns::selected_class_
+selected_class_	lava-odb.hxx	/^    struct selected_class_$/;"	s	struct:odb::pointer_query_columns
+selected_class_	lava-odb.hxx	/^    struct selected_class_$/;"	s	struct:odb::query_columns
+selected_value	lava-odb.hxx	/^      composite_value_traits< ::Range, id_pgsql >::image_type selected_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+separate_load_column_count	lava-odb.hxx	/^    static const std::size_t separate_load_column_count = 0UL;$/;"	m	class:odb::access::object_traits_impl
+separate_update_column_count	lava-odb.hxx	/^    static const std::size_t separate_update_column_count = 0UL;$/;"	m	class:odb::access::object_traits_impl
+sourcefunction	lava.sql	/^CREATE TABLE "sourcefunction" ($/;"	t
+sourcefunction.SourceFunctionUniq	lava.sql	/^CREATE UNIQUE INDEX "SourceFunctionUniq"$/;"	i
+sourcefunction.id	lava.sql	/^CREATE TABLE "sourcefunction" ($/;"	F
+sourcefunction.loc_begin_column	lava.sql	/^  "loc_begin_line" INTEGER NOT NULL,$/;"	F
+sourcefunction.loc_begin_line	lava.sql	/^  "loc_filename" TEXT NOT NULL,$/;"	F
+sourcefunction.loc_end_column	lava.sql	/^  "loc_end_line" INTEGER NOT NULL,$/;"	F
+sourcefunction.loc_end_line	lava.sql	/^  "loc_begin_column" INTEGER NOT NULL,$/;"	F
+sourcefunction.loc_filename	lava.sql	/^  "id" BIGSERIAL NOT NULL PRIMARY KEY,$/;"	F
+sourcefunction.name	lava.sql	/^  "loc_end_column" INTEGER NOT NULL,$/;"	F
+sourcelval	lava.sql	/^CREATE TABLE "sourcelval" ($/;"	t
+sourcelval.SourceLvalUniq	lava.sql	/^CREATE UNIQUE INDEX "SourceLvalUniq"$/;"	i
+sourcelval.ast_name	lava.sql	/^  "loc_end_column" INTEGER NOT NULL,$/;"	F
+sourcelval.id	lava.sql	/^CREATE TABLE "sourcelval" ($/;"	F
+sourcelval.len_bytes	lava.sql	/^  "ast_name" TEXT NOT NULL,$/;"	F
+sourcelval.loc_begin_column	lava.sql	/^  "loc_begin_line" INTEGER NOT NULL,$/;"	F
+sourcelval.loc_begin_line	lava.sql	/^  "loc_filename" TEXT NOT NULL,$/;"	F
+sourcelval.loc_end_column	lava.sql	/^  "loc_end_line" INTEGER NOT NULL,$/;"	F
+sourcelval.loc_end_line	lava.sql	/^  "loc_begin_column" INTEGER NOT NULL,$/;"	F
+sourcelval.loc_filename	lava.sql	/^  "id" BIGSERIAL NOT NULL PRIMARY KEY,$/;"	F
+spit_ap	spit.hxx	/^static void spit_ap(Panda__AttackPoint *ap) {$/;"	f
+spit_si	spit.hxx	/^static void spit_si(Panda__SrcInfo *si) {$/;"	f
+spit_tq	spit.hxx	/^static void spit_tq(Panda__TaintQuery *tq) {$/;"	f
+spit_tqh	spit.hxx	/^static void spit_tqh(Panda__TaintQueryHypercall *tqh) {$/;"	f
+spit_tquls	spit.hxx	/^static void spit_tquls(const Panda__TaintQueryUniqueLabelSet *tquls) {$/;"	f
+statements_type	lava-odb.hxx	/^      typedef pgsql::container_statements< bugs_traits > statements_type;$/;"	t	struct:odb::access::object_traits_impl::bugs_traits
+statements_type	lava-odb.hxx	/^      typedef pgsql::container_statements< viable_bytes_traits > statements_type;$/;"	t	struct:odb::access::object_traits_impl::viable_bytes_traits
+statements_type	lava-odb.hxx	/^    typedef pgsql::object_statements<object_type> statements_type;$/;"	t	class:odb::access::object_traits_impl
+statements_type	lava-odb.hxx	/^    typedef pgsql::view_statements<view_type> statements_type;$/;"	t	class:odb::access::view_traits_impl
+success	lava-odb.hxx	/^    static const success_type_ success;$/;"	m	struct:odb::pointer_query_columns
+success	lava-odb.hxx	/^    static const success_type_ success;$/;"	m	struct:odb::query_columns
+success_null	lava-odb.hxx	/^      bool success_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+success_type_	lava-odb.hxx	/^    success_type_;$/;"	t	struct:odb::pointer_query_columns
+success_type_	lava-odb.hxx	/^    success_type_;$/;"	t	struct:odb::query_columns
+success_value	lava-odb.hxx	/^      bool success_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+table_name	lava-odb.cxx	/^  const char access::object_traits_impl< ::AttackPoint, id_pgsql >::table_name[] =$/;"	m	class:odb::access::object_traits_impl	file:
+table_name	lava-odb.cxx	/^  const char access::object_traits_impl< ::Bug, id_pgsql >::table_name[] =$/;"	m	class:odb::access::object_traits_impl	file:
+table_name	lava-odb.cxx	/^  const char access::object_traits_impl< ::Build, id_pgsql >::table_name[] =$/;"	m	class:odb::access::object_traits_impl	file:
+table_name	lava-odb.cxx	/^  const char access::object_traits_impl< ::Call, id_pgsql >::table_name[] =$/;"	m	class:odb::access::object_traits_impl	file:
+table_name	lava-odb.cxx	/^  const char access::object_traits_impl< ::Dua, id_pgsql >::table_name[] =$/;"	m	class:odb::access::object_traits_impl	file:
+table_name	lava-odb.cxx	/^  const char access::object_traits_impl< ::DuaBytes, id_pgsql >::table_name[] =$/;"	m	class:odb::access::object_traits_impl	file:
+table_name	lava-odb.cxx	/^  const char access::object_traits_impl< ::LabelSet, id_pgsql >::table_name[] =$/;"	m	class:odb::access::object_traits_impl	file:
+table_name	lava-odb.cxx	/^  const char access::object_traits_impl< ::Run, id_pgsql >::table_name[] =$/;"	m	class:odb::access::object_traits_impl	file:
+table_name	lava-odb.cxx	/^  const char access::object_traits_impl< ::SourceFunction, id_pgsql >::table_name[] =$/;"	m	class:odb::access::object_traits_impl	file:
+table_name	lava-odb.cxx	/^  const char access::object_traits_impl< ::SourceLval, id_pgsql >::table_name[] =$/;"	m	class:odb::access::object_traits_impl	file:
+table_name	lava-odb.cxx	/^  table_name[] = "\\"atp\\"";$/;"	m	class:odb::alias_traits	file:
+table_name	lava-odb.cxx	/^  table_name[] = "\\"build\\"";$/;"	m	class:odb::alias_traits	file:
+table_name	lava-odb.cxx	/^  table_name[] = "\\"called_function\\"";$/;"	m	class:odb::alias_traits	file:
+table_name	lava-odb.cxx	/^  table_name[] = "\\"dua\\"";$/;"	m	class:odb::alias_traits	file:
+table_name	lava-odb.cxx	/^  table_name[] = "\\"fuzzed\\"";$/;"	m	class:odb::alias_traits	file:
+table_name	lava-odb.cxx	/^  table_name[] = "\\"lval\\"";$/;"	m	class:odb::alias_traits	file:
+table_name	lava-odb.cxx	/^  table_name[] = "\\"trigger\\"";$/;"	m	class:odb::alias_traits	file:
+table_name	lava-odb.cxx	/^  table_name[] = "\\"trigger_lval\\"";$/;"	m	class:odb::alias_traits	file:
+table_name	lava-odb.hxx	/^    static const char table_name[];$/;"	m	class:odb::access::object_traits_impl
+table_name	lava-odb.hxx	/^    static const char table_name[];$/;"	m	struct:odb::alias_traits
+taint_query_pri	find_bug_inj.cpp	/^void taint_query_pri(Panda__LogEntry *ple) {$/;"	f
+trigger	lava-odb.hxx	/^    static const trigger_type_ trigger;$/;"	m	struct:odb::pointer_query_columns
+trigger	lava-odb.hxx	/^    static const trigger_type_ trigger;$/;"	m	struct:odb::query_columns
+trigger_alias_	lava-odb.hxx	/^    trigger_alias_;$/;"	t	struct:odb::query_columns_base
+trigger_column_type_	lava-odb.hxx	/^    trigger_column_type_;$/;"	t	struct:odb::query_columns
+trigger_lval	lava-odb.hxx	/^    static const trigger_lval_type_ trigger_lval;$/;"	m	struct:odb::pointer_query_columns
+trigger_lval	lava-odb.hxx	/^    static const trigger_lval_type_ trigger_lval;$/;"	m	struct:odb::query_columns
+trigger_lval_alias_	lava-odb.hxx	/^    trigger_lval_alias_;$/;"	t	struct:odb::query_columns_base
+trigger_lval_column_type_	lava-odb.hxx	/^    trigger_lval_column_type_;$/;"	t	struct:odb::query_columns
+trigger_lval_null	lava-odb.hxx	/^      bool trigger_lval_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+trigger_lval_null	lava-odb.hxx	/^      bool trigger_lval_null;$/;"	m	struct:odb::access::view_traits_impl::image_type
+trigger_lval_pointer_type_	lava-odb.hxx	/^    trigger_lval_pointer_type_;$/;"	t	struct:odb::query_columns
+trigger_lval_type_	lava-odb.hxx	/^      trigger_lval_type_ (const char* t, const char* c, const char* conv)$/;"	f	struct:odb::query_columns::trigger_lval_type_
+trigger_lval_type_	lava-odb.hxx	/^    struct trigger_lval_type_: trigger_lval_pointer_type_, trigger_lval_column_type_$/;"	s	struct:odb::query_columns
+trigger_lval_type_	lava-odb.hxx	/^    trigger_lval_type_;$/;"	t	struct:odb::pointer_query_columns
+trigger_lval_value	lava-odb.hxx	/^      long long trigger_lval_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+trigger_lval_value	lava-odb.hxx	/^      long long trigger_lval_value;$/;"	m	struct:odb::access::view_traits_impl::image_type
+trigger_null	lava-odb.hxx	/^      bool trigger_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+trigger_pointer_type_	lava-odb.hxx	/^    trigger_pointer_type_;$/;"	t	struct:odb::query_columns
+trigger_type_	lava-odb.hxx	/^      trigger_type_ (const char* t, const char* c, const char* conv)$/;"	f	struct:odb::query_columns::trigger_type_
+trigger_type_	lava-odb.hxx	/^    struct trigger_type_: trigger_pointer_type_, trigger_column_type_$/;"	s	struct:odb::query_columns
+trigger_type_	lava-odb.hxx	/^    trigger_type_;$/;"	t	struct:odb::pointer_query_columns
+trigger_value	lava-odb.hxx	/^      long long trigger_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+type	find_bug_inj.cpp	/^    Bug::Type type;$/;"	m	struct:BugParam	file:
+type	lava-odb.hxx	/^    static const type_type_ type;$/;"	m	struct:odb::pointer_query_columns
+type	lava-odb.hxx	/^    static const type_type_ type;$/;"	m	struct:odb::query_columns
+type_null	lava-odb.hxx	/^      bool type_null;$/;"	m	struct:odb::access::object_traits_impl::image_type
+type_type_	lava-odb.hxx	/^    type_type_;$/;"	t	struct:odb::pointer_query_columns
+type_type_	lava-odb.hxx	/^    type_type_;$/;"	t	struct:odb::query_columns
+type_value	lava-odb.hxx	/^      int type_value;$/;"	m	struct:odb::access::object_traits_impl::image_type
+update	lava-odb.cxx	/^  update (const container_type& c,$/;"	f	class:odb::access::object_traits_impl::bugs_traits
+update	lava-odb.cxx	/^  update (const container_type& c,$/;"	f	class:odb::access::object_traits_impl::viable_bytes_traits
+update	lava-odb.cxx	/^  update (database& db, const object_type& obj)$/;"	f	class:odb::access::object_traits_impl
+update_liveness	find_bug_inj.cpp	/^void update_liveness(Panda__LogEntry *ple) {$/;"	f
+update_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::AttackPoint, id_pgsql >::update_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Bug, id_pgsql >::update_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Build, id_pgsql >::update_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Call, id_pgsql >::update_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Dua, id_pgsql >::update_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::DuaBytes, id_pgsql >::update_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::LabelSet, id_pgsql >::update_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::Run, id_pgsql >::update_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::SourceFunction, id_pgsql >::update_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement	lava-odb.cxx	/^  const char access::object_traits_impl< ::SourceLval, id_pgsql >::update_statement[] =$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement	lava-odb.hxx	/^    static const char update_statement[];$/;"	m	class:odb::access::object_traits_impl
+update_statement_name	lava-odb.cxx	/^  update_statement_name[] = "update_attackpoint";$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement_name	lava-odb.cxx	/^  update_statement_name[] = "update_bug";$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement_name	lava-odb.cxx	/^  update_statement_name[] = "update_build";$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement_name	lava-odb.cxx	/^  update_statement_name[] = "update_call";$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement_name	lava-odb.cxx	/^  update_statement_name[] = "update_dua";$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement_name	lava-odb.cxx	/^  update_statement_name[] = "update_duabytes";$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement_name	lava-odb.cxx	/^  update_statement_name[] = "update_labelset";$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement_name	lava-odb.cxx	/^  update_statement_name[] = "update_run";$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement_name	lava-odb.cxx	/^  update_statement_name[] = "update_sourcefunction";$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement_name	lava-odb.cxx	/^  update_statement_name[] = "update_sourcelval";$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement_name	lava-odb.hxx	/^    static const char update_statement_name[];$/;"	m	class:odb::access::object_traits_impl
+update_statement_types	lava-odb.cxx	/^  update_statement_types[] =$/;"	m	class:odb::access::object_traits_impl	file:
+update_statement_types	lava-odb.hxx	/^    static const unsigned int update_statement_types[];$/;"	m	class:odb::access::object_traits_impl
+update_unique_taint_sets	find_bug_inj.cpp	/^void update_unique_taint_sets(const Panda__TaintQueryUniqueLabelSet *tquls) {$/;"	f
+value_null	lava-odb.hxx	/^        bool value_null;$/;"	m	struct:odb::access::object_traits_impl::bugs_traits::data_image_type
+value_null	lava-odb.hxx	/^        bool value_null;$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits::data_image_type
+value_type	lava-odb.hxx	/^      typedef container_traits_type::value_type value_type;$/;"	t	struct:odb::access::object_traits_impl::bugs_traits
+value_type	lava-odb.hxx	/^      typedef container_traits_type::value_type value_type;$/;"	t	struct:odb::access::object_traits_impl::viable_bytes_traits
+value_type	lava-odb.hxx	/^    typedef ::LavaASTLoc value_type;$/;"	t	class:odb::access::composite_value_traits
+value_type	lava-odb.hxx	/^    typedef ::Loc value_type;$/;"	t	class:odb::access::composite_value_traits
+value_type	lava-odb.hxx	/^    typedef ::Range value_type;$/;"	t	class:odb::access::composite_value_traits
+value_value	lava-odb.hxx	/^        long long value_value;$/;"	m	struct:odb::access::object_traits_impl::bugs_traits::data_image_type
+value_value	lava-odb.hxx	/^        long long value_value;$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits::data_image_type
+version	lava-odb.hxx	/^        std::size_t version;$/;"	m	struct:odb::access::object_traits_impl::bugs_traits::data_image_type
+version	lava-odb.hxx	/^        std::size_t version;$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits::data_image_type
+version	lava-odb.hxx	/^      std::size_t version;$/;"	m	struct:odb::access::object_traits_impl::id_image_type
+version	lava-odb.hxx	/^      std::size_t version;$/;"	m	struct:odb::access::object_traits_impl::image_type
+version	lava-odb.hxx	/^      std::size_t version;$/;"	m	struct:odb::access::view_traits_impl::image_type
+versioned	lava-odb.hxx	/^      static const bool versioned = false;$/;"	m	struct:odb::access::object_traits_impl::bugs_traits
+versioned	lava-odb.hxx	/^      static const bool versioned = false;$/;"	m	struct:odb::access::object_traits_impl::viable_bytes_traits
+versioned	lava-odb.hxx	/^    static const bool versioned = false;$/;"	m	class:odb::access::object_traits_impl
+versioned	lava-odb.hxx	/^    static const bool versioned = false;$/;"	m	class:odb::access::view_traits_impl
+viable_bytes	lava-odb.cxx	/^    pgsql::container_statements_impl< viable_bytes_traits > viable_bytes;$/;"	m	struct:odb::access::object_traits_impl::extra_statement_cache_type	file:
+viable_bytes_traits	lava-odb.hxx	/^    struct viable_bytes_traits$/;"	s	class:odb::access::object_traits_impl
+view_traits	lava-odb.hxx	/^  class access::view_traits< ::BugLval >$/;"	c	class:odb::access
+view_traits_impl	lava-odb.hxx	/^  class access::view_traits_impl< ::BugLval, id_common >:$/;"	c	class:odb::access
+view_traits_impl	lava-odb.hxx	/^  class access::view_traits_impl< ::BugLval, id_pgsql >:$/;"	c	class:odb::access
+view_type	lava-odb.hxx	/^    typedef ::BugLval view_type;$/;"	t	class:odb::access::view_traits
