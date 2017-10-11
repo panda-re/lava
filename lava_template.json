@@ -1,32 +1,27 @@
 {
-    "pandahost": "$PANDA_HOST",
-
-    "panda_os_string": "linux-32-lava32",
     "qemu": "$PANDA_BUILD_DIR/i386-softmmu/qemu-system-i386",
-	"qcow": "$QCOW",
-	"snapshot": "root",
+    "qcow": "$QCOW",
+    "snapshot": "root",
 
-	"directory": "$DIRECTORY",
+    "directory": "$DIRECTORY",
     "name": "$NAME",
     "tarfile": "$TAR_FILE",
-	
-	"library_path": "$LIB_PATH",
+
     "configure": "./configure",
     "make": "$MAKE",
     "makeclean": true,
-	"install": "make install",
-	"command": "$CMD",
+    "install": "make install",
+    "command": "$CMD",
+    "expect_prompt": "root@debian-i386:~#",
 
-	"db": "$DB_NAME",
+    "db": "$DB_NAME",
 
-	"max_liveness": 10,
-	"max_cardinality": 10000,
-	"max_tcn": 10,
-	"max_lval_size": 100,
+    "max_liveness": 10,
+    "max_cardinality": 10000,
+    "max_tcn": 10,
+    "max_lval_size": 100,
 
     "main_file": [ "$MAIN_FILE" ],
 
     "inputs": [ "$INPUT" ],
-
-	"comment": "$COMMENT"
 }

@@ -78,6 +78,7 @@ progress "Entering $source."
 cd "$source"
 
 progress "Creating git repo."
+rm -rf .git || true #Remove any existing git repo
 git init
 git config user.name LAVA
 git config user.email "nobody@nowhere"

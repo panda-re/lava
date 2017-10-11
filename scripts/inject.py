@@ -2,26 +2,16 @@
 
 import argparse
 import atexit
-import datetime
 import json
 import lockfile
 import os
-import pipes
-import re
-import shlex
-import shutil
 import signal
-import string
-import subprocess32
 import sys
 import time
 
-from math import sqrt
-from os.path import basename, dirname, join, abspath
+from os.path import join
 
-from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
-    run_cmd, run_cmd_notimeout, mutfile, inject_bugs, LavaPaths, \
-    validate_bugs, run_modified_program
+from lava import LavaDatabase, Run, Bug, inject_bugs, LavaPaths, validate_bugs, get_bugs
 
 start_time = time.time()
 
@@ -36,7 +26,6 @@ def get_bug_list(args, db):
     bug_list = []
     if args.bugid != -1:
         bug_id = int(args.bugid)
-        score = 0
         bug_list.append(bug_id)
     elif args.randomize:
         print "Remaining to inj:", db.uninjected().count()
@@ -51,7 +40,10 @@ def get_bug_list(args, db):
         num_bugs_to_inject = int(args.many)
         print "Selecting %d bugs for injection" % num_bugs_to_inject
         assert db.uninjected_random(False).count() >= num_bugs_to_inject
-        bugs_to_inject = db.uninjected_random(False)[:num_bugs_to_inject]
+        if args.balancebugtype:
+            bugs_to_inject = db.uninjected_random_balance(False, num_bugs_to_inject)
+        else:
+            bugs_to_inject = db.uninjected_random(False)[:num_bugs_to_inject]
         bug_list = [b.id for b in bugs_to_inject]
         update_db = True
     else: assert False
@@ -114,8 +106,13 @@ if __name__ == "__main__":
             help = ('No need to take lock on bugs dir'))
     parser.add_argument('-c', '--checkStacktrace', action="store_true", default=False,
             help = ('When validating a bug, make sure it manifests at same line as lava-inserted trigger'))
+    parser.add_argument('-d', '--arg_dataflow', action="store_true", default=False,
+            help = ('Inject bugs using function args instead of globals'))
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
             help = ('Expected exit code when program exits without crashing. Default 0'))
+    parser.add_argument('-bb', '--balancebugtype', action="store_true", default=False, 
+            help = ('Attempt to balance bug types, i.e. inject as many of each type'))
+
 
     args = parser.parse_args()
     global project
@@ -139,23 +136,41 @@ if __name__ == "__main__":
 
     # obtain list of bugs to inject based on cmd-line args and consulting db
     (update_db, bug_list) = get_bug_list(args, db)
-
+    
     # add all those bugs to the source code and check that it compiles
     (build, input_files) = inject_bugs(bug_list, db, lp, project_file,
-                                       project, args.knobTrigger, update_db)
-
+                                       project, args, update_db)
     try:
         # determine which of those bugs actually cause a seg fault
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build,
-                                      args.knobTrigger, update_db, args.checkStacktrace, args.exitCode)
+                                      args, update_db)
 
-        print "real bugs:", real_bug_list
+
+        def count_bug_types(id_list):
+            tcount = {}
+            buglist = {}
+            for bug in get_bugs(db, id_list):
+                if not bug.type in tcount:
+                    tcount[bug.type] = 0
+                    buglist[bug.type] = []
+                tcount[bug.type] += 1
+                buglist[bug.type].append(bug.id)
+            for t in tcount.keys():
+                print("%d c(%s)=%d" % (t, Bug.type_strings[t], tcount[t]))
+                print(str(buglist[t]))
+
+        print "\nBug types in original, potential set"
+        count_bug_types(bug_list)
+
+        print "\nBug types in validated set"
+        count_bug_types(real_bug_list)
+
 
     except Exception as e:
         print "TESTING FAIL"
         if update_db:
             db.session.add(Run(build=build, fuzzed=None, exitcode=-22,
-                               output=str(e), success=False))
+                               output=str(e), success=False, validated=False))
             db.session.commit()
         raise
 

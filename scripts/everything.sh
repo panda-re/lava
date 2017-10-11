@@ -223,7 +223,6 @@ run_remote() {
             -v /etc/group:/etc/group:ro \
             -v /etc/shadow:/etc/shadow:ro \
             -v /etc/gshadow:/etc/gshadow:ro \
-            --security-opt seccomp=unconfined \
             $docker_map_args \
             $extradockerargs \
             $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"$command\"" \
@@ -249,8 +248,8 @@ truncate() {
 
 progress 1 "JSON file is $json"
 dockername="lava32"
-#lava="$(jq -r .lava $json)"
-lava="$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )")"
+
+lava=$(dirname $(dirname $(readlink -f "$0")))
 db="$(jq -r .db $json)"
 extradockerargs="$(jq -r .extra_docker_args $json)"
 exitCode="$(jq -r .expected_exit_code $json)"
@@ -354,7 +353,9 @@ if [ $taint -eq 1 ]; then
         progress 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
         run_remote "$pandahost" "$python $scripts/bug_mining.py $json $input" "$lf"
         echo -n "Num Bugs in db: "
-        run_remote "$pandahost" "/usr/bin/psql -At -d $db -U postgres -c 'select count(*) from bug'"
+        run_remote "$pandahost" "psql -At $db -U postgres -c 'select count(*) from bug'"
+        echo
+        run_remote "$pandahost" "psql $db -U postgres -c 'select count(*), type from bug group by type order by type'"
     done
     tock
     echo "bug_mining complete $time_diff seconds"
@@ -372,7 +373,7 @@ if [ $inject -eq 1 ]; then
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode $kt $json" "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -bb $kt $json" "$lf"
     grep yield "$lf"
     done
 fi
