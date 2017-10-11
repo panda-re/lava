@@ -12,12 +12,5 @@ LAVA works by transforming the source of C programs. There are a few basic steps
 
 Instructions
 ===========
-experiments/tshark/README contains a detailed description of how to run each step of our tooling on one example (wireshark). But that takes forever and is very complicated. We have mostly automated scripts in the scripts directory:
+Read SETUP.md. Currently only works with an old version of PANDA (specifically commit 8724ddf7100f79db9528ade0481d6e8b002af67c).
 
-scripts/add_queries.sh: Untars a tar file and builds it, tracing the execution with btrace. Then it automatically injects taint queries at every function call. This is a lot of code! The resulting instrumented project will take approximately forever to compile. But it's worth it. After adding queries, you will probably need to some manual munging to fix corner cases. Sorry.
-
-scripts/bug_mining.py: Uses PANDA to collect an execution trace against a given input and then runs FBI against the resulting pandalog. This fills the database with a set of DUAs and attack points, and then finds the combinations that lead to injectable bugs.
-
-scripts/inject.py: Actually injects bugs into the program. Can inject either one or multiple. (Tim explain this better?)
-
-This all needs rewriting.  

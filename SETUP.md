@@ -45,4 +45,5 @@ NB: Change the distribution version name accordingly
     cd lava
     python setup.py
 
-
+## Try LAVA out
+    python init_project.py
