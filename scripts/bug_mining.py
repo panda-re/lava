@@ -125,7 +125,7 @@ command_args = shlex.split(project['command'].format(
 shutil.copy(input_file, installdir)
 
 create_recording(qemu_path, project['qcow'], project['snapshot'],
-                 command_args, installdir, isoname, project["expect_prompt"], rr=qemu_use_rr)
+                 command_args, installdir, isoname, isoname, rr=qemu_use_rr)
 
 try: os.mkdir('inputs')
 except OSError as e:

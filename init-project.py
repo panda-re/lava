@@ -13,7 +13,7 @@ from colorama import Fore, Style
 MAKE_CMD = "make CFLAGS=-fvisibility=default CFLAGS+=-g -j 16"
 CMD = "{install_dir}/bin/file -m {install_dir}/share/misc/magic.mgc {input_file}"
 input_file = "/bin/ls"
-main_file = "main.c"
+main_file = "src/file.c"
 # end constants to get rid of
 QCOW_URL = "http://panda.moyix.net/~moyix/wheezy_panda2.qcow2"
 TAR_URL = "ftp://ftp.astron.com/pub/file/file-5.22.tar.gz"

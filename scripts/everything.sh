@@ -223,7 +223,6 @@ run_remote() {
             -v /etc/group:/etc/group:ro \
             -v /etc/shadow:/etc/shadow:ro \
             -v /etc/gshadow:/etc/gshadow:ro \
-            --security-opt seccomp=unconfined \
             $docker_map_args \
             $extradockerargs \
             $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"$command\"" \
@@ -373,7 +372,7 @@ if [ $inject -eq 1 ]; then
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -d -m $many -e $exitCode -bb $kt $json" "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -bb $kt $json" "$lf"
     grep yield "$lf"
     done
 fi
