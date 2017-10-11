@@ -237,29 +237,26 @@ class LavaDatabase(object):
         count = self.uninjected2(fake).count()
         return self.uninjected2(fake)[random.randrange(0, count)]
 
-
-def run_cmd(cmd, timeout=10, check=True, **kwargs):
-    if type(cmd) in [str, unicode]:
+def run_cmd(cmd, envv, timeout, cwd=None, rr=False, shell=False):
+    if type(cmd) in [str, unicode] and not shell:
         cmd = shlex.split(cmd)
     if debugging:
-        env_string = " ".join(["{}={}".format(k, pipes.quote(v)) for k, v in kwargs.get('env', {}).iteritems()])
+        env_string = ""
+        if envv:
+            env_string = " ".join(["{}='{}'".format(k, v) for k, v in envv.iteritems()])
+
         print("run_cmd(" + env_string + " " + subprocess32.list2cmdline(cmd) + ")")
-    p = subprocess32.Popen(cmd, stdout=PIPE, stderr=PIPE, **kwargs)
+    p = subprocess32.Popen(cmd, cwd=cwd, env=envv, stdout=PIPE, stderr=PIPE, shell=shell)
     try:
-        # returns tuple (stdout, stderr)
-        output = p.communicate(timeout=timeout)
+        output = p.communicate(timeout) # returns tuple (stdout, stderr)
     except subprocess32.TimeoutExpired:
         print("Killing process due to timeout expiration.")
         p.terminate()
         return (-9, "timeout expired")
-    if check and p.returncode != 0:
-        print(output[0])
-        print(output[1])
-        raise RuntimeError("Subprocess failed!")
     return (p.returncode, output)
 
 def run_cmd_notimeout(cmd, **kwargs):
-    return run_cmd(cmd, timeout=None, **kwargs)
+    return run_cmd(cmd, None, 0, **kwargs)
 
 # fuzz_labels_list is a list of listof tainted byte offsets within file filename.
 # replace those bytes with random in a new file named new_filename
@@ -458,8 +455,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
-    (rv, outp) = run_cmd_notimeout(project['make'], cwd=lp.bugs_build,
-                                   check=False)
+    (rv, outp) = run_cmd_notimeout(project['make'], cwd=lp.bugs_build)
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
 
@@ -504,7 +500,7 @@ def run_modified_program(project, install_dir, input_file, timeout):
     lib_path = project.get('library_path', '{install_dir}/lib')
     lib_path = lib_path.format(install_dir=install_dir)
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
-    return run_cmd(cmd, cwd=install_dir, env=envv, timeout=timeout, check=False)
+    return run_cmd(cmd, envv, timeout, cwd=install_dir)
 
 # find actual line number of attack point for this bug in source
 def get_trigger_line(lp, bug):

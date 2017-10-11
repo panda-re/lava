@@ -11,7 +11,9 @@ import time
 
 from os.path import join
 
-from lava import LavaDatabase, Run, Bug, inject_bugs, LavaPaths, validate_bugs, get_bugs
+from lava import LavaDatabase, Run, Bug, \
+                 inject_bugs, LavaPaths, validate_bugs, \
+                 get_bugs, run_cmd
 
 start_time = time.time()
 
@@ -132,11 +134,11 @@ if __name__ == "__main__":
     bugs_parent = get_bugs_parent(lp)
 
     # Remove all old YAML files
-    run_cmd("rm {}/*.yaml".format(lp.bugs_build), "/", None, 10, shell=True)
+    run_cmd("rm {}/*.yaml".format(lp.bugs_build), None, 10, cwd="/", shell=True)
 
     # obtain list of bugs to inject based on cmd-line args and consulting db
     (update_db, bug_list) = get_bug_list(args, db)
-    
+
     # add all those bugs to the source code and check that it compiles
     (build, input_files) = inject_bugs(bug_list, db, lp, project_file,
                                        project, args, update_db)
