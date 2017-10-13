@@ -23,5 +23,5 @@
 
     "main_file": [ "$MAIN_FILE" ],
 
-    "inputs": [ "$INPUT" ],
+    "inputs": [ "$INPUT" ]
 }
