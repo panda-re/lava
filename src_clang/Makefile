@@ -107,8 +107,11 @@ $(BUILDDIR)/%.o: %.cxx
 $(BUILDDIR)/%.o: %.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-$(BUILDDIR)/lavaTool: $(BUILDDIR)/omg.o $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o
-	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
+$(BUILDDIR)/lavaTool: $(BUILDDIR)/omg.o $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaFirstStage.o $(BUILDDIR)/lavaSecondStage.o $(BUILDDIR)/lavaThirdStage.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o
+	$(CXX) -o lavaTool $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
+	$(CXX) -o lavaFirstStage $(BUILDDIR)/lavaFirstStage.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
+	$(CXX) -o lavaSecondStage $(BUILDDIR)/lavaSecondStage.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
+	$(CXX) -o lavaThirdStage $(BUILDDIR)/lavaThirdStage.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
 $(BUILDDIR)/lavaFnTool: $(BUILDDIR)/lavaFnTool.o 
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) 
@@ -122,6 +125,9 @@ $(BUILDDIR)/clang-apply-replacements: $(BUILDDIR)/ClangApplyReplacementsMain.o $
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
 $(BUILDDIR)/lavaTool.o: lava-odb.hxx lexpr.hxx Makefile
+$(BUILDDIR)/lavaFirstStage.o: lava-odb.hxx lexpr.hxx Makefile
+$(BUILDDIR)/lavaSecondStage.o: lava-odb.hxx lexpr.hxx Makefile
+$(BUILDDIR)/lavaThirdStage.o: lava-odb.hxx lexpr.hxx Makefile
 
 
 
