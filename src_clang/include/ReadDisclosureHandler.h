@@ -52,25 +52,15 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
                                 AttackPoint::PRINTF_LEAK);
                         Mod.Add(addend, nullptr);
                     } else if (LavaAction == LavaInjectBugs) {
-                                                const std::vector<const Bug*> &injectable_bugs =
+                        const std::vector<const Bug*> &injectable_bugs =
                             map_get_default(bugs_with_atp_at,
                                     std::make_pair(ast_loc, AttackPoint::PRINTF_LEAK));
-                        debug(INJECT) << "==============ARG=================\n";
                         for (const Bug *bug : injectable_bugs) {
-                            debug(INJECT) << "BUG ID READ DISCLOSURE" << bug->id << "\n";
-                            Mod.Change(callExpr);
-                            Mod.InsertBefore("__builtin_ia32_lava_instr_start(1,"+ std::to_string(bug->id) + ");\n\t");
-                            Mod.InsertAfterEnd("\t__builtin_ia32_lava_instr_end(1,"+std::to_string(bug->id) +");\n\t");
-                            Mod.Change(arg);
-                            arg->dump();
-
                             Mod.Parenthesize()
                                 .InsertBefore(Test(bug).render() +
                                         " ? &(" + ExprStr(arg) + ") : ");
                         }
-                        debug(INJECT) << "==============ARG END=================\n";
                     }
-
                 }
             }
         }

@@ -49,119 +49,9 @@ namespace clang {
     }
 }
 
-class GenericMatchFinder {
+class LavaMatchFinder : public MatchFinder, public SourceFileCallbacks {
 public:
-    GenericMatchFinder() : Mod(Insert) {}
-
-    template<class Handler>
-    LavaMatchHandler *makeHandler() {
-        MatchHandlers.emplace_back(new Handler(Mod));
-        return MatchHandlers.back().get();
-    }
-
-protected:
-    Insertions Insert;
-    Modifier Mod;
-    TranslationUnitReplacements TUReplace;
-    std::vector<std::unique_ptr<LavaMatchHandler>> MatchHandlers;
-    CompilerInstance *CurrentCI = nullptr;
-
-};
-
-// Rahul's Parameters Injection
-class LavaStageOneFinder : public MatchFinder,
-                        public GenericMatchFinder,
-                        public SourceFileCallbacks {
-public:
-    LavaStageOneFinder() : GenericMatchFinder() {
-        if (ArgDataflow && LavaAction == LavaInjectBugs) {
-            addMatcher(
-                    functionDecl().bind("funcDecl"),
-                    makeHandler<FuncDeclArgAdditionHandler>());
-            addMatcher(
-                    callExpr().bind("callExpr"),
-                    makeHandler<CallExprArgAdditionHandler>());
-            addMatcher(
-                    fieldDecl(anyOf(hasName("as_number"), hasName("as_string"))).bind("fieldDecl"),
-                    makeHandler<FunctionPointerFieldHandler>());
-        }
-    }
-
-    virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
-        Insert.clear();
-        Mod.Reset(&CI.getLangOpts(), &CI.getSourceManager());
-        TUReplace.Replacements.clear();
-        TUReplace.MainSourceFile = Filename;
-        CurrentCI = &CI;
-
-        debug(INJECT) << "*** handleBeginSource for: " << Filename << "\n";
-
-        for (auto it = MatchHandlers.begin();
-                it != MatchHandlers.end(); it++) {
-            (*it)->LangOpts = &CI.getLangOpts();
-        }
-        return true;
-    }
-
-    virtual void handleEndSource() override {
-        debug(INJECT) << "*** handleEndSource\n";
-
-        Insert.render(CurrentCI->getSourceManager(), TUReplace.Replacements);
-        std::error_code EC;
-        llvm::raw_fd_ostream YamlFile(TUReplace.MainSourceFile + ".yaml",
-                EC, llvm::sys::fs::F_RW);
-        yaml::Output Yaml(YamlFile);
-        Yaml << TUReplace;
-    }
-
-};
-
-// Andrea's function duplication
-class LavaStageTwoFinder : public MatchFinder,
-                        public GenericMatchFinder,
-                        public SourceFileCallbacks {
-public:
-    LavaStageTwoFinder() : GenericMatchFinder() {
-        addMatcher(
-                functionDecl().bind("funcDecl"),
-                makeHandler<FuncDuplicationHandler>());
-    }
-
-    virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
-        Insert.clear();
-        Mod.Reset(&CI.getLangOpts(), &CI.getSourceManager());
-        TUReplace.Replacements.clear();
-        TUReplace.MainSourceFile = Filename;
-        CurrentCI = &CI;
-
-        debug(INJECT) << "*** handleBeginSource for: " << Filename << "\n";
-
-        for (auto it = MatchHandlers.begin();
-                it != MatchHandlers.end(); it++) {
-            (*it)->LangOpts = &CI.getLangOpts();
-        }
-        return true;
-    }
-
-    virtual void handleEndSource() override {
-        debug(INJECT) << "*** handleEndSource\n";
-
-        Insert.render(CurrentCI->getSourceManager(), TUReplace.Replacements);
-        std::error_code EC;
-        llvm::raw_fd_ostream YamlFile(TUReplace.MainSourceFile + ".yaml",
-                EC, llvm::sys::fs::F_RW);
-        yaml::Output Yaml(YamlFile);
-        Yaml << TUReplace;
-    }
-
-};
-
-// Final Lava bugs injection pass
-class LavaStageThreeFinder : public MatchFinder,
-                        public GenericMatchFinder,
-                        public SourceFileCallbacks {
-public:
-    LavaStageThreeFinder() : GenericMatchFinder() {
+    LavaMatchFinder() : Mod(Insert) {
         StatementMatcher memoryAccessMatcher =
             allOf(
                 expr(anyOf(
@@ -196,6 +86,18 @@ public:
 
         addMatcher(memoryAccessMatcher, makeHandler<MemoryAccessHandler>());
 
+        // fortenforge's matchers (for argument addition)
+        if (ArgDataflow && LavaAction == LavaInjectBugs) {
+            addMatcher(
+                    functionDecl().bind("funcDecl"),
+                    makeHandler<FuncDeclArgAdditionHandler>());
+            addMatcher(
+                    callExpr().bind("callExpr"),
+                    makeHandler<CallExprArgAdditionHandler>());
+            addMatcher(
+                    fieldDecl(anyOf(hasName("as_number"), hasName("as_string"))).bind("fieldDecl"),
+                    makeHandler<FunctionPointerFieldHandler>());
+        }
         addMatcher(
                 callExpr(
                     callee(functionDecl(hasName("::printf"))),
@@ -255,7 +157,6 @@ public:
         yaml::Output Yaml(YamlFile);
         Yaml << TUReplace;
     }
-
 };
 
 
@@ -396,6 +297,5 @@ public:
         yaml::Output Yaml(YamlFile);
         Yaml << TUReplace;
     }
-
 };
 
