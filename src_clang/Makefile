@@ -98,13 +98,13 @@ emit_build_config: make_builddir
 make_builddir:
 	@test -d $(BUILDDIR) || mkdir $(BUILDDIR)
 
-$(BUILDDIR)/%.o: %.cpp
+$(BUILDDIR)/%.o: src/%.cpp
 	$(CXX) -c -o $@ $< $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $(CXXFLAGS)
 
-$(BUILDDIR)/%.o: %.cxx
+$(BUILDDIR)/%.o: src/%.cxx
 	$(CXX) -c -o $@ $< $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $(CXXFLAGS)
 
-$(BUILDDIR)/%.o: %.c
+$(BUILDDIR)/%.o: src/%.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 #$(BUILDDIR)/lavaTool: $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaFirstStage.o $(BUILDDIR)/lavaSecondStage.o $(BUILDDIR)/lavaThirdStage.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o
@@ -138,8 +138,8 @@ $(BUILDDIR)/%.o: Makefile
 $(BUILDDIR)/attackPoints: $(BUILDDIR)/attackPoints.o
 	$(CXX) -o $@ $< $(CLANG_LIBS) $(LLVM_LDFLAGS)
 
-%-odb.cxx %-odb.hxx: ../include/%.hxx Makefile
-	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o . \
+include/%-odb.cxx include/%-odb.hxx: ../include/%.hxx Makefile
+	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o $(BUILDDIR) \
 	--generate-query --generate-schema --generate-prepared \
 	--cxx-prologue '#include "../include/pgarray.hxx"' \
 	--sql-name-case lower $<
