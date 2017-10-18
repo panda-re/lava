@@ -138,7 +138,7 @@ $(BUILDDIR)/%.o: Makefile
 $(BUILDDIR)/attackPoints: $(BUILDDIR)/attackPoints.o
 	$(CXX) -o $@ $< $(CLANG_LIBS) $(LLVM_LDFLAGS)
 
-include/%-odb.cxx include/%-odb.hxx: ../include/%.hxx Makefile
+include/%-odb.cxx include/%-odb.hxx: ../../include/%.hxx Makefile
 	LD_LIBRARY_PATH=/usr/local/lib odb -d pgsql --std c++11 -o $(BUILDDIR) \
 	--generate-query --generate-schema --generate-prepared \
 	--cxx-prologue '#include "../include/pgarray.hxx"' \
@@ -147,4 +147,5 @@ include/%-odb.cxx include/%-odb.hxx: ../include/%.hxx Makefile
 .PHONY: clean
 clean:
 	rm -rf $(BUILDDIR)/* *~ *.o lava-odb.*xx lava.sql
+	rm -rf lavaTool lavaFirstStage lavaSecondStage lavaThirdStage
 
