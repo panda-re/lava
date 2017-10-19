@@ -129,9 +129,9 @@ $(BUILDDIR)/clang-apply-replacements: $(BUILDDIR)/ClangApplyReplacementsMain.o $
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
 $(BUILDDIR)/lavaTool.o: include/lava-odb.hxx include/lexpr.hxx Makefile
-#$(BUILDDIR)/lavaFirstStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
-#$(BUILDDIR)/lavaSecondStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
-#$(BUILDDIR)/lavaThirdStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
+$(BUILDDIR)/lavaFirstStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
+$(BUILDDIR)/lavaSecondStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
+$(BUILDDIR)/lavaThirdStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
 
 
 
