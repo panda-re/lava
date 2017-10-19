@@ -101,6 +101,9 @@ make_builddir:
 $(BUILDDIR)/%.o: src/%.cpp
 	$(CXX) -c -o $@ $< $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $(CXXFLAGS)
 
+$(BUILDDIR)/%.o: %.cpp
+	$(CXX) -c -o $@ $< $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $(CXXFLAGS)
+
 $(BUILDDIR)/%.o: src/%.cxx
 	$(CXX) -c -o $@ $< $(LLVM_CXXFLAGS) $(CLANG_INCLUDES) $(CXXFLAGS)
 
@@ -126,9 +129,9 @@ $(BUILDDIR)/clang-apply-replacements: $(BUILDDIR)/ClangApplyReplacementsMain.o $
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
 $(BUILDDIR)/lavaTool.o: include/lava-odb.hxx include/lexpr.hxx Makefile
-#$(BUILDDIR)/lavaFirstStage.o: lava-odb.hxx lexpr.hxx Makefile
-#$(BUILDDIR)/lavaSecondStage.o: lava-odb.hxx lexpr.hxx Makefile
-#$(BUILDDIR)/lavaThirdStage.o: lava-odb.hxx lexpr.hxx Makefile
+#$(BUILDDIR)/lavaFirstStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
+#$(BUILDDIR)/lavaSecondStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
+#$(BUILDDIR)/lavaThirdStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
 
 
 
