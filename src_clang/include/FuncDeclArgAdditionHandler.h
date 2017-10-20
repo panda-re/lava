@@ -84,7 +84,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
                     new_func_array << " ";
                 new_func_array << parm->getQualifiedNameAsString();
             }
-            new_func_array << ") {\n";
+            new_func_array << ")\n";
 
             // Printing body
             SourceRange bodyRange = s->getSourceRange();
