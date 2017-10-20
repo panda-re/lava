@@ -120,19 +120,18 @@ if __name__ == "__main__":
             help = ('When validating a bug, make sure it manifests at same line as lava-inserted trigger'))
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
             help = ('Expected exit code when program exits without crashing. Default 0'))
-    parser.add_argument('-bb', '--balancebugtype', action="store_true", default=False, 
+    parser.add_argument('-bb', '--balancebugtype', action="store_true", default=False,
             help = ('Attempt to balance bug types, i.e. inject as many of each type'))
     parser.add_argument('-competition', '--competition', action="store_true", default=False,
             help = ('Inject in competition mode where logging will be added in #IFDEFs'))
-
     parser.add_argument("-fixups", "--fixupsscript", action="store", default=False,
                         help = ("script to run after injecting bugs into source to fixup before make"))
-
 #    parser.add_argument('-wl', '--whitelist', action="store", default=None,
-#                        help = ('White list file of functions to bug and data flow'))    
-    
+#                        help = ('White list file of functions to bug and data flow'))
     parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
                         help = ('bug types to inject'))
+    parser.add_argument('--stage', choices=['all', 'multi'], default="all",
+                        help= ('multi'))
 
 
     args = parser.parse_args()
@@ -141,7 +140,7 @@ if __name__ == "__main__":
     dataflow = project.get("dataflow", False)
 
     allowed_bugtypes = get_allowed_bugtype_num(args)
-    
+
     print "allowed bug types: " + (str(allowed_bugtypes))
 
     # Set various paths
@@ -159,7 +158,7 @@ if __name__ == "__main__":
     # Remove all old YAML files
     run_cmd(["rm {}/*.yaml".format(lp.bugs_build)], None, 10, cwd="/", shell=True)
 
-    
+
     # obtain list of bugs to inject based on cmd-line args and consulting db
     (update_db, bug_list) = get_bug_list(args, db, allowed_bugtypes)
 
