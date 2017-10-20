@@ -8,9 +8,6 @@
 #include "clang/ASTMatchers/ASTMatchersInternal.h"
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
 
-#include "lava.hxx"
-#include "lavaTool.h"
-
 using namespace clang;
 using namespace clang::ast_matchers;
 using namespace clang::driver;

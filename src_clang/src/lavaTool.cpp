@@ -3,6 +3,8 @@
 #undef NDEBUG
 #endif
 
+#include "lava.hxx"
+#include "lavaTool.h"
 #include "LavaMatchHandler.h"
 #include "MatchFinder.h"
 
