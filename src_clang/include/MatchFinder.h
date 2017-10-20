@@ -47,10 +47,66 @@ namespace clang {
         }
     }
 }
-
-class LavaMatchFinder : public MatchFinder, public SourceFileCallbacks {
+class GenericMatchFinder {
 public:
-    LavaMatchFinder() : Mod(Insert) {
+    GenericMatchFinder() : Mod(Insert) {}
+
+    template<class Handler>
+    LavaMatchHandler *makeHandler() {
+        MatchHandlers.emplace_back(new Handler(Mod));
+        return MatchHandlers.back().get();
+    }
+
+protected:
+    Insertions Insert;
+    Modifier Mod;
+    TranslationUnitReplacements TUReplace;
+    std::vector<std::unique_ptr<LavaMatchHandler>> MatchHandlers;
+    CompilerInstance *CurrentCI = nullptr;
+
+};
+
+class LavaStageOneFinder : public MatchFinder,
+                        public GenericMatchFinder,
+                        public SourceFileCallbacks {
+public:
+    LavaStageOneFinder() : GenericMatchFinder() {
+        // fortenforge's matchers (for argument addition)
+        if (ArgDataflow && LavaAction == LavaInjectBugs) {
+            addMatcher(
+                    functionDecl().bind("funcDecl"),
+                    makeHandler<FuncDeclArgAdditionHandler>());
+            addMatcher(
+                    callExpr().bind("callExpr"),
+                    makeHandler<CallExprArgAdditionHandler>());
+            addMatcher(
+                    fieldDecl(anyOf(hasName("as_number"), hasName("as_string"))).bind("fieldDecl"),
+                    makeHandler<FunctionPointerFieldHandler>());
+        }
+    }
+
+    virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
+        return true;
+    }
+
+    virtual void handleEndSource() override {
+        debug(INJECT) << "*** handleEndSource\n";
+
+        Insert.render(CurrentCI->getSourceManager(), TUReplace.Replacements);
+        std::error_code EC;
+        llvm::raw_fd_ostream YamlFile(TUReplace.MainSourceFile + ".yaml",
+                EC, llvm::sys::fs::F_RW);
+        yaml::Output Yaml(YamlFile);
+        Yaml << TUReplace;
+    }
+
+};
+
+class LavaMatchFinder : public MatchFinder,
+                        public GenericMatchFinder,
+                        public SourceFileCallbacks {
+public:
+    LavaMatchFinder() : GenericMatchFinder() {
         StatementMatcher memoryAccessMatcher =
             allOf(
                 expr(anyOf(
@@ -158,17 +214,5 @@ public:
         Yaml << TUReplace;
     }
 
-    template<class Handler>
-    LavaMatchHandler *makeHandler() {
-        MatchHandlers.emplace_back(new Handler(Mod));
-        return MatchHandlers.back().get();
-    }
-
-private:
-    Insertions Insert;
-    Modifier Mod;
-    TranslationUnitReplacements TUReplace;
-    std::vector<std::unique_ptr<LavaMatchHandler>> MatchHandlers;
-    CompilerInstance *CurrentCI = nullptr;
 };
 

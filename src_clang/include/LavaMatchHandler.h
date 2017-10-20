@@ -9,7 +9,7 @@
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
 
 #include "lava.hxx"
-#include "lavaToolUtils.h"
+#include "lavaTool.h"
 
 using namespace clang;
 using namespace clang::ast_matchers;

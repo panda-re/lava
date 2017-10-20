@@ -97,8 +97,19 @@ int main(int argc, const char **argv) {
     }
 
     debug(INJECT) << "about to call Tool.run \n";
-    LavaMatchFinder Matcher;
-    Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
+    if (LavaStage == stage_all) {
+        LavaMatchFinder Matcher;
+        Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
+    } else if (LavaStage == stage_one) {
+        LavaStageOneFinder Matcher;
+        Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
+    } else if (LavaStage == stage_two ) {
+        //LavaStageTwoFinder Matcher;
+        //Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
+    } else if (LavaStage == stage_three ) {
+        //LavaStageThreeFinder Matcher;
+        //Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
+    }
     debug(INJECT) << "back from calling Tool.run \n";
 
     if (LavaAction == LavaQueries) {

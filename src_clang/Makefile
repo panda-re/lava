@@ -123,15 +123,13 @@ $(BUILDDIR)/lavaFnTool: $(BUILDDIR)/lavaFnTool.o
 $(BUILDDIR)/omg: $(BUILDDIR)/omg.o 
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) 
 
-
-
 $(BUILDDIR)/clang-apply-replacements: $(BUILDDIR)/ClangApplyReplacementsMain.o $(BUILDDIR)/ApplyReplacements.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
 $(BUILDDIR)/lavaTool.o: include/lava-odb.hxx include/lexpr.hxx Makefile
-$(BUILDDIR)/lavaFirstStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
-$(BUILDDIR)/lavaSecondStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
-$(BUILDDIR)/lavaThirdStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
+#$(BUILDDIR)/lavaFirstStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
+#$(BUILDDIR)/lavaSecondStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
+#$(BUILDDIR)/lavaThirdStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
 
 
 
@@ -150,5 +148,5 @@ include/%-odb.cxx include/%-odb.hxx: ../../include/%.hxx Makefile
 .PHONY: clean
 clean:
 	rm -rf $(BUILDDIR)/* *~ *.o lava-odb.*xx lava.sql
-	rm -rf lavaTool lavaFirstStage lavaSecondStage lavaThirdStage
+	rm -rf lavaTool #lavaFirstStage lavaSecondStage lavaThirdStage
 

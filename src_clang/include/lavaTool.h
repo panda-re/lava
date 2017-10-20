@@ -57,6 +57,7 @@ static llvm::raw_null_ostream null_ostream;
 #define debug(flag) ((DEBUG_FLAGS & (flag)) ? llvm::errs() : null_ostream)
 
 enum action { LavaQueries, LavaInjectBugs, LavaInstrumentMain };
+enum stage { stage_all, stage_one, stage_two, stage_three };
 
 uint32_t num_atp_queries = 0;
 uint32_t num_taint_queries = 0;
@@ -145,6 +146,17 @@ static cl::opt<bool> ArgDataflow("arg_dataflow",
     cl::desc("Use function args for dataflow instead of lava_[sg]et"),
     cl::cat(LavaCategory),
     cl::init(false));
+static cl::opt<stage> LavaStage ("stage",
+    cl::desc("Injection Stages, first inserts arguments in function definition and calls, \
+    second replicate all the functions, third inject the bugs in all the no-origin functions"),
+    cl::values (
+        clEnumValN(stage_all, "stage_all", "All the transformation at once"),
+        clEnumValN(stage_one, "stage_one", "Injection of parameters for natural flow only"),
+        clEnumValN(stage_two, "stage_two", "Duplication of the functions"),
+        clEnumValN(stage_three, "stage_three", "Actual bug injection stage"),
+        clEnumValEnd),
+    cl::cat(LavaCategory),
+    cl::init(stage_all));
 
 
 std::map<LvalBytes, uint32_t> data_slots;
