@@ -20,7 +20,7 @@ struct FuncDuplicationHandler : public LavaMatchHandler {
         if (!func->isMain()) {
             const FunctionDecl *bodyDecl = nullptr;
             func->hasBody(bodyDecl);
-
+            std::stringstream attr_addition;
             // Duplicating the function
             SourceRange sr = func->getSourceRange();
             Stmt *s = func->getBody();
@@ -33,16 +33,21 @@ struct FuncDuplicationHandler : public LavaMatchHandler {
             DeclarationName dn = dni.getName();
             std::string fname = dn.getAsString();
 
+            attr_addition << " __attribute__((section(\""<<
+                fname.data() <<"_section\"))) ";
+            Mod.InsertAt(dni.getBeginLoc(), attr_addition.str());
+
             // Point to start of the function declaration
-            SourceLocation END_FILE = Mod.sm->getLocForEndOfFile(Mod.sm->getFileID(func->getLocation()));
-            SourceLocation END = s->getLocEnd().getLocWithOffset(1);
+            SourceLocation END_FILE =
+                Mod.sm->getLocForEndOfFile(Mod.sm->getFileID(func->getLocation()));
             std::stringstream new_func_array;
 
             // adding type func name and params
             new_func_array << "\n" << q.getAsString();
             if (q.getTypePtr() && !q.getTypePtr()->isPointerType())
                 new_func_array << " ";
-            new_func_array <<" __attribute__((section(\""<< fname.data() << "_origin_section\"))) "<< fname.data() << "_origin (";
+            new_func_array <<" __attribute__((section(\""<< fname.data() <<
+                "_origin_section\"))) "<< fname.data() << "_origin (";
             bool print_comma = false;
 
             int  i = 0;
@@ -51,9 +56,6 @@ struct FuncDuplicationHandler : public LavaMatchHandler {
                     new_func_array << ", ";
                 else
                     print_comma = true;
-
-                //if (i == 0)
-                    //new_func_array << "int *data_flow,  ";
 
                 ParmVarDecl *parm = func->parameters()[i];
                 QualType parm_type = parm->getOriginalType();
