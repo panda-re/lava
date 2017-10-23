@@ -695,14 +695,12 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
             run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
                           cwd=join(lp.bugs_build, dirname(filename)))
 
-            var = raw_input("Press Enter to continue...\n")
             run_lavatool(bugs_to_inject, lp, project_file, project, args,
                         llvm_src, filename, 2)
             clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
             run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
                           cwd=join(lp.bugs_build, dirname(filename)))
 
-            var = raw_input("Press Enter to continue...\n")
             run_lavatool(bugs_to_inject, lp, project_file, project, args,
                         llvm_src, filename, 3)
             clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
