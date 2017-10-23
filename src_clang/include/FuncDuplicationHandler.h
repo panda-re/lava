@@ -77,7 +77,7 @@ struct FuncDuplicationHandler : public LavaMatchHandler {
             // adding func name
             new_func_array << "}";
             debug(FNARG) << "Inserting mambroooo " << new_func_array.str() << "\n";
-            Mod.InsertAt(END_FILE, new_func_array.str());
+            Mod.InsertTo(END_FILE, new_func_array.str());
         }
         return;
     }

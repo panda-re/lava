@@ -411,5 +411,9 @@ public:
     void InsertAt(SourceLocation loc, std::string str) {
         Insert.InsertBefore(loc, str);
     }
+
+    void InsertTo(SourceLocation loc, std::string str) {
+        Insert.InsertAfter(loc, str);
+    }
 };
 
