@@ -1,27 +1,33 @@
 from __future__ import print_function
 
 import os
-from os.path import  dirname, join, abspath, basename
-import sys
 import re
-import pipes
+import sys
 import math
-import random
+import pipes
 import shlex
 import struct
+import random
 import subprocess32
 
-from sqlalchemy import Table, Column, ForeignKey, create_engine
-from sqlalchemy.types import Integer, Text, Float, BigInteger, Boolean
-from sqlalchemy.ext.declarative import declarative_base
+from os.path import join
+from os.path import dirname
+from os.path import abspath
+from os.path import basename
+
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import relationship, sessionmaker, load_only
 from sqlalchemy.sql.expression import func
+from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Table, Column, ForeignKey, create_engine
+from sqlalchemy.types import Integer, Text, Float, BigInteger, Boolean
 
-from subprocess32 import PIPE, check_call
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 from time import sleep
+
+from subprocess32 import PIPE, check_call
 
 from composite import Composite
 from test_crash import process_crash
@@ -196,7 +202,7 @@ class Run(Base):
     exitcode = Column(Integer)
     output = Column(Text)
     success = Column(Boolean)
-    validated = Column(Boolean)    
+    validated = Column(Boolean)
 
     build = relationship("Build")
     fuzzed = relationship("Bug")
@@ -291,7 +297,7 @@ class LavaDatabase(object):
         assert(num_avail > 0)
         num_per = num_required / num_avail
         for (i,) in types_present:
-            if (i in bug_types): 
+            if (i in bug_types):
                 bug_query = self.uninjected_random(fake).filter(Bug.type == i)
                 print("found %d bugs of type %d" % (bug_query.count(), i))
                 bugs.extend(bug_query[:num_per])
@@ -365,7 +371,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, sol
 
             if (m%NUM_BUGTYPES == 3): # Intentional chaff bug - don't even bother
                 pass
-            
+
             #print("Mutfile with triggers:\n\tA=0x%x\n\tB=0x%x\n\tC=0x%x\n" % (a,b,c))
             a_val = struct.pack("<I", a)
             b_val = struct.pack("<I", b)
@@ -560,7 +566,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
         run(['git', 'add', '-f', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json.'])
         for make_cmd in project['make'].split('&&'):
-            run(shlex.split(make_cmd))    
+            run(shlex.split(make_cmd))
         try:
             run(['find', '.', '-name', '*.[ch]', '-exec', 'git', 'add', '-f', '{}', ';'])
             run(['git', 'commit', '-m', 'Adding source files'])
@@ -664,7 +670,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
 
     def modify_source(dirname):
         sleep(random.random()) # Sleep a random # of MS so our lavaTools can seed rand from time and be different
-        return run_lavatool(bugs_to_inject, lp, host_file, project, 
+        return run_lavatool(bugs_to_inject, lp, host_file, project,
                      llvm_src, dirname, knobTrigger=args.knobTrigger, dataflow=dataflow, competition=competition)
 
     bug_solutions =  {} # Returned by lavaTool
@@ -689,7 +695,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
             clang_cmd =  [clang_apply, '.']
         print("Apply replacements in {} with {}".format(join(lp.bugs_build, src_dir), clang_cmd))
         run_cmd_notimeout(clang_cmd, cwd=join(lp.bugs_build, src_dir))
-        
+
     # Ugh.  Lavatool very hard to get right
     # Permit automated fixups via script after bugs inject
     # but before make
@@ -709,7 +715,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
-    
+
     rv = 0
     outp = ["", ""]
     for make_cmd in project['make'].split('&&'):
@@ -723,7 +729,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
         if this_rv != 0:
             rv = this_rv
             break
-    
+
     if rv != 0:
         print("Lava tool returned {}! Error log below:".format(rv))
         print(outp[1])
@@ -748,7 +754,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
 
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
-    
+
     # add a row to the build table in the db
     if update_db:
         db.session.add(build)
@@ -1005,7 +1011,7 @@ def get_bugs(db, bug_id_list):
     return bugs
 
 
-def get_allowed_bugtype_num(args):    
+def get_allowed_bugtype_num(args):
     allowed_bugtype_nums = []
     for bugtype_name in args.bugtypes.split(","):
         btnl = bugtype_name.lower()
