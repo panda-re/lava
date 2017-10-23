@@ -251,6 +251,8 @@ int main(int argc, char **argv) {
     // next file.
     if (FileAndReplacements.second.empty())
       continue;
+    if (!FileAndReplacements.first)
+      continue;
 
     std::string NewFileData;
     const char *FileName = FileAndReplacements.first->getName();
