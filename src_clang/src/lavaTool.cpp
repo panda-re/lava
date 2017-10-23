@@ -73,7 +73,6 @@ int main(int argc, const char **argv) {
         t = new odb::transaction(db->begin());
 
         main_files = parse_commas_strings(MainFileList);
-
         // get bug info for the injections we are supposed to be doing.
         debug(INJECT) << "LavaBugList: [" << LavaBugList << "]\n";
 
@@ -105,12 +104,12 @@ int main(int argc, const char **argv) {
     } else if (LavaStage == stage_one) {
         LavaStageOneFinder Matcher;
         Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
-    } else if (LavaStage == stage_two ) {
-        //LavaStageTwoFinder Matcher;
-        //Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
-    } else if (LavaStage == stage_three ) {
-        //LavaStageThreeFinder Matcher;
-        //Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
+    } else if (LavaStage == stage_two) {
+        LavaStageTwoFinder Matcher;
+        Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
+    } else if (LavaStage == stage_three) {
+        LavaStageThreeFinder Matcher;
+        Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
     }
     debug(INJECT) << "back from calling Tool.run \n";
 
