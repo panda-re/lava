@@ -44,61 +44,6 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
             func->hasBody(bodyDecl);
             if (bodyDecl) AddArg(bodyDecl);
 
-            // Duplicating the function
-            SourceRange sr = func->getSourceRange();
-            Stmt *s = func->getBody();
-
-            //Stab to determin return type
-            QualType q = func->getReturnType();
-
-            // Get name of function
-            DeclarationNameInfo dni = func->getNameInfo();
-            DeclarationName dn = dni.getName();
-            std::string fname = dn.getAsString();
-
-            // Point to start of the function declaration
-            SourceLocation END = s->getLocEnd().getLocWithOffset(1);
-            std::stringstream new_func_array;
-
-            // adding type func name and params
-            new_func_array << "\n" << q.getAsString();
-            if (q.getTypePtr() && !q.getTypePtr()->isPointerType())
-                new_func_array << " ";
-            new_func_array << fname.data() << "_origin" << "(";
-            bool print_comma = false;
-
-            int  i = 0;
-            for (; i < func->getNumParams(); ++i) {
-                if (print_comma)
-                    new_func_array << ", ";
-                else
-                    print_comma = true;
-
-                if (i == 0)
-                    new_func_array << "int *data_flow,  ";
-
-                ParmVarDecl *parm = func->parameters()[i];
-                QualType parm_type = parm->getOriginalType();
-                new_func_array << parm_type.getAsString();
-                if (!parm_type.getTypePtr()->isPointerType())
-                    new_func_array << " ";
-                new_func_array << parm->getQualifiedNameAsString();
-            }
-            new_func_array << ")\n";
-
-            // Printing body
-            SourceRange bodyRange = s->getSourceRange();
-            bool invalid;
-            StringRef str = Lexer::getSourceText(CharSourceRange::getCharRange(bodyRange),
-                    *Mod.sm, *Mod.LangOpts, &invalid);
-            if (invalid) return;
-            new_func_array << str.str();
-
-            // adding func name
-            new_func_array << "}";
-            debug(FNARG) << "Inserting mambroooo " << new_func_array.str() << "\n";
-            Mod.InsertAt(END, new_func_array.str());
-
             while (func != NULL) {
                 AddArg(func);
                 func = func->getPreviousDecl();
