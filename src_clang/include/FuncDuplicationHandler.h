@@ -42,7 +42,7 @@ struct FuncDuplicationHandler : public LavaMatchHandler {
             new_func_array << "\n" << q.getAsString();
             if (q.getTypePtr() && !q.getTypePtr()->isPointerType())
                 new_func_array << " ";
-            new_func_array << fname.data() << "_origin" << "(";
+            new_func_array <<" __attribute__((section(\""<< fname.data() << "_origin_section\"))) "<< fname.data() << "_origin (";
             bool print_comma = false;
 
             int  i = 0;
