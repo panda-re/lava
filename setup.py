@@ -204,6 +204,55 @@ def main():
         compile_cmd = ['cd', join(LAVA_DIR, 'btrace'), '&&', 'bash', 'compile.sh']
         run_docker(['bash', '-c', subprocess.list2cmdline(compile_cmd)])
 
+    # Initialize submodules
+    progress("Initializing submodules")
+    git_submodule_output = subprocess.check_output(['git', 'submodule', 'update', '--init', '--recursive'])
+    os.chdir(os.getcwd()+"/binutils")
+
+    if not os.path.exists("binutils-root"):
+        progress("Creating binutils root folder")
+        os.makedirs("binutils-root")
+
+    if not os.path.exists("binutils-build"):
+        progress("Creating binutils build folder")
+        os.makedirs("binutils-build")
+
+    progress("Test ld.gold patch")
+    patched = False
+    try:
+        apply_patch_output = subprocess.check_output(['patch','-p1', '-N', '--dry-run', '--silent', \
+                                                    '-i', '../patches/gold-2.26.1.patch'])
+    except subprocess.CalledProcessError, e:
+        print("Current folder {}".format(os.getcwd()))
+        print("Output {}".format(e.output))
+        print("cmd {}".format(e.cmd))
+        print("Source code already patched")
+        patched = True
+
+    if not patched:
+        progress("Actual apply the ld.gold patch")
+        try:
+            apply_patch_output = subprocess.check_output(['patch','-p1', '-N', '--silent', \
+                                                    '-i', '../patches/gold-2.26.1.patch'])
+        except subprocess.CalledProcessError, e:
+            print("Current folder {}".format(os.getcwd()))
+            print("Output {}".format(e.output))
+            print("cmd {}".format(e.cmd))
+            print("Failed patching binutils")
+            exit(-1)
+
+        # progress(apply_patch_output)
+    os.chdir(os.getcwd()+"/binutils-build")
+    progress("Configuring binutils")
+    configure_output = subprocess.check_output(['../configure', '--prefix='+os.getcwd()+'/../binutils-root', \
+                                                '--enable-gold', '--enable-plugins'])
+    progress("Compiling binutils")
+    make_output = subprocess.check_output(['make', '-j40'], stderr=subprocess.STDOUT)
+    progress("Installing binutils")
+    make_output = subprocess.check_output(['make', 'install', '-j40'], stderr=subprocess.STDOUT)
+
+    os.chdir("../")
+    os.chdir("../")
     # Compile lavaTool inside the docker container.
     progress("Creating $LAVA_DIR/src_clang/config.mak")
     with open("src_clang/config.mak", "w") as f:
