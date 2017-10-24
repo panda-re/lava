@@ -1,3 +1,6 @@
 [submodule "binutils"]
 	path = binutils
 	url = git://sourceware.org/git/binutils-gdb.git
+[submodule "glibc"]
+	path = glibc
+	url = git://sourceware.org/git/glibc.git
