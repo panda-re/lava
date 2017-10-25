@@ -1,5 +1,5 @@
 diff --git a/gold/layout.cc b/gold/layout.cc
-index ad92fcc..a7332cb 100644
+index ad92fcc..d271ac8 100644
 --- a/gold/layout.cc
 +++ b/gold/layout.cc
 @@ -459,7 +459,7 @@ Layout::Layout(int number_of_input_files, Script_options* script_options)
@@ -11,12 +11,13 @@ index ad92fcc..a7332cb 100644
      incremental_inputs_(NULL),
      record_output_section_data_from_script_(false),
      script_output_section_data_list_(),
-@@ -1911,6 +1911,12 @@ Layout::attach_allocated_section_to_segment(const Target* target,
+@@ -1911,6 +1911,13 @@ Layout::attach_allocated_section_to_segment(const Target* target,
  
    gold_assert(!this->script_options_->saw_phdrs_clause());
  
 +  // Check name of the output section - if it contains a colon, put in separate segment
-+  if (std::strstr(os->name(), "section") != NULL) {
++  if (std::strcmp(os->name(), ".text_hidden") == 0 ||
++          std::strcmp(os->name(), ".text") == 0) {
 +    printf("putting %s into separate segment\n", os->name());
 +    os->set_is_unique_segment();
 +  }
