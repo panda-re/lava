@@ -17,68 +17,62 @@ struct FuncDuplicationHandler : public LavaMatchHandler {
 
         debug(FNARG) << "actually performing duplication\n";
 
-        if (!func->isMain()) {
-            const FunctionDecl *bodyDecl = nullptr;
-            func->hasBody(bodyDecl);
-            std::stringstream attr_addition;
-            // Duplicating the function
-            SourceRange sr = func->getSourceRange();
-            Stmt *s = func->getBody();
+        const FunctionDecl *bodyDecl = nullptr;
+        func->hasBody(bodyDecl);
+        std::stringstream attr_addition;
+        // Duplicating the function
+        SourceRange sr = func->getSourceRange();
+        Stmt *s = func->getBody();
 
-            //Stab to determin return type
-            QualType q = func->getReturnType();
+        //Stab to determin return type
+        QualType q = func->getReturnType();
 
-            // Get name of function
-            DeclarationNameInfo dni = func->getNameInfo();
-            DeclarationName dn = dni.getName();
-            std::string fname = dn.getAsString();
+        // Get name of function
+        DeclarationNameInfo dni = func->getNameInfo();
+        DeclarationName dn = dni.getName();
+        std::string fname = dn.getAsString();
 
-            attr_addition << " __attribute__((section(\""<<
-                fname.data() <<"_section\"))) ";
-            Mod.InsertAt(dni.getBeginLoc(), attr_addition.str());
+        // Point to start of the function declaration
+        SourceLocation END_FILE =
+            Mod.sm->getLocForEndOfFile(Mod.sm->getFileID(func->getLocation()));
+        std::stringstream new_func_array;
 
-            // Point to start of the function declaration
-            SourceLocation END_FILE =
-                Mod.sm->getLocForEndOfFile(Mod.sm->getFileID(func->getLocation()));
-            std::stringstream new_func_array;
+        // adding type func name and params
+        new_func_array << "\n" << q.getAsString();
+        if (q.getTypePtr() && !q.getTypePtr()->isPointerType())
+            new_func_array << " ";
+        new_func_array <<" __attribute__((section(\".text_hidden\"))) "
+            << fname.data() << "_origin (";
+        bool print_comma = false;
 
-            // adding type func name and params
-            new_func_array << "\n" << q.getAsString();
-            if (q.getTypePtr() && !q.getTypePtr()->isPointerType())
+        int  i = 0;
+        for (; i < func->getNumParams(); ++i) {
+            if (print_comma)
+                new_func_array << ", ";
+            else
+                print_comma = true;
+
+            ParmVarDecl *parm = func->parameters()[i];
+            QualType parm_type = parm->getOriginalType();
+            new_func_array << parm_type.getAsString();
+            if (!parm_type.getTypePtr()->isPointerType())
                 new_func_array << " ";
-            new_func_array <<" __attribute__((section(\""<< fname.data() <<
-                "_origin_section\"))) "<< fname.data() << "_origin (";
-            bool print_comma = false;
-
-            int  i = 0;
-            for (; i < func->getNumParams(); ++i) {
-                if (print_comma)
-                    new_func_array << ", ";
-                else
-                    print_comma = true;
-
-                ParmVarDecl *parm = func->parameters()[i];
-                QualType parm_type = parm->getOriginalType();
-                new_func_array << parm_type.getAsString();
-                if (!parm_type.getTypePtr()->isPointerType())
-                    new_func_array << " ";
-                new_func_array << parm->getQualifiedNameAsString();
-            }
-            new_func_array << ")\n";
-
-            // Printing body
-            SourceRange bodyRange = s->getSourceRange();
-            bool invalid;
-            StringRef str = Lexer::getSourceText(CharSourceRange::getCharRange(bodyRange),
-                    *Mod.sm, *Mod.LangOpts, &invalid);
-            if (invalid) return;
-            new_func_array << str.str();
-
-            // adding func name
-            new_func_array << "}";
-            debug(FNARG) << "Inserting mambroooo " << new_func_array.str() << "\n";
-            Mod.InsertTo(END_FILE, new_func_array.str());
+            new_func_array << parm->getQualifiedNameAsString();
         }
+        new_func_array << ")\n";
+
+        // Printing body
+        SourceRange bodyRange = s->getSourceRange();
+        bool invalid;
+        StringRef str = Lexer::getSourceText(CharSourceRange::getCharRange(bodyRange),
+                *Mod.sm, *Mod.LangOpts, &invalid);
+        if (invalid) return;
+        new_func_array << str.str();
+
+        // adding func name
+        new_func_array << "}";
+        Mod.InsertTo(END_FILE, new_func_array.str());
+
         return;
     }
 };
