@@ -112,7 +112,7 @@ def run(cmd):
         progress("Running [{}] . . . ".format(cmd))
         subprocess.check_call(cmd_args)
     except subprocess.CalledProcessError:
-        error("[{}] cmd did not execute properly.")
+        error("[{}] cmd did not execute properly.".format(cmd))
         raise
 
 def user_in_docker(username):
