@@ -65,6 +65,8 @@ if __name__ == "__main__":
             help = 'Require at least this many real bugs')
     parser.add_argument('-l', '--buglist', action="store", default=False,
             help = 'Inject this list of bugs')
+    parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
+            help = ('Expected exit code when program exits without crashing. Default 0'))
     
     args = parser.parse_args()
     project = json.load(args.project)
@@ -73,14 +75,15 @@ if __name__ == "__main__":
     # Set various paths
     lp = LavaPaths(project)
 
+    # Make the bugs top_dir start with competition
+    lp.bugs_top_dir = join(lp.top_dir, "competition")
     compdir = join(lp.top_dir, "competition")
     bugdir = join(compdir, "bugs")
 
     db = LavaDatabase(project)
 
-#    try:
-#        os.makedirs(args.bugdir)
-#    except Exception: pass
+    if not os.path.exists(bugdir):
+        os.makedirs(bugdir)
 
     bugs_parent = bugdir
     lp.set_bugs_parent(bugdir)
@@ -90,7 +93,9 @@ if __name__ == "__main__":
     except:
         pass
 
-    knobTrigger = -1
+    args.knobTrigger = -1
+    args.checkStacktrace = False
+    args.arg_dataflow = False
 
     while True:
 
@@ -102,13 +107,13 @@ if __name__ == "__main__":
 
 #        bug_list = [114L, 138L, 3295L, 3353L, 4635L, 14355L, 21112L, 34878L, 66341L, 72856L, 205102L, 222709L, 222865L, 271819L, 387124L, 388491L, 530292L]
         # add bugs to the source code and check that we can still compile
-        (build, input_files) = inject_bugs(bug_list, bugs_parent, db, lp, project_file, \
-                                              project, knobTrigger, False)
+        (build, input_files) = inject_bugs(bug_list, db, lp, project_file, \
+                                              project, args, False)
 
         # bug is valid if seg fault (or bus error)
         # AND if stack trace indicates bug manifests at trigger line we inserted
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                          knobTrigger, False, True)
+                                          args, False)
 
         if len(real_bug_list) < int(args.minYield):
             print "\n\nXXX Yield too low -- %d bugs minimum is required for competition" % int(args.minYield)
@@ -118,8 +123,8 @@ if __name__ == "__main__":
             break
 
     # re-build just with the real bugs
-    (build,input_files) = inject_bugs(real_bug_list, bugs_parent, db, lp, project_file, \
-                                          project, knobTrigger, False)
+    (build,input_files) = inject_bugs(real_bug_list, db, lp, project_file, \
+                                          project, args, False)
 
 
     corpus_dir = join(compdir, "corpora")
@@ -139,13 +144,16 @@ if __name__ == "__main__":
     # copy src
     shutil.copytree(bd, srcdir)
 
+    # TODO: this is broken - get_trigger_line doesn't work
     predictions = {}
-
-
     for bug in  db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all():
         prediction = "{}:{}".format(basename(bug.atp.loc_filename),
                                     get_trigger_line(lp, bug))
 #        print "Bug %d: prediction = [%s]" % (bug.id, prediction)
+        if not get_trigger_line(lp, bug):
+            print("Warning - unknown trigger, skipping")
+            continue
+
         assert not (prediction in predictions)
         unfuzzed_input = unfuzzed_input_for_bug(lp, bug)
         fuzzed_input = fuzzed_input_for_bug(lp, bug)

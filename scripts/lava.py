@@ -479,7 +479,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
         print("===================================")
         print()
         print(outp[1])
-        raise RuntimeError("")
+        raise RuntimeError("Build of injected bug failed")
 
     return (build, input_files)
 
@@ -503,7 +503,10 @@ def run_modified_program(project, install_dir, input_file, timeout):
     return run_cmd(cmd, envv, timeout, cwd=install_dir)
 
 # find actual line number of attack point for this bug in source
+
+
 def get_trigger_line(lp, bug):
+# TODO the triggers aren't a simple mapping from trigger of 0xlava - bug_id - But are the lava_get's still corelated to triggers?
     with open(join(lp.bugs_build, bug.atp.loc_filename), "r") as f:
         lava_get = "lava_get({})".format(bug.trigger.id)
         atp_lines = [line_num + 1 for line_num, line in enumerate(f) if
@@ -512,6 +515,7 @@ def get_trigger_line(lp, bug):
         distances = [
             (abs(line - bug.atp.loc_begin_line), line) for line in atp_lines
         ]
+        if not distances: return None
         return min(distances)[1]
 
 # use gdb to get a stacktrace for this bug
