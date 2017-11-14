@@ -1,7 +1,7 @@
 #!/bin/bash
 
 json="$(readlink -f $1)"
-cmd=$2
+cmd="${@:2}"
 container="lava32debug"
 #Alternatively you can use the "lava32" container
 
