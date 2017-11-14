@@ -508,9 +508,17 @@ def run_modified_program(project, install_dir, input_file, timeout):
 def get_trigger_line(lp, bug):
 # TODO the triggers aren't a simple mapping from trigger of 0xlava - bug_id - But are the lava_get's still corelated to triggers?
     with open(join(lp.bugs_build, bug.atp.loc_filename), "r") as f:
+        """
         lava_get = "lava_get({})".format(bug.trigger.id)
         atp_lines = [line_num + 1 for line_num, line in enumerate(f) if
                     lava_get in line]
+        """
+        # TODO: should really check for lava_get(bug_id), but bug_id in db isn't matching source
+        # for now, we'll just look for "(0x[magic]" since that seems to always be there, at least for
+        # old bug types
+        lava_get = "(0x{:x}".format(bug.magic)
+        atp_lines = [line_num + 1 for line_num, line in enumerate(f) if
+                    lava_get in line and "lava_get" in line]
         # return closest to original begin line.
         distances = [
             (abs(line - bug.atp.loc_begin_line), line) for line in atp_lines
