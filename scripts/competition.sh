@@ -31,7 +31,7 @@ exit_code=0
 min_yield=1
 echo
 progress "competition" 0 "Parsing args"
-while getopts  "akm:l:n:e:" flag
+while getopts  "dakm:l:n:e:" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -58,6 +58,10 @@ do
       ok=1
       progress "competition" 0 "-k: Okaying through deletes"
   fi
+  if [ "$flag" = "d" ]; then
+      debug=1
+      progress "competition" 0 "-d: running with pdb"
+  fi
 done
 shift $((OPTIND -1))
 
@@ -73,6 +77,12 @@ directory="$(jq -r .directory $json)"
 
 dockername="lava32"
 python="/usr/bin/python"
+
+pdb="/usr/bin/python -m pdb "
+
+if [ $debug -eq 1 ]; then
+    python=$pdb
+fi
 
 progress "competition" 1 "Starting"
 run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $json" "$lf"
