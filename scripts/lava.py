@@ -276,6 +276,7 @@ def inject_bugs_into_src(project_file, lava_tool, lavadb, bugs_build, bugs,
             join(bugs_build, filename), "-kt" if kt else ""
         )
     (exitcode, output) = run_cmd_notimeout(cmd, None, None)
+    print(str(output).replace("\\n", "\n"))
     if exitcode != 0: raise RuntimeError("Injection failed!")
 
 class LavaPaths(object):
@@ -449,7 +450,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db)
                   bugs=bugs_to_inject)
     if rv!=0:
         # build failed
-        print(outp)
+        print (str(outp).replace("\\n", "\n"))
         print("build failed")
         sys.exit(1)
     else:

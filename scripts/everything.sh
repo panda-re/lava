@@ -13,7 +13,8 @@
 # -z [knobSize]: use this to make inject step use knob trigger bugs
 #                and knobSize changes how origFile is mutated
 # -b [bugType] : use this to specify attact point type: [mem_write|mem_read|fn_arg]
-#
+# -n [bugNumber] : number of bugs to inject in each trail
+# 
 # everything -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
 #
 # Here is what everything consists of.
@@ -44,7 +45,7 @@ trap '' PIPE
 set -e # Exit on error
 
 USAGE() {
-  echo "USAGE: $0 -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
+  echo "USAGE: $0 -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] -n [bugNumber] JSONfile"
   echo "       . . . or just $0 -ak JSONfile"
   exit 1
 }
@@ -90,9 +91,11 @@ demo=0
 ATP_TYPE=""
 # -s means skip everything up to injection
 # -i 15 means inject 15 bugs (default is 1)
+# how many bugs will be injected at  time
+many=100
 echo
 progress 0 "Parsing args"
-while getopts  "arcqmtb:i:z:kd" flag
+while getopts  "arcqmtb:i:z:n:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -153,6 +156,10 @@ do
       demo=1
       progress 0 "-d: demo mode"
   fi
+  if [ "$flag" = "n" ]; then
+      many="$OPTARG"
+      progress 0 "-n: $many bugs will be injected in each trial"
+  fi
 done
 shift $((OPTIND -1))
 
@@ -162,8 +169,6 @@ if [ -z "$1" ]; then
 fi
 json="$(realpath $1)"
 
-# how many bugs will be injected at  time
-many=100
 
 if [[ $demo -eq 1 ]]
 then
@@ -194,6 +199,7 @@ run_remote() {
     remote_machine=$1
     command=$2
     logfile=$3
+    ignore=$4
     if [ -z "$logfile" ]; then
         logfile=/dev/stdout
     fi
@@ -233,13 +239,14 @@ run_remote() {
         ssh $remote_machine $command 2>&1 >> "$logfile"
     fi
     ret_code=$?
-    if [ $ret_code != 0 ]; then
+    if [ $ret_code != 0 ] && [ $ignore != 1 ]; then
         echo "command failed! exit code was $ret_code"
         echo "========== end of logfile $lf: ========== "
         echo
         tail -n 30 "$lf"
         exit $ret_code
     fi
+    echo survived
     set -e
 }
 
@@ -372,8 +379,11 @@ if [ $inject -eq 1 ]; then
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode $kt $json" "$lf"
-    grep yield "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -t $i $kt $json" "$lf" "1"
+        echo "Finished trial $i"
+        set +e
+        grep yield "$lf"
+        set -e
     done
 fi
 

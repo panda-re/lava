@@ -133,6 +133,7 @@ for i in $c_dirs; do
     echo "  Applying replacements to $i"
     pushd $i
     $lava/src_clang/build/clang-apply-replacements .
+    $lava/src_clang/build/clang-apply-replacements ./src
     popd
 done
 

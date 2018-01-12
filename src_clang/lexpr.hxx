@@ -204,11 +204,15 @@ LExpr LDeref(LExpr ptr) {
     return LExpr(LExpr::DEREF, 0, "", { ptr });
 }
 
-LExpr LavaGet(uint64_t val) {
-    return LFunc("lava_get", { LDecimal(val) });
+LExpr LavaGet(uint64_t val, int64_t bug_id, int32_t magic) {
+    return LFunc("lava_get", { LDecimal(val), LDecimal(bug_id), LHex(magic) });
 }
 
-LExpr LavaGet(const Bug *bug) { return LavaGet(bug->trigger->id); }
+LExpr LavaGet(uint64_t val) {
+    return LavaGet(val, (int64_t)0, (int32_t)0);
+}
+
+LExpr LavaGet(const Bug *bug) { return LavaGet(bug->trigger->id, bug->id, bug->magic()); }
 LExpr LavaGet(const DuaBytes *dua_bytes) { return LavaGet(dua_bytes->id); }
 
 LExpr UCharCast(LExpr arg) { return LCast("const unsigned char *", arg); }

@@ -25,7 +25,7 @@ from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
 
 start_time = time.time()
 
-debugging = False
+debugging = True
 
 # get list of bugs either from cmd line or db
 def get_bug_list(args, db):
@@ -50,8 +50,11 @@ def get_bug_list(args, db):
     elif args.many:
         num_bugs_to_inject = int(args.many)
         print "Selecting %d bugs for injection" % num_bugs_to_inject
+        print "%d uninjected_bug" % db.uninjected_random(False).count() 
         assert db.uninjected_random(False).count() >= num_bugs_to_inject
-        bugs_to_inject = db.uninjected_random(False)[:num_bugs_to_inject]
+        # inject only type 1 bug
+        bugs_to_inject = [x for x in db.uninjected_random(False) if x.type != 1][:num_bugs_to_inject]
+        print "bugs_to_inject size", len(bugs_to_inject)
         bug_list = [b.id for b in bugs_to_inject]
         update_db = True
     else: assert False
@@ -65,7 +68,9 @@ def get_bug_list(args, db):
 # and they use different directories
 def get_bugs_parent(lp):
     bugs_parent = ""
-    candidate = 0
+    # Todo: 
+    candidate = args.trial
+    print ("candidate:", candidate)
     bugs_lock = None
     print "Getting locked bugs directory..."
     sys.stdout.flush()
@@ -116,6 +121,8 @@ if __name__ == "__main__":
             help = ('When validating a bug, make sure it manifests at same line as lava-inserted trigger'))
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
             help = ('Expected exit code when program exits without crashing. Default 0'))
+    parser.add_argument('-t', '--trial', action="store", default=0, type=int,
+            help = ('The subdir that the current trail will be put in'))
 
     args = parser.parse_args()
     global project
@@ -133,6 +140,7 @@ if __name__ == "__main__":
 
     # this is where buggy source code will be
     bugs_parent = get_bugs_parent(lp)
+    print ("bugs_parent:" , bugs_parent)
 
     # Remove all old YAML files
     run_cmd("rm {}/*.yaml".format(lp.bugs_build), "/", None, 10, shell=True)
@@ -143,6 +151,7 @@ if __name__ == "__main__":
     # add all those bugs to the source code and check that it compiles
     (build, input_files) = inject_bugs(bug_list, db, lp, project_file,
                                        project, args.knobTrigger, update_db)
+    print "INPUT FILES:", input_files
 
     try:
         # determine which of those bugs actually cause a seg fault

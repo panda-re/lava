@@ -268,7 +268,7 @@ void update_unique_taint_sets(const Panda__TaintQueryUniqueLabelSet *tquls) {
 
 bool is_header_file(std::string filename) {
     uint32_t l = filename.length();
-    return (filename[l-2] == '.' && filename[l-1] == 'h');
+    return (l > 1 && filename[l-2] == '.' && filename[l-1] == 'h');
 }
 
 // Check if sets are disjoint.
@@ -853,6 +853,10 @@ void attack_point_lval_usage(Panda__LogEntry *ple) {
 
     dprintf("%lu viable duas remain\n", recent_dead_duas.size());
     assert(si->has_ast_loc_id);
+    if (si->ast_loc_id >= ind2str.size()) {
+        dprintf("Ind2str out of bound");
+        return;
+    }
     LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
     assert(ast_loc.filename.size() > 0);
     transaction t(db->begin());
