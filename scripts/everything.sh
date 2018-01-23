@@ -292,12 +292,12 @@ if [ $inject -eq 1 ]; then
     do
         lf="$logs/inject-$i.log"
         truncate "$lf"
-        progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
+        Progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
         fix=""
         if [ "$injfixupsscript" != "null" ]; then
             fix="--fixupsscript='$injfixupsscript'"
         fi
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many --stage=multi -e $exitCode $kt $fix $hostjson $project_name" "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
     grep yield "$lf"
     done
 fi
