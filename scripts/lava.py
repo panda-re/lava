@@ -345,7 +345,10 @@ def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db)
     if not os.path.exists(join(lp.bugs_build, 'btrace.log')):
         print("Making with btrace...")
         run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
-        run([join(lp.lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
+        #run([join(lp.lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
+        for make_cmd in project['make'].split('&&'):
+            print('Make Cmd', make_cmd)
+            run([join(lp.lava_dir, 'btrace', 'sw-btrace')] + shlex.split(make_cmd))
     sys.stdout.flush()
     sys.stderr.flush()
 
@@ -368,7 +371,9 @@ def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db)
         # also insert instr for main() fn in all files that need it
         run(['git', 'add', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json.'])
-        run(shlex.split(project['make']))
+        for make_cmd in project['make'].split('&&'):
+            run(shlex.split(make_cmd))    
+        #run(shlex.split(project['make']))
         try:
             run(shlex.split("find .  -name '*.[ch]' -exec git add '{}' \\;"))
             run(['git', 'commit', '-m', 'Adding source files'])
@@ -445,12 +450,18 @@ def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db)
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
-    (rv, outp) = run_cmd_notimeout(project['make'], lp.bugs_build, None)
+    rv = 0
+    outp = ""
+    for make_cmd in project['make'].split('&&'):
+        (rvt,outpt) = run_cmd_notimeout(make_cmd, lp.bugs_build, None)
+        rv += rvt
+        outp += str(outpt)
+    #(rv, outp) = run_cmd_notimeout(project['make'], lp.bugs_build, None)
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
     if rv!=0:
         # build failed
-        print (str(outp).replace("\\n", "\n"))
+        print (outp.replace("\\n", "\n"))
         print("build failed")
         sys.exit(1)
     else:
@@ -459,8 +470,13 @@ def inject_bugs(bug_list, db, lp, project_file, project, knobTrigger, update_db)
 
         # Before we run make install for a second time, delete all files in the install directory
         run_cmd_notimeout("rm -rf {}".format(lp.bugs_install), lp.bugs_build, None)
-        (rv, outp) = run_cmd_notimeout("make install", lp.bugs_build, None)
+        for install_cmd in project['install'].split("&&"):
+            (rvt, outpt) = run_cmd_notimeout(install_cmd, lp.bugs_build, None)
+            rv += rvt
+            outp += str(outpt)
         assert rv == 0 # really how can this fail if build succeeds?
+        print("MAKE INSTALL:")
+        print(outp)
         print("make install succeeded")
 
     # add a row to the build table in the db
@@ -614,6 +630,8 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, knobTrigger, up
         if rv != expected_exit_code:
             print("***** buggy program fails on original input - Exit code {} does not match expected {}".format(rv,
                   expected_exit_code))
+            print("OUTPUT: ")
+            print(str(outp))
             assert False
         else:
             print("buggy program succeeds on original input {} with exit code {}".format(input_file, rv))
