@@ -165,6 +165,8 @@ def main():
 
     firstFile = True
     commands = readFile("btrace.log")
+    import os
+    os.remove("btrace.log")
     f = open("compile_commands.json", "w")
     f.write("[")
     for x in commands:
