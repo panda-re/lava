@@ -239,8 +239,9 @@ run_remote() {
         ssh $remote_machine $command 2>&1 >> "$logfile"
     fi
     ret_code=$?
-    if [ $ret_code != 0 ] && [ $ignore != 1 ]; then
+    if [ $ret_code != 0 ] && [ "$ignore" != 1 ]; then
         echo "command failed! exit code was $ret_code"
+        echo "cmd: $command"
         echo "========== end of logfile $lf: ========== "
         echo
         tail -n 30 "$lf"
