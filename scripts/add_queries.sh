@@ -26,16 +26,10 @@
 # and run the bug_mining.py script (which uses PANDA to trace taint).
 #
 
-ns=$(date +%s%N)
-START=$(echo "scale=2; $ns/1000000000" | bc)
+# Load lava-functions
+. `dirname $0`/funcs.sh
 
-
-progress() {
-  set +x
-  echo
-  echo -e "\e[32m[queries]\e[0m \e[1m$1\e[0m"
-  set -x
-}
+tick
 
 set -e # Exit on error
 set -x # Debug mode
@@ -59,25 +53,26 @@ lava="$(dirname $(dirname $(readlink -f $0)))"
 directory="$(jq -r .directory $json)"
 name="$(jq -r .name $json)"
 
-progress "Entering $directory/$name."
+progress "queries" 0  "Entering $directory/$name."
 mkdir -p "$directory/$name"
 cd "$directory/$name"
 
 tarfile="$(jq -r .tarfile $json)"
 
-progress "Untarring $tarfile..."
+progress "queries" 0  "Untarring $tarfile..."
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
 
 if [ -e "$source" ]; then
-  progress "Deleting $directory/$name/$source..."
+  progress "queries" 0  "Deleting $directory/$name/$source..."
   rm -rf "$directory/$name/$source"
 fi
 tar xf "$tarfile"
 
-progress "Entering $source."
+progress "queries" 0  "Entering $source."
 cd "$source"
 
-progress "Creating git repo."
+progress "queries" 0  "Creating git repo."
+rm -rf .git || true #Remove any existing git repo
 git init
 git config user.name LAVA
 git config user.email "nobody@nowhere"
@@ -86,14 +81,14 @@ echo `pwd`
 git commit -m 'Unmodified source.'
 echo `pwd`
 
-progress "Configuring..."
+progress "queries" 0  "Configuring..."
 mkdir -p lava-install
 $(jq -r .configure $json) --prefix=$(pwd)/lava-install
 
-progress "Making with btrace..."
+progress "queries" 0  "Making with btrace..."
 $lava/btrace/sw-btrace $(jq -r .make $json)
 
-progress "Installing..."
+progress "queries" 0  "Installing..."
 bash -c "$(jq -r .install $json)"
 
 
@@ -101,7 +96,7 @@ bash -c "$(jq -r .install $json)"
 llvm_src=$(grep LLVM_SRC_PATH $lava/src_clang/config.mak | cut -d' ' -f3)
 
 
-progress "Creating compile_commands.json..."
+progress "queries" 0  "Creating compile_commands.json..."
 $lava/btrace/sw-btrace-to-compiledb $llvm_src/Release/lib/clang/3.6.2/include
 git add compile_commands.json
 git commit -m 'Add compile_commands.json.'
@@ -111,14 +106,14 @@ cd ..
 c_files=$(python $lava/src_clang/get_c_files.py $source)
 c_dirs=$(for i in $c_files; do dirname $i; done | sort | uniq)
 
-progress "Copying include files..."
+progress "queries" 0  "Copying include files..."
 for i in $c_dirs; do
   echo "   $i"
   cp $lava/include/*.h $i/
 done
 
 
-progress "Inserting queries..."
+progress "queries" 0  "Inserting queries..."
 for i in $c_files; do
     $lava/src_clang/build/lavaTool -action=query \
     -lava-db="$directory/$name/lavadb" \
@@ -137,13 +132,8 @@ for i in $c_dirs; do
     popd
 done
 
-progress "Done inserting queries. Time to make and run actuate.py on a 64-BIT machine!"
+progress "queries" 0  "Done inserting queries. Time to make and run actuate.py on a 64-BIT machine!"
 
-
-ns=$(date +%s%N)
-END=$(echo "scale=2; $ns/1000000000" | bc)
-
-time_diff=$(echo "scale=2; $END-$START" | bc)
-
+tock
 echo "add queries complete $time_diff seconds"
 

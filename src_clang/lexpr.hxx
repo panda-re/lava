@@ -19,7 +19,8 @@ static void infix(InputIt first, InputIt last, std::ostream &os,
 
 struct LExpr {
     enum Type {
-        STR, HEX, DECIMAL, BINOP, FUNC, BLOCK, IF, CAST, INDEX, ASM, DEREF, IFDEF
+        STR, HEX, DECIMAL, BINOP, FUNC, BLOCK, IF, CAST, INDEX, ASM, DEREF,
+        ASSIGN, IFDEF
     } t;
 
     uint32_t value;
@@ -96,7 +97,7 @@ struct LExpr {
             if (arg.t == LExpr::CAST) os << "(";
             os << arg;
             if (arg.t == LExpr::CAST) os << ")";
-            os << "[" << expr.value << "]";
+            os << "[" << std::dec << expr.value << "]";
         } else if (expr.t == LExpr::IFDEF) {
             os << "\n#ifdef " << expr.str;
             expr.infix(os, "\n", "\n#else\n", "\n#endif\n");
@@ -109,6 +110,8 @@ struct LExpr {
             os << ")";
         } else if (expr.t == LExpr::DEREF) {
             os << '*' << *expr.args.at(0);
+        } else if (expr.t == LExpr::ASSIGN) {
+            os << *expr.args.at(0) << " = " << *expr.args.at(1);
         } else { assert(false && "Bad expr!"); }
 
         return os;
@@ -212,21 +215,36 @@ LExpr LavaGet(uint64_t val) {
     return LavaGet(val, (int64_t)0, (int32_t)0);
 }
 
-LExpr LavaGet(const Bug *bug) { return LavaGet(bug->trigger->id, bug->id, bug->magic()); }
+LExpr LavaGet(const Bug *bug) { return LavaGet(bug->trigger->id, bug->id, bug->magic); }
 LExpr LavaGet(const DuaBytes *dua_bytes) { return LavaGet(dua_bytes->id); }
+
+LExpr LAssign(LExpr left, LExpr right) {
+    return LExpr(LExpr::ASSIGN, 0, "", { left, right });
+}
+
+LExpr DataFlowGet(uint32_t slot) {
+    return LIndex(LStr("data_flow"), slot);
+}
 
 LExpr UCharCast(LExpr arg) { return LCast("const unsigned char *", arg); }
 LExpr UIntCast(LExpr arg) { return LCast("const unsigned int *", arg); }
 
-LExpr LavaSet(const DuaBytes *dua_bytes) {
-    const std::string &lval_name = dua_bytes->dua->lval->ast_name;
-    Range selected = dua_bytes->selected;
+LExpr SelectCast(const SourceLval *lval, Range selected) {
+    const std::string &lval_name = lval->ast_name;
     assert(selected.size() == 4);
 
     LExpr pointer = selected.low % 4 == 0
         ? UIntCast(LStr(lval_name)) + LDecimal(selected.low / 4)
         : UIntCast(UCharCast(LStr(lval_name)) + LDecimal(selected.low));
-    return LFunc("lava_set", { LDecimal(dua_bytes->id), LDeref(pointer) });
+    return LDeref(pointer);
+}
+
+LExpr LavaSet(const SourceLval *lval, Range selected, uint32_t slot) {
+    return LFunc("lava_set", { LDecimal(slot), SelectCast(lval, selected) });
+}
+
+LExpr DataFlowSet(const SourceLval *lval, Range selected, uint32_t slot) {
+    return LAssign(LIndex(LStr("data_flow"), slot), SelectCast(lval, selected));
 }
 
 template<typename UInt>
@@ -234,21 +252,9 @@ LExpr MagicTest(UInt magic_value, LExpr maskedLavaGet) {
     return LHex(magic_value) == maskedLavaGet;
 }
 
+template<LExpr Get(const Bug *)>
 LExpr MagicTest(const Bug *bug) {
-    return MagicTest(bug->magic(), LavaGet(bug));
-}
-
-// RangeTest and rangeStyleAttack are currently unused, but they're good examples of
-// how to use LExpr's.
-LExpr RangeTest(uint32_t magic_value, uint32_t range_size, LExpr value) {
-    return LHex(magic_value - range_size) < value &&
-        value < LHex(magic_value + range_size);
-}
-
-template<uint32_t num_bits>
-LExpr rangeStyleAttack(const Bug *bug) {
-    return LavaGet(bug) * (RangeTest(bug->magic(), 1U << num_bits, LavaGet(bug)) ||
-        RangeTest(__builtin_bswap32(bug->magic()), 1U << num_bits, LavaGet(bug)));
+    return MagicTest(bug->magic, Get(bug));
 }
 
 #endif

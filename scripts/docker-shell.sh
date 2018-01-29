@@ -1,7 +1,9 @@
 #!/bin/bash
 
 json="$(readlink -f $1)"
-cmd=$2
+cmd="${@:2}"
+container="lava32debug"
+#Alternatively you can use the "lava32" container
 
 lava="$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )")"
 db="$(jq -r .db $json)"
@@ -23,8 +25,8 @@ if [[ "$directory" = "$tarfiledir"* ]]; then true; else
   docker_map_args="$docker_map_args -v $directory:$directory"
 fi
 
-if ! ( docker images lava32debug | grep -q lava32debug ); then
-    docker build -t lava32debug "$(dirname $(dirname $(readlink -f $0)))/docker/debug"
+if ! ( docker images ${container} | grep -q ${container} ); then
+    docker build -t ${container} "$(dirname $(dirname $(readlink -f $0)))/docker/debug"
 fi
 
 [ "$extradockerargs" = "null" ] && extradockerargs="";
@@ -50,7 +52,6 @@ docker run --rm -it \
     -v /etc/shadow:/etc/shadow:ro \
     -v /etc/gshadow:/etc/gshadow:ro \
     -v "$HOME":"$HOME" \
-    --security-opt seccomp=unconfined \
     $docker_map_args \
     $extradockerargs \
-    lava32debug sh -c "trap '' PIPE; $cmd"
+    ${container} sh -c "trap '' PIPE; $cmd"

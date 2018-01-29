@@ -61,13 +61,14 @@ tick()
 
 project_file = abspath(sys.argv[1])
 input_file = abspath(sys.argv[2])
+input_file_base = os.path.basename(input_file)
 
 print("bug_mining.py %s %s" % (project_file, input_file))
 
-input_file_base = os.path.basename(input_file)
-project = json.load(open(project_file, "r"))
+with open(project_file, 'r') as project_f:
+    project = json.load(project_f)
 
-# *** Required json fields 
+# *** Required json fields
 # path to qemu exec (correct guest)
 assert 'qemu' in project
 # name of snapshot from which to revert which will be booted & logged in as root?
@@ -78,12 +79,10 @@ assert 'directory' in project
 assert 'command' in project
 # path to guest qcow
 assert 'qcow' in project
-# name of project 
+# name of project
 assert 'name' in project
 # path to tarfile for target (original source)
 assert 'tarfile' in project
-# if needed, what to set LD_LIBRARY_PATH to
-assert 'library_path' in project
 # namespace in db for prospective bugs
 assert 'db' in project
 
@@ -103,9 +102,7 @@ from run_guest import create_recording
 
 chaff = project.get('chaff', False)
 
-assert 'panda_os_string' in project
-
-panda_os_string = project['panda_os_string']
+panda_os_string = project.get('panda_os_string', 'linux-32-lava32')
 
 lavadir = dirname(dirname(abspath(sys.argv[0])))
 
@@ -128,7 +125,8 @@ command_args = shlex.split(project['command'].format(
 shutil.copy(input_file, installdir)
 
 create_recording(qemu_path, project['qcow'], project['snapshot'],
-                 command_args, installdir, isoname, isoname, rr=qemu_use_rr)
+                 command_args, installdir, isoname, project["expect_prompt"], rr=qemu_use_rr)
+                 #command_args, installdir, isoname, isoname, rr=qemu_use_rr) # for non-standard panda versions
 
 try: os.mkdir('inputs')
 except OSError as e:

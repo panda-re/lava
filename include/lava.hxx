@@ -220,6 +220,16 @@ struct Dua {
 
 #pragma db index("DuaUniq") unique members(lval, inputfile, instr, fake_dua)
 
+    Dua() {}
+    inline Dua(const SourceLval *lval, std::vector<const LabelSet*> &&viable_bytes,
+            std::vector<uint32_t> &&byte_tcn, std::vector<uint32_t> &&all_labels,
+            std::string inputfile, uint32_t max_tcn, uint32_t max_cardinality,
+            uint64_t instr, bool fake_dua)
+        : id(0), lval(lval), viable_bytes(std::move(viable_bytes)),
+            byte_tcn(std::move(byte_tcn)), all_labels(std::move(all_labels)),
+            inputfile(inputfile), max_tcn(max_tcn),
+            max_cardinality(max_cardinality), instr(instr), fake_dua(fake_dua) {}
+
     bool operator<(const Dua &other) const {
          return std::tie(lval->id, inputfile, instr, fake_dua) <
              std::tie(other.lval->id, other.inputfile, other.instr,
@@ -365,6 +375,8 @@ struct Bug {
     // Actually id's of DuaBytes.
     std::vector<uint64_t> extra_duas;
 
+    uint32_t magic;
+
 #pragma db index("BugUniq") unique members(type, atp, trigger_lval)
 #pragma db index("BugLvalsQuery") members(atp, type)
 
@@ -372,7 +384,14 @@ struct Bug {
     Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
             const AttackPoint *atp, std::vector<uint64_t> extra_duas)
         : id(0), type(type), trigger(trigger), trigger_lval(trigger->dua->lval),
-            atp(atp), max_liveness(max_liveness), extra_duas(extra_duas) {}
+            atp(atp), max_liveness(max_liveness), extra_duas(extra_duas),
+            magic(0) {
+        for (int i = 0; i < 4; i++) {
+            magic <<= 8;
+            magic |= rand() % 26 + 0x60;
+            magic ^= rand() & 0x20; // maybe flip case
+        }
+    }
 
     Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
             const AttackPoint *atp, std::vector<const DuaBytes *> extra_duas_)
@@ -387,10 +406,6 @@ struct Bug {
         return os;
     }
 
-    inline uint32_t magic() const {
-        return 0x6c617661 - id;
-    }
-
     // this logic is complicated.  TODO: understand/fix this
     // magic for kt has to be 2 bytes and we could
     // can either be (LAVA - id) & 0xffff
@@ -399,7 +414,7 @@ struct Bug {
     // LAVA & 0xffff because we get wrap arounds that still create unique
     // magic values
     inline uint16_t magic_kt() const {
-        return ((uint16_t) (0x6c617661 & 0xffff)) - id;
+        return (uint16_t)magic;
     }
 };
 
@@ -438,6 +453,7 @@ struct Run {
     int exitcode;           // exit code of program
     std::string output;     // output of program
     bool success;           // true unless python script failed somehow.
+    bool validated;         // true if bug successfully triggered by inject.py
 
     bool operator<(const Run &other) const {
         return std::tie(build->id, fuzzed->id, exitcode, output, success) <
