@@ -51,7 +51,9 @@ def get_bug_list(args, db):
         num_bugs_to_inject = int(args.many)
         print "Selecting %d bugs for injection" % num_bugs_to_inject
         print "%d uninjected_bug" % db.uninjected_random(False).count() 
-        assert db.uninjected_random(False).count() >= num_bugs_to_inject
+        #assert db.uninjected_random(False).count() >= num_bugs_to_inject
+        if db.uninjected_random(False).count() < num_bugs_to_inject:
+            num_bugs_to_inject = db.uninjected_random(False).count()
         # inject only type 1 bug
         bugs_to_inject = [x for x in db.uninjected_random(False) if x.type != 1][:num_bugs_to_inject]
         print "bugs_to_inject size", len(bugs_to_inject)
