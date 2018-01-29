@@ -87,6 +87,17 @@ $(jq -r .configure $json) --prefix=$(pwd)/lava-install
 
 progress "queries" 0  "Making with btrace..."
 $lava/btrace/sw-btrace $(jq -r .make $json)
+ORIGIN_IFS=$IFS
+IFS='&&'
+read -ra MAKES <<< "$(jq -r .make $json)"
+for i in ${MAKES[@]}; do
+    IFS=' '
+    read -ra ARGS <<< $i
+    $lava/btrace/sw-btrace ${ARGS[@]}
+    IFS='&&'
+done
+IFS=$ORIGIN_IFS
+
 
 progress "queries" 0  "Installing..."
 bash -c "$(jq -r .install $json)"
@@ -103,13 +114,18 @@ git commit -m 'Add compile_commands.json.'
 
 cd ..
 
+# TODO: Need to fix version.c in c_dirs
 c_files=$(python $lava/src_clang/get_c_files.py $source)
+echo "c_files"
 c_dirs=$(for i in $c_files; do dirname $i; done | sort | uniq)
+echo "c_dirs"
 
 progress "queries" 0  "Copying include files..."
 for i in $c_dirs; do
   echo "   $i"
-  cp $lava/include/*.h $i/
+  if [ -d $i ]; then
+    cp $lava/include/*.h $i/
+  fi
 done
 
 
@@ -128,7 +144,7 @@ for i in $c_dirs; do
     echo "  Applying replacements to $i"
     pushd $i
     $lava/src_clang/build/clang-apply-replacements .
-    $lava/src_clang/build/clang-apply-replacements ./src
+    #$lava/src_clang/build/clang-apply-replacements ./src
     popd
 done
 
