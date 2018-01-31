@@ -140,7 +140,6 @@ if __name__ == "__main__":
 
     # this is where buggy source code will be
     bugs_parent = get_bugs_parent(lp)
-    print ("bugs_parent:" , bugs_parent)
 
     # Remove all old YAML files
     run_cmd("rm {}/*.yaml".format(lp.bugs_build), None, 10, cwd="/", shell=True)

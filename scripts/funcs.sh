@@ -6,7 +6,6 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
     LAVA_FUNCS_INCLUDED=1
 
     progress() {
-      #echo "$@"
       if [ $2 -eq 1 ]; then
           date
       fi
@@ -90,7 +89,6 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
             ssh $remote_machine $command 2>&1 >> "$logfile"
         fi
         ret_code=$?
-        #if [ $ret_code != 0 ]; then
         if [ $ret_code != 0 ] && [ "$ignore" != 'ignore' ]; then
             echo "command failed! exit code was $ret_code"
             echo "========== end of logfile $lf: ========== "

@@ -18,8 +18,6 @@ libexec_dir=$bin_dir/../libexec
 
 BTRACE_LOG=$PWD/btrace.log
 export BTRACE_LOG
-#echo "REMOVING BTRACE LOG"
-#rm -f "$BTRACE_LOG"
 
 # This code copies fakeroot's behavior by adding the library to the front of the
 # LD_PRELOAD variable.

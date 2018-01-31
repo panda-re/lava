@@ -77,9 +77,7 @@ git init
 git config user.name LAVA
 git config user.email "nobody@nowhere"
 git add -A .
-echo `pwd`
 git commit -m 'Unmodified source.'
-echo `pwd`
 
 progress "queries" 0  "Configuring..."
 mkdir -p lava-install
@@ -113,11 +111,8 @@ git commit -m 'Add compile_commands.json.'
 
 cd ..
 
-# TODO: Need to fix version.c in c_dirs
 c_files=$(python $lava/src_clang/get_c_files.py $source)
-echo "c_files"
 c_dirs=$(for i in $c_files; do dirname $i; done | sort | uniq)
-echo "c_dirs"
 
 progress "queries" 0  "Copying include files..."
 for i in $c_dirs; do
@@ -143,7 +138,6 @@ for i in $c_dirs; do
     echo "  Applying replacements to $i"
     pushd $i
     $lava/src_clang/build/clang-apply-replacements .
-    #$lava/src_clang/build/clang-apply-replacements ./src
     popd
 done
 
