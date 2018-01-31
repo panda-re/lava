@@ -254,6 +254,7 @@ int main(int argc, char **argv) {
     if (!FileAndReplacements.first)
       continue;
 
+
     std::string NewFileData;
     const char *FileName = FileAndReplacements.first->getName();
     if (!applyReplacements(FileAndReplacements.second, NewFileData,

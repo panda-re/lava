@@ -275,9 +275,6 @@ LExpr knobTriggerAttack(const Bug *bug) {
     // we already know that magic_kt returns uint16_t so we don't have
     // to mask it
     uint16_t magic_value = bug->magic_kt();
-    // DEBUG
-    //debug << "Knob Trigger Attack\nbug magic "<< bug->magic_kt() << "\nbug id "<< bug->id<<"\n";
-    printf("Knob Attack\nbug magic %8x\nbug id %llu\n", bug->magic_kt() , bug->id);
     return (lava_get_lower * MagicTest<uint16_t>(magic_value, lava_get_upper))
         + (lava_get_upper * MagicTest<uint16_t>(magic_value, lava_get_lower));
 }

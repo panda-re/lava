@@ -207,6 +207,10 @@ LExpr LDeref(LExpr ptr) {
     return LExpr(LExpr::DEREF, 0, "", { ptr });
 }
 
+LExpr LAssign(LExpr left, LExpr right) {
+    return LExpr(LExpr::ASSIGN, 0, "", { left, right });
+}
+
 LExpr LavaGet(uint64_t val, int64_t bug_id, int32_t magic) {
     return LFunc("lava_get", { LDecimal(val), LDecimal(bug_id), LHex(magic) });
 }
@@ -216,10 +220,6 @@ LExpr LavaGet(uint64_t val) {
 }
 
 LExpr LavaGet(const DuaBytes *dua_bytes) { return LavaGet(dua_bytes->id); }
-
-LExpr LAssign(LExpr left, LExpr right) {
-    return LExpr(LExpr::ASSIGN, 0, "", { left, right });
-}
 
 LExpr DataFlowGet(uint32_t slot) {
     return LIndex(LStr("data_flow"), slot);
