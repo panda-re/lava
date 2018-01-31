@@ -847,6 +847,15 @@ public:
         } else if (LavaAction == LavaInjectBugs && !ArgDataflow) {
             if (main_files.count(getAbsolutePath(Filename)) > 0) {
                 std::stringstream top;
+                top << "#include <stdio.h>\n"
+                    << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
+                    << "void lava_set(unsigned int, unsigned int);\n"
+                    << "__attribute__((visibility(\"default\")))\n"
+                    << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val;  }\n"
+                    << "unsigned int lava_get(unsigned int, unsigned int, unsigned int);\n"
+                    << "__attribute__((visibility(\"default\")))\n"
+                    << "unsigned int lava_get(unsigned int trigger_id, unsigned int bug_id, unsigned int trigger) {  if (lava_val[trigger_id] == trigger) { printf(\"[LAVA] bug %d causes a crash\\n\", bug_id);  }  return lava_val[trigger_id];  }\n";
+                /*
                 top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
                     << "void lava_set(unsigned int, unsigned int);\n"
                     << "__attribute__((visibility(\"default\")))\n"
@@ -854,6 +863,7 @@ public:
                     << "unsigned int lava_get(unsigned int);\n"
                     << "__attribute__((visibility(\"default\")))\n"
                     << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
+                    */
                 insert_at_top = top.str();
             } else {
                 insert_at_top =

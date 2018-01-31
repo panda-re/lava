@@ -86,7 +86,6 @@ mkdir -p lava-install
 $(jq -r .configure $json) --prefix=$(pwd)/lava-install
 
 progress "queries" 0  "Making with btrace..."
-$lava/btrace/sw-btrace $(jq -r .make $json)
 ORIGIN_IFS=$IFS
 IFS='&&'
 read -ra MAKES <<< "$(jq -r .make $json)"

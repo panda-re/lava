@@ -392,7 +392,8 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
 
         # ugh binutils readelf.c will not be lavaTool-able without
         # bfd.h which gets created by make.
-        run(shlex.split(project["make"]))
+        for make_cmd in project['make'].split('&&'):
+            run(shlex.split(make_cmd))
         run(['find', '.', '-name', '*.[ch]', '-exec', 'git', 'add', '{}', ';'])
         try:
             run(['git', 'commit', '-m', 'Adding any make-generated source files'])
@@ -463,7 +464,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
     rv = 0
     outp = ""
     for make_cmd in project['make'].split('&&'):
-        (rvt,outpt) = run_cmd_notimeout(make_cmd, lp.bugs_build, None)
+        (rvt,outpt) = run_cmd_notimeout(make_cmd, cwd=lp.bugs_build)
         rv += rvt
         outp += str(outpt)
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
@@ -478,9 +479,9 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
         print("build succeeded")
 
         # Before we run make install for a second time, delete all files in the install directory
-        run_cmd_notimeout("rm -rf {}".format(lp.bugs_install), lp.bugs_build, None)
+        run_cmd_notimeout("rm -rf {}".format(lp.bugs_install), cwd=lp.bugs_build)
         for install_cmd in project['install'].split("&&"):
-            (rvt, outpt) = run_cmd_notimeout(install_cmd, lp.bugs_build, None)
+            (rvt, outpt) = run_cmd_notimeout(install_cmd, cwd=lp.bugs_build)
             rv += rvt
             outp += str(outpt)
         assert rv == 0 # really how can this fail if build succeeds?
