@@ -215,7 +215,6 @@ LExpr LavaGet(uint64_t val) {
     return LavaGet(val, (int64_t)0, (int32_t)0);
 }
 
-LExpr LavaGet(const Bug *bug) { return LavaGet(bug->trigger->id, bug->id, bug->magic); }
 LExpr LavaGet(const DuaBytes *dua_bytes) { return LavaGet(dua_bytes->id); }
 
 LExpr LAssign(LExpr left, LExpr right) {

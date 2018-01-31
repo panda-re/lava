@@ -262,7 +262,7 @@ LExpr Test(const Bug *bug) {
 }
 
 LExpr traditionalAttack(const Bug *bug) {
-    return LHex(bug->magic) * MagicTest(bug->magic, LavaGet(bug));
+    return LHex(bug->magic) * MagicTest(bug->magic, LavaGet(Slot(bug->trigger), bug->id, bug->magic));
     // This is from master
     // return Get(bug) * Test(bug);
 }
@@ -854,7 +854,7 @@ public:
                     << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val;  }\n"
                     << "unsigned int lava_get(unsigned int, unsigned int, unsigned int);\n"
                     << "__attribute__((visibility(\"default\")))\n"
-                    << "unsigned int lava_get(unsigned int trigger_id, unsigned int bug_id, unsigned int trigger) {  if (lava_val[trigger_id] == trigger) { printf(\"[LAVA] bug %d causes a crash\\n\", bug_id);  }  return lava_val[trigger_id];  }\n";
+                    << "unsigned int lava_get(unsigned int slot, unsigned int bug_id, unsigned int trigger) {  if (lava_val[slot] == trigger && bug_id != 0) { printf(\"[LAVA] bug %d causes a crash\\n\", bug_id);  }  return lava_val[slot];  }\n";
                 /*
                 top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
                     << "void lava_set(unsigned int, unsigned int);\n"
