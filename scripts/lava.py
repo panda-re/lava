@@ -285,7 +285,7 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename):
     cmd = [
         lp.lava_tool, '-action=inject', '-bug-list=' + bug_list_str,
         '-src-prefix=' + lp.bugs_build, '-project-file=' + project_file,
-        '-main-files=' + main_files, join(lp.bugs_build, filename)
+        '-main-files=' + main_files, join(lp.bugs_build, filename), '-printable=' + args.printBugId 
     ]
     if args.arg_dataflow: cmd.append('-arg_dataflow')
     if args.knobTrigger != -1: cmd.append('-kt')

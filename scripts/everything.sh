@@ -14,6 +14,7 @@
 #                and knobSize changes how origFile is mutated
 # -b [bugType] : use this to specify attact point type: [mem_write|mem_read|fn_arg]
 # -n [bugNumber] : number of bugs to inject in each trail
+# -p : print bug number in lava_get if it's triggering a crash
 # 
 # everything -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
 #
@@ -44,7 +45,7 @@ trap '' PIPE
 set -e # Exit on error
 
 USAGE() {
-  echo "USAGE: $0 -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] -n [bugNumber] JSONfile"
+  echo "USAGE: $0 -a -d -r -p -q -m -t -i [numSims] -b [bug_type] -z [knobSize] -n [bugNumber] JSONfile"
   echo "       . . . or just $0 -ak JSONfile"
   exit 1
 }
@@ -74,7 +75,7 @@ ATP_TYPE=""
 many=100
 echo
 progress "everything" 0 "Parsing args"
-while getopts  "arcqmtb:i:z:n:kd" flag
+while getopts  "arcqpmtb:i:z:n:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -138,6 +139,10 @@ do
   if [ "$flag" = "n" ]; then
       many="$OPTARG"
       progress "everything" 0 "-n: $many bugs will be injected in each trial"
+  fi
+  if [ "$flag" = "p" ]; then
+      print_bug=1
+      progress "printable bug" 0 "-p: print id of the bug which causes crash"
   fi
 done
 shift $((OPTIND -1))
@@ -276,12 +281,16 @@ if [ $inject -eq 1 ]; then
     if [ "$exitCode" = "null" ]; then
         exitCode="0";
     fi
+    if [ "$print_bug" == "1" ]; then
+       print_bug_flag="printBugId"
+
+    fi
     for i in `seq $num_trials`
     do
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -t $i $kt $json" "$lf" "1"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -t $i $kt $printBugId $json" "$lf" "1"
         echo "Finished trial $i"
         set +e
         grep yield "$lf"

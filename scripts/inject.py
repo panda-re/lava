@@ -122,6 +122,8 @@ if __name__ == "__main__":
             help = ('The subdir that the current trail will be put in'))
     parser.add_argument('-bb', '--balancebugtype', action="store_true", default=False, 
             help = ('Attempt to balance bug types, i.e. inject as many of each type'))
+    parser.add_argument('-p', '--printBugId', action='store_true', default = False, 
+            help = ('Print bug id when a bug is causing a crash'))
 
 
     args = parser.parse_args()

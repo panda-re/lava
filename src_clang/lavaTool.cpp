@@ -110,6 +110,10 @@ static cl::opt<bool> ArgDataflow("arg_dataflow",
     cl::desc("Use function args for dataflow instead of lava_[sg]et"),
     cl::cat(LavaCategory),
     cl::init(false));
+static cl::opt<bool> PrintableBugId("printBugId",
+    cl::desc("Print bug before it causes a crash"),
+    cl::cat(LavaCategory),
+    cl::init(false));
 
 std::string LavaPath;
 
@@ -262,9 +266,10 @@ LExpr Test(const Bug *bug) {
 }
 
 LExpr traditionalAttack(const Bug *bug) {
-    return LHex(bug->magic) * MagicTest(bug->magic, LavaGet(Slot(bug->trigger), bug->id, bug->magic));
-    // This is from master
-    // return Get(bug) * Test(bug);
+    if (PrintableBugId)
+        return LHex(bug->magic) * MagicTest(bug->magic, LavaGet(Slot(bug->trigger), bug->id, bug->magic));
+    else 
+        return Get(bug) * Test(bug);
 }
 
 LExpr knobTriggerAttack(const Bug *bug) {
@@ -844,23 +849,25 @@ public:
         } else if (LavaAction == LavaInjectBugs && !ArgDataflow) {
             if (main_files.count(getAbsolutePath(Filename)) > 0) {
                 std::stringstream top;
-                top << "#include <stdio.h>\n"
-                    << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
-                    << "void lava_set(unsigned int, unsigned int);\n"
-                    << "__attribute__((visibility(\"default\")))\n"
-                    << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val;  }\n"
-                    << "unsigned int lava_get(unsigned int, unsigned int, unsigned int);\n"
-                    << "__attribute__((visibility(\"default\")))\n"
-                    << "unsigned int lava_get(unsigned int slot, unsigned int bug_id, unsigned int trigger) {  if (lava_val[slot] == trigger && bug_id != 0) { printf(\"[LAVA] bug %d causes a crash\\n\", bug_id);  }  return lava_val[slot];  }\n";
-                /*
-                top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
-                    << "void lava_set(unsigned int, unsigned int);\n"
-                    << "__attribute__((visibility(\"default\")))\n"
-                    << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val; }\n"
-                    << "unsigned int lava_get(unsigned int);\n"
-                    << "__attribute__((visibility(\"default\")))\n"
-                    << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
-                    */
+                if (PrintableBugId) {
+                    top << "#include <stdio.h>\n"
+                        << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
+                        << "void lava_set(unsigned int, unsigned int);\n"
+                        << "__attribute__((visibility(\"default\")))\n"
+                        << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val;  }\n"
+                        << "unsigned int lava_get(unsigned int, unsigned int, unsigned int);\n"
+                        << "__attribute__((visibility(\"default\")))\n"
+                        << "unsigned int lava_get(unsigned int slot, unsigned int bug_id, unsigned int trigger) {  if (lava_val[slot] == trigger && bug_id != 0) { printf(\"[LAVA] bug %d causes a crash\\n\", bug_id);  }  return lava_val[slot];  }\n";
+                }
+                else {
+                    top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
+                        << "void lava_set(unsigned int, unsigned int);\n"
+                        << "__attribute__((visibility(\"default\")))\n"
+                        << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val; }\n"
+                        << "unsigned int lava_get(unsigned int);\n"
+                        << "__attribute__((visibility(\"default\")))\n"
+                        << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
+                }
                 insert_at_top = top.str();
             } else {
                 insert_at_top =
