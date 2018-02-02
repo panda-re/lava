@@ -352,7 +352,6 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
     if not os.path.exists(join(lp.bugs_build, 'btrace.log')):
         print("Making with btrace...")
         run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
-        #run([join(lp.lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
         for make_cmd in project['make'].split('&&'):
             print('Make Cmd', make_cmd)
             run([join(lp.lava_dir, 'btrace', 'sw-btrace')] + shlex.split(make_cmd))
@@ -379,7 +378,6 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
         run(['git', 'commit', '-m', 'Add compile_commands.json.'])
         for make_cmd in project['make'].split('&&'):
             run(shlex.split(make_cmd))    
-        #run(shlex.split(project['make']))
         try:
             run(['find', '.', '-name', '*.[ch]', '-exec', 'git', 'add', '{}', ';'])
             run(['git', 'commit', '-m', 'Adding source files'])
