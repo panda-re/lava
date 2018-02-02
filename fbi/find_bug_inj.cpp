@@ -67,7 +67,7 @@ uint64_t num_bugs_added_to_db = 0;
 uint64_t num_bugs_of_type[Bug::TYPE_END] = {0};
 
 using namespace odb::core;
-odb::pgsql::database* db;
+std::unique_ptr<odb::pgsql::database> db;
 
 bool debug = true;
 #define dprintf(...) if (debug) { printf(__VA_ARGS__); fflush(stdout); }
@@ -260,7 +260,7 @@ void update_unique_taint_sets(const Panda__TaintQueryUniqueLabelSet *tquls) {
 
 bool is_header_file(std::string filename) {
     uint32_t l = filename.length();
-    return (l > 1 && filename[l-2] == '.' && filename[l-1] == 'h');
+    return (filename[l-2] == '.' && filename[l-1] == 'h');
 }
 
 // Check if sets are disjoint.
@@ -864,10 +864,6 @@ void attack_point_lval_usage(Panda__LogEntry *ple) {
 
     dprintf("%lu viable duas remain\n", recent_dead_duas.size());
     assert(si->has_ast_loc_id);
-    if (si->ast_loc_id >= ind2str.size()) {
-        dprintf("Ind2str out of bound");
-        return;
-    }
     LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
     assert(ast_loc.filename.size() > 0);
     transaction t(db->begin());
@@ -939,8 +935,8 @@ int main (int argc, char **argv) {
     chaff_bugs = root.get("chaff", false).asBool();
     inputfile = std::string(argv[3]);
 
-    db = new odb::pgsql::database("postgres", "postgrespostgres",
-                root["db"].asString());
+    db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
+                root["db"].asString()));
     /*
      re-read pandalog, this time focusing on taint queries.  Look for
      dead available data, attack points, and thus bug injection oppotunities
@@ -961,21 +957,12 @@ int main (int argc, char **argv) {
                 << num_real_duas << " real duas "
                 << num_fake_duas << " fake duas\n";
         }
-        uint8_t count = (ple->taint_query_pri != 0 ) + (ple->tainted_branch!=0) \
-                        + (ple->attack_point != 0 ) + (ple->dwarf_call != 0) \
-                        + (ple->dwarf_ret != 0);
-        
-        if (count > 1) {
-            printf("Bug: %d\n", count);
-            continue;
-        }
+
         if (ple->taint_query_pri) {
-	    // Debug: ple->taint_query_pri is 0x9
             taint_query_pri(ple);
         } else if (ple->tainted_branch) {
             update_liveness(ple);
         } else if (ple->attack_point) {
-	    // Debug: ple->attack_point->src_info is null
             attack_point_lval_usage(ple);
         } else if (ple->dwarf_call) {
             record_call(ple);

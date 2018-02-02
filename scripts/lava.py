@@ -467,26 +467,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
         outp += str(outpt)
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
-    if rv!=0:
-        # build failed
-        print (outp.replace("\\n", "\n"))
-        print("build failed")
-        sys.exit(1)
-    else:
-        # build success
-        print("build succeeded")
-
-        # Before we run make install for a second time, delete all files in the install directory
-        run_cmd_notimeout("rm -rf {}".format(lp.bugs_install), cwd=lp.bugs_build)
-        for install_cmd in project['install'].split("&&"):
-            (rvt, outpt) = run_cmd_notimeout(install_cmd, cwd=lp.bugs_build)
-            rv += rvt
-            outp += str(outpt)
-        assert rv == 0 # really how can this fail if build succeeds?
-        print("MAKE INSTALL:")
-        print(outp)
-        print("make install succeeded")
-
+    
     # add a row to the build table in the db
     if update_db:
         db.session.add(build)
@@ -506,7 +487,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
         print("build of injected bug failed!!!!!!!")
         print("===================================")
         print()
-        print(outp[1])
+        print(outp.replace("\\n", "\n"))
         raise RuntimeError("Build of injected bug failed")
 
     return (build, input_files)

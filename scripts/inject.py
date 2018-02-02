@@ -17,7 +17,7 @@ from lava import LavaDatabase, Run, Bug, \
 
 start_time = time.time()
 
-debugging = True
+debugging = False
 
 # get list of bugs either from cmd line or db
 def get_bug_list(args, db):
@@ -41,15 +41,11 @@ def get_bug_list(args, db):
     elif args.many:
         num_bugs_to_inject = int(args.many)
         print "Selecting %d bugs for injection" % num_bugs_to_inject
-        print "%d uninjected_bug" % db.uninjected_random(False).count() 
         assert db.uninjected_random(False).count() >= num_bugs_to_inject
         if args.balancebugtype:
-            # TODO select only type 0 bugs
-            print "balance bug type"
             bugs_to_inject = db.uninjected_random_balance(False, num_bugs_to_inject)
         else:
-            bugs_to_inject = [x for x in db.uninjected_random(False) if x.type != 1][:num_bugs_to_inject]
-        print "bugs_to_inject size", len(bugs_to_inject)
+            bugs_to_inject = db.uninjected_random(False)[:num_bugs_to_inject]
         bug_list = [b.id for b in bugs_to_inject]
         update_db = True
     else: assert False
@@ -63,9 +59,7 @@ def get_bug_list(args, db):
 # and they use different directories
 def get_bugs_parent(lp):
     bugs_parent = ""
-    # Todo: 
     candidate = args.trial
-    print ("candidate:", candidate)
     bugs_lock = None
     print "Getting locked bugs directory..."
     sys.stdout.flush()
