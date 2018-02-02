@@ -211,12 +211,13 @@ LExpr LAssign(LExpr left, LExpr right) {
     return LExpr(LExpr::ASSIGN, 0, "", { left, right });
 }
 
+// Only used with printable bug id 
 LExpr LavaGet(uint64_t val, int64_t bug_id, int32_t magic) {
     return LFunc("lava_get", { LDecimal(val), LDecimal(bug_id), LHex(magic) });
 }
 
 LExpr LavaGet(uint64_t val) {
-    return LavaGet(val, (int64_t)0, (int32_t)0);
+    return LFunc("lava_get", { LDecimal(val) });
 }
 
 LExpr LavaGet(const DuaBytes *dua_bytes) { return LavaGet(dua_bytes->id); }

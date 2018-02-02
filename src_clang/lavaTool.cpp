@@ -252,7 +252,12 @@ uint32_t Slot(LvalBytes lval_bytes) {
 }
 
 LExpr Get(LvalBytes x) {
-    return ArgDataflow ? DataFlowGet(Slot(x)) : LavaGet(Slot(x));
+    if (PrintableBugId) {
+        return ArgDataflow ? DataFlowGet(Slot(x)) : LavaGet(Slot(x), 0, 0);
+    }
+    else {
+        return ArgDataflow ? DataFlowGet(Slot(x)) : LavaGet(Slot(x));
+    }
 }
 LExpr Get(const Bug *bug) { return Get(bug->trigger); }
 
@@ -849,30 +854,32 @@ public:
         } else if (LavaAction == LavaInjectBugs && !ArgDataflow) {
             if (main_files.count(getAbsolutePath(Filename)) > 0) {
                 std::stringstream top;
+                if (PrintableBugId) top << "#include <stdio.h>\n";
+                top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
+                    << "void lava_set(unsigned int, unsigned int);\n"
+                    << "__attribute__((visibility(\"default\")))\n"
+                    << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val;  }\n";
                 if (PrintableBugId) {
-                    top << "#include <stdio.h>\n"
-                        << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
-                        << "void lava_set(unsigned int, unsigned int);\n"
-                        << "__attribute__((visibility(\"default\")))\n"
-                        << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val;  }\n"
-                        << "unsigned int lava_get(unsigned int, unsigned int, unsigned int);\n"
+                    top << "unsigned int lava_get(unsigned int, unsigned int, unsigned int);\n"
                         << "__attribute__((visibility(\"default\")))\n"
                         << "unsigned int lava_get(unsigned int slot, unsigned int bug_id, unsigned int trigger) {  if (lava_val[slot] == trigger && bug_id != 0) { printf(\"[LAVA] bug %d causes a crash\\n\", bug_id);  }  return lava_val[slot];  }\n";
+ 
                 }
                 else {
-                    top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
-                        << "void lava_set(unsigned int, unsigned int);\n"
-                        << "__attribute__((visibility(\"default\")))\n"
-                        << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val; }\n"
-                        << "unsigned int lava_get(unsigned int);\n"
+                    top << "unsigned int lava_get(unsigned int);\n"
                         << "__attribute__((visibility(\"default\")))\n"
                         << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
                 }
                 insert_at_top = top.str();
             } else {
                 insert_at_top =
-                    "void lava_set(unsigned int bn, unsigned int val);\n"
-                    "extern unsigned int lava_get(unsigned int, unsigned int, unsigned int);\n";
+                    "void lava_set(unsigned int bn, unsigned int val);\n";
+                if (PrintableBugId) {
+                    insert_at_top += "extern unsigned int lava_get(unsigned int, unsigned int, unsigned int);\n";
+                }
+                else {
+                    insert_at_top += "extern unsigned int lava_get(unsigned int);\n";
+                }
             }
         }
 
