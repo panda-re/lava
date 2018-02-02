@@ -73,6 +73,7 @@ ATP_TYPE=""
 # -i 15 means inject 15 bugs (default is 1)
 # how many bugs will be injected at  time
 many=100
+print_bug=0
 echo
 progress "everything" 0 "Parsing args"
 while getopts  "arcqpmtb:i:z:n:kd" flag
@@ -282,7 +283,7 @@ if [ $inject -eq 1 ]; then
         exitCode="0";
     fi
     if [ "$print_bug" == "1" ]; then
-       print_bug_flag="printBugId"
+       print_bug_flag="-p"
 
     fi
     for i in `seq $num_trials`
@@ -290,7 +291,7 @@ if [ $inject -eq 1 ]; then
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -t $i $kt $printBugId $json" "$lf" "1"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -t $i $kt $print_bug_flag $json" "$lf" "1"
         echo "Finished trial $i"
         set +e
         grep yield "$lf"
