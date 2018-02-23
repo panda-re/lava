@@ -5,9 +5,7 @@ cmd="${@:2}"
 container="lava32debug"
 #Alternatively you can use the "lava32" container
 
-lava="$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )")"
-db="$(jq -r .db $json)"
-extradockerargs="$(jq -r .extra_docker_args $json)"
+lava="$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )")" db="$(jq -r .db $json)" extradockerargs="$(jq -r .extra_docker_args $json)"
 tarfile="$(jq -r .tarfile $json)"
 tarfiledir="$(dirname $tarfile)"
 directory="$(jq -r .directory $json)"
@@ -32,7 +30,7 @@ fi
 [ "$extradockerargs" = "null" ] && extradockerargs="";
 
 whoami="$(whoami)"
-cmd="sudo -u $whoami $cmd"
+cmd="sudo -u $whoami bash -c -- \"$cmd\""
 if [ -z "$2" ] ; then
     cmd="login -f $whoami LANG=en_US.UTF-8 LANGUAGE=en_US LC_ALL=en_US.UTF-8"
 fi

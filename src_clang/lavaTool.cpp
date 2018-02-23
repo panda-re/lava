@@ -110,6 +110,10 @@ static cl::opt<bool> ArgDataflow("arg_dataflow",
     cl::desc("Use function args for dataflow instead of lava_[sg]et"),
     cl::cat(LavaCategory),
     cl::init(false));
+static cl::opt<bool> ArgCompetition("competition",
+    cl::desc("Log before/after bugs when competition is #defined"),
+    cl::cat(LavaCategory),
+    cl::init(false));
 
 std::string LavaPath;
 
@@ -850,9 +854,15 @@ public:
                     << "unsigned int lava_get(unsigned int);\n"
                     << "__attribute__((visibility(\"default\")))\n"
                     << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
+                    << "#include <stdio.h> #lava\n"
+                    << "#define PRELAVABUG()  (debug ? printf('LAVAentr: %s:%d\n', __FILE__, __LINE__): 0)\n"
+                    << "#define POSTLAVABUG() (debug ? printf('LAVAexit: %s:%d\n', __FILE__, __LINE__): 0)\n"
                 insert_at_top = top.str();
             } else {
                 insert_at_top =
+                    "#include <stdio.h> #lava\n"
+                    "#define PRELAVABUG()  (debug ? printf('LAVAentr: %s:%d\n', __FILE__, __LINE__): 0)\n"
+                    "#define POSTLAVABUG() (debug ? printf('LAVAexit: %s:%d\n', __FILE__, __LINE__): 0)\n"
                     "void lava_set(unsigned int bn, unsigned int val);\n"
                     "extern unsigned int lava_get(unsigned int);\n";
             }

@@ -22,7 +22,7 @@ from os.path import basename, dirname, join, abspath, exists
 from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     run_cmd, run_cmd_notimeout, mutfile, inject_bugs, LavaPaths, \
     validate_bugs, run_modified_program, unfuzzed_input_for_bug, \
-    fuzzed_input_for_bug, get_trigger_line
+    fuzzed_input_for_bug, get_trigger_line, AttackPoint
 
 # collect num bugs AND num non-bugs
 # with some hairy constraints
@@ -38,7 +38,8 @@ def competition_bugs_and_non_bugs(num, db):
         for item in items:
             dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
             afl = (item.atp.loc_filename, item.atp.loc_begin_line)
-            if (dfl in fileline) or (afl in fileline):
+            # Skip this one if we've already used an ATP or DUA with the same line. Or if this is a function call atp
+            if (dfl in fileline) or (afl in fileline) or (item.atp.typ == AttackPoint.FUNCTION_CALL):
                 continue
             if fake:
                 print "non-bug", 
@@ -95,20 +96,17 @@ if __name__ == "__main__":
 
     args.knobTrigger = -1
     args.checkStacktrace = False
-    args.arg_dataflow = False
+    args.arg_dataflow = True
 
     while True:
+        if args.buglist:
+            bug_list = eval(args.buglist)
+        elif args.many:
+            bug_list = competition_bugs_and_non_bugs(int(args.many), db)
 
-        if True:
-            if args.buglist:
-                bug_list = eval(args.buglist)
-            elif args.many:
-                bug_list = competition_bugs_and_non_bugs(int(args.many), db)
-
-#        bug_list = [114L, 138L, 3295L, 3353L, 4635L, 14355L, 21112L, 34878L, 66341L, 72856L, 205102L, 222709L, 222865L, 271819L, 387124L, 388491L, 530292L]
         # add bugs to the source code and check that we can still compile
         (build, input_files) = inject_bugs(bug_list, db, lp, project_file, \
-                                              project, args, False)
+                                              project, args, False, competition=False)
 
         # bug is valid if seg fault (or bus error)
         # AND if stack trace indicates bug manifests at trigger line we inserted
@@ -122,9 +120,9 @@ if __name__ == "__main__":
             print "\n\n Yield acceptable"
             break
 
-    # re-build just with the real bugs
+    # re-build just with the real bugs. Inject in competition mode
     (build,input_files) = inject_bugs(real_bug_list, db, lp, project_file, \
-                                          project, args, False)
+                                          project, args, False, competition=True)
 
 
     corpus_dir = join(compdir, "corpora")
@@ -144,7 +142,6 @@ if __name__ == "__main__":
     # copy src
     shutil.copytree(bd, srcdir)
 
-    # TODO: this is broken - get_trigger_line doesn't work
     predictions = {}
     for bug in  db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all():
         prediction = "{}:{}".format(basename(bug.atp.loc_filename),
@@ -155,7 +152,6 @@ if __name__ == "__main__":
             continue
 
         assert not (prediction in predictions)
-        unfuzzed_input = unfuzzed_input_for_bug(lp, bug)
         fuzzed_input = fuzzed_input_for_bug(lp, bug)
         (dc, fi) = os.path.split(fuzzed_input)
         shutil.copy(fuzzed_input, inputsdir)

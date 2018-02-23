@@ -278,7 +278,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0):
         fuzzed_f.write(file_bytes)
 
 # run lavatool on this file to inject any parts of this list of bugs
-def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename):
+def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, competition=False):
     print("Running lavaTool on [{}]...".format(filename))
     bug_list_str = ','.join([str(bug.id) for bug in bug_list])
     main_files = ','.join([join(lp.bugs_build, f) for f in project['main_file']])
@@ -289,6 +289,8 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename):
     ]
     if args.arg_dataflow: cmd.append('-arg_dataflow')
     if args.knobTrigger != -1: cmd.append('-kt')
+    if competition: cmd.append('-competition')
+    print(' '.join(cmd))
     return run_cmd_notimeout(cmd)
 
 class LavaPaths(object):
@@ -328,7 +330,7 @@ class LavaPaths(object):
 
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
-def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
+def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, competition=False):
     if not os.path.exists(lp.bugs_parent):
         os.makedirs(lp.bugs_parent)
 
@@ -361,12 +363,12 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
     config_mak = join(lp.lava_dir, "src_clang/config.mak")
     print("config.mak = [%s]" % config_mak)
     for line in open(config_mak):
-        foo = re.search("LLVM_SRC_PATH := (.*)$", line)
-        if foo:
-            llvm_src = foo.groups()[0]
+        llvm_regex_match = re.search("LLVM_SRC_PATH := (.*)$", line)
+        if llvm_regex_match:
+            llvm_src = llvm_regex_match.groups()[0]
             break
     assert llvm_src is not None
-    print("llvm_src =" + llvm_src)
+    print("llvm_src = [%s]" % llvm_src)
 
     if not os.path.exists(join(lp.bugs_build, 'compile_commands.json')):
         run([join(lp.lava_dir, 'btrace', 'sw-btrace-to-compiledb'),
@@ -434,7 +436,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db):
     pool = ThreadPool(cpu_count())
     def modify_source(filename):
         run_lavatool(bugs_to_inject, lp, project_file, project, args,
-                     llvm_src, filename)
+                     llvm_src, filename, competition)
     pool.map(modify_source, all_files)
 
     clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
