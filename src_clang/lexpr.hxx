@@ -65,6 +65,10 @@ struct LExpr {
     void infix(std::ostream &os, std::string begin, std::string sep, std::string end) const {
         auto it = args.cbegin();
         os << begin;
+        if (args.size() == 0) {
+            os << end;
+            return;
+        }
         for (; it != args.cend() - 1; it++) {
             os << **it << sep;
         }
