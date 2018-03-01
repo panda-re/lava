@@ -29,6 +29,7 @@ reset=0
 num_bugs=0
 exit_code=0
 min_yield=1
+debug=0
 echo
 progress "competition" 0 "Parsing args"
 while getopts  "dakm:l:n:e:" flag
@@ -66,6 +67,7 @@ done
 shift $((OPTIND -1))
 
 json="$(realpath $1)"
+name="$(jq -r .name $json)"
 progress "competition" 1 "JSON file is $json"
 lava=$(dirname $(dirname $(readlink -f "$0")))
 scripts="$lava/scripts"
@@ -74,16 +76,19 @@ pandahost="$(jq -r '.pandahost // "localhost"' $json)"
 tarfile="$(jq -r .tarfile $json)"
 tarfiledir="$(dirname $tarfile)"
 directory="$(jq -r .directory $json)"
+logs="$directory/$name/logs"
 
 dockername="lava32"
 python="/usr/bin/python"
 
 pdb="/usr/bin/python -m pdb "
 
-if [ $debug -eq 1 ]; then
+if [ "$debug" -eq "1" ]; then
     python=$pdb
 fi
 
-progress "competition" 1 "Starting"
+lf="$logs/competition.log"
+progress "competition" 1 "Starting -- logging to $lf"
+truncate "$lf"
 run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $json" "$lf"
 progress "competition" 1 "Everything finished."

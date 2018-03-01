@@ -114,6 +114,8 @@ if __name__ == "__main__":
             help = ('Expected exit code when program exits without crashing. Default 0'))
     parser.add_argument('-bb', '--balancebugtype', action="store_true", default=False, 
             help = ('Attempt to balance bug types, i.e. inject as many of each type'))
+    parser.add_argument('-competition', '--competition', action="store_true", default=False,
+            help = ('Inject in competition mode where logging will be added in #IFDEFs'))
 
 
     args = parser.parse_args()
@@ -141,7 +143,7 @@ if __name__ == "__main__":
 
     # add all those bugs to the source code and check that it compiles
     (build, input_files) = inject_bugs(bug_list, db, lp, project_file,
-                                       project, args, update_db)
+                                       project, args, update_db, competition=args.competition)
     try:
         # determine which of those bugs actually cause a seg fault
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build,

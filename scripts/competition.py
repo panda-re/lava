@@ -24,6 +24,9 @@ from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     validate_bugs, run_modified_program, unfuzzed_input_for_bug, \
     fuzzed_input_for_bug, get_trigger_line, AttackPoint
 
+
+RETRY_COUNT = 5
+
 # collect num bugs AND num non-bugs
 # with some hairy constraints
 # we need no two bugs or non-bugs to have same file/line attack point
@@ -96,7 +99,8 @@ if __name__ == "__main__":
 
     args.knobTrigger = -1
     args.checkStacktrace = False
-    args.arg_dataflow = True
+    args.arg_dataflow = False
+    failcount = 0
 
     while True:
         if args.buglist:
@@ -105,8 +109,17 @@ if __name__ == "__main__":
             bug_list = competition_bugs_and_non_bugs(int(args.many), db)
 
         # add bugs to the source code and check that we can still compile
-        (build, input_files) = inject_bugs(bug_list, db, lp, project_file, \
-                                              project, args, False, competition=False)
+        try:
+            (build, input_files) = inject_bugs(bug_list, db, lp, project_file, \
+                                              project, args, False, competition=True)
+        except RuntimeError:
+            if failcount < RETRY_COUNT:
+                print("Failed to inject bugs, trying again:\n{}".format(bug_list))
+                failcount += 1
+                continue
+            raise
+
+
 
         # bug is valid if seg fault (or bus error)
         # AND if stack trace indicates bug manifests at trigger line we inserted

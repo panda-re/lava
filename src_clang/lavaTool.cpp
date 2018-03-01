@@ -251,8 +251,17 @@ uint32_t Slot(LvalBytes lval_bytes) {
     return data_slots.at(lval_bytes);
 }
 
+// Add PRELAVABUG before and POSTLAVABUG after
+LExpr CompetitionWrap(LExpr x) {
+    return LFunc("PRELAVABUG", {})+  x + LFunc("POSTLAVABUG2", {});
+}
+
 LExpr Get(LvalBytes x) {
-    return ArgDataflow ? DataFlowGet(Slot(x)) : LavaGet(Slot(x));
+    LExpr ret = (ArgDataflow ? DataFlowGet(Slot(x)) : LavaGet(Slot(x)));
+    if (ArgCompetition) {
+        ret = CompetitionWrap(ret);
+    }
+    return ret;
 }
 LExpr Get(const Bug *bug) { return Get(bug->trigger); }
 
@@ -854,17 +863,22 @@ public:
                     << "unsigned int lava_get(unsigned int);\n"
                     << "__attribute__((visibility(\"default\")))\n"
                     << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
-                    << "#include <stdio.h> #lava\n"
-                    << "#define PRELAVABUG()  (debug ? printf('LAVAentr: %s:%d\n', __FILE__, __LINE__): 0)\n"
-                    << "#define POSTLAVABUG() (debug ? printf('LAVAexit: %s:%d\n', __FILE__, __LINE__): 0)\n"
+                    if (ArgCompetition) {
+                        top << "#include <stdio.h>\n"
+                            << "#define PRELAVABUG()  (debug ? printf('LAVAentr: %s:%d\\n', __FILE__, __LINE__): 0)\n"
+                            << "#define POSTLAVABUG() (debug ? printf('LAVAexit: %s:%d\\n', __FILE__, __LINE__): 0)\n";
+                    }
                 insert_at_top = top.str();
             } else {
                 insert_at_top =
-                    "#include <stdio.h> #lava\n"
-                    "#define PRELAVABUG()  (debug ? printf('LAVAentr: %s:%d\n', __FILE__, __LINE__): 0)\n"
-                    "#define POSTLAVABUG() (debug ? printf('LAVAexit: %s:%d\n', __FILE__, __LINE__): 0)\n"
-                    "void lava_set(unsigned int bn, unsigned int val);\n"
-                    "extern unsigned int lava_get(unsigned int);\n";
+                    "#include <stdio.h>\n"
+                    "#define PRELAVABUG()  (debug ? printf('LAVAentr: %s:%d\\n', __FILE__, __LINE__): 0)\n"
+                    "#define POSTLAVABUG() (debug ? printf('LAVAexit: %s:%d\\n', __FILE__, __LINE__): 0)\n";
+
+                    if (ArgCompetition) {
+                        insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
+                        "extern unsigned int lava_get(unsigned int);\n");
+                    }
             }
         }
 

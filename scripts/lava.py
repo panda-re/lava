@@ -478,6 +478,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         print()
         print("===================================")
         print("build of injected bug failed!!!!!!!")
+        print("LAVA TOOL FAILED")
         print("===================================")
         print()
         print(outp[1])
