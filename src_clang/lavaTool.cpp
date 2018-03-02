@@ -251,17 +251,8 @@ uint32_t Slot(LvalBytes lval_bytes) {
     return data_slots.at(lval_bytes);
 }
 
-// Add PRELAVABUG before and POSTLAVABUG after
-LExpr CompetitionWrap(LExpr x) {
-    return LFunc("PRELAVABUG", {})+  x + LFunc("POSTLAVABUG2", {});
-}
-
 LExpr Get(LvalBytes x) {
-    LExpr ret = (ArgDataflow ? DataFlowGet(Slot(x)) : LavaGet(Slot(x)));
-    if (ArgCompetition) {
-        ret = CompetitionWrap(ret);
-    }
-    return ret;
+    return (ArgDataflow ? DataFlowGet(Slot(x)) : LavaGet(Slot(x)));
 }
 LExpr Get(const Bug *bug) { return Get(bug->trigger); }
 
@@ -452,6 +443,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         LavaASTLoc ast_loc = GetASTLoc(sm, toAttack);
         std::vector<LExpr> pointerAddends;
         std::vector<LExpr> valueAddends;
+        int this_bug_id = 0;
 
         debug(INJECT) << "Inserting expression attack (AttackExpression).\n";
         if (LavaAction == LavaInjectBugs) {
@@ -465,6 +457,12 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                 assert(bug->atp->type == atpType);
                 if (bug->type == Bug::PTR_ADD) {
                     pointerAddends.push_back(pointerAttack(bug));
+
+                    if (ArgCompetition) {
+                        assert(this_bug_id == 0);  // You can't inject multiple bugs into the same line for a competition
+                        this_bug_id = bug->id;
+                    }
+
                 } else if (bug->type == Bug::REL_WRITE) {
                     const DuaBytes *where = db->load<DuaBytes>(bug->extra_duas[0]);
                     const DuaBytes *what = db->load<DuaBytes>(bug->extra_duas[1]);
@@ -482,6 +480,17 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         if (!pointerAddends.empty()) {
             LExpr addToPointer = LBinop("+", std::move(pointerAddends));
             Mod.Change(toAttack).Add(addToPointer, parent);
+
+            // For competitions, wrap pointer value in LAVALOG macro call-
+            // it's a NOP that returns the same value but logs before/after a test dereference
+            // so we can identify if it's an invalid pointer dereference easily
+            if (ArgCompetition) {
+                Mod.Change(toAttack).InsertBefore("LAVALOG(");
+
+                std::stringstream end_str;
+                end_str << ", " << this_bug_id << ")";
+                Mod.Change(toAttack).InsertAfter(end_str.str());
+            }
         }
 
         if (!valueAddends.empty()) {
@@ -850,10 +859,22 @@ public:
 
         debug(INJECT) << "*** handleBeginSource for: " << Filename << "\n";
 
+        std::stringstream competition;
+        competition << "#include <stdio.h>\n"
+                    << "#ifdef LAVA_LOGGING\n"
+                    << "#define LAVALOG(x, bugid)  (printf(\"\\nLAVAenter: %d: %s:%d\\n\", bugid, __FILE__, __LINE__), "
+                    << "printf(\"LAVAexit:  %d: %s:%d 0x%x\\n\", bugid, __FILE__, __LINE__, *((int *)(x))), (x))\n"
+                    << "#else\n"
+                    << "#define LAVALOG(x,y)  (x)\n"
+                    << "#endif\n";
+
         std::string insert_at_top;
         if (LavaAction == LavaQueries) {
             insert_at_top = "#include \"pirate_mark_lava.h\"\n";
         } else if (LavaAction == LavaInjectBugs && !ArgDataflow) {
+            if (ArgCompetition) {
+                insert_at_top.append(competition.str());
+            }
             if (main_files.count(getAbsolutePath(Filename)) > 0) {
                 std::stringstream top;
                 top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
@@ -863,22 +884,10 @@ public:
                     << "unsigned int lava_get(unsigned int);\n"
                     << "__attribute__((visibility(\"default\")))\n"
                     << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
-                    if (ArgCompetition) {
-                        top << "#include <stdio.h>\n"
-                            << "#define PRELAVABUG()  (debug ? printf('LAVAentr: %s:%d\\n', __FILE__, __LINE__): 0)\n"
-                            << "#define POSTLAVABUG() (debug ? printf('LAVAexit: %s:%d\\n', __FILE__, __LINE__): 0)\n";
-                    }
-                insert_at_top = top.str();
+                insert_at_top.append(top.str());
             } else {
-                insert_at_top =
-                    "#include <stdio.h>\n"
-                    "#define PRELAVABUG()  (debug ? printf('LAVAentr: %s:%d\\n', __FILE__, __LINE__): 0)\n"
-                    "#define POSTLAVABUG() (debug ? printf('LAVAexit: %s:%d\\n', __FILE__, __LINE__): 0)\n";
-
-                    if (ArgCompetition) {
-                        insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
-                        "extern unsigned int lava_get(unsigned int);\n");
-                    }
+                insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
+                "extern unsigned int lava_get(unsigned int);\n");
             }
         }
 

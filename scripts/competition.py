@@ -25,7 +25,7 @@ from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     fuzzed_input_for_bug, get_trigger_line, AttackPoint
 
 
-RETRY_COUNT = 5
+RETRY_COUNT = 1
 
 # collect num bugs AND num non-bugs
 # with some hairy constraints
