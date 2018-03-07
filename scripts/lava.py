@@ -462,9 +462,8 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
-    if competition:
-        project['make'] +=" CFLAGS+='-DLAVA_LOGGING'"
     print(project['make'])
+
     (rv, outp) = run_cmd_notimeout(project['make'], cwd=lp.bugs_build)
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
@@ -483,13 +482,14 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         print("build succeeded")
         check_call(project['install'], cwd=lp.bugs_build, shell=True)
     else:
+        print("Lava tool error log below:")
+        print(outp[1])
         print()
         print("===================================")
         print("build of injected bug failed!!!!!!!")
         print("LAVA TOOL FAILED")
         print("===================================")
         print()
-        print(outp[1])
         raise RuntimeError("Build of injected bug failed")
 
     return (build, input_files)
