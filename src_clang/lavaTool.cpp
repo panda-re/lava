@@ -558,14 +558,27 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
             if (bug->type == Bug::RET_BUFFER) {
                 const DuaBytes *buffer = db->load<DuaBytes>(bug->extra_duas[0]);
-                result_ss << LIf(Test(bug).render(), {
-                            LIfDef("__x86_64__", {
-                                LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
-                                    LDecimal(buffer->selected.low), },
-                                    { "movq %0, %%rsp", "ret" }),
-                                LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
-                                    LDecimal(buffer->selected.low), },
-                                    { "movl %0, %%esp", "ret" })})});
+                if (ArgCompetition) {
+                    result_ss << LIf(Test(bug).render(), {
+                            LBlock({
+                                LFunc("LAVALOG2", {LDecimal(bug->id)}),
+                                LIfDef("__x86_64__", {
+                                    LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
+                                        LDecimal(buffer->selected.low), },
+                                        { "movq %0, %%rsp", "ret" }),
+                                    LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
+                                        LDecimal(buffer->selected.low), },
+                                        { "movl %0, %%esp", "ret" })})})});
+                }else{
+                    result_ss << LIf(Test(bug).render(), {
+                                LIfDef("__x86_64__", {
+                                    LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
+                                        LDecimal(buffer->selected.low), },
+                                        { "movq %0, %%rsp", "ret" }),
+                                    LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
+                                        LDecimal(buffer->selected.low), },
+                                        { "movl %0, %%esp", "ret" })})});
+                }
             }
         }
         bugs_with_atp_at.erase(key); // Only inject once.
@@ -864,8 +877,10 @@ public:
                     << "#ifdef LAVA_LOGGING\n"
                     << "#define LAVALOG(x, bugid)  (printf(\"\\nLAVAenter: %d: %s:%d\\n\", bugid, __FILE__, __LINE__), "
                     << "printf(\"LAVAexit:  %d: %s:%d 0x%x\\n\", bugid, __FILE__, __LINE__, *((int *)(x))), (x))\n"
+                    << "#define LAVALOG2(bugid)  (printf(\"\\nLAVAenter: %d: %s:%d\\n\", bugid, __FILE__, __LINE__))\n"
                     << "#else\n"
                     << "#define LAVALOG(x,y)  (x)\n"
+                    << "#define LAVALOG2(x)  (x)\n"
                     << "#endif\n";
 
         std::string insert_at_top;
