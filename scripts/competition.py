@@ -201,7 +201,7 @@ if __name__ == "__main__":
         build.write("%s CFLAGS+=\"-DLAVA_LOGGING\"\n" % project['make'])
         build.write("rm -rf %s\n" % lp.bugs_install)
         build.write("%s\n" % project['install'])
-        build.write("cp -r %s %s\n" % (lp.bugs_install, "lava-install-internal"))
+        build.write("cp -r %s %s\n" % (lp.bugs_install, join(corpdir, "lava-install-internal")))
 
     def run(args, **kwargs):
         print("run(", subprocess32.list2cmdline(args), ")")

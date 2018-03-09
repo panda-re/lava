@@ -438,8 +438,12 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                 LDecimal(0) });
     }
 
+    // Called for a location where we want to add a new attack expression
+    // typically either a taint query, a pointer we want to conditionally move out
+    // of bounds, an index into an array, or where we'll add a ret to attacker buffer
     void AttackExpression(const SourceManager &sm, const Expr *toAttack,
             const Expr *parent, const Expr *rhs, AttackPoint::Type atpType) {
+
         LavaASTLoc ast_loc = GetASTLoc(sm, toAttack);
         std::vector<LExpr> pointerAddends;
         std::vector<LExpr> valueAddends;
@@ -459,7 +463,11 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                     pointerAddends.push_back(pointerAttack(bug));
 
                     if (ArgCompetition) {
-                        assert(this_bug_id == 0);  // You can't inject multiple bugs into the same line for a competition
+                        if(this_bug_id != 0){  // You can't inject multiple bugs into the same line for a competition
+                            // This could probably be done better if I understood what these vectors contained
+                            printf("Warning: skipping this injection because we alrady injected on this line\n");
+                            continue;
+                        }
                         this_bug_id = bug->id;
                     }
 
@@ -481,14 +489,31 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             LExpr addToPointer = LBinop("+", std::move(pointerAddends));
             Mod.Change(toAttack).Add(addToPointer, parent);
 
-            // For competitions, wrap pointer value in LAVALOG macro call-
-            // it's a NOP that returns the same value but logs before/after a test dereference
-            // so we can identify if it's an invalid pointer dereference easily
+            // For competition builds, wrap attack points in a LAVALOG_xxx macro call-
+            // it's a NOP that returns the same value but logs. For PTRs we print before/after a dereference,
+            // for the others, we just print LAVAmaybe (function arguments and indexes are harder to test)
             if (ArgCompetition) {
-                Mod.Change(toAttack).InsertBefore("LAVALOG(");
-
                 std::stringstream end_str;
-                end_str << ", " << this_bug_id << ")";
+                switch (atpType) {
+                    case AttackPoint::POINTER_READ:
+                        Mod.Change(toAttack).InsertBefore("LAVALOG_IDX(");
+                        end_str << ", " << this_bug_id << ")";
+                        break;
+                    case AttackPoint::POINTER_WRITE:
+                        Mod.Change(toAttack).InsertBefore("LAVALOG_PTR(");
+                        end_str << ", " << this_bug_id << ")";
+                        break;
+
+                    case AttackPoint::FUNCTION_ARG:
+                        Mod.Change(toAttack).InsertBefore("LAVALOG_FUNC(");
+                        end_str << ", " << this_bug_id << ")";
+                        break;
+
+                    default:
+                        printf("ERROR: - No instrumentation for attack point type %d: instrumentation required for competition builds\n", atpType);
+                        assert(0);
+                    break;
+                }
                 Mod.Change(toAttack).InsertAfter(end_str.str());
             }
         }
@@ -561,7 +586,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                 if (ArgCompetition) {
                     result_ss << LIf(Test(bug).render(), {
                             LBlock({
-                                LFunc("LAVALOG2", {LDecimal(bug->id)}),
+                                LFunc("LAVALOG_RET", {LDecimal(bug->id)}),
                                 LIfDef("__x86_64__", {
                                     LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
                                         LDecimal(buffer->selected.low), },
@@ -875,12 +900,16 @@ public:
         std::stringstream competition;
         competition << "#include <stdio.h>\n"
                     << "#ifdef LAVA_LOGGING\n"
-                    << "#define LAVALOG(x, bugid)  (printf(\"\\nLAVAenter: %d: %s:%d\\n\", bugid, __FILE__, __LINE__), "
-                    << "printf(\"LAVAexit:  %d: %s:%d 0x%x\\n\", bugid, __FILE__, __LINE__, *((int *)(x))), (x))\n"
-                    << "#define LAVALOG2(bugid)  (printf(\"\\nLAVAenter: %d: %s:%d\\n\", bugid, __FILE__, __LINE__))\n"
+                    << "#define LAVALOG_PTR(x, bugid)  ({printf(\"\\nLAVAenter: %d: %s:%d\\n\", bugid, __FILE__, __LINE__); fflush(stdout); "
+                        << "printf(\"LAVAexit:  %d: %s:%d 0x%x\\n\", bugid, __FILE__, __LINE__, *((int *)(x))); fflush(stdout);             (x); })\n"
+                    << "#define LAVALOG_IDX(x,bugid)   ({printf(\"\\nLAVAmaybe: %d: %s:%d\\n\", bugid, __FILE__, __LINE__); fflush(stdout); (x); })\n"
+                    << "#define LAVALOG_FUNC(x,bugid)  ({printf(\"\\nLAVAmaybe: %d: %s:%d\\n\", bugid, __FILE__, __LINE__); fflush(stdout); (x); })\n"
+                    << "#define LAVALOG_RET(bugid)     ({printf(\"\\nLAVAenter: %d: %s:%d\\n\", bugid, __FILE__, __LINE__); fflush(stdout); })\n"
                     << "#else\n"
-                    << "#define LAVALOG(x,y)  (x)\n"
-                    << "#define LAVALOG2(x)  (x)\n"
+                    << "#define LAVALOG_PTR(x,y)  (x)\n"
+                    << "#define LAVALOG_IDX(x,y)  (x)\n"
+                    << "#define LAVALOG_FUNC(x,y) (x)\n"
+                    << "#define LAVALOG_RET(x) \n" // NOP
                     << "#endif\n";
 
         std::string insert_at_top;
