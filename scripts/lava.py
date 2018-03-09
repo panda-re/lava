@@ -118,6 +118,7 @@ class AttackPoint(Base):
     POINTER_READ = 1
     POINTER_WRITE = 2
     QUERY_POINT = 3
+    PRINTF_LEAK = 4
     # } type;
 
     def __str__(self):
@@ -126,7 +127,7 @@ class AttackPoint(Base):
             "ATP_POINTER_READ",
             "ATP_POINTER_WRITE",
             "ATP_QUERY_POINT",
-            "ATP_PRINTF_LEAK"
+            "ATP_PRINTF_LEAK",
         ]
         return 'ATP[{}](loc={}:{}, type={})'.format(
             self.id, self.loc.filename, self.loc.begin.line, type_strs[self.typ]
