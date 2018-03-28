@@ -118,6 +118,7 @@ class AttackPoint(Base):
     POINTER_READ = 1
     POINTER_WRITE = 2
     QUERY_POINT = 3
+    PRINTF_LEAK = 4
     # } type;
 
     def __str__(self):
@@ -126,7 +127,7 @@ class AttackPoint(Base):
             "ATP_POINTER_READ",
             "ATP_POINTER_WRITE",
             "ATP_QUERY_POINT",
-            "ATP_PRINTF_LEAK"
+            "ATP_PRINTF_LEAK",
         ]
         return 'ATP[{}](loc={}:{}, type={})'.format(
             self.id, self.loc.filename, self.loc.begin.line, type_strs[self.typ]
@@ -291,7 +292,12 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, 
     if args.knobTrigger != -1: cmd.append('-kt')
     if competition: cmd.append('-competition')
     print(' '.join(cmd))
-    return run_cmd_notimeout(cmd)
+    ret = run_cmd_notimeout(cmd)
+    if ret[0] != 0:
+        print(ret[1][1].replace("\\n", "\n"))
+        print("\nFatal error: LavaTool crashed\n")
+        assert(False) #LavaTool failed
+    return ret
 
 class LavaPaths(object):
 
@@ -457,6 +463,8 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
+    print(project['make'])
+
     (rv, outp) = run_cmd_notimeout(project['make'], cwd=lp.bugs_build)
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
@@ -475,13 +483,14 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         print("build succeeded")
         check_call(project['install'], cwd=lp.bugs_build, shell=True)
     else:
+        print("Lava tool error log below:")
+        print(outp[1])
         print()
         print("===================================")
         print("build of injected bug failed!!!!!!!")
         print("LAVA TOOL FAILED")
         print("===================================")
         print()
-        print(outp[1])
         raise RuntimeError("Build of injected bug failed")
 
     return (build, input_files)

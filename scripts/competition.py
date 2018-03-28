@@ -25,7 +25,7 @@ from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     fuzzed_input_for_bug, get_trigger_line, AttackPoint
 
 
-RETRY_COUNT = 5
+RETRY_COUNT = 0
 
 # collect num bugs AND num non-bugs
 # with some hairy constraints
@@ -188,7 +188,54 @@ if __name__ == "__main__":
     cmd = "/bin/tar czvf " + tarball + " src"
     subprocess32.check_call(cmd.split())
     print "created corpus tarball " + tarball + "\n";
-    build = open(join(corpdir, "build"), "w")
-    build.write("%s\n" % project['configure'])
-    build.write("%s\n" % project['make'])
-    build.close()
+
+    lp.bugs_install = join(corpdir,"lava-install")
+    # Helper files if we need to rebuild later by hand
+    with open(join(corpdir, "build"), "w") as build:
+        build.write("%s\n" % project['configure'])
+        build.write("%s\n" % project['make'])
+
+    with open(join(corpdir, "build_with_logs"), "w") as build:
+        build.write("make distclean || true\n")
+        build.write("%s --prefix=%s\n" % (project['configure'], lp.bugs_install))
+        build.write("%s CFLAGS+=\"-DLAVA_LOGGING\"\n" % project['make'])
+        build.write("rm -rf %s\n" % lp.bugs_install)
+        build.write("%s\n" % project['install'])
+        build.write("cp -r %s %s\n" % (lp.bugs_install, join(corpdir, "lava-install-internal")))
+
+    def run(args, **kwargs):
+        print("run(", subprocess32.list2cmdline(args), ")")
+        subprocess32.check_call(args, cwd=lp.bugs_build, **kwargs)
+
+    # Build a version to ship in src
+    os.chdir(srcdir)
+    run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
+    (rv, outp) = run_cmd_notimeout(project['make'],  cwd=lp.bugs_build)
+    if rv != 0:
+        print(outp)
+        raise RuntimeError("Could not make")
+    subprocess32.check_call(project['install'], cwd=lp.bugs_build, shell=True)
+
+    # Copy into lava-install-prod
+    installdir = join(corpdir, "lava-install-prod")
+    shutil.copytree(lp.bugs_install, installdir)
+    shutil.rmtree(lp.bugs_install)
+    print("Built production binaries in lava-install-prod")
+
+    # Make our version with logging
+    run_cmd_notimeout("make clean", cwd=lp.bugs_build)
+    run_cmd_notimeout("make distclean", cwd=lp.bugs_build)
+    run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
+    (rv, outp) = run_cmd_notimeout(project['make'] + " CFLAGS+=\"-DLAVA_LOGGING\"", cwd=lp.bugs_build)
+    if rv != 0:
+        print(outp)
+        raise RuntimeError("Could not make")
+
+    subprocess32.check_call(project['install'], cwd=lp.bugs_build, shell=True)
+    # Copy into lava-install-prod
+    installdir = join(corpdir, "lava-install-internal")
+    shutil.copytree(lp.bugs_install, installdir)
+    shutil.rmtree(lp.bugs_install)
+    print("Build local logging build in lava-install-internal")
+
+    print("Finished")

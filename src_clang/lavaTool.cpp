@@ -251,17 +251,8 @@ uint32_t Slot(LvalBytes lval_bytes) {
     return data_slots.at(lval_bytes);
 }
 
-// Add PRELAVABUG before and POSTLAVABUG after
-LExpr CompetitionWrap(LExpr x) {
-    return LFunc("PRELAVABUG", {})+  x + LFunc("POSTLAVABUG2", {});
-}
-
 LExpr Get(LvalBytes x) {
-    LExpr ret = (ArgDataflow ? DataFlowGet(Slot(x)) : LavaGet(Slot(x)));
-    if (ArgCompetition) {
-        ret = CompetitionWrap(ret);
-    }
-    return ret;
+    return (ArgDataflow ? DataFlowGet(Slot(x)) : LavaGet(Slot(x)));
 }
 LExpr Get(const Bug *bug) { return Get(bug->trigger); }
 
@@ -447,11 +438,16 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                 LDecimal(0) });
     }
 
+    // Called for a location where we want to add a new attack expression
+    // typically either a taint query, a pointer we want to conditionally move out
+    // of bounds, an index into an array, or where we'll add a ret to attacker buffer
     void AttackExpression(const SourceManager &sm, const Expr *toAttack,
             const Expr *parent, const Expr *rhs, AttackPoint::Type atpType) {
+
         LavaASTLoc ast_loc = GetASTLoc(sm, toAttack);
         std::vector<LExpr> pointerAddends;
         std::vector<LExpr> valueAddends;
+        int this_bug_id = 0;
 
         debug(INJECT) << "Inserting expression attack (AttackExpression).\n";
         if (LavaAction == LavaInjectBugs) {
@@ -465,6 +461,16 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                 assert(bug->atp->type == atpType);
                 if (bug->type == Bug::PTR_ADD) {
                     pointerAddends.push_back(pointerAttack(bug));
+
+                    if (ArgCompetition) {
+                        if(this_bug_id != 0){  // You can't inject multiple bugs into the same line for a competition
+                            // This could probably be done better if I understood what these vectors contained
+                            printf("Warning: skipping this injection because we alrady injected on this line\n");
+                            continue;
+                        }
+                        this_bug_id = bug->id;
+                    }
+
                 } else if (bug->type == Bug::REL_WRITE) {
                     const DuaBytes *where = db->load<DuaBytes>(bug->extra_duas[0]);
                     const DuaBytes *what = db->load<DuaBytes>(bug->extra_duas[1]);
@@ -482,6 +488,34 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         if (!pointerAddends.empty()) {
             LExpr addToPointer = LBinop("+", std::move(pointerAddends));
             Mod.Change(toAttack).Add(addToPointer, parent);
+
+            // For competition builds, wrap attack points in a LAVALOG_xxx macro call-
+            // it's a NOP that returns the same value but logs. For PTRs we print before/after a dereference,
+            // for the others, we just print LAVAmaybe (function arguments and indexes are harder to test)
+            if (ArgCompetition) {
+                std::stringstream end_str;
+                switch (atpType) {
+                    case AttackPoint::POINTER_READ:
+                        Mod.Change(toAttack).InsertBefore("LAVALOG_IDX(");
+                        end_str << ", " << this_bug_id << ")";
+                        break;
+                    case AttackPoint::POINTER_WRITE:
+                        Mod.Change(toAttack).InsertBefore("LAVALOG_PTR(");
+                        end_str << ", " << this_bug_id << ")";
+                        break;
+
+                    case AttackPoint::FUNCTION_ARG:
+                        Mod.Change(toAttack).InsertBefore("LAVALOG_FUNC(");
+                        end_str << ", " << this_bug_id << ")";
+                        break;
+
+                    default:
+                        printf("ERROR: - No instrumentation for attack point type %d: instrumentation required for competition builds\n", atpType);
+                        assert(0);
+                    break;
+                }
+                Mod.Change(toAttack).InsertAfter(end_str.str());
+            }
         }
 
         if (!valueAddends.empty()) {
@@ -549,14 +583,27 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
             if (bug->type == Bug::RET_BUFFER) {
                 const DuaBytes *buffer = db->load<DuaBytes>(bug->extra_duas[0]);
-                result_ss << LIf(Test(bug).render(), {
-                            LIfDef("__x86_64__", {
-                                LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
-                                    LDecimal(buffer->selected.low), },
-                                    { "movq %0, %%rsp", "ret" }),
-                                LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
-                                    LDecimal(buffer->selected.low), },
-                                    { "movl %0, %%esp", "ret" })})});
+                if (ArgCompetition) {
+                    result_ss << LIf(Test(bug).render(), {
+                            LBlock({
+                                LFunc("LAVALOG_RET", {LDecimal(bug->id)}),
+                                LIfDef("__x86_64__", {
+                                    LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
+                                        LDecimal(buffer->selected.low), },
+                                        { "movq %0, %%rsp", "ret" }),
+                                    LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
+                                        LDecimal(buffer->selected.low), },
+                                        { "movl %0, %%esp", "ret" })})})});
+                }else{
+                    result_ss << LIf(Test(bug).render(), {
+                                LIfDef("__x86_64__", {
+                                    LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
+                                        LDecimal(buffer->selected.low), },
+                                        { "movq %0, %%rsp", "ret" }),
+                                    LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
+                                        LDecimal(buffer->selected.low), },
+                                        { "movl %0, %%esp", "ret" })})});
+                }
             }
         }
         bugs_with_atp_at.erase(key); // Only inject once.
@@ -850,10 +897,28 @@ public:
 
         debug(INJECT) << "*** handleBeginSource for: " << Filename << "\n";
 
+        std::stringstream competition;
+        competition << "#include <stdio.h>\n"
+                    << "#ifdef LAVA_LOGGING\n"
+                    << "#define LAVALOG_PTR(x, bugid)  ({printf(\"\\nLAVAenter: %d: %s:%d\\n\", bugid, __FILE__, __LINE__); fflush(stdout); "
+                        << "printf(\"LAVAexit:  %d: %s:%d 0x%x\\n\", bugid, __FILE__, __LINE__, *((int *)(x))); fflush(stdout);             (x); })\n"
+                    << "#define LAVALOG_IDX(x,bugid)   ({printf(\"\\nLAVAmaybe: %d: %s:%d\\n\", bugid, __FILE__, __LINE__); fflush(stdout); (x); })\n"
+                    << "#define LAVALOG_FUNC(x,bugid)  ({printf(\"\\nLAVAmaybe: %d: %s:%d\\n\", bugid, __FILE__, __LINE__); fflush(stdout); (x); })\n"
+                    << "#define LAVALOG_RET(bugid)     ({printf(\"\\nLAVAenter: %d: %s:%d\\n\", bugid, __FILE__, __LINE__); fflush(stdout); })\n"
+                    << "#else\n"
+                    << "#define LAVALOG_PTR(x,y)  (x)\n"
+                    << "#define LAVALOG_IDX(x,y)  (x)\n"
+                    << "#define LAVALOG_FUNC(x,y) (x)\n"
+                    << "#define LAVALOG_RET(x) \n" // NOP
+                    << "#endif\n";
+
         std::string insert_at_top;
         if (LavaAction == LavaQueries) {
             insert_at_top = "#include \"pirate_mark_lava.h\"\n";
         } else if (LavaAction == LavaInjectBugs && !ArgDataflow) {
+            if (ArgCompetition) {
+                insert_at_top.append(competition.str());
+            }
             if (main_files.count(getAbsolutePath(Filename)) > 0) {
                 std::stringstream top;
                 top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
@@ -863,22 +928,10 @@ public:
                     << "unsigned int lava_get(unsigned int);\n"
                     << "__attribute__((visibility(\"default\")))\n"
                     << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
-                    if (ArgCompetition) {
-                        top << "#include <stdio.h>\n"
-                            << "#define PRELAVABUG()  (debug ? printf('LAVAentr: %s:%d\\n', __FILE__, __LINE__): 0)\n"
-                            << "#define POSTLAVABUG() (debug ? printf('LAVAexit: %s:%d\\n', __FILE__, __LINE__): 0)\n";
-                    }
-                insert_at_top = top.str();
+                insert_at_top.append(top.str());
             } else {
-                insert_at_top =
-                    "#include <stdio.h>\n"
-                    "#define PRELAVABUG()  (debug ? printf('LAVAentr: %s:%d\\n', __FILE__, __LINE__): 0)\n"
-                    "#define POSTLAVABUG() (debug ? printf('LAVAexit: %s:%d\\n', __FILE__, __LINE__): 0)\n";
-
-                    if (ArgCompetition) {
-                        insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
-                        "extern unsigned int lava_get(unsigned int);\n");
-                    }
+                insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
+                "extern unsigned int lava_get(unsigned int);\n");
             }
         }
 
