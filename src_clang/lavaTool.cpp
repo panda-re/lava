@@ -48,7 +48,7 @@ extern "C" {
 #define MATCHER (1 << 0)
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
-#define DEBUG_FLAGS (MATCHER | INJECT | FNARG)
+#define DEBUG_FLAGS 0 // (MATCHER | INJECT | FNARG)
 
 #define ARG_NAME "data_flow"
 
@@ -452,21 +452,20 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                 map_get_default(bugs_with_atp_at,
                         std::make_pair(ast_loc, atpType));
 
-            if (injectable_bugs.size() == 0) return;
+            if (injectable_bugs.size() == 0 && ArgCompetition) return;
 
             // this should be a function bug -> LExpr to add.
             auto pointerAttack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
             for (const Bug *bug : injectable_bugs) {
                 assert(bug->atp->type == atpType);
+                if (ArgCompetition) {
+                    assert(this_bug_id == 0);  // You can't inject multiple bugs into the same line for a competition
+                    this_bug_id = bug->id;
+                    this_bug = bug;
+                }
+
                 if (bug->type == Bug::PTR_ADD) {
                     pointerAddends.push_back(pointerAttack(bug));
-
-                    if (ArgCompetition) {
-                        assert(this_bug_id == 0);  // You can't inject multiple bugs into the same line for a competition
-                        this_bug_id = bug->id;
-                        this_bug = bug;
-                    }
-
                 } else if (bug->type == Bug::REL_WRITE) {
                     const DuaBytes *where = db->load<DuaBytes>(bug->extra_duas[0]);
                     const DuaBytes *what = db->load<DuaBytes>(bug->extra_duas[1]);
@@ -481,23 +480,20 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             num_atp_queries++;
         }
 
-        if (this_bug == NULL) return;
 
         if (!pointerAddends.empty()) {
             LExpr addToPointer = LBinop("+", std::move(pointerAddends));
             Mod.Change(toAttack).Add(addToPointer, parent);
 
-            assert(this_bug != NULL);
-
             // For competitions, wrap pointer value in LAVALOG macro call-
-            // it's a NOP that returns the same value but logs before/after a test dereference
-            // so we can identify if it's an invalid pointer dereference easily
+            // it's effectively just a NOP that prints a message when the trigger is true
+            // so we can identify when bugs are potentially triggered
             if (ArgCompetition) {
+                if (this_bug == NULL) return; // Maybe redundant
                 Mod.Change(toAttack).InsertBefore("LAVALOG(");
 
                 std::stringstream end_str;
-//                end_str << ", " << "(0)" << "," << this_bug_id << ")"; //TODO: replace 0 with trigger condition
-                end_str << ", " << Test(this_bug) << "," << this_bug_id << ")"; //TODO: replace 0 with trigger condition
+                end_str << ", " << Test(this_bug) << "," << this_bug_id << ")";
                 Mod.Change(toAttack).InsertAfter(end_str.str());
             }
         }
@@ -570,7 +566,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                 if (ArgCompetition) {
                     result_ss << LIf(Test(bug).render(), {
                             LBlock({
-                                LFunc("LAVALOG2", {LDecimal(bug->id)}),
+                                LFunc("LAVALOG", {LDecimal(1), LDecimal(1), LDecimal(bug->id)}), //It's always safe to call lavalog here since we're in the if
                                 LIfDef("__x86_64__", {
                                     LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
                                         LDecimal(buffer->selected.low), },
@@ -884,12 +880,9 @@ public:
         std::stringstream competition;
         competition << "#include <stdio.h>\n"
                     << "#ifdef LAVA_LOGGING\n"
-//                    << "#define LAVALOG(x, trigger, bugid)  ( if (trigger) { printf(\"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__); }; {x})\n"
-                    << "#define LAVALOG(x, trigger, bugid)  ({trigger && printf(\"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__), (x);})\n"
-                    << "#define LAVALOG2(bugid)  (printf(\"\\nLAVAenter: %d: %s:%d\\n\", bugid, __FILE__, __LINE__))\n"
+                    << "#define LAVALOG(x, trigger, bugid)  ({trigger && printf(\"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__) && fflush(stdout), (x);})\n"
                     << "#else\n"
                     << "#define LAVALOG(x,y,z)  (x)\n"
-                    << "#define LAVALOG2(x)  (x)\n"
                     << "#endif\n";
 
         std::string insert_at_top;
