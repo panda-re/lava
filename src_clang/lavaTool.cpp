@@ -48,7 +48,7 @@ extern "C" {
 #define MATCHER (1 << 0)
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
-#define DEBUG_FLAGS 0 // MATCHER | INJECT | FNARG
+#define DEBUG_FLAGS (MATCHER | INJECT | FNARG)
 
 #define ARG_NAME "data_flow"
 
@@ -446,10 +446,13 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         int this_bug_id = 0;
 
         debug(INJECT) << "Inserting expression attack (AttackExpression).\n";
+        const Bug *this_bug = NULL;
         if (LavaAction == LavaInjectBugs) {
             const std::vector<const Bug*> &injectable_bugs =
                 map_get_default(bugs_with_atp_at,
                         std::make_pair(ast_loc, atpType));
+
+            if (injectable_bugs.size() == 0) return;
 
             // this should be a function bug -> LExpr to add.
             auto pointerAttack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
@@ -461,6 +464,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                     if (ArgCompetition) {
                         assert(this_bug_id == 0);  // You can't inject multiple bugs into the same line for a competition
                         this_bug_id = bug->id;
+                        this_bug = bug;
                     }
 
                 } else if (bug->type == Bug::REL_WRITE) {
@@ -477,9 +481,13 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             num_atp_queries++;
         }
 
+        if (this_bug == NULL) return;
+
         if (!pointerAddends.empty()) {
             LExpr addToPointer = LBinop("+", std::move(pointerAddends));
             Mod.Change(toAttack).Add(addToPointer, parent);
+
+            assert(this_bug != NULL);
 
             // For competitions, wrap pointer value in LAVALOG macro call-
             // it's a NOP that returns the same value but logs before/after a test dereference
@@ -488,7 +496,8 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                 Mod.Change(toAttack).InsertBefore("LAVALOG(");
 
                 std::stringstream end_str;
-                end_str << ", " << "(0)" << "," << this_bug_id << ")"; //TODO: replace 0 with trigger condition
+//                end_str << ", " << "(0)" << "," << this_bug_id << ")"; //TODO: replace 0 with trigger condition
+                end_str << ", " << Test(this_bug) << "," << this_bug_id << ")"; //TODO: replace 0 with trigger condition
                 Mod.Change(toAttack).InsertAfter(end_str.str());
             }
         }
@@ -875,7 +884,8 @@ public:
         std::stringstream competition;
         competition << "#include <stdio.h>\n"
                     << "#ifdef LAVA_LOGGING\n"
-                    << "#define LAVALOG(x, trigger, bugid)  ( if (trigger) { printf(\"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__); }; {x})\n"
+//                    << "#define LAVALOG(x, trigger, bugid)  ( if (trigger) { printf(\"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__); }; {x})\n"
+                    << "#define LAVALOG(x, trigger, bugid)  ({trigger && printf(\"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__), (x);})\n"
                     << "#define LAVALOG2(bugid)  (printf(\"\\nLAVAenter: %d: %s:%d\\n\", bugid, __FILE__, __LINE__))\n"
                     << "#else\n"
                     << "#define LAVALOG(x,y,z)  (x)\n"
