@@ -27,6 +27,16 @@ from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
 
 RETRY_COUNT = 0
 
+# Build both scripts - in a seperate fn for testing
+def run_builds(scripts):
+    for script in scripts:
+        with open(script) as f:
+            print(f.read())
+        (rv, outp) = run_cmd_notimeout(["/bin/bash", script])
+        if rv != 0:
+            raise RuntimeError("Could not build {}".format(script))
+        print("Built {}".format(script))
+
 # collect num bugs AND num non-bugs
 # with some hairy constraints
 # we need no two bugs or non-bugs to have same file/line attack point
@@ -58,8 +68,7 @@ def competition_bugs_and_non_bugs(num, db):
     get_bugs_non_bugs(True, 2*num)
     return [b.id for b in bugs_and_non_bugs]
 
-
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
     parser.add_argument('project', type=argparse.FileType('r'),
             help = 'JSON project file')
@@ -147,6 +156,15 @@ if __name__ == "__main__":
     corpname = "lava-corpus-" + ((datetime.datetime.now()).strftime("%Y-%m-%d-%H-%M-%S"))
     corpdir = join(corpus_dir,corpname)
     subprocess32.check_call(["mkdir", corpdir])
+
+    # Corpus directory structure: lava-corpus-[date]/
+    #   inputs/
+    #   src/
+    #   build.sh
+    #   log_build.sh
+    #   lava-install-internal
+    #   lava-install-prod
+
     # subdir with trigger inputs
     inputsdir = join(corpdir, "inputs")
     subprocess32.check_call(["mkdir", inputsdir])
@@ -176,66 +194,77 @@ if __name__ == "__main__":
         print "ANSWER  [%s] [%s]" % (prediction, predictions[prediction])
         ans.write("%s %s\n" % (prediction, predictions[prediction]))
     ans.close()
-    # clean up before tar
+
+    # clean up srcdir before tar
     os.chdir(srcdir)
     subprocess32.check_call(["make", "distclean"])
     shutil.rmtree(join(srcdir, ".git"))
     shutil.rmtree(join(srcdir, "lava-install"))
     os.remove(join(srcdir, "compile_commands.json"))
     os.remove(join(srcdir, "btrace.log"))
-    tarball = join(srcdir + ".tgz")
-    os.chdir(corpdir)
-    cmd = "/bin/tar czvf " + tarball + " src"
-    subprocess32.check_call(cmd.split())
-    print "created corpus tarball " + tarball + "\n";
 
-    lp.bugs_install = join(corpdir,"lava-install")
-    # Helper files if we need to rebuild later by hand
-    with open(join(corpdir, "build"), "w") as build:
-        build.write("%s\n" % project['configure'])
-        build.write("%s\n" % project['make'])
+    # build source tar
+    #tarball = join(srcdir + ".tgz")
+    #os.chdir(corpdir)
+    #cmd = "/bin/tar czvf " + tarball + " src"
+    #subprocess32.check_call(cmd.split())
+    #print "created corpus tarball " + tarball + "\n";
 
-    with open(join(corpdir, "build_with_logs"), "w") as build:
-        build.write("make distclean || true\n")
-        build.write("%s --prefix=%s\n" % (project['configure'], lp.bugs_install))
-        build.write("%s CFLAGS+=\"-DLAVA_LOGGING\"\n" % project['make'])
-        build.write("rm -rf %s\n" % lp.bugs_install)
-        build.write("%s\n" % project['install'])
-        build.write("cp -r %s %s\n" % (lp.bugs_install, join(corpdir, "lava-install-internal")))
+    #lp.bugs_install = join(corpdir,"lava-install") # Change to be in our corpdir
+    # Save the commands we use into files so we can rerun later
+    build_sh = join(corpdir, "build.sh")
+    with open(build_sh, "w") as build:
+        build.write("""#!/bin/bash
+        pushd `pwd`
+        cd {bugs_build}
+        make distclean
+        make clean
+        {configure} --prefix="{outdir}"
+        {make}
+        rm -rf "{outdir}"
+        {install}
+        popd
+        """.format(configure=project['configure'],
+            bugs_install=lp.bugs_install,
+            bugs_build=bd,
+            make=project['make'],
+            install=project['install'],
+            outdir=join(corpdir, "lava-install")))
 
-    def run(args, **kwargs):
-        print("run(", subprocess32.list2cmdline(args), ")")
-        subprocess32.check_call(args, cwd=lp.bugs_build, **kwargs)
+    log_build_sh = join(corpdir, "log_build.sh")
+    with open(log_build_sh, "w") as build:
+        build.write("""#!/bin/bash
+        pushd `pwd`
+        cd {bugs_build}
+
+        # Build internal version
+        make distclean
+        {configure} --prefix="{internal_builddir}"
+        {make} CFLAGS+="-DLAVA_LOGGING"
+        rm -rf "{internal_builddir}"
+        {install}
+
+        # Build public version
+        make distclean
+        {configure} --prefix="{public_builddir}"
+        {make}
+        rm -rf "{public_builddir}"
+        {install}
+
+        popd
+        """.format(configure=project['configure'],
+            bugs_install = lp.bugs_install,
+            bugs_build=bd,
+            make = project['make'],
+            install = project['install'],
+            internal_builddir = join(corpdir, "lava-install-internal"),
+            public_builddir = join(corpdir, "lava-install")
+            ))
 
     # Build a version to ship in src
-    os.chdir(srcdir)
-    run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
-    (rv, outp) = run_cmd_notimeout(project['make'],  cwd=lp.bugs_build)
-    if rv != 0:
-        print(outp)
-        raise RuntimeError("Could not make")
-    subprocess32.check_call(project['install'], cwd=lp.bugs_build, shell=True)
-
-    # Copy into lava-install-prod
-    installdir = join(corpdir, "lava-install-prod")
-    shutil.copytree(lp.bugs_install, installdir)
-    shutil.rmtree(lp.bugs_install)
-    print("Built production binaries in lava-install-prod")
-
-    # Make our version with logging
-    run_cmd_notimeout("make clean", cwd=lp.bugs_build)
-    run_cmd_notimeout("make distclean", cwd=lp.bugs_build)
-    run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
-    (rv, outp) = run_cmd_notimeout(project['make'] + " CFLAGS+=\"-DLAVA_LOGGING\"", cwd=lp.bugs_build)
-    if rv != 0:
-        print(outp)
-        raise RuntimeError("Could not make")
-
-    subprocess32.check_call(project['install'], cwd=lp.bugs_build, shell=True)
-    # Copy into lava-install-prod
-    installdir = join(corpdir, "lava-install-internal")
-    shutil.copytree(lp.bugs_install, installdir)
-    shutil.rmtree(lp.bugs_install)
-    print("Build local logging build in lava-install-internal")
-
+    run_builds([build_sh, log_build_sh])
     print("Finished")
+
+
+if __name__ == "__main__":
+    main()
