@@ -23,6 +23,7 @@ from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 
 from composite import Composite
+from test_crash import process_crash
 
 Base = declarative_base()
 
@@ -238,14 +239,14 @@ class LavaDatabase(object):
         count = self.uninjected2(fake).count()
         return self.uninjected2(fake)[random.randrange(0, count)]
 
-def run_cmd(cmd, envv, timeout, cwd=None, rr=False, shell=False):
+def run_cmd(cmd, envv=None, timeout=30, cwd=None, rr=False, shell=False):
     if type(cmd) in [str, unicode] and not shell:
         cmd = shlex.split(cmd)
-    if debugging:
-        env_string = ""
-        if envv:
-            env_string = " ".join(["{}='{}'".format(k, v) for k, v in envv.iteritems()])
+    env_string = ""
+    if envv:
+        env_string = " ".join(["{}='{}'".format(k, v) for k, v in envv.iteritems()])
 
+    if debugging:
         print("run_cmd(" + env_string + " " + subprocess32.list2cmdline(cmd) + ")")
     p = subprocess32.Popen(cmd, cwd=cwd, env=envv, stdout=PIPE, stderr=PIPE, shell=shell)
     try:
@@ -463,6 +464,8 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
+    if competition:
+        project["make"] += " CFLAGS+=\"-DLAVA_LOGGING\""
     print(project['make'])
 
     (rv, outp) = run_cmd_notimeout(project['make'], cwd=lp.bugs_build)
@@ -538,6 +541,12 @@ def get_trigger_line(lp, bug):
         if not distances: return None
         return min(distances)[1]
 
+def check_competition_bug(lp, project, bug, fuzzed_input):
+    (rv, (out, err)) = run_modified_program(project, lp.bugs_install, fuzzed_input, 10)
+    for line in out.splitlines(): print(line)
+    for line in err.splitlines(): print(line)
+    return process_crash(out)
+
 # use gdb to get a stacktrace for this bug
 def check_stacktrace_bug(lp, project, bug, fuzzed_input):
     gdb_py_script = join(lp.lava_dir, "scripts/stacktrace_gdb.py")
@@ -546,7 +555,7 @@ def check_stacktrace_bug(lp, project, bug, fuzzed_input):
     envv = {"LD_LIBRARY_PATH": lib_path}
     cmd = project['command'].format(install_dir=lp.bugs_install,input_file=fuzzed_input)
     gdb_cmd = "gdb --batch --silent -x {} --args {}".format(gdb_py_script, cmd)
-    (rc, (out, err)) = run_cmd(gdb_cmd, cwd=lp.bugs_install, env=envv) # shell=True)
+    (rc, (out, err)) = run_cmd(gdb_cmd, cwd=lp.bugs_install, envv=envv) # shell=True)
     if debugging:
         for line in out.splitlines(): print(line)
         for line in err.splitlines(): print(line)
@@ -582,7 +591,7 @@ def fuzzed_input_for_bug(lp, bug):
     return "{}-fuzzed-{}{}".format(pref, bug.id, suff)
 
 def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
-                 unfuzzed_outputs):
+                 unfuzzed_outputs, competition=False):
     unfuzzed_input = unfuzzed_input_for_bug(lp, bug)
     fuzzed_input = fuzzed_input_for_bug(lp, bug)
     print(str(bug))
@@ -617,16 +626,22 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
             # so e.g. -11 goes to 139.
             if rv in [-6, -11, 134, 139]:
                 print("RV indicates memory corruption")
+                # Default: not checking that bug manifests at same line as trigger point or is found by competition grading infrastructure
+                validated = True
+                if competition:
+                    if check_competition_bug(lp, project, bug, fuzzed_input) == [bug.id]:
+                        print("... and competition infrastructure agrees")
+                        validated &= True
+                    else:
+                        validated &= False
+                        print("... but competition infrastructure misidentified it")
                 if args.checkStacktrace:
                     if check_stacktrace_bug(lp, project, bug, fuzzed_input):
                         print("... and stacktrace agrees with trigger line")
-                        validated = True
+                        validated &= True
                     else:
                         print("... but stacktrace disagrees with trigger line")
-                        validated = False
-                else:
-                    # not checking that bug manifests at same line as trigger point
-                    validated = True
+                        validated &= False
             else:
                 print("RV does not indicate memory corruption")
                 validated = False
@@ -644,7 +659,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     return validated
 
 # validate this set of bugs
-def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db):
+def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db, competition=False):
 
     timeout = project.get('timeout', 5)
 
@@ -679,7 +694,7 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
         print("Validating bug {} of {} ". format(
             bug_index + 1, len(bugs_to_inject)))
         validated = validate_bug(db, lp, project, bug, bug_index, build,
-                                 args, update_db, unfuzzed_outputs)
+                                 args, update_db, unfuzzed_outputs, competition=competition)
         if validated:
             real_bugs.append(bug.id)
         print()
