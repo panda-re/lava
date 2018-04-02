@@ -35,7 +35,7 @@ def run_builds(scripts):
         (rv, outp) = run_cmd_notimeout(["/bin/bash", script])
         if rv != 0:
             raise RuntimeError("Could not build {}".format(script))
-        print("Built {}".format(script))
+        print("Built with command {}".format(script))
 
 # collect num bugs AND num non-bugs
 # with some hairy constraints
@@ -142,7 +142,7 @@ def main():
         # bug is valid if seg fault (or bus error)
         # AND if stack trace indicates bug manifests at trigger line we inserted
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                          args, False)
+                                          args, False, competition=True)
 
         if len(real_bug_list) < int(args.minYield):
             print "\n\nXXX Yield too low -- %d bugs minimum is required for competition" % int(args.minYield)
@@ -274,10 +274,26 @@ def main():
             public_builddir = join(corpdir, "lava-install")
             ))
 
+    trigger_all_crashes = join(corpdir, "trigger_crashes.sh")
+    with open(trigger_all_crashes, "w") as build:
+        build.write("""#!/bin/bash
+        pushd `pwd`
+        cd {corpdir}
+
+        for fname in {inputdir}/*-fuzzed-*; do
+            LD_LIBRARY_PATH={librarydir} {command}
+        done
+
+        popd
+        """.format(command = project['command'].format(**{"install_dir": join(corpdir, "lava-install-internal"), "input_file": "$fname"}), # This syntax is weird but only thing that works?
+            corpdir = corpdir,
+            librarydir = join(corpdir, "lava-install-internal", "lib"),
+            inputdir = join(corpdir, "inputs")
+            ))
+
     # Build a version to ship in src
     run_builds([build_sh, log_build_sh])
-
-    print("Success. Corpus is in %s" % corpdir);
+    print("Success! Competition build in {}".format(corpdir))
 
 
 if __name__ == "__main__":
