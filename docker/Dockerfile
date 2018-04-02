@@ -1,4 +1,4 @@
-FROM m4mbr3/lava32
+  FROM m4mbr3/lava32
 
 RUN echo deb http://httpredir.debian.org/debian wheezy-backports main >> /etc/apt/sources.list
 RUN apt-get update
@@ -50,4 +50,5 @@ RUN ldconfig
 
 RUN pip install --upgrade -v pip -i https://pypi.python.org/simple/
 RUN pip install subprocess32 lockfile sqlalchemy
+
 Run apt-get install -y sudo gdb gawk
