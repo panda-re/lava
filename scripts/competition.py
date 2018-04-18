@@ -80,6 +80,8 @@ def main():
             help = 'Inject this list of bugs')
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
             help = ('Expected exit code when program exits without crashing. Default 0'))
+    parser.add_argument('-d', '--arg_dataflow', action="store_true", default=False,
+            help = ('Inject bugs using function args instead of globals'))
     
     args = parser.parse_args()
     project = json.load(args.project)
@@ -197,7 +199,10 @@ def main():
 
     # clean up srcdir before tar
     os.chdir(srcdir)
-    subprocess32.check_call(["make", "distclean"])
+    try: 
+        subprocess32.check_call(["make", "distclean"])
+    except:
+        pass
     shutil.rmtree(join(srcdir, ".git"))
     shutil.rmtree(join(srcdir, "lava-install"))
     os.remove(join(srcdir, "compile_commands.json"))

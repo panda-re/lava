@@ -30,6 +30,7 @@ num_bugs=0
 exit_code=0
 min_yield=1
 debug=0
+dataflow=""
 echo
 progress "competition" 0 "Parsing args"
 while getopts  "dakm:l:n:e:" flag
@@ -60,8 +61,8 @@ do
       progress "competition" 0 "-k: Okaying through deletes"
   fi
   if [ "$flag" = "d" ]; then
-      debug=1
-      progress "competition" 0 "-d: running with pdb"
+      progress "competition" 0 "using data flow"
+      dataflow="-d"
   fi
 done
 shift $((OPTIND -1))
@@ -90,5 +91,5 @@ fi
 lf="$logs/competition.log"
 progress "competition" 1 "Starting -- logging to $lf"
 truncate "$lf"
-run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $json" "$lf"
+run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $dataflow $json" "$lf"
 progress "competition" 1 "Everything finished."

@@ -222,16 +222,22 @@ class LavaDatabase(object):
     def uninjected_random(self, fake):
         return self.uninjected2(fake).order_by(func.random())
 
-    def uninjected_random_balance(self, fake, num_required):
+    def uninjected_random_balance(self, fake, num_required, bug_types):
         bugs = []
         types_present = self.session.query(Bug.type)\
             .filter(~Bug.builds.any())\
             .group_by(Bug.type)
-        num_per = num_required / types_present.count()
+        num_avail = 0
         for (i,) in types_present:
-            bug_query = self.uninjected_random(fake).filter(Bug.type == i)
-            print("found %d bugs of type %d" % (bug_query.count(), i))
-            bugs.extend(bug_query[:num_per])
+            if i in bug_types:
+                num_avail += 1
+        print("%d bugs available of allowed types" % num_avail)
+        num_per = num_required / num_avail
+        for (i,) in types_present:
+            if (i in bug_types): 
+                bug_query = self.uninjected_random(fake).filter(Bug.type == i)
+                print("found %d bugs of type %d" % (bug_query.count(), i))
+                bugs.extend(bug_query[:num_per])
         return bugs
 
     def next_bug_random(self, fake):
