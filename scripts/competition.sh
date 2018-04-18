@@ -88,6 +88,7 @@ if [ "$debug" -eq "1" ]; then
     python=$pdb
 fi
 
+mkdir -p $logs
 lf="$logs/competition.log"
 progress "competition" 1 "Starting -- logging to $lf"
 truncate "$lf"

@@ -160,11 +160,16 @@ def main():
     subprocess32.check_call(["mkdir", "-p", corpus_dir])
 
     # original bugs src dir
-    bd = join(lp.bugs_parent, lp.source_root)
     # directory for this corpus
     corpname = "lava-corpus-" + ((datetime.datetime.now()).strftime("%Y-%m-%d-%H-%M-%S"))
     corpdir = join(corpus_dir,corpname)
     subprocess32.check_call(["mkdir", corpdir])
+
+    lava_bd = join(lp.bugs_parent, lp.source_root)
+
+    # Copy lava's builddir into our local build-dir
+    bd = join(corpdir, "build-dir")
+    shutil.copytree(lava_bd, bd)
 
     # Corpus directory structure: lava-corpus-[date]/
     #   inputs/
@@ -207,7 +212,8 @@ def main():
 
     # clean up srcdir before tar
     os.chdir(srcdir)
-    try: 
+    try:
+        # Unconfigure
         subprocess32.check_call(["make", "distclean"])
     except:
         pass
@@ -230,16 +236,16 @@ def main():
         build.write("""#!/bin/bash
         pushd `pwd`
         cd {bugs_build}
-        make distclean
-        make clean
-        {configure} --prefix="{outdir}"
+        {make_clean}
+        {configure}
         {make}
-        rm -rf "{outdir}"
         {install}
+        cp -r lava-install {outdir}
         popd
-        """.format(configure=project['configure'],
-            bugs_install=lp.bugs_install,
+        """.format(
             bugs_build=bd,
+            make_clean = "make clean" if project["makeclean"] else "",
+            configure=project['configure'],
             make=project['make'],
             install=project['install'],
             outdir=join(corpdir, "lava-install")))
@@ -251,27 +257,30 @@ def main():
         cd {bugs_build}
 
         # Build internal version
-        make distclean
-        {configure} --prefix="{internal_builddir}"
+        {make_clean}
+        {configure}
         {make} CFLAGS+="-DLAVA_LOGGING"
         rm -rf "{internal_builddir}"
         {install}
+        cp -r lava-install {internal_builddir}
 
         # Build public version
-        make distclean
-        {configure} --prefix="{public_builddir}"
+        {make_clean}
+        {configure}
         {make}
         rm -rf "{public_builddir}"
         {install}
+        cp -r lava-install {public_builddir}
 
         popd
-        """.format(configure=project['configure'],
-            bugs_install = lp.bugs_install,
+        """.format(
             bugs_build=bd,
+            make_clean = "make clean" if project["makeclean"] else "",
+            configure=project['configure'],
             make = project['make'],
-            install = project['install'],
             internal_builddir = join(corpdir, "lava-install-internal"),
-            public_builddir = join(corpdir, "lava-install")
+            public_builddir = join(corpdir, "lava-install"),
+            install = project['install'],
             ))
 
     trigger_all_crashes = join(corpdir, "trigger_crashes.sh")
