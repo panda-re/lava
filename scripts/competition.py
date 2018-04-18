@@ -111,7 +111,9 @@ def main():
     args.arg_dataflow = False
     failcount = 0
 
-    while True:
+    numTrial = 10
+    acceptable = False
+    for current_trial in range(numTrial):
         if args.buglist:
             bug_list = eval(args.buglist)
         elif args.many:
@@ -140,8 +142,12 @@ def main():
             print "Trying again.\n"
         else:
             print "\n\n Yield acceptable"
+            acceptable = True
             break
 
+    if not acceptable:
+        print("Cannot get enough real bugs")
+        return 0
     # re-build just with the real bugs. Inject in competition mode
     (build,input_files) = inject_bugs(real_bug_list, db, lp, project_file, \
                                           project, args, False, competition=True)

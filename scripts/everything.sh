@@ -73,10 +73,9 @@ ATP_TYPE=""
 # -i 15 means inject 15 bugs (default is 1)
 # how many bugs will be injected at  time
 many=100
-print_bug=0
 echo
 progress "everything" 0 "Parsing args"
-while getopts  "arcqpmtb:i:z:n:kd" flag
+while getopts  "arcqmtb:i:z:n:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -141,10 +140,6 @@ do
       many="$OPTARG"
       progress "everything" 0 "-n: $many bugs will be injected in each trial"
   fi
-  if [ "$flag" = "p" ]; then
-      print_bug=1
-      progress "printable bug" 0 "-p: print id of the bug which causes crash"
-  fi
 done
 shift $((OPTIND -1))
 
@@ -179,6 +174,8 @@ fixupscript="$(jq -r .fixupscript $json)"
 makecmd="$(jq -r .make $json)"
 container="$(jq -r .docker $json)"
 install=$(jq -r .install $json)
+# update install by replace {install_dir} with lava-install
+install=$(echo $install | sed -e 's/{install_dir}/lava-install/g' )
 scripts="$lava/scripts"
 python="/usr/bin/python"
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
@@ -203,7 +200,7 @@ if [ $reset -eq 1 ]; then
     lf="$logs/dbwipe.log"
     truncate "$lf"
     progress "everything" 1  "Setting up lava db -- logging to $lf"
-    run_remote "$pandahost" "dropdb -U postgres $db" "$lf" "ignore"
+    run_remote "$pandahost" "dropdb -U postgres $db" "$lf"
     run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
     run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
     run_remote "$pandahost" "echo dbwipe complete" "$lf"
@@ -291,8 +288,9 @@ if [ $inject -eq 1 ]; then
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -t $i $kt $print_bug_flag $json" "$lf" "1"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -t $i $kt $print_bug_flag $json" "$lf"
         echo "Finished trial $i"
+        # ignore error if some trials of inject phase failed
         set +e
         grep yield "$lf"
         set -e
