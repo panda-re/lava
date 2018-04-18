@@ -22,7 +22,7 @@ from os.path import basename, dirname, join, abspath, exists
 from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     run_cmd, run_cmd_notimeout, mutfile, inject_bugs, LavaPaths, \
     validate_bugs, run_modified_program, unfuzzed_input_for_bug, \
-    fuzzed_input_for_bug, get_trigger_line, AttackPoint
+    fuzzed_input_for_bug, get_trigger_line, AttackPoint, Bug
 
 
 RETRY_COUNT = 0
@@ -51,8 +51,8 @@ def competition_bugs_and_non_bugs(num, db):
         for item in items:
             dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
             afl = (item.atp.loc_filename, item.atp.loc_begin_line)
-            # Skip this one if we've already used an ATP or DUA with the same line. Or if this is a function call atp
-            if (dfl in fileline) or (afl in fileline) or (item.atp.typ == AttackPoint.FUNCTION_CALL):
+            # Skip this one if we've already used an ATP or DUA with the same line. Or if this is a function call atp. or it it's an easybug or an info leak
+            if (dfl in fileline) or (afl in fileline) or (item.atp.typ == AttackPoint.FUNCTION_CALL) or (item.type == Bug.RET_BUFFER) or (item.type == Bug.PRINTF_LEAK):
                 continue
             if fake:
                 print "non-bug", 
@@ -151,11 +151,16 @@ def main():
     subprocess32.check_call(["mkdir", "-p", corpus_dir])
 
     # original bugs src dir
-    bd = join(lp.bugs_parent, lp.source_root)
     # directory for this corpus
     corpname = "lava-corpus-" + ((datetime.datetime.now()).strftime("%Y-%m-%d-%H-%M-%S"))
     corpdir = join(corpus_dir,corpname)
     subprocess32.check_call(["mkdir", corpdir])
+
+    lava_bd = join(lp.bugs_parent, lp.source_root)
+
+    # Copy lava's builddir into our local build-dir
+    bd = join(corpdir, "build-dir")
+    shutil.copytree(lava_bd, bd)
 
     # Corpus directory structure: lava-corpus-[date]/
     #   inputs/
@@ -197,7 +202,11 @@ def main():
 
     # clean up srcdir before tar
     os.chdir(srcdir)
-    subprocess32.check_call(["make", "distclean"])
+    try:
+        # Unconfigure
+        subprocess32.check_call(["make", "distclean"])
+    except:
+        pass
     shutil.rmtree(join(srcdir, ".git"))
     shutil.rmtree(join(srcdir, "lava-install"))
     os.remove(join(srcdir, "compile_commands.json"))
@@ -217,16 +226,16 @@ def main():
         build.write("""#!/bin/bash
         pushd `pwd`
         cd {bugs_build}
-        make distclean
-        make clean
-        {configure} --prefix="{outdir}"
+        {make_clean}
+        {configure}
         {make}
-        rm -rf "{outdir}"
         {install}
+        cp -r lava-install {outdir}
         popd
-        """.format(configure=project['configure'],
-            bugs_install=lp.bugs_install,
+        """.format(
             bugs_build=bd,
+            make_clean = "make clean" if project["makeclean"] else "",
+            configure=project['configure'],
             make=project['make'],
             install=project['install'],
             outdir=join(corpdir, "lava-install")))
@@ -238,27 +247,30 @@ def main():
         cd {bugs_build}
 
         # Build internal version
-        make distclean
-        {configure} --prefix="{internal_builddir}"
+        {make_clean}
+        {configure}
         {make} CFLAGS+="-DLAVA_LOGGING"
         rm -rf "{internal_builddir}"
         {install}
+        cp -r lava-install {internal_builddir}
 
         # Build public version
-        make distclean
-        {configure} --prefix="{public_builddir}"
+        {make_clean}
+        {configure}
         {make}
         rm -rf "{public_builddir}"
         {install}
+        cp -r lava-install {public_builddir}
 
         popd
-        """.format(configure=project['configure'],
-            bugs_install = lp.bugs_install,
+        """.format(
             bugs_build=bd,
+            make_clean = "make clean" if project["makeclean"] else "",
+            configure=project['configure'],
             make = project['make'],
-            install = project['install'],
             internal_builddir = join(corpdir, "lava-install-internal"),
-            public_builddir = join(corpdir, "lava-install")
+            public_builddir = join(corpdir, "lava-install"),
+            install = project['install'],
             ))
 
     trigger_all_crashes = join(corpdir, "trigger_crashes.sh")
