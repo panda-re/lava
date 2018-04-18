@@ -277,6 +277,7 @@ LExpr knobTriggerAttack(const Bug *bug) {
     // we already know that magic_kt returns uint16_t so we don't have
     // to mask it
     uint16_t magic_value = bug->magic_kt();
+
     return (lava_get_lower * MagicTest<uint16_t>(magic_value, lava_get_upper))
         + (lava_get_upper * MagicTest<uint16_t>(magic_value, lava_get_lower));
 }

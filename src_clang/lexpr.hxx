@@ -215,16 +215,9 @@ LExpr LAssign(LExpr left, LExpr right) {
     return LExpr(LExpr::ASSIGN, 0, "", { left, right });
 }
 
-// Only used with printable bug id 
-LExpr LavaGet(uint64_t val, int64_t bug_id, int32_t magic) {
-    return LFunc("lava_get", { LDecimal(val), LDecimal(bug_id), LHex(magic) });
+LExpr LavaGet(uint32_t slot) {
+    return LFunc("lava_get", { LDecimal(slot) });
 }
-
-LExpr LavaGet(uint64_t val) {
-    return LFunc("lava_get", { LDecimal(val) });
-}
-
-LExpr LavaGet(const DuaBytes *dua_bytes) { return LavaGet(dua_bytes->id); }
 
 LExpr DataFlowGet(uint32_t slot) {
     return LIndex(LStr("data_flow"), slot);

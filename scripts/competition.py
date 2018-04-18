@@ -133,7 +133,7 @@ def main():
         # bug is valid if seg fault (or bus error)
         # AND if stack trace indicates bug manifests at trigger line we inserted
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                          args, False)
+                                          args, False, competition=True)
 
         if len(real_bug_list) < int(args.minYield):
             print "\n\nXXX Yield too low -- %d bugs minimum is required for competition" % int(args.minYield)
@@ -232,6 +232,7 @@ def main():
             outdir=join(corpdir, "lava-install")))
 
     log_build_sh = join(corpdir, "log_build.sh")
+    # Append logging flag to every make commands we have
     makes = project['make'].split("&&")
     makes = [make_cmd + " CFLAGS+=\"-DLAVA_LOGGING\"" for make_cmd in makes]
     log_make = " && ".join(makes)

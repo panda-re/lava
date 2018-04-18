@@ -19,7 +19,7 @@ from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.sql.expression import func
 
 from subprocess32 import PIPE, check_call
-from multiprocessing import cpu_count, Pool
+from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 
 from composite import Composite
@@ -443,8 +443,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     print(src_files)
 
     all_files = src_files | set(project['main_file'])
-    print("CPU count: %d" % cpu_count())
-    pool = ThreadPool()
+    pool = ThreadPool(cpu_count())
     def modify_source(filename):
         run_lavatool(bugs_to_inject, lp, project_file, project, args,
                      llvm_src, filename, competition)
