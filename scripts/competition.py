@@ -228,10 +228,13 @@ def main():
             bugs_install=lp.bugs_install,
             bugs_build=bd,
             make=project['make'],
-            install=project['install'],
+            install=project['install'].format(install_dir=join(corpdir, "lava-install")),
             outdir=join(corpdir, "lava-install")))
 
     log_build_sh = join(corpdir, "log_build.sh")
+    makes = project['make'].split("&&")
+    makes = [make_cmd + " CFLAGS+=\"-DLAVA_LOGGING\"" for make_cmd in makes]
+    log_make = " && ".join(makes)
     with open(log_build_sh, "w") as build:
         build.write("""#!/bin/bash
         pushd `pwd`
@@ -240,9 +243,9 @@ def main():
         # Build internal version
         make distclean
         {configure} --prefix="{internal_builddir}"
-        {make} CFLAGS+="-DLAVA_LOGGING"
+        {log_make}
         rm -rf "{internal_builddir}"
-        {install}
+        {internal_install}
 
         # Build public version
         make distclean
@@ -256,7 +259,9 @@ def main():
             bugs_install = lp.bugs_install,
             bugs_build=bd,
             make = project['make'],
-            install = project['install'],
+            log_make=log_make,
+            install=project['install'].format(install_dir=join(corpdir, "lava-install")),
+            internal_install=project['install'].format(install_dir=join(corpdir, "lava-install-internal")),
             internal_builddir = join(corpdir, "lava-install-internal"),
             public_builddir = join(corpdir, "lava-install")
             ))

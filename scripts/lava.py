@@ -19,7 +19,7 @@ from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.sql.expression import func
 
 from subprocess32 import PIPE, check_call
-from multiprocessing import cpu_count
+from multiprocessing import cpu_count, Pool
 from multiprocessing.pool import ThreadPool
 
 from composite import Composite
@@ -360,7 +360,9 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     if not os.path.exists(join(lp.bugs_build, 'btrace.log')):
         print("Making with btrace...")
         run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
-        run([join(lp.lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
+        for make_cmd in project['make'].split('&&'):
+            print('Make Cmd', make_cmd)
+            run([join(lp.lava_dir, 'btrace', 'sw-btrace')] + shlex.split(make_cmd))
     sys.stdout.flush()
     sys.stderr.flush()
 
@@ -382,7 +384,8 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         # also insert instr for main() fn in all files that need it
         run(['git', 'add', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json.'])
-        run(shlex.split(project['make']))
+        for make_cmd in project['make'].split('&&'):
+            run(shlex.split(make_cmd))    
         try:
             run(['find', '.', '-name', '*.[ch]', '-exec', 'git', 'add', '{}', ';'])
             run(['git', 'commit', '-m', 'Adding source files'])
@@ -391,11 +394,12 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
 
         # Here we run make install but it may also run again later
         if not os.path.exists(lp.bugs_install):
-            check_call(project['install'], cwd=lp.bugs_build, shell=True)
+            check_call(project['install'].format(install_dir="lava-install"), cwd=lp.bugs_build, shell=True)
 
         # ugh binutils readelf.c will not be lavaTool-able without
         # bfd.h which gets created by make.
-        run(shlex.split(project["make"]))
+        for make_cmd in project['make'].split('&&'):
+            run(shlex.split(make_cmd))
         run(['find', '.', '-name', '*.[ch]', '-exec', 'git', 'add', '{}', ';'])
         try:
             run(['git', 'commit', '-m', 'Adding any make-generated source files'])
@@ -439,7 +443,8 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     print(src_files)
 
     all_files = src_files | set(project['main_file'])
-    pool = ThreadPool(cpu_count())
+    print("CPU count: %d" % cpu_count())
+    pool = ThreadPool()
     def modify_source(filename):
         run_lavatool(bugs_to_inject, lp, project_file, project, args,
                      llvm_src, filename, competition)
@@ -465,10 +470,15 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     print("build_dir = " + lp.bugs_build)
     print(project['make'])
 
-    (rv, outp) = run_cmd_notimeout(project['make'], cwd=lp.bugs_build)
+    rv = 0
+    outp = ""
+    for make_cmd in project['make'].split('&&'):
+        (rvt,outpt) = run_cmd_notimeout(make_cmd, cwd=lp.bugs_build)
+        rv += rvt
+        outp += str(outpt)
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
-
+    
     # add a row to the build table in the db
     if update_db:
         db.session.add(build)
@@ -481,7 +491,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     if rv == 0:
         # build success
         print("build succeeded")
-        check_call(project['install'], cwd=lp.bugs_build, shell=True)
+        check_call(project['install'].format(install_dir="lava-install"), cwd=lp.bugs_build, shell=True)
     else:
         print("Lava tool error log below:")
         print(outp[1])
@@ -491,6 +501,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         print("LAVA TOOL FAILED")
         print("===================================")
         print()
+        print(outp.replace("\\n", "\n"))
         raise RuntimeError("Build of injected bug failed")
 
     return (build, input_files)
@@ -660,6 +671,8 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
         if rv != args.exitCode:
             print("***** buggy program fails on original input - Exit code {} does not match expected {}".format(rv,
                   args.exitCode))
+            print("OUTPUT: ")
+            print(str(outp))
             assert False
         else:
             print("buggy program succeeds on original input {} with exit code {}".format(input_file, rv))

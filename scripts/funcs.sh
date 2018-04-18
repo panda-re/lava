@@ -50,6 +50,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
         remote_machine=$1
         command=$2
         logfile=$3
+        ignore=$4
         if [ -z "$logfile" ]; then
             logfile=/dev/stdout
         fi
@@ -88,7 +89,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
             ssh $remote_machine $command 2>&1 >> "$logfile"
         fi
         ret_code=$?
-        if [ $ret_code != 0 ]; then
+        if [ $ret_code != 0 ] && [ "$ignore" != 'ignore' ]; then
             echo "command failed! exit code was $ret_code"
             echo "========== end of logfile $lf: ========== "
             echo

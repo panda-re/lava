@@ -9,7 +9,7 @@ CC ?= clang
 
 PKGS=libodb libodb-pgsql jsoncpp
 
-LDFLAGS= -L/usr/local/lib -lprotobuf-c -lz -lpq -ljsoncpp -lodb-pgsql -lodb
+LDFLAGS= -L/usr/local/lib -lprotobuf-c -lz -lpq -ljsoncpp -lodb-pgsql -lodb -L/usr/lib -ggdb
 CFLAGS= -I$(PANDA_SRC_PATH)/panda/include \
 		-I$(PANDA_BUILD_DIR)/i386-softmmu \
 		-I/usr/lib/odb/x86_64-linux-gnu/include \

@@ -59,7 +59,7 @@ def get_bug_list(args, db):
 # and they use different directories
 def get_bugs_parent(lp):
     bugs_parent = ""
-    candidate = 0
+    candidate = args.trial
     bugs_lock = None
     print "Getting locked bugs directory..."
     sys.stdout.flush()
@@ -112,6 +112,8 @@ if __name__ == "__main__":
             help = ('Inject bugs using function args instead of globals'))
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
             help = ('Expected exit code when program exits without crashing. Default 0'))
+    parser.add_argument('-t', '--trial', action="store", default=0, type=int,
+            help = ('The subdir that the current trail will be put in'))
     parser.add_argument('-bb', '--balancebugtype', action="store_true", default=False, 
             help = ('Attempt to balance bug types, i.e. inject as many of each type'))
     parser.add_argument('-competition', '--competition', action="store_true", default=False,

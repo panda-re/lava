@@ -13,7 +13,9 @@
 # -z [knobSize]: use this to make inject step use knob trigger bugs
 #                and knobSize changes how origFile is mutated
 # -b [bugType] : use this to specify attact point type: [mem_write|mem_read|fn_arg]
-#
+# -n [bugNumber] : number of bugs to inject in each trail
+# -p : print bug number in lava_get if it's triggering a crash
+# 
 # everything -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
 #
 # Here is what everything consists of.
@@ -43,7 +45,7 @@ trap '' PIPE
 set -e # Exit on error
 
 USAGE() {
-  echo "USAGE: $0 -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
+  echo "USAGE: $0 -a -d -r -p -q -m -t -i [numSims] -b [bug_type] -z [knobSize] -n [bugNumber] JSONfile"
   echo "       . . . or just $0 -ak JSONfile"
   exit 1
 }
@@ -69,9 +71,12 @@ demo=0
 ATP_TYPE=""
 # -s means skip everything up to injection
 # -i 15 means inject 15 bugs (default is 1)
+# how many bugs will be injected at  time
+many=100
+print_bug=0
 echo
 progress "everything" 0 "Parsing args"
-while getopts  "arcqmtb:i:z:kd" flag
+while getopts  "arcqpmtb:i:z:n:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -132,6 +137,14 @@ do
       demo=1
       progress "everything" 0 "-d: demo mode"
   fi
+  if [ "$flag" = "n" ]; then
+      many="$OPTARG"
+      progress "everything" 0 "-n: $many bugs will be injected in each trial"
+  fi
+  if [ "$flag" = "p" ]; then
+      print_bug=1
+      progress "printable bug" 0 "-p: print id of the bug which causes crash"
+  fi
 done
 shift $((OPTIND -1))
 
@@ -141,8 +154,6 @@ if [ -z "$1" ]; then
 fi
 json="$(realpath $1)"
 
-# how many bugs will be injected at  time
-many=100
 
 if [[ $demo -eq 1 ]]
 then
@@ -192,7 +203,7 @@ if [ $reset -eq 1 ]; then
     lf="$logs/dbwipe.log"
     truncate "$lf"
     progress "everything" 1  "Setting up lava db -- logging to $lf"
-    run_remote "$pandahost" "dropdb --if-exists -U postgres $db" "$lf"
+    run_remote "$pandahost" "dropdb -U postgres $db" "$lf" "ignore"
     run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
     run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
     run_remote "$pandahost" "echo dbwipe complete" "$lf"
@@ -271,13 +282,20 @@ if [ $inject -eq 1 ]; then
     if [ "$exitCode" = "null" ]; then
         exitCode="0";
     fi
+    if [ "$print_bug" == "1" ]; then
+       print_bug_flag="-p"
+
+    fi
     for i in `seq $num_trials`
     do
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -bb $kt $json" "$lf"
-    grep yield "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -t $i $kt $print_bug_flag $json" "$lf" "1"
+        echo "Finished trial $i"
+        set +e
+        grep yield "$lf"
+        set -e
     done
 fi
 
