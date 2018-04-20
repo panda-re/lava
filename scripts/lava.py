@@ -536,7 +536,7 @@ def get_trigger_line(lp, bug):
         # old bug types
         lava_get = "(0x{:x}".format(bug.magic)
         atp_lines = [line_num + 1 for line_num, line in enumerate(f) if
-                    lava_get in line and "lava_get" in line]
+                    lava_get in line] #and "lava_get" in line]
         # return closest to original begin line.
         distances = [
             (abs(line - bug.atp.loc_begin_line), line) for line in atp_lines
@@ -705,3 +705,19 @@ def get_bugs(db, bug_id_list):
     for bug_id in bug_id_list:
         bugs.append(db.session.query(Bug).filter(Bug.id == bug_id).all()[0])
     return bugs
+
+
+def get_allowed_bugtype_num(args):    
+    allowed_bugtype_nums = []
+    for bugtype_name in args.bugtypes.split(","):
+        btnl = bugtype_name.lower()
+        bugtype_num = None
+        for i in range(len(Bug.type_strings)):
+            btsl = Bug.type_strings[i].lower()
+            if btnl in btsl:
+                bugtype_num = i
+        if bugtype_num is None:
+            raise RuntimeError( "I dont have a bug type [%s]" % bugtype_name )
+        allowed_bugtype_nums.append(bugtype_num)
+    return allowed_bugtype_nums
+

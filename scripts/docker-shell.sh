@@ -36,6 +36,7 @@ if [ -z "$2" ] ; then
 fi
 
 set +x
+# to run debugger you need --privileged here
 docker run --rm -it \
     -e "HTTP_PROXY=$HTTP_PROXY" \
     -e "HTTPS_PROXY=$HTTPS_PROXY" \

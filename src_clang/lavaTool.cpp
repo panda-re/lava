@@ -888,23 +888,27 @@ public:
         std::string insert_at_top;
         if (LavaAction == LavaQueries) {
             insert_at_top = "#include \"pirate_mark_lava.h\"\n";
-        } else if (LavaAction == LavaInjectBugs && !ArgDataflow) {
-            if (ArgCompetition) {
-                insert_at_top.append(competition.str());
-            }
-            if (main_files.count(getAbsolutePath(Filename)) > 0) {
-                std::stringstream top;
-                top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
-                    << "void lava_set(unsigned int, unsigned int);\n"
-                    << "__attribute__((visibility(\"default\")))\n"
-                    << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val; }\n"
-                    << "unsigned int lava_get(unsigned int);\n"
-                    << "__attribute__((visibility(\"default\")))\n"
-                    << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
-                insert_at_top.append(top.str());
-            } else {
-                insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
-                "extern unsigned int lava_get(unsigned int);\n");
+        } else {
+            if (LavaAction == LavaInjectBugs) {
+                if (ArgCompetition) {
+                    insert_at_top.append(competition.str());
+                }
+                if (!ArgDataflow) {
+                    if (main_files.count(getAbsolutePath(Filename)) > 0) {
+                        std::stringstream top;
+                        top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
+                            << "void lava_set(unsigned int, unsigned int);\n"
+                            << "__attribute__((visibility(\"default\")))\n"
+                            << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val; }\n"
+                            << "unsigned int lava_get(unsigned int);\n"
+                            << "__attribute__((visibility(\"default\")))\n"
+                            << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
+                        insert_at_top.append(top.str());
+                    } else {
+                        insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
+                                             "extern unsigned int lava_get(unsigned int);\n");
+                    }
+                }
             }
         }
 

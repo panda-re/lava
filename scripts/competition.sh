@@ -93,3 +93,5 @@ progress "competition" 1 "Starting -- logging to $lf"
 truncate "$lf"
 run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $dataflow $json" "$lf"
 progress "competition" 1 "Everything finished."
+
+grep "Success" $lf

@@ -13,7 +13,7 @@ from os.path import join
 
 from lava import LavaDatabase, Run, Bug, \
                  inject_bugs, LavaPaths, validate_bugs, \
-                 get_bugs, run_cmd
+                 get_bugs, run_cmd, get_allowed_bugtype_num
 
 start_time = time.time()
 
@@ -120,7 +120,7 @@ if __name__ == "__main__":
     parser.add_argument('-competition', '--competition', action="store_true", default=False,
             help = ('Inject in competition mode where logging will be added in #IFDEFs'))
     
-    parser.add_argument('-t', '--bugtypes', action="store", default=[],
+    parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
                         help = ('bug types to inject'))
 
 
@@ -129,19 +129,8 @@ if __name__ == "__main__":
     project = json.load(args.project)
     project_file = args.project.name
 
+    allowed_bugtypes = get_allowed_bugtype_num(args)
     
-    allowed_bugtypes = []
-    for bugtype_name in args.bugtypes.split(","):
-        btnl = bugtype_name.lower()
-        bugtype_num = None
-        for i in range(len(Bug.type_strings)):
-            btsl = Bug.type_strings[i].lower()
-            if btnl in btsl:
-                bugtype_num = i
-        if bugtype_num is None:
-            raise RuntimeError( "I dont have a bug type [%s]" % bugtype_name )
-        allowed_bugtypes.append(bugtype_num)
-
     print "allowed bug types: " + (str(allowed_bugtypes))
 
     # Set various paths

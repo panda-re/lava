@@ -22,7 +22,7 @@ from os.path import basename, dirname, join, abspath, exists
 from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     run_cmd, run_cmd_notimeout, mutfile, inject_bugs, LavaPaths, \
     validate_bugs, run_modified_program, unfuzzed_input_for_bug, \
-    fuzzed_input_for_bug, get_trigger_line, AttackPoint
+    fuzzed_input_for_bug, get_trigger_line, AttackPoint, get_allowed_bugtype_num
 
 
 RETRY_COUNT = 0
@@ -43,30 +43,35 @@ def run_builds(scripts):
 # that allows us to easily evaluate systems which say there is a bug at file/line.
 # further, we require that no two bugs or non-bugs have same file/line dua
 # because otherwise the db might give us all the same dua
-def competition_bugs_and_non_bugs(num, db):
+
+def competition_bugs_and_non_bugs(num, db, allowed_bugtypes):
     bugs_and_non_bugs = []
-    fileline = set()
+    dfl_fileline = set()
+    afl_fileline = set()
     def get_bugs_non_bugs(fake, limit):
         items = db.uninjected_random(fake)
         for item in items:
+            if not (item.type in allowed_bugtypes):
+                continue
             dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
             afl = (item.atp.loc_filename, item.atp.loc_begin_line)
-            # Skip this one if we've already used an ATP or DUA with the same line. Or if this is a function call atp
-            if (dfl in fileline) or (afl in fileline) or (item.atp.typ == AttackPoint.FUNCTION_CALL):
+            # Skip this one if we've already used an ATP or DUA with the same line. Or if this is a function call atp. or it it's an easybug or an info leak
+            if (dfl in dfl_fileline) or (afl in afl_fileline): #or (item.atp.typ == AttackPoint.FUNCTION_CALL) or (item.type == Bug.RET_BUFFER) or (item.type == Bug.PRINTF_LEAK):
                 continue
             if fake:
                 print "non-bug", 
             else:
                 print "bug    ", 
             print ' dua_fl={} atp_fl={}'.format(str(dfl), str(afl))
-            fileline.add(dfl)
-            fileline.add(afl)
+            dfl_fileline.add(dfl)
+            afl_fileline.add(afl)
             bugs_and_non_bugs.append(item)
             if (len(bugs_and_non_bugs) == limit):
                 break
     get_bugs_non_bugs(False, num)
-    get_bugs_non_bugs(True, 2*num)
+#    get_bugs_non_bugs(True, 2*num)
     return [b.id for b in bugs_and_non_bugs]
+
 
 def main():
     parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
@@ -82,10 +87,15 @@ def main():
             help = ('Expected exit code when program exits without crashing. Default 0'))
     parser.add_argument('-d', '--arg_dataflow', action="store_true", default=False,
             help = ('Inject bugs using function args instead of globals'))
+
+    parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
+                        help = ('bug types to inject'))
     
     args = parser.parse_args()
     project = json.load(args.project)
     project_file = args.project.name
+
+    allowed_bugtypes = get_allowed_bugtype_num(args)
 
     # Set various paths
     lp = LavaPaths(project)
@@ -110,14 +120,13 @@ def main():
 
     args.knobTrigger = -1
     args.checkStacktrace = False
-    args.arg_dataflow = False
     failcount = 0
 
     while True:
         if args.buglist:
             bug_list = eval(args.buglist)
         elif args.many:
-            bug_list = competition_bugs_and_non_bugs(int(args.many), db)
+            bug_list = competition_bugs_and_non_bugs(int(args.many), db, allowed_bugtypes)
 
         # add bugs to the source code and check that we can still compile
         try:
@@ -129,8 +138,6 @@ def main():
                 failcount += 1
                 continue
             raise
-
-
 
         # bug is valid if seg fault (or bus error)
         # AND if stack trace indicates bug manifests at trigger line we inserted
@@ -179,7 +186,8 @@ def main():
     for bug in  db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all():
         prediction = "{}:{}".format(basename(bug.atp.loc_filename),
                                     get_trigger_line(lp, bug))
-#        print "Bug %d: prediction = [%s]" % (bug.id, prediction)
+        print "Bug %d: prediction = [%s]" % (bug.id, prediction)
+        print str(bug)
         if not get_trigger_line(lp, bug):
             print("Warning - unknown trigger, skipping")
             continue
@@ -268,7 +276,8 @@ def main():
 
     # Build a version to ship in src
     run_builds([build_sh, log_build_sh])
-    print("Finished")
+
+    print("Success. Corpus is in %s" % corpdir);
 
 
 if __name__ == "__main__":
