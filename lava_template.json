@@ -9,7 +9,7 @@
 
     "configure": "./configure",
     "make": "$MAKE",
-    "makeclean": true,
+    "clean": "make clean",
     "install": "make install",
     "command": "$CMD",
     "expect_prompt": "root@debian-i386:~#",
