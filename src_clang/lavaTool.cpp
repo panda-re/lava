@@ -446,7 +446,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         int this_bug_id = 0;
 
         debug(INJECT) << "Inserting expression attack (AttackExpression).\n";
-        const Bug *this_bug = NULL;
+        std::vector<const Bug *> comp_bugs;
         if (LavaAction == LavaInjectBugs) {
             const std::vector<const Bug*> &injectable_bugs =
                 map_get_default(bugs_with_atp_at,
@@ -458,11 +458,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             auto pointerAttack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
             for (const Bug *bug : injectable_bugs) {
                 assert(bug->atp->type == atpType);
-                if (ArgCompetition) {
-                    assert(this_bug_id == 0);  // You can't inject multiple bugs into the same line for a competition
-                    this_bug_id = bug->id;
-                    this_bug = bug;
-                }
+                if (ArgCompetition) comp_bugs.push_back(bug);                
 
                 if (bug->type == Bug::PTR_ADD) {
                     pointerAddends.push_back(pointerAttack(bug));
@@ -489,12 +485,12 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             // it's effectively just a NOP that prints a message when the trigger is true
             // so we can identify when bugs are potentially triggered
             if (ArgCompetition) {
-                if (this_bug == NULL) return; // Maybe redundant
-                Mod.Change(toAttack).InsertBefore("LAVALOG(");
-
-                std::stringstream end_str;
-                end_str << ", " << Test(this_bug) << "," << this_bug_id << ")";
-                Mod.Change(toAttack).InsertAfter(end_str.str());
+                for (auto bug : comp_bugs) {
+                    Mod.Change(toAttack).InsertBefore("LAVALOG(");
+                    std::stringstream end_str;
+                    end_str << ", " << Test(bug) << "," << bug->id << ")";
+                    Mod.Change(toAttack).InsertAfter(end_str.str());
+                }
             }
         }
 
