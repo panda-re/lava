@@ -470,11 +470,11 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
+    makecmd = project["make"]
     if competition:
-        project["make"] += " CFLAGS+=\"-DLAVA_LOGGING\""
-    print(project['make'])
+        makecmd += " CFLAGS+=\"-DLAVA_LOGGING\""
 
-    (rv, outp) = run_cmd_notimeout(project['make'], cwd=lp.bugs_build)
+    (rv, outp) = run_cmd_notimeout(makecmd, cwd=lp.bugs_build)
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
 

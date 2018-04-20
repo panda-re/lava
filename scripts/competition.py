@@ -237,16 +237,17 @@ def main():
         pushd `pwd`
         cd {bugs_build}
         {make_clean}
-        {configure}
+        {configure} --prefix={tempdir}
         {make}
         {install}
-        cp -r lava-install {outdir}
+        mv lava-install {outdir}
         popd
         """.format(
             bugs_build=bd,
             make_clean = "make clean" if project["makeclean"] else "",
             configure=project['configure'],
             make=project['make'],
+            tempdir=join(bd, "lava-install"),
             install=project['install'],
             outdir=join(corpdir, "lava-install")))
 
@@ -258,19 +259,19 @@ def main():
 
         # Build internal version
         {make_clean}
-        {configure}
+        {configure} --prefix={tempdir}
         {make} CFLAGS+="-DLAVA_LOGGING"
         rm -rf "{internal_builddir}"
         {install}
-        cp -r lava-install {internal_builddir}
+        mv lava-install {internal_builddir}
 
         # Build public version
         {make_clean}
-        {configure}
+        {configure} --prefix={tempdir}
         {make}
         rm -rf "{public_builddir}"
         {install}
-        cp -r lava-install {public_builddir}
+        mv lava-install {public_builddir}
 
         popd
         """.format(
@@ -278,6 +279,7 @@ def main():
             make_clean = "make clean" if project["makeclean"] else "",
             configure=project['configure'],
             make = project['make'],
+            tempdir=join(bd, "lava-install"),
             internal_builddir = join(corpdir, "lava-install-internal"),
             public_builddir = join(corpdir, "lava-install"),
             install = project['install'],
