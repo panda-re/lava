@@ -44,10 +44,11 @@ def run_builds(scripts):
 # further, we require that no two bugs or non-bugs have same file/line dua
 # because otherwise the db might give us all the same dua
 
+X = 2
 def competition_bugs_and_non_bugs(num, db, allowed_bugtypes):
     bugs_and_non_bugs = []
-    dfl_fileline = set()
-    afl_fileline = set()
+    dfl_fileline = {}
+    afl_fileline = {}
     def get_bugs_non_bugs(fake, limit):
         items = db.uninjected_random(fake)
         for item in items:
@@ -55,16 +56,17 @@ def competition_bugs_and_non_bugs(num, db, allowed_bugtypes):
                 continue
             dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
             afl = (item.atp.loc_filename, item.atp.loc_begin_line)
-            # Skip this one if we've already used an ATP or DUA with the same line. Or if this is a function call atp. or it it's an easybug or an info leak
-            if (dfl in dfl_fileline) or (afl in afl_fileline): #or (item.atp.typ == AttackPoint.FUNCTION_CALL) or (item.type == Bug.RET_BUFFER) or (item.type == Bug.PRINTF_LEAK):
-                continue
+            if (dfl in dfl_fileline and dfl_fileline[dfl] > X): continue
+            if (afl in afl_fileline and afl_fileline[afl] > X): continue
+            if not (dfl in dfl_fileline): dfl_fileline[dfl] = 0
+            if not (afl in afl_fileline): afl_fileline[afl] = 0
             if fake:
                 print "non-bug", 
             else:
                 print "bug    ", 
             print ' dua_fl={} atp_fl={}'.format(str(dfl), str(afl))
-            dfl_fileline.add(dfl)
-            afl_fileline.add(afl)
+            dfl_fileline[dfl] += 1
+            afl_fileline[afl] += 1
             bugs_and_non_bugs.append(item)
             if (len(bugs_and_non_bugs) == limit):
                 break
@@ -197,7 +199,7 @@ def main():
             print("Warning - unknown trigger, skipping")
             continue
 
-        assert not (prediction in predictions)
+#        assert not (prediction in predictions)
         fuzzed_input = fuzzed_input_for_bug(lp, bug)
         (dc, fi) = os.path.split(fuzzed_input)
         shutil.copy(fuzzed_input, inputsdir)
