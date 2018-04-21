@@ -244,7 +244,7 @@ def main():
         popd
         """.format(
             bugs_build=bd,
-            make_clean = "make clean" if project["makeclean"] else "",
+            make_clean = project["clean"] if "clean" in project.keys() else "",
             configure=project['configure'],
             make=project['make'],
             tempdir=join(bd, "lava-install"),
@@ -276,7 +276,7 @@ def main():
         popd
         """.format(
             bugs_build=bd,
-            make_clean = "make clean" if project["makeclean"] else "",
+            make_clean = project["clean"] if "clean" in project.keys() else "",
             configure=project['configure'],
             make = project['make'],
             tempdir=join(bd, "lava-install"),
@@ -293,12 +293,16 @@ def main():
 
         for fname in {inputdir}/*-fuzzed-*; do
             LD_LIBRARY_PATH={librarydir} {command}
+            LD_LIBRARY_PATH={librarydir2} {command2}
+            sleep 1
         done
 
         popd
         """.format(command = project['command'].format(**{"install_dir": join(corpdir, "lava-install-internal"), "input_file": "$fname"}), # This syntax is weird but only thing that works?
             corpdir = corpdir,
             librarydir = join(corpdir, "lava-install-internal", "lib"),
+            librarydir2 = join(corpdir, "lava-install", "lib"),
+            command2 = project['command'].format(**{"install_dir": join(corpdir, "lava-install"), "input_file": "$fname"}), # This syntax is weird but only thing that works?
             inputdir = join(corpdir, "inputs")
             ))
 

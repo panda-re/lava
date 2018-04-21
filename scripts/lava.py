@@ -459,12 +459,8 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     pool.map(apply_replacements, set([dirname(f) for f in all_files]))
 
     # paranoid clean -- some build systems need this
-    if 'makeclean' in project and project['makeclean']:
-        if type(project['makeclean']) == bool:
-            print(lp.bugs_build)
-            run_cmd_notimeout("make clean", cwd=lp.bugs_build)
-        else:
-            check_call(project['makeclean'], cwd=lp.bugs_build, shell=True)
+    if 'clean' in project.keys():
+        check_call(project['clean'], cwd=lp.bugs_build, shell=True)
 
     # compile
     print("------------\n")
@@ -635,7 +631,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
                 # Default: not checking that bug manifests at same line as trigger point or is found by competition grading infrastructure
                 validated = True
                 if competition:
-                    if check_competition_bug(lp, project, bug, fuzzed_input) == [bug.id]:
+                    if set(check_competition_bug(lp, project, bug, fuzzed_input)) == set([bug.id]):
                         print("... and competition infrastructure agrees")
                         validated &= True
                     else:
