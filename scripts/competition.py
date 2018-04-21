@@ -189,7 +189,7 @@ def main():
     # copy src
     shutil.copytree(bd, srcdir)
 
-    predictions = {}
+    predictions = []
     for bug in  db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all():
         prediction = "{}:{}".format(basename(bug.atp.loc_filename),
                                     get_trigger_line(lp, bug))
@@ -203,13 +203,13 @@ def main():
         fuzzed_input = fuzzed_input_for_bug(lp, bug)
         (dc, fi) = os.path.split(fuzzed_input)
         shutil.copy(fuzzed_input, inputsdir)
-        predictions[prediction] = fi
+        predictions.append((prediction, fi))
 
     print "Answer key:"
     ans = open(join(corpdir, "ans"), "w")
-    for prediction in predictions:
-        print "ANSWER  [%s] [%s]" % (prediction, predictions[prediction])
-        ans.write("%s %s\n" % (prediction, predictions[prediction]))
+    for (prediction, fi) in predictions:
+        print "ANSWER  [%s] [%s]" % (prediction, fi)
+        ans.write("%s %s\n" % (prediction, fi))
     ans.close()
 
     # clean up srcdir before tar
