@@ -296,19 +296,13 @@ public:
 
     void InsertAfter(SourceLocation loc, std::string str) {
         if (!str.empty()) {
-            std::list<std::string> &strs = impl[loc];
-            if (strs.empty() || strs.back() != str || str == ")") {
-                impl[loc].push_back(str);
-            }
+            impl[loc].push_back(str);
         }
     }
 
     void InsertBefore(SourceLocation loc, std::string str) {
         if (!str.empty()) {
-            std::list<std::string> &strs = impl[loc];
-            if (strs.empty() || strs.front() != str || str == "(") {
-                impl[loc].push_front(str);
-            }
+            impl[loc].push_front(str);
         }
     }
 
@@ -362,7 +356,6 @@ public:
         unsigned lastTokenSize = Lexer::MeasureTokenLength(end, *sm, *LangOpts);
         return end.getLocWithOffset(lastTokenSize);
     }
-
     const Modifier &InsertBefore(std::string str) const {
         Insert.InsertBefore(before(), str);
         return *this;
@@ -682,16 +675,21 @@ struct MemoryAccessHandler : public LavaMatchHandler {
     }
 };
 
+std::set<std::string> data_flow_arg_added;
+
 struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
 
     void AddArg(const FunctionDecl *func) {
         SourceLocation loc = clang::Lexer::findLocationAfterToken(
                 func->getLocation(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
-        if (func->getNumParams() == 0) {
-          Mod.InsertAt(loc, "int *" ARG_NAME);
-        } else {
-          Mod.InsertAt(loc, "int *" ARG_NAME ", ");
+        if (0 == data_flow_arg_added.count(func->getNameAsString())) {
+            if (func->getNumParams() == 0) {
+                Mod.InsertAt(loc, "int *" ARG_NAME);
+            } else {
+                Mod.InsertAt(loc, "int *" ARG_NAME ", ");
+            }
+            data_flow_arg_added.insert(func->getNameAsString());
         }
     }
 
