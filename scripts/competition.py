@@ -190,6 +190,7 @@ def main():
     shutil.copytree(bd, srcdir)
 
     predictions = []
+    bug_ids = []
     for bug in  db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all():
         prediction = "{}:{}".format(basename(bug.atp.loc_filename),
                                     get_trigger_line(lp, bug))
@@ -204,13 +205,19 @@ def main():
         (dc, fi) = os.path.split(fuzzed_input)
         shutil.copy(fuzzed_input, inputsdir)
         predictions.append((prediction, fi))
+        bug_ids.append(bug.id)
 
     print "Answer key:"
-    ans = open(join(corpdir, "ans"), "w")
-    for (prediction, fi) in predictions:
-        print "ANSWER  [%s] [%s]" % (prediction, fi)
-        ans.write("%s %s\n" % (prediction, fi))
-    ans.close()
+    with open(join(corpdir, "ans"), "w") as ans:
+        for (prediction, fi) in predictions:
+            print "ANSWER  [%s] [%s]" % (prediction, fi)
+            ans.write("%s %s\n" % (prediction, fi))
+
+    with open(join(corpdir, "add_bugs.sql"), "w") as f:
+        f.write("/* This file will add all the generated lava_id values to the DB, you must update binary_id */\n")
+        f.write("\set binary_id -1\n")
+        for bug_id in bug_ids:
+            f.write("insert into \"bug\" (\"lava_id\", \"binary\") VALUES (%d, :binary_id); \n" % (bug_id))
 
     # clean up srcdir before tar
     os.chdir(srcdir)

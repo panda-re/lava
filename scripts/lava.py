@@ -547,6 +547,11 @@ def check_competition_bug(lp, project, bug, fuzzed_input):
     (rv, (out, err)) = run_modified_program(project, lp.bugs_install, fuzzed_input, 10)
     for line in out.splitlines(): print(line)
     for line in err.splitlines(): print(line)
+
+    if (rv%256) <= 128:
+        print("Clean exit (code {})".format(rv))
+        return [] # No bugs unless you crash it
+
     return process_crash(out)
 
 # use gdb to get a stacktrace for this bug
