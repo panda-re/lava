@@ -15,6 +15,7 @@ import string
 import subprocess32
 import sys
 import time
+import random
 
 from math import sqrt
 from os.path import basename, dirname, join, abspath, exists
@@ -68,6 +69,28 @@ def competition_bugs_and_non_bugs(num, db):
     get_bugs_non_bugs(True, 2*num)
     return [b.id for b in bugs_and_non_bugs]
 
+# collect num bugs AND non-bugs
+# with the following constraints
+# 1. Each Atp has exatactly one bug
+# 2. The bug trigger lval is randomized among all bugs at some atp
+def more_competition_bugs_and_non_bugs(db):
+    bugs_and_non_bugs = []
+    atp_dua_map = {}
+    items = db.uninjected_random(False)
+    for item in items:
+        if item.type != 0:
+            continue
+        dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
+        afl = (item.atp.loc_filename, item.atp.loc_begin_line)
+        if afl not in atp_dua_map or atp_dua_map != None:
+            atp_dua_map[afl] = [(item, dfl)]
+        else:
+            atp_dua_map[afl].append((item, dfl))
+
+    for atp in atp_dua_map:
+        bugs_and_non_bugs.append(random.choice(atp_dua_map[atp])[0])
+    return [b.id for b in bugs_and_non_bugs]
+
 def main():
     parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
     parser.add_argument('project', type=argparse.FileType('r'),
@@ -117,7 +140,8 @@ def main():
         if args.buglist:
             bug_list = eval(args.buglist)
         elif args.many:
-            bug_list = competition_bugs_and_non_bugs(int(args.many), db)
+            # bug_list = competition_bugs_and_non_bugs(int(args.many), db)
+            bug_list = more_competition_bugs_and_non_bugs(db)
 
         # add either bugs to the source code and check that we can still compile
         try:

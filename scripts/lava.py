@@ -468,13 +468,13 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
-    if competition:
-        project["make"] += " CFLAGS+=\"-DLAVA_LOGGING\""
     print(project['make'])
 
     rv = 0
     outp = ""
     for make_cmd in project['make'].split('&&'):
+        if competition:
+            make_cmd += " CFLAGS+=\"-DLAVA_LOGGING\""
         (rvt,outpt) = run_cmd_notimeout(make_cmd, cwd=lp.bugs_build)
         rv += rvt
         outp += str(outpt)
@@ -619,8 +619,11 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     mutfile(unfuzzed_input, fuzz_labels_list, fuzzed_input, bug,
             **mutfile_kwargs)
     timeout = project.get('timeout', 5)
-    (rv, outp) = run_modified_program(project, lp.bugs_install, fuzzed_input,
+    try:
+        (rv, outp) = run_modified_program(project, lp.bugs_install, fuzzed_input,
                                       timeout)
+    except:
+        return False
     print("retval = %d" % rv)
     validated = False
     if bug.trigger.dua.fake_dua == False:
@@ -663,8 +666,12 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
         validated = False
 
     if update_db:
+        try:
+            output = (outp[0] + '\n' + outp[1]).decode('ascii', 'ignore')
+        except:
+            output = ""
         db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
-                           output=(outp[0] + '\n' + outp[1]).decode('ascii', 'ignore'), success=True, validated=validated))
+                           output=output, success=True, validated=validated))
 
     return validated
 
