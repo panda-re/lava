@@ -162,6 +162,7 @@ panda_args = {
     'tainted_branch': {},
     'file_taint': {
         'pos': True,
+        'cache_process_details_on_basic_block': True,
     }
 }
 
