@@ -53,7 +53,7 @@ do
   fi
   if [ "$flag" = "e" ]; then
       exit_code=$OPTARG
-      progress "competition" 0 "Expect exit: $bug_list"
+      progress "competition" 0 "Expect exit: $exit_code"
   fi
   if [ "$flag" = "k" ]; then
       ok=1

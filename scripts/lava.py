@@ -358,9 +358,11 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         run(['git', 'config', 'user.email', 'nobody@nowhere'])
         run(['git', 'add', '-A', '.'])
         run(['git', 'commit', '-m', 'Unmodified source.'])
+    if not os.path.exists(join(lp.bugs_build, 'config.log')) or True:
+        print('Re-configuring...')
+        run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
     if not os.path.exists(join(lp.bugs_build, 'btrace.log')):
         print("Making with btrace...")
-        run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
         run([join(lp.lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
     sys.stdout.flush()
     sys.stderr.flush()
@@ -381,6 +383,13 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         run([join(lp.lava_dir, 'btrace', 'sw-btrace-to-compiledb'),
             llvm_src + "/Release/lib/clang/3.6.2/include"])
         # also insert instr for main() fn in all files that need it
+
+        from process_compile_commands import process_compile_commands
+        process_compile_commands(
+                join(lp.bugs_build, 'compile_commands.json'),
+                join(lp.bugs_top_dir, '../extra_compile_commands.json')
+        )
+
         run(['git', 'add', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json.'])
         run(shlex.split(project['make']))
@@ -484,7 +493,10 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     if rv == 0:
         # build success
         print("build succeeded")
+        run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
         check_call(project['install'], cwd=lp.bugs_build, shell=True)
+        if 'post_install' in project:
+            check_call(project['post_install'], cwd=lp.bugs_build, shell=True)
     else:
         print("Lava tool error log below:")
         print(outp[1])
@@ -508,7 +520,7 @@ def get_suffix(fn):
 # run the bugged-up program
 def run_modified_program(project, install_dir, input_file, timeout):
     cmd = project['command'].format(install_dir=install_dir,input_file=input_file)
-    cmd = "setarch {} -R {}".format(subprocess32.check_output("arch").strip(), cmd)
+    cmd = "{}".format(cmd)
     cmd = '/bin/bash -c '+ pipes.quote(cmd)
     print(cmd)
     envv = {}

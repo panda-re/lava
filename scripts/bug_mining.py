@@ -142,7 +142,11 @@ print()
 progress("Starting first and only replay, tainting on file open...")
 
 # process name
-proc_name = basename(command_args[0])
+
+if command_args[0].startswith('LD_PRELOAD'):
+    proc_name = basename(command_args[1])
+else:
+    proc_name = basename(command_args[0])
 
 pandalog = "%s/%s/queries-%s.plog" % (project['directory'], project['name'], os.path.basename(isoname))
 print("pandalog = [%s] " % pandalog)

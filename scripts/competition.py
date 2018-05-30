@@ -57,7 +57,7 @@ def competition_bugs_and_non_bugs(num, db):
             if fake:
                 print "non-bug", 
             else:
-                print "bug    ", 
+                print "bug    ",
             print ' dua_fl={} atp_fl={}'.format(str(dfl), str(afl))
             fileline.add(dfl)
             fileline.add(afl)
@@ -80,7 +80,7 @@ def main():
             help = 'Inject this list of bugs')
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
             help = ('Expected exit code when program exits without crashing. Default 0'))
-    
+
     args = parser.parse_args()
     project = json.load(args.project)
     project_file = args.project.name
