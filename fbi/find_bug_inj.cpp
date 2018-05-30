@@ -819,7 +819,7 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
             continue;
         }
         if (!trigger->dua->fake_dua) {
-            if !(labels_so_far.size() >= 4 * Bug::num_extra_duas[bug_type]) {
+            if (!(labels_so_far.size() >= 4 * Bug::num_extra_duas[bug_type])) {
               continue;
             }
         }
