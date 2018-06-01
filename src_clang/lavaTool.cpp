@@ -48,7 +48,7 @@ extern "C" {
 #define MATCHER (1 << 0)
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
-#define DEBUG_FLAGS 0 // (MATCHER | INJECT | FNARG)
+#define DEBUG_FLAGS FNARG // (MATCHER | INJECT | FNARG)
 
 #define ARG_NAME "data_flow"
 
@@ -701,7 +701,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const FunctionDecl *func =
-            Result.Nodes.getNodeAs<FunctionDecl>("funcDecl")->getCanonicalDecl();
+            Result.Nodes.getNodeAs<FunctionDecl>("funcDecl");
 
         debug(FNARG) << "adding arg to " << func->getNameAsString() << "\n";
 
@@ -712,6 +712,18 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         if (func->getNameAsString().find("lava") == 0) return;
         if (Mod.sm->isInSystemHeader(func->getLocation())) return;
         if (Mod.sm->getFilename(func->getLocation()).empty()) return;
+
+        // Comment out format attrs
+        if (func->hasAttrs()) {
+          auto attrs = func->getAttrs();
+          for (const auto &a : func->getAttrs()) {
+            if (a->getKind() == attr::Format) {
+              debug(FNARG) << "found format attr\n";
+              Mod.InsertAt(a->getRange().getBegin(), ")); //");
+            }
+            debug(FNARG) << a->getSpelling() << "\n";
+          }
+        }
 
         debug(FNARG) << "actually adding arg\n";
 
