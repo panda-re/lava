@@ -24,6 +24,9 @@ from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     validate_bugs, run_modified_program, unfuzzed_input_for_bug, \
     fuzzed_input_for_bug, get_trigger_line, AttackPoint, Bug
 
+# from pycparser.diversifier.diversify import diversify
+from process_compile_commands import get_c_files
+
 
 RETRY_COUNT = 0
 
@@ -65,7 +68,7 @@ def competition_bugs_and_non_bugs(num, db):
             if (len(bugs_and_non_bugs) == limit):
                 break
     get_bugs_non_bugs(False, num)
-    get_bugs_non_bugs(True, 2*num)
+    # get_bugs_non_bugs(True, 2*num)
     return [b.id for b in bugs_and_non_bugs]
 
 def main():
@@ -80,6 +83,10 @@ def main():
             help = 'Inject this list of bugs')
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
             help = ('Expected exit code when program exits without crashing. Default 0'))
+    parser.add_argument('-d', '--diversify', action="store_true", default=False,
+            help = ('Diversify source code. Default false.'))
+    parser.add_argument('-s', '--skipinject', action="store_true", default=False,
+            help = ('Skip injection step. Use if you must make manual changes to src.'))
 
     args = parser.parse_args()
     project = json.load(args.project)
@@ -101,51 +108,54 @@ def main():
     bugs_parent = bugdir
     lp.set_bugs_parent(bugdir)
 
-    try:
-        shutil.rmtree(bugdir)
-    except:
-        pass
+    if not args.skipinject:
+        try:
+            shutil.rmtree(bugdir)
+        except:
+            pass
 
     args.knobTrigger = -1
     args.checkStacktrace = False
-    args.arg_dataflow = False
+    args.arg_dataflow = True
     failcount = 0
 
-    while True:
-        if args.buglist:
-            bug_list = eval(args.buglist)
-        elif args.many:
-            bug_list = competition_bugs_and_non_bugs(int(args.many), db)
+    if args.buglist:
+        bug_list = eval(args.buglist)
+    elif args.many:
+        bug_list = competition_bugs_and_non_bugs(int(args.many), db)
 
+    print('bug_list:')
+    bug_list_str = ','.join([str(bug_id) for bug_id in bug_list])
+    print(bug_list_str)
+
+    if not args.skipinject:
         # add either bugs to the source code and check that we can still compile
         try:
             (build, input_files) = inject_bugs(bug_list, db, lp, project_file, \
                                               project, args, False, competition=True)
         except RuntimeError:
-            if failcount < RETRY_COUNT:
-                print("Failed to inject bugs, trying again:\n{}".format(bug_list))
-                failcount += 1
-                continue
-            raise
+            print("Failed to inject bugs\n{}".format(bug_list))
+            print("Manually fix errors and resume execution with:")
+            print("./competition.sh -d -s -l {buglist} {json}".format(
+                buglist=bug_list_str,
+                json=project_file))
+            sys.exit(-1)
+    else:
+        # HACK
+        build = None
+        input_files = project['inputs']
+        print(input_files)
 
+    # bug is valid if seg fault (or bus error)
+    # AND if stack trace indicates bug manifests at trigger line we inserted
+    real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
+                                      args, False, competition=True)
 
-
-        # bug is valid if seg fault (or bus error)
-        # AND if stack trace indicates bug manifests at trigger line we inserted
-        real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                          args, False, competition=True)
-
-        if len(real_bug_list) < int(args.minYield):
-            print "\n\nXXX Yield too low -- %d bugs minimum is required for competition" % int(args.minYield)
-            print "Trying again.\n"
-        else:
-            print "\n\n Yield acceptable"
-            break
-
-    # re-build just with the real bugs. Inject in competition mode
-    (build,input_files) = inject_bugs(real_bug_list, db, lp, project_file, \
-                                          project, args, False, competition=True)
-
+    if len(real_bug_list) < int(args.minYield):
+        print "\n\nXXX Yield too low -- %d bugs minimum is required for competition" % int(args.minYield)
+        print "Try again.\n"
+    else:
+        print "\n\n Yield acceptable: {}".format(len(real_bug_list))
 
     corpus_dir = join(compdir, "corpora")
     subprocess32.check_call(["mkdir", "-p", corpus_dir])
@@ -161,6 +171,73 @@ def main():
     # Copy lava's builddir into our local build-dir
     bd = join(corpdir, "build-dir")
     shutil.copytree(lava_bd, bd)
+
+    # build internal versio)n
+    log_build_sh = join(corpdir, "log_build.sh")
+    with open(log_build_sh, "w") as build:
+        build.write("""#!/bin/bash
+        pushd `pwd`
+        cd {bugs_build}
+
+        # Build internal version
+        {make_clean}
+        {configure}
+        {make} CFLAGS+="-DLAVA_LOGGING"
+        rm -rf "{internal_builddir}"
+        {install}
+        cp -r lava-install {internal_builddir}
+
+        popd
+        """.format(
+            bugs_build=bd,
+            make_clean = "make clean" if project["makeclean"] else "",
+            configure=project['configure'],
+            make = project['make'],
+            internal_builddir = join(corpdir, "lava-install-internal"),
+            install = project['install'],
+            ))
+    run_builds([log_build_sh])
+
+    # diversify
+    if args.diversify:
+        print('Starting diversification\n')
+        compile_commands = join(bugdir, lp.source_root, "compile_commands.json")
+        all_c_files = get_c_files(compile_commands)
+        for c_file in all_c_files:
+            print('diversifying {}'.format(c_file))
+            c_file = join(bugdir, lp.source_root, c_file)
+            # pre-processing
+            #   run_cmd_notimeout(
+            #           ' '.join([
+            #           'gcc', '-E', '-std=gnu99',
+            #           '-I.', '-I..',
+            #           '-I/llvm-3.6.2/Release/lib/clang/3.6.2/include',
+            #           '-o',
+            #           '{}.pre'.format(c_file),
+            #           c_file]))
+            # diversify(c_file, '{}.div'.format(c_file))
+            # run_cmd_notimeout(' '.join(['cp', '{}.div'.format(c_file), c_file]))
+
+        # re-build
+        (rv, outp) = run_cmd_notimeout(project['make'], cwd=lp.bugs_build)
+        for o in outp:
+            print(o)
+        if rv == 0:
+            print('build succeeded')
+            check_call(project['install'], cwd=lp.bugs_build, shell=True)
+            if 'post_install' in project:
+                check_call(project['post_install'], cwd=lp.bugs_build, shell=True)
+        else:
+            print('build failed')
+            sys.exit(-1)
+
+        # re-validate
+        old_yield = len(real_bug_list)
+        real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
+                                          args, False, competition=True)
+        new_yield = len(real_bug_list)
+        print('Old yield: {}'.format(old_yield))
+        print('New yield: {}'.format(new_yield))
 
     # Corpus directory structure: lava-corpus-[date]/
     #   inputs/
@@ -240,19 +317,11 @@ def main():
             install=project['install'],
             outdir=join(corpdir, "lava-install")))
 
-    log_build_sh = join(corpdir, "log_build.sh")
-    with open(log_build_sh, "w") as build:
+    public_build_sh = join(corpdir, "public_build.sh")
+    with open(public_build_sh, "w") as build:
         build.write("""#!/bin/bash
         pushd `pwd`
         cd {bugs_build}
-
-        # Build internal version
-        {make_clean}
-        {configure}
-        {make} CFLAGS+="-DLAVA_LOGGING"
-        rm -rf "{internal_builddir}"
-        {install}
-        cp -r lava-install {internal_builddir}
 
         # Build public version
         {make_clean}
@@ -268,7 +337,6 @@ def main():
             make_clean = "make clean" if project["makeclean"] else "",
             configure=project['configure'],
             make = project['make'],
-            internal_builddir = join(corpdir, "lava-install-internal"),
             public_builddir = join(corpdir, "lava-install"),
             install = project['install'],
             ))
@@ -291,7 +359,7 @@ def main():
             ))
 
     # Build a version to ship in src
-    run_builds([build_sh, log_build_sh])
+    run_builds([public_build_sh])
     print("Success! Competition build in {}".format(corpdir))
 
 

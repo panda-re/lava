@@ -25,6 +25,8 @@ from multiprocessing.pool import ThreadPool
 from composite import Composite
 from test_crash import process_crash
 
+from process_compile_commands import get_c_files
+
 Base = declarative_base()
 
 debugging = False
@@ -449,12 +451,26 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     print(src_files)
 
     all_files = src_files | set(project['main_file'])
+    if args.arg_dataflow:
+        print('in arg_dataflow if statement')
+        # if we're injecting with dataflow, we must modify all files in src
+        compile_commands = join(lp.bugs_build, 'compile_commands.json')
+        print('compile commands is here: {}'.format(compile_commands))
+        all_c_files = get_c_files(compile_commands)
+        print('all_c_files: {}'.format(all_c_files))
+        print('all_files: {}'.format(all_files))
+        all_files = all_files.union(all_c_files)
+
     pool = ThreadPool(cpu_count())
     def modify_source(filename):
         run_lavatool(bugs_to_inject, lp, project_file, project, args,
                      llvm_src, filename, competition)
     pool.map(modify_source, all_files)
 
+    print('cwd: {}'.format(join(lp.bugs_build, 'src')))
+    run_cmd_notimeout("sed -i 's/magic.h/magic.h.in/g' *.yaml",
+            cwd=join(lp.bugs_build, 'src'), shell=True)
+    # sys.exit(0)
     clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
     def apply_replacements(src_dir):
         run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],

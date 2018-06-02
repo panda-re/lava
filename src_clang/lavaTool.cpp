@@ -701,7 +701,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const FunctionDecl *func =
-            Result.Nodes.getNodeAs<FunctionDecl>("funcDecl")->getCanonicalDecl();
+            Result.Nodes.getNodeAs<FunctionDecl>("funcDecl");
 
         debug(FNARG) << "adding arg to " << func->getNameAsString() << "\n";
 
@@ -712,6 +712,18 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         if (func->getNameAsString().find("lava") == 0) return;
         if (Mod.sm->isInSystemHeader(func->getLocation())) return;
         if (Mod.sm->getFilename(func->getLocation()).empty()) return;
+
+        // Comment out format attrs
+        if (func->hasAttrs()) {
+          auto attrs = func->getAttrs();
+          for (const auto &a : func->getAttrs()) {
+            if (a->getKind() == attr::Format) {
+              debug(FNARG) << "found format attr\n";
+              Mod.InsertAt(a->getRange().getBegin(), ")); //");
+            }
+            debug(FNARG) << a->getSpelling() << "\n";
+          }
+        }
 
         debug(FNARG) << "actually adding arg\n";
 
@@ -888,23 +900,25 @@ public:
         std::string insert_at_top;
         if (LavaAction == LavaQueries) {
             insert_at_top = "#include \"pirate_mark_lava.h\"\n";
-        } else if (LavaAction == LavaInjectBugs && !ArgDataflow) {
+        } else if (LavaAction == LavaInjectBugs) {
             if (ArgCompetition) {
                 insert_at_top.append(competition.str());
             }
-            if (main_files.count(getAbsolutePath(Filename)) > 0) {
-                std::stringstream top;
-                top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
-                    << "void lava_set(unsigned int, unsigned int);\n"
-                    << "__attribute__((visibility(\"default\")))\n"
-                    << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val; }\n"
-                    << "unsigned int lava_get(unsigned int);\n"
-                    << "__attribute__((visibility(\"default\")))\n"
-                    << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
-                insert_at_top.append(top.str());
-            } else {
-                insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
-                "extern unsigned int lava_get(unsigned int);\n");
+            if (!ArgDataflow) {
+                if (main_files.count(getAbsolutePath(Filename)) > 0) {
+                    std::stringstream top;
+                    top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
+                        << "void lava_set(unsigned int, unsigned int);\n"
+                        << "__attribute__((visibility(\"default\")))\n"
+                        << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val; }\n"
+                        << "unsigned int lava_get(unsigned int);\n"
+                        << "__attribute__((visibility(\"default\")))\n"
+                        << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
+                    insert_at_top.append(top.str());
+                } else {
+                    insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
+                    "extern unsigned int lava_get(unsigned int);\n");
+                }
             }
         }
 

@@ -30,9 +30,11 @@ num_bugs=0
 exit_code=0
 min_yield=1
 debug=0
+diversify=""
+skipinject=""
 echo
 progress "competition" 0 "Parsing args"
-while getopts  "dakm:l:n:e:" flag
+while getopts  "sbdakm:l:n:e:" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -59,9 +61,17 @@ do
       ok=1
       progress "competition" 0 "-k: Okaying through deletes"
   fi
-  if [ "$flag" = "d" ]; then
+  if [ "$flag" = "b" ]; then
       debug=1
-      progress "competition" 0 "-d: running with pdb"
+      progress "competition" 0 "-b: running with pdb"
+  fi
+  if [ "$flag" = "d" ]; then
+      diversify="-d"
+      progress "competition" 0 "-d: diversifying"
+  fi
+  if [ "$flag" = "s" ]; then
+      skipinject="-s"
+      progress "competition" 0 "-s: skipping injection"
   fi
 done
 shift $((OPTIND -1))
@@ -91,5 +101,5 @@ mkdir -p $logs
 lf="$logs/competition.log"
 progress "competition" 1 "Starting -- logging to $lf"
 truncate "$lf"
-run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $json" "$lf"
+run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject $json" "$lf"
 progress "competition" 1 "Everything finished."

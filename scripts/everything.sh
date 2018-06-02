@@ -280,7 +280,7 @@ if [ $inject -eq 1 ]; then
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -bb $kt $json" "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -bb -d $kt $json" "$lf"
     grep yield "$lf"
     done
 fi
