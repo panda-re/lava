@@ -24,7 +24,7 @@ from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     validate_bugs, run_modified_program, unfuzzed_input_for_bug, \
     fuzzed_input_for_bug, get_trigger_line, AttackPoint, Bug
 
-from pycparser.diversifier.diversify import diversify
+# from pycparser.diversifier.diversify import diversify
 from process_compile_commands import get_c_files
 
 
@@ -215,8 +215,8 @@ def main():
             #           '-o',
             #           '{}.pre'.format(c_file),
             #           c_file]))
-            diversify(c_file, '{}.div'.format(c_file))
-            run_cmd_notimeout(' '.join(['cp', '{}.div'.format(c_file), c_file]))
+            # diversify(c_file, '{}.div'.format(c_file))
+            # run_cmd_notimeout(' '.join(['cp', '{}.div'.format(c_file), c_file]))
 
         # re-build
         (rv, outp) = run_cmd_notimeout(project['make'], cwd=lp.bugs_build)
