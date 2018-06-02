@@ -69,7 +69,7 @@ uint64_t num_bugs_of_type[Bug::TYPE_END] = {0};
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
 
-bool debug = true;
+bool debug = false;
 #define dprintf(...) if (debug) { printf(__VA_ARGS__); fflush(stdout); }
 
 uint64_t max_liveness = 0;
@@ -458,8 +458,10 @@ void taint_query_pri(Panda__LogEntry *ple) {
             if (current_byte_not_ok && debug) {
                 // discard this byte
                 dprintf("discarding byte -- here's why: %x\n", current_byte_not_ok);
-                if (current_byte_not_ok & (1<<CBNO_TCN_BIT)) printf("** tcn too high\n");
-                if (current_byte_not_ok & (1<<CBNO_CRD_BIT)) printf("** card too high\n");
+                if (debug && current_byte_not_ok) {
+                    if (1<<CBNO_TCN_BIT) printf("** tcn too high\n");
+                    if (1<<CBNO_CRD_BIT) printf("** card too high\n");
+                }
             } else {
                 dprintf("retaining byte\n");
                 // this byte is ok to retain.
@@ -628,7 +630,7 @@ void update_liveness(Panda__LogEntry *ple) {
             // keep track of unique taint label sets
             update_unique_taint_sets(tq->unique_label_set);
         }
-        if (debug) { spit_tq(tq); printf("\n"); }
+//        if (debug) { spit_tq(tq); printf("\n"); }
 
         // This should be O(mn) for m sets, n elems each.
         // though we should have n >> m in our worst case.
