@@ -142,8 +142,8 @@ if __name__ == "__main__":
     (update_db, bug_list) = get_bug_list(args, db)
 
     # add all those bugs to the source code and check that it compiles
-    # (build, input_files) = inject_bugs(bug_list, db, lp, project_file,
-    #                                    project, args, update_db, competition=args.competition)
+    (build, input_files) = inject_bugs(bug_list, db, lp, project_file,
+                                       project, args, update_db, competition=args.competition)
     try:
         # determine which of those bugs actually cause a seg fault
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build,

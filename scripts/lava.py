@@ -467,10 +467,6 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
                      llvm_src, filename, competition)
     pool.map(modify_source, all_files)
 
-    print('cwd: {}'.format(join(lp.bugs_build, 'src')))
-    run_cmd_notimeout("sed -i 's/magic.h/magic.h.in/g' *.yaml",
-            cwd=join(lp.bugs_build, 'src'), shell=True)
-    # sys.exit(0)
     clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
     def apply_replacements(src_dir):
         run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
