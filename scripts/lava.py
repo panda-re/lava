@@ -471,6 +471,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     def apply_replacements(src_dir):
         run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
                           cwd=join(lp.bugs_build, src_dir))
+
     pool.map(apply_replacements, set([dirname(f) for f in all_files]))
 
     # paranoid clean -- some build systems need this
@@ -722,11 +723,15 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
         if validated:
             real_bugs.append(bug.id)
         print()
-    f = float(len(real_bugs)) / len(bugs_to_inject)
-    print(u"yield {:.2f} ({} out of {}) real bugs (95% CI +/- {:.2f}) ".format(
-        f, len(real_bugs), len(bugs_to_inject),
-        1.96 * math.sqrt(f * (1 - f) / len(bugs_to_inject)))
-    )
+    if len(bugs_to_inject) > 0:
+        f = float(len(real_bugs)) / len(bugs_to_inject)
+        print(u"yield {:.2f} ({} out of {}) real bugs (95% CI +/- {:.2f}) ".format(
+            f, len(real_bugs), len(bugs_to_inject),
+            1.96 * math.sqrt(f * (1 - f) / len(bugs_to_inject)))
+        )
+        print ("A BOUNTIFUL CROP OF BUGS: %s" % (",".join(map(str,real_bugs))))
+    else:
+        print ("yield to me")
     print("TESTING COMPLETE")
 
     if update_db: db.session.commit()
