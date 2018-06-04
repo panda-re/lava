@@ -35,7 +35,7 @@ skipinject=""
 dataflow=""
 echo
 progress "competition" 0 "Parsing args"
-while getopts  "sbdakm:l:n:e:" flag
+while getopts  "sbdiakm:l:n:e:" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1

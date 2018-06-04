@@ -241,7 +241,7 @@ def main():
             print(o)
         if rv == 0:
             print('build succeeded')
-            check_call(project['install'], cwd=lp.bugs_build, shell=True)
+            subprocess32.check_call(project['install'], cwd=lp.bugs_build, shell=True)
             if 'post_install' in project:
                 check_call(project['post_install'], cwd=lp.bugs_build, shell=True)
         else:
