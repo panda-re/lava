@@ -13,14 +13,14 @@ from os.path import join
 
 from lava import LavaDatabase, Run, Bug, \
                  inject_bugs, LavaPaths, validate_bugs, \
-                 get_bugs, run_cmd
+                 get_bugs, run_cmd, get_allowed_bugtype_num
 
 start_time = time.time()
 
 debugging = False
 
 # get list of bugs either from cmd line or db
-def get_bug_list(args, db):
+def get_bug_list(args, db, allowed_bugtypes):
     update_db = False
     print "Picking bugs to inject."
     sys.stdout.flush()
@@ -41,12 +41,15 @@ def get_bug_list(args, db):
     elif args.many:
         num_bugs_to_inject = int(args.many)
         print "Selecting %d bugs for injection" % num_bugs_to_inject
+        print db.uninjected_random(False).count()
+
         assert db.uninjected_random(False).count() >= num_bugs_to_inject
         if args.balancebugtype:
-            bugs_to_inject = db.uninjected_random_balance(False, num_bugs_to_inject)
+            bugs_to_inject = db.uninjected_random_balance(False, num_bugs_to_inject, allowed_bugtypes)
         else:
             bugs_to_inject = db.uninjected_random(False)[:num_bugs_to_inject]
         bug_list = [b.id for b in bugs_to_inject]
+        print "%d is size of bug_list" % (len(bug_list))
         update_db = True
     else: assert False
 
@@ -116,12 +119,19 @@ if __name__ == "__main__":
             help = ('Attempt to balance bug types, i.e. inject as many of each type'))
     parser.add_argument('-competition', '--competition', action="store_true", default=False,
             help = ('Inject in competition mode where logging will be added in #IFDEFs'))
+    
+    parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
+                        help = ('bug types to inject'))
 
 
     args = parser.parse_args()
     global project
     project = json.load(args.project)
     project_file = args.project.name
+
+    allowed_bugtypes = get_allowed_bugtype_num(args)
+    
+    print "allowed bug types: " + (str(allowed_bugtypes))
 
     # Set various paths
     lp = LavaPaths(project)
@@ -138,8 +148,9 @@ if __name__ == "__main__":
     # Remove all old YAML files
     run_cmd("rm {}/*.yaml".format(lp.bugs_build), None, 10, cwd="/", shell=True)
 
+    
     # obtain list of bugs to inject based on cmd-line args and consulting db
-    (update_db, bug_list) = get_bug_list(args, db)
+    (update_db, bug_list) = get_bug_list(args, db, allowed_bugtypes)
 
     # add all those bugs to the source code and check that it compiles
     (build, input_files) = inject_bugs(bug_list, db, lp, project_file,
