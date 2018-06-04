@@ -7,9 +7,9 @@
     "name": "$NAME",
     "tarfile": "$TAR_FILE",
 
-    "configure": "./configure",
+    "configure": "./configure --prefix=`pwd`/../lava-install",
     "make": "$MAKE",
-    "makeclean": true,
+    "clean": "make clean",
     "install": "make install",
     "command": "$CMD",
     "expect_prompt": "root@debian-i386:~#",
