@@ -22,7 +22,7 @@ from os.path import basename, dirname, join, abspath, exists
 from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     run_cmd, run_cmd_notimeout, mutfile, inject_bugs, LavaPaths, \
     validate_bugs, run_modified_program, unfuzzed_input_for_bug, \
-    fuzzed_input_for_bug, get_trigger_line, AttackPoint, get_allowed_bugtype_num
+    fuzzed_input_for_bug, get_trigger_line, AttackPoint, Bug, get_allowed_bugtype_num
 
 
 RETRY_COUNT = 0
@@ -44,8 +44,8 @@ def run_builds(scripts):
 # further, we require that no two bugs or non-bugs have same file/line dua
 # because otherwise the db might give us all the same dua
 
-X = 2
 def competition_bugs_and_non_bugs(num, db, allowed_bugtypes):
+    max_duplicates_per_line = 2
     bugs_and_non_bugs = []
     dfl_fileline = {}
     afl_fileline = {}
@@ -56,8 +56,8 @@ def competition_bugs_and_non_bugs(num, db, allowed_bugtypes):
                 continue
             dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
             afl = (item.atp.loc_filename, item.atp.loc_begin_line)
-            if (dfl in dfl_fileline and dfl_fileline[dfl] > X): continue
-            if (afl in afl_fileline and afl_fileline[afl] > X): continue
+            if (dfl in dfl_fileline and dfl_fileline[dfl] > max_duplicates_per_line): continue
+            if (afl in afl_fileline and afl_fileline[afl] > max_duplicates_per_line): continue
             if not (dfl in dfl_fileline): dfl_fileline[dfl] = 0
             if not (afl in afl_fileline): afl_fileline[afl] = 0
             if fake:
@@ -130,7 +130,7 @@ def main():
         elif args.many:
             bug_list = competition_bugs_and_non_bugs(int(args.many), db, allowed_bugtypes)
 
-        # add bugs to the source code and check that we can still compile
+        # add either bugs to the source code and check that we can still compile
         try:
             (build, input_files) = inject_bugs(bug_list, db, lp, project_file, \
                                               project, args, False, competition=True)
