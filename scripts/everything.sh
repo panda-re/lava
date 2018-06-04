@@ -79,7 +79,7 @@ do
       make=1
       taint=1
       inject=1
-      num_trials=4
+      num_trials=3
       progress "everything" 0 "All steps will be executed"
   fi
   if [ "$flag" = "r" ]; then
@@ -142,7 +142,7 @@ fi
 json="$(realpath $1)"
 
 # how many bugs will be injected at  time
-many=100
+many=50
 
 if [[ $demo -eq 1 ]]
 then
@@ -276,7 +276,7 @@ if [ $inject -eq 1 ]; then
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -bb $kt $json" "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -d -bb $kt -t ptr_add,rel_write $json" "$lf"
     grep yield "$lf"
     done
 fi

@@ -22,7 +22,7 @@ from os.path import basename, dirname, join, abspath, exists
 from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     run_cmd, run_cmd_notimeout, mutfile, inject_bugs, LavaPaths, \
     validate_bugs, run_modified_program, unfuzzed_input_for_bug, \
-    fuzzed_input_for_bug, get_trigger_line, AttackPoint, Bug
+    fuzzed_input_for_bug, get_trigger_line, AttackPoint, Bug, get_allowed_bugtype_num
 
 
 RETRY_COUNT = 0
@@ -43,30 +43,37 @@ def run_builds(scripts):
 # that allows us to easily evaluate systems which say there is a bug at file/line.
 # further, we require that no two bugs or non-bugs have same file/line dua
 # because otherwise the db might give us all the same dua
-def competition_bugs_and_non_bugs(num, db):
+
+def competition_bugs_and_non_bugs(num, db, allowed_bugtypes):
+    max_duplicates_per_line = 2
     bugs_and_non_bugs = []
-    fileline = set()
+    dfl_fileline = {}
+    afl_fileline = {}
     def get_bugs_non_bugs(fake, limit):
         items = db.uninjected_random(fake)
         for item in items:
+            if not (item.type in allowed_bugtypes):
+                continue
             dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
             afl = (item.atp.loc_filename, item.atp.loc_begin_line)
-            # Skip this one if we've already used an ATP or DUA with the same line. Or if this is a function call atp. or it it's an easybug or an info leak
-            if (dfl in fileline) or (afl in fileline) or (item.atp.typ == AttackPoint.FUNCTION_CALL) or (item.type == Bug.RET_BUFFER) or (item.type == Bug.PRINTF_LEAK):
-                continue
+            if (dfl in dfl_fileline and dfl_fileline[dfl] > max_duplicates_per_line): continue
+            if (afl in afl_fileline and afl_fileline[afl] > max_duplicates_per_line): continue
+            if not (dfl in dfl_fileline): dfl_fileline[dfl] = 0
+            if not (afl in afl_fileline): afl_fileline[afl] = 0
             if fake:
                 print "non-bug", 
             else:
                 print "bug    ", 
             print ' dua_fl={} atp_fl={}'.format(str(dfl), str(afl))
-            fileline.add(dfl)
-            fileline.add(afl)
+            dfl_fileline[dfl] += 1
+            afl_fileline[afl] += 1
             bugs_and_non_bugs.append(item)
             if (len(bugs_and_non_bugs) == limit):
                 break
     get_bugs_non_bugs(False, num)
-    get_bugs_non_bugs(True, 2*num)
+#    get_bugs_non_bugs(True, 2*num)
     return [b.id for b in bugs_and_non_bugs]
+
 
 def main():
     parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
@@ -80,10 +87,17 @@ def main():
             help = 'Inject this list of bugs')
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
             help = ('Expected exit code when program exits without crashing. Default 0'))
+    parser.add_argument('-d', '--arg_dataflow', action="store_true", default=False,
+            help = ('Inject bugs using function args instead of globals'))
+
+    parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
+                        help = ('bug types to inject'))
     
     args = parser.parse_args()
     project = json.load(args.project)
     project_file = args.project.name
+
+    allowed_bugtypes = get_allowed_bugtype_num(args)
 
     # Set various paths
     lp = LavaPaths(project)
@@ -108,14 +122,13 @@ def main():
 
     args.knobTrigger = -1
     args.checkStacktrace = False
-    args.arg_dataflow = False
     failcount = 0
 
     while True:
         if args.buglist:
             bug_list = eval(args.buglist)
         elif args.many:
-            bug_list = competition_bugs_and_non_bugs(int(args.many), db)
+            bug_list = competition_bugs_and_non_bugs(int(args.many), db, allowed_bugtypes)
 
         # add either bugs to the source code and check that we can still compile
         try:
@@ -127,8 +140,6 @@ def main():
                 failcount += 1
                 continue
             raise
-
-
 
         # bug is valid if seg fault (or bus error)
         # AND if stack trace indicates bug manifests at trigger line we inserted
@@ -178,27 +189,35 @@ def main():
     # copy src
     shutil.copytree(bd, srcdir)
 
-    predictions = {}
+    predictions = []
+    bug_ids = []
     for bug in  db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all():
         prediction = "{}:{}".format(basename(bug.atp.loc_filename),
                                     get_trigger_line(lp, bug))
-#        print "Bug %d: prediction = [%s]" % (bug.id, prediction)
+        print "Bug %d: prediction = [%s]" % (bug.id, prediction)
+        print str(bug)
         if not get_trigger_line(lp, bug):
             print("Warning - unknown trigger, skipping")
             continue
 
-        assert not (prediction in predictions)
+#        assert not (prediction in predictions)
         fuzzed_input = fuzzed_input_for_bug(lp, bug)
         (dc, fi) = os.path.split(fuzzed_input)
         shutil.copy(fuzzed_input, inputsdir)
-        predictions[prediction] = fi
+        predictions.append((prediction, fi))
+        bug_ids.append(bug.id)
 
     print "Answer key:"
-    ans = open(join(corpdir, "ans"), "w")
-    for prediction in predictions:
-        print "ANSWER  [%s] [%s]" % (prediction, predictions[prediction])
-        ans.write("%s %s\n" % (prediction, predictions[prediction]))
-    ans.close()
+    with open(join(corpdir, "ans"), "w") as ans:
+        for (prediction, fi) in predictions:
+            print "ANSWER  [%s] [%s]" % (prediction, fi)
+            ans.write("%s %s\n" % (prediction, fi))
+
+    with open(join(corpdir, "add_bugs.sql"), "w") as f:
+        f.write("/* This file will add all the generated lava_id values to the DB, you must update binary_id */\n")
+        f.write("\set binary_id -1\n")
+        for bug_id in bug_ids:
+            f.write("insert into \"bug\" (\"lava_id\", \"binary\") VALUES (%d, :binary_id); \n" % (bug_id))
 
     # clean up srcdir before tar
     os.chdir(srcdir)
@@ -227,16 +246,17 @@ def main():
         pushd `pwd`
         cd {bugs_build}
         {make_clean}
-        {configure}
+        {configure} --prefix={tempdir}
         {make}
         {install}
-        cp -r lava-install {outdir}
+        mv lava-install {outdir}
         popd
         """.format(
             bugs_build=bd,
-            make_clean = "make clean" if project["makeclean"] else "",
+            make_clean = project["clean"] if "clean" in project.keys() else "",
             configure=project['configure'],
             make=project['make'],
+            tempdir=join(bd, "lava-install"),
             install=project['install'],
             outdir=join(corpdir, "lava-install")))
 
@@ -248,26 +268,27 @@ def main():
 
         # Build internal version
         {make_clean}
-        {configure}
+        {configure} --prefix={tempdir}
         {make} CFLAGS+="-DLAVA_LOGGING"
         rm -rf "{internal_builddir}"
         {install}
-        cp -r lava-install {internal_builddir}
+        mv lava-install {internal_builddir}
 
         # Build public version
         {make_clean}
-        {configure}
+        {configure} --prefix={tempdir}
         {make}
         rm -rf "{public_builddir}"
         {install}
-        cp -r lava-install {public_builddir}
+        mv lava-install {public_builddir}
 
         popd
         """.format(
             bugs_build=bd,
-            make_clean = "make clean" if project["makeclean"] else "",
+            make_clean = project["clean"] if "clean" in project.keys() else "",
             configure=project['configure'],
             make = project['make'],
+            tempdir=join(bd, "lava-install"),
             internal_builddir = join(corpdir, "lava-install-internal"),
             public_builddir = join(corpdir, "lava-install"),
             install = project['install'],
@@ -281,12 +302,16 @@ def main():
 
         for fname in {inputdir}/*-fuzzed-*; do
             LD_LIBRARY_PATH={librarydir} {command}
+            LD_LIBRARY_PATH={librarydir2} {command2}
+            sleep 1
         done
 
         popd
         """.format(command = project['command'].format(**{"install_dir": join(corpdir, "lava-install-internal"), "input_file": "$fname"}), # This syntax is weird but only thing that works?
             corpdir = corpdir,
             librarydir = join(corpdir, "lava-install-internal", "lib"),
+            librarydir2 = join(corpdir, "lava-install", "lib"),
+            command2 = project['command'].format(**{"install_dir": join(corpdir, "lava-install"), "input_file": "$fname"}), # This syntax is weird but only thing that works?
             inputdir = join(corpdir, "inputs")
             ))
 
