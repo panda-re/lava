@@ -48,7 +48,8 @@ extern "C" {
 #define MATCHER (1 << 0)
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
-#define DEBUG_FLAGS 0 // (MATCHER | INJECT | FNARG)
+#define TIM (1 << 3)
+#define DEBUG_FLAGS TIM // (MATCHER | INJECT | FNARG)
 
 #define ARG_NAME "data_flow"
 
@@ -621,6 +622,24 @@ struct FunctionArgHandler : public LavaMatchHandler {
 
         debug(INJECT) << "FunctionArgHandler @ " << GetASTLoc(sm, toAttack) << "\n";
 
+        
+        for (auto p : Result.Context->getParents(*toAttack)) {
+            const CallExpr *ce = p.get<CallExpr>();
+            if (ce) {           
+                const FunctionDecl *fd = ce->getDirectCallee();
+                if (fd) {
+                    IdentifierInfo *II = fd->getIdentifier();
+                    if (II) {
+                        StringRef Name = II->getName();
+                        if (Name.startswith("__builtin_")) {
+                            printf ("OMG we found a builtin [%s]\n", Name.str().c_str());
+                            return;
+                        }
+                    }
+                }
+            }            
+        }
+        
         AttackExpression(sm, toAttack, nullptr, nullptr, AttackPoint::FUNCTION_ARG);
     }
 };
@@ -690,6 +709,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
 
     void AddArg(const FunctionDecl *func) {
+
         SourceLocation loc = clang::Lexer::findLocationAfterToken(
                 func->getLocation(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
         if (func->getNumParams() == 0) {
@@ -700,8 +720,10 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
     }
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
+
         const FunctionDecl *func =
             Result.Nodes.getNodeAs<FunctionDecl>("funcDecl");
+
 
         debug(FNARG) << "adding arg to " << func->getNameAsString() << "\n";
 
@@ -712,8 +734,18 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         if (func->getNameAsString().find("lava") == 0) return;
         if (Mod.sm->isInSystemHeader(func->getLocation())) return;
         if (Mod.sm->getFilename(func->getLocation()).empty()) return;
+        
+        if (LavaAction == LavaQueries) {
+            if (func->isThisDeclarationADefinition()
+                && func->getBody()) {
+                debug(TIM) << "TIM file " << Mod.sm->getFilename(func->getLocation()).str() << " func " << func->getNameAsString() << "\n";
+            }
+            return;
+        }
+
 
         // Comment out format attrs
+/*
         if (func->hasAttrs()) {
           auto attrs = func->getAttrs();
           for (const auto &a : func->getAttrs()) {
@@ -724,6 +756,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
             debug(FNARG) << a->getSpelling() << "\n";
           }
         }
+*/
 
         debug(FNARG) << "actually adding arg\n";
 
@@ -771,7 +804,7 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         const FunctionDecl *func = call->getDirectCallee();
         SourceLocation loc = clang::Lexer::findLocationAfterToken(
                 call->getLocStart(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
-
+        
         if (func == nullptr || func->getLocation().isInvalid()) {
             // Function Pointer
             debug(FNARG) << "FUNCTION POINTER USE: ";
@@ -859,6 +892,13 @@ public:
 
         addMatcher(memoryAccessMatcher, makeHandler<MemoryAccessHandler>());
 
+
+        if (LavaAction == LavaQueries) {
+            addMatcher(
+                    functionDecl().bind("funcDecl"),
+                    makeHandler<FuncDeclArgAdditionHandler>());
+        }
+        
         // fortenforge's matchers (for argument addition)
         if (ArgDataflow && LavaAction == LavaInjectBugs) {
             addMatcher(
@@ -966,6 +1006,25 @@ void mark_for_siphon(const DuaBytes *dua_bytes) {
     data_slots.insert(std::make_pair(lval_bytes, data_slots.size()));
 }
 
+void parse_whitelist(const char *whitelist_filename) {
+    FILE *fp = fopen(whitelist_filename, "r");
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read = 0;
+    while ((read = getline(&line, &len, fp)) != -1) {
+        char *p = strstr("TIM", line);
+        if (p) {
+            p = line + 4;
+            char *np = strtok(p, " ");
+            char *npp = strtok(np, " ");
+            printf ("file = [%s] func = [%s]\n", np, npp);
+        }
+    }
+}
+
+            
+
+
 int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
@@ -986,6 +1045,10 @@ int main(int argc, const char **argv) {
     if (LavaDB != "XXX") StringIDs = LoadDB(LavaDB);
 
     odb::transaction *t = nullptr;
+
+    if (root.isMember("whitelist")) 
+        parse_whitelist(root["whitelist"].asString().c_str());
+
     if (LavaAction == LavaInjectBugs) {
         db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
                     root["db"].asString()));
