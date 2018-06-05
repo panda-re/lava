@@ -47,20 +47,29 @@ def run_builds(scripts):
 # further, we require that no two bugs or non-bugs have same file/line dua
 # because otherwise the db might give us all the same dua
 
-def competition_bugs_and_non_bugs(num, db, allowed_bugtypes):
-    max_duplicates_per_line = 2
+def competition_bugs_and_non_bugs(num, db, allowed_bugtypes, buglist):
+    max_duplicates_per_line = 0
     bugs_and_non_bugs = []
     dfl_fileline = {}
     afl_fileline = {}
     def get_bugs_non_bugs(fake, limit):
-        items = db.uninjected_random(fake)
+        if buglist is None:
+            items = db.uninjected_random(fake)
+        else:
+            items = db.session.query(Bug).filter(Bug.id.in_(buglist)).all()
+            print "items %d" % (len(items))
+            limit = 10000000
         for item in items:
             if not (item.type in allowed_bugtypes):
                 continue
             dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
             afl = (item.atp.loc_filename, item.atp.loc_begin_line)
-            if (dfl in dfl_fileline and dfl_fileline[dfl] > max_duplicates_per_line): continue
-            if (afl in afl_fileline and afl_fileline[afl] > max_duplicates_per_line): continue
+            if (dfl in dfl_fileline and dfl_fileline[dfl] > max_duplicates_per_line): 
+                print "skipping dfl %s" % (str(dfl))
+                continue
+            if (afl in afl_fileline and afl_fileline[afl] > max_duplicates_per_line): 
+                print "skipping afl %s" % (str(afl))
+                continue
             if not (dfl in dfl_fileline): dfl_fileline[dfl] = 0
             if not (afl in afl_fileline): afl_fileline[afl] = 0
             if fake:
@@ -130,10 +139,12 @@ def main():
     args.checkStacktrace = False
     failcount = 0
 
+
     if args.buglist:
-        bug_list = eval(args.buglist)
+        print ("bug_list incoming %s" % (str(args.buglist)))
+        bug_list = competition_bugs_and_non_bugs(int(args.many), db, allowed_bugtypes, eval(args.buglist))
     elif args.many:
-        bug_list = competition_bugs_and_non_bugs(int(args.many), db, allowed_bugtypes)
+        bug_list = competition_bugs_and_non_bugs(int(args.many), db, allowed_bugtypes, None)
 
     print('bug_list:')
     bug_list_str = ','.join([str(bug_id) for bug_id in bug_list])
@@ -202,6 +213,7 @@ def main():
         {make} CFLAGS+="-DLAVA_LOGGING"
         rm -rf "{internal_builddir}"
         {install}
+        {post_install}
         cp -r lava-install {internal_builddir}
 
         popd
@@ -212,6 +224,7 @@ def main():
             make = project['make'],
             internal_builddir = join(corpdir, "lava-install-internal"),
             install = project['install'],
+            post_install = project['post_install']
             ))
     run_builds([log_build_sh])
 
@@ -219,7 +232,7 @@ def main():
     if args.diversify:
         print('Starting diversification\n')
         compile_commands = join(bugdir, lp.source_root, "compile_commands.json")
-        all_c_files = get_c_files(compile_commands)
+        all_c_files = get_c_files(lp.bugs_build, compile_commands)
         for c_file in all_c_files:
             print('diversifying {}'.format(c_file))
             c_file = join(bugdir, lp.source_root, c_file)
@@ -332,6 +345,7 @@ def main():
         {configure}
         {make}
         {install}
+        {post_install}
         mv lava-install {outdir}
         popd
         """.format(
@@ -340,7 +354,9 @@ def main():
             configure=project['configure'],
             make=project['make'],
             install=project['install'],
-            outdir=join(corpdir, "lava-install")))
+            outdir=join(corpdir, "lava-install"),
+            post_install=project['post_install']
+        ))
 
     public_build_sh = join(corpdir, "public_build.sh")
     with open(public_build_sh, "w") as build:
@@ -354,6 +370,7 @@ def main():
         {make}
         rm -rf "{public_builddir}"
         {install}
+        {post_install}
         cp -r lava-install {public_builddir}
 
         popd
@@ -364,6 +381,7 @@ def main():
             make = project['make'],
             public_builddir = join(corpdir, "lava-install"),
             install = project['install'],
+            post_install = project['post_install']
             ))
 
     trigger_all_crashes = join(corpdir, "trigger_crashes.sh")

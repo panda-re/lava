@@ -26,13 +26,16 @@ def process_compile_commands(cc_filename, extra_cc_filename):
     json.dump(new_compile_commands, cc_file)
     cc_file.close()
 
-def get_c_files(cc_filename):
+def get_c_files(bugs_build, cc_filename):
     cc_file = open(cc_filename, 'r')
     compile_commands = json.load(cc_file)
     c_files = set()
     for f in compile_commands:
-        c_files.add(os.path.join(
-            os.path.basename(f['directory']),
-            f['file']))
+        if not (bugs_build == f['directory']):
+            c_files.add(os.path.join(
+                os.path.basename(f['directory']),
+                f['file']))
+        else:
+            c_files.add(f['file'])
     cc_file.close()
     return c_files

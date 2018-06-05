@@ -462,7 +462,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         # if we're injecting with dataflow, we must modify all files in src
         compile_commands = join(lp.bugs_build, 'compile_commands.json')
         print('compile commands is here: {}'.format(compile_commands))
-        all_c_files = get_c_files(compile_commands)
+        all_c_files = get_c_files(lp.bugs_build, compile_commands)
         print('all_c_files: {}'.format(all_c_files))
         print('all_files: {}'.format(all_files))
         all_files = all_files.union(all_c_files)
