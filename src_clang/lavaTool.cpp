@@ -564,6 +564,9 @@ std::pair<std::string,std::string> fundecl_fun_name(const MatchFinder::MatchResu
 
 std::pair<std::string,std::string> get_containing_function_name(const MatchFinder::MatchResult &Result, const Stmt &stmt) {
 
+    printf("get_containing_function_name stmt:\n");
+    stmt.dump();
+
     for (auto p : Result.Context->getParents(stmt)) {
         if (p.get<TranslationUnitDecl>()) {
             return std::make_pair(std::string("Meh"), std::string("Notinafunction"));
@@ -576,10 +579,14 @@ std::pair<std::string,std::string> get_containing_function_name(const MatchFinde
     }
 
     auto p = Result.Context->getParents(stmt)[0];        
+
+    printf ("parent is \n");
+    p.dump(debug(TIM), *Result.SourceManager);
+
     const Stmt *s = p.get<Stmt>();
     if (s) 
         return get_containing_function_name(Result, *s);
-    else 
+    else
         assert (1==0);
 
 }
