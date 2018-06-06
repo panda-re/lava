@@ -48,7 +48,7 @@ def run_builds(scripts):
 # because otherwise the db might give us all the same dua
 
 def competition_bugs_and_non_bugs(num, db, allowed_bugtypes, buglist):
-    max_duplicates_per_line = 0
+    max_duplicates_per_line = 20
     bugs_and_non_bugs = []
     dfl_fileline = {}
     afl_fileline = {}
@@ -104,7 +104,7 @@ def main():
             help = ('Skip injection step. Use if you must make manual changes to src.'))
     parser.add_argument('-d', '--arg_dataflow', action="store_true", default=False,
             help = ('Inject bugs using function args instead of globals'))
-    parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
+    parser.add_argument('-t', '--bugtypes', action="store", default="rel_write",
                         help = ('bug types to inject'))
     
     args = parser.parse_args()

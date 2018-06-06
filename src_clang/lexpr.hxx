@@ -169,6 +169,7 @@ LExpr operator&(LExpr us, LExpr other) { return LBinop("&", us, other); }
 LExpr operator|(LExpr us, LExpr other) { return LBinop("|", us, other); }
 LExpr operator<(LExpr us, LExpr other) { return LBinop("<", us, other); }
 LExpr operator^(LExpr us, LExpr other) { return LBinop("^", us, other); }
+LExpr operator%(LExpr us, LExpr other) { return LBinop("%", us, other); }
 
 LExpr LBlock(std::initializer_list<LExpr> stmts) {
     return LExpr(LExpr::BLOCK, 0, "", stmts);

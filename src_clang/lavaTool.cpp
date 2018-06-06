@@ -48,7 +48,7 @@ extern "C" {
 #define MATCHER (1 << 0)
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
-#define DEBUG_FLAGS INJECT // (MATCHER | INJECT | FNARG)
+#define DEBUG_FLAGS 0 // (MATCHER | INJECT | FNARG)
 
 #define ARG_NAME "data_flow"
 
@@ -270,7 +270,33 @@ LExpr Test2(const Bug *bug, LvalBytes x) {
 }
 
 LExpr Test3(const Bug *bug, LvalBytes x, LvalBytes y) {
-    return (Get(bug->trigger)^Get(x)) == (LHex(bug->magic)*Get(y));
+        //return (Get(bug->trigger)+Get(x)) == (LHex(bug->magic)*Get(y)); // GOOD
+        //return (Get(x)) == (Get(bug->trigger)*(Get(y)+LHex(bug->magic))); // GOOD
+        //return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - Get(bug->trigger)); // GOOD
+
+        //return (Get(bug->trigger)<<LHex(3) == (LHex(bug->magic) << LHex(5) + Get(y))); // BAD - segfault
+        //return (Get(bug->trigger)^Get(x)) == (LHex(bug->magic)*(Get(y)+LHex(7))); // Segfault
+
+        return ((Get(x)+Get(y) + Get(bug->trigger)) == LHex(bug->magic));
+    /*
+    switch (bug->magic%4)  {
+        // bug->trigger = A
+        // get(x) = b
+        // get(y) = c
+        // bug->magic = m
+        case 0:     // A + B == M*C
+            return (Get(bug->trigger)+Get(x)) == (LHex(bug->magic)*Get(y));
+            break;
+        case 1:     //B == A*(C+M)
+            return (Get(x)) == (Get(bug->trigger)*(Get(y)+LHex(bug->magic)));
+            break;
+        case 2:     // B % M == M - A*2
+            return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - (Get(bug->trigger)*LHex(2)));
+            break;
+        default: // CHAFF
+            return (Get(x) == (Get(x)+ LHex(bug->magic)));
+            break;
+    }*/
 }
 
 LExpr traditionalAttack(const Bug *bug) {
@@ -457,7 +483,8 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         LavaASTLoc ast_loc = GetASTLoc(sm, toAttack);
         std::vector<LExpr> pointerAddends;
         std::vector<LExpr> valueAddends;
-        int this_bug_id = 0;
+        std::vector<LExpr> triggers;
+        std::vector<Bug*> bugs;
 
         debug(INJECT) << "Inserting expression attack (AttackExpression).\n";
         const Bug *this_bug = NULL;
@@ -473,19 +500,24 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             for (const Bug *bug : injectable_bugs) {
                 assert(bug->atp->type == atpType);
                 if (ArgCompetition) {
-                    assert(this_bug_id == 0);  // You can't inject multiple bugs into the same line for a competition
-                    this_bug_id = bug->id;
-                    this_bug = bug;
-                }
+                    Bug *bug2 = NULL;
+                    bug2 = (Bug*)malloc(sizeof(Bug));
+                    memcpy(bug2, bug, sizeof(Bug));
+                    bugs.push_back(bug2);
 
-                if (bug->type == Bug::PTR_ADD) {
-                    pointerAddends.push_back(pointerAttack(bug));
-                } else if (bug->type == Bug::REL_WRITE) {
-                    const DuaBytes *where = db->load<DuaBytes>(bug->extra_duas[0]);
-                    const DuaBytes *what = db->load<DuaBytes>(bug->extra_duas[1]);
+                    if (bug->type == Bug::PTR_ADD) {
+                        pointerAddends.push_back(pointerAttack(bug));
+                    } else if (bug->type == Bug::REL_WRITE) {
+                        const DuaBytes *where = db->load<DuaBytes>(bug2->extra_duas[0]);
+                        const DuaBytes *what = db->load<DuaBytes>(bug2->extra_duas[1]);
 
-                    pointerAddends.push_back(Test3(bug, where, what) * Get(where));
-                    //valueAddends.push_back(Test(bug) * Get(what));
+                        if (ArgCompetition) {
+                            triggers.push_back(Test3(bug2, where, what) * Get(where));
+                        }
+
+                        pointerAddends.push_back(Test3(bug2, where, what) * Get(where));
+                        //valueAddends.push_back(Test(bug) * Get(what));
+                    }
                 }
             }
             bugs_with_atp_at.erase(std::make_pair(ast_loc, atpType));
@@ -504,12 +536,22 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             // it's effectively just a NOP that prints a message when the trigger is true
             // so we can identify when bugs are potentially triggered
             if (ArgCompetition) {
-                if (this_bug == NULL) return; // Maybe redundant
-                Mod.Change(toAttack).InsertBefore("LAVALOG(");
+                assert (triggers.size() == bugs.size());
 
-                std::stringstream end_str;
-                end_str << ", " << Test(this_bug) << "," << this_bug_id << ")";
-                Mod.Change(toAttack).InsertAfter(end_str.str());
+                for (int i=0; i < triggers.size(); i++) {
+                    Bug *bug = bugs[i];
+                    if (bug->type != Bug::REL_WRITE) {
+                        continue; // don't care for 18.04
+                    }
+                    std::stringstream start_str;
+                    start_str << "LAVALOG(" << bug->id << ", ";
+                    Mod.Change(toAttack).InsertBefore(start_str.str());
+
+                    std::stringstream end_str;
+
+                    end_str << ", " << triggers[i] << ")";
+                    Mod.Change(toAttack).InsertAfter(end_str.str());
+                }
             }
         }
 
@@ -909,9 +951,9 @@ public:
         std::stringstream competition;
         competition << "#include <stdio.h>\n"
                     << "#ifdef LAVA_LOGGING\n"
-                    << "#define LAVALOG(x, trigger, bugid)  ({trigger && printf(\"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__) && fflush(stdout), (x);})\n"
+                    << "#define LAVALOG(bugid, x, trigger)  ({trigger && printf(\"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__) && fflush(stdout), (x);})\n"
                     << "#else\n"
-                    << "#define LAVALOG(x,y,z)  (x)\n"
+                    << "#define LAVALOG(y,x,z)  (x)\n"
                     << "#endif\n";
 
         std::string insert_at_top;
@@ -976,8 +1018,11 @@ private:
 };
 
 void mark_for_siphon(const DuaBytes *dua_bytes) {
+
     LvalBytes lval_bytes(dua_bytes);
     siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
+
+    debug(INJECT) << "    Mark siphon at " << lval_bytes.lval->loc << "\n";
 
     // if insert fails do nothing. we already have a slot for this one.
     data_slots.insert(std::make_pair(lval_bytes, data_slots.size()));

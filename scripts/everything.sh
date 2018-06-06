@@ -142,7 +142,7 @@ fi
 json="$(realpath $1)"
 
 # how many bugs will be injected at  time
-many=100
+many=1000
 
 if [[ $demo -eq 1 ]]
 then
@@ -280,7 +280,8 @@ if [ $inject -eq 1 ]; then
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -bb -d $kt -t ptr_add,rel_write $json" "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode $kt -bb -t rel_write $json" "$lf"
+        #run_remote "$testinghost" "$python $scripts/inject.py -l 110,150 -e $exitCode -bb $kt -t ptr_add,rel_write $json" "$lf"
     grep yield "$lf"
     done
 fi

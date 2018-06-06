@@ -280,10 +280,71 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0):
     # collect set of tainted offsets in file.
     file_bytes = bytearray(open(filename).read())
     # change first 4 bytes in dua to magic value
+    #print(len(fuzz_labels_list))
+    assert(len(fuzz_labels_list) == 3) # YOLO
+
+    # A ^ B = m * C
+    # b = rand1
+    # c = rand2
+    # a^rand1 = m*rand2
+    # a = (m*rand2)^rand1)
+
+    m = bug.magic
+
+    # m == a + b + c
+
+    a = 10
+    c = 30
+    b = m - a - c
+
+
+    """
+    if (m%4 == 0): # A + B = M * C
+        b = m
+        c = 1
+        a = 0
+
+    if (m%4 == 1): # B = A*(C+M)
+        a = random.randint(2<<16, 2<<32-1)
+        c = random.randint(0, 2<<32-1)
+        b = ((c+m)&0xFFFFFFFF*a)&0xFFFFFFFF
+
+    if (m%4 == 2):
+        b = m-10
+        c = 1
+        a = 5
+
+    if (m%4 == 3): # CHAFF BUG - skip
+        a = 0
+        b = 0
+        c = 0
+    """
+    
+    a_val = struct.pack("<I", a)
+    b_val = struct.pack("<I", b)
+    c_val = struct.pack("<I", c)
+
+    #print("{}^{} =?= {} * {}".format(a, b, bug.magic, c))
+    #print("{} =?= {}".format((a^b)&0xFFFFFFFF, (bug.magic*c)&0xFFFFFFFF))
+
+    for (i, offset) in zip(range(4), fuzz_labels_list[0]):
+        #print("i=%d offset=%d set to value=%s" % (i,offset,a_val[i]))
+        file_bytes[offset] = a_val[i]
+
+    for (i, offset) in zip(range(4), fuzz_labels_list[1]):
+        #print("i=%d offset=%d set to value=%s" % (i,offset,b_val[i]))
+        file_bytes[offset] = b_val[i]
+
+    for (i, offset) in zip(range(4), fuzz_labels_list[2]):
+        #print("i=%d offset=%d set to value=%s" % (i,offset,c_val[i]))
+        file_bytes[offset] = c_val[i]
+
+    """
     for fuzz_labels in fuzz_labels_list:
         for (i, offset) in zip(range(4), fuzz_labels):
-            #print("i=%d offset=%d len(file_bytes)=%d" % (i,offset,len(file_bytes)))
+            print("i=%d offset=%d len(file_bytes)=%d\t set to value=%s" % (i,offset,len(file_bytes), magic_val[i]))
             file_bytes[offset] = magic_val[i]
+    """
     with open(new_filename, 'w') as fuzzed_f:
         fuzzed_f.write(file_bytes)
 
@@ -306,6 +367,7 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, 
         print(ret[1][1].replace("\\n", "\n"))
         print("\nFatal error: LavaTool crashed\n")
         assert(False) #LavaTool failed
+    print(ret[1][1].replace("\\n", "\n"))
     return ret
 
 class LavaPaths(object):
