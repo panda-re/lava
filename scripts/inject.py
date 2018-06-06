@@ -119,6 +119,9 @@ if __name__ == "__main__":
             help = ('Attempt to balance bug types, i.e. inject as many of each type'))
     parser.add_argument('-competition', '--competition', action="store_true", default=False,
             help = ('Inject in competition mode where logging will be added in #IFDEFs'))
+
+    parser.add_argument('-wl', '--whitelist', action="store", default=None,
+                        help = ('White list file of functions to bug and data flow'))    
     
     parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
                         help = ('bug types to inject'))

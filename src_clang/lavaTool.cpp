@@ -86,6 +86,13 @@ static cl::opt<std::string> LavaBugList("bug-list",
     cl::desc("Comma-separated list of bug ids (from the postgres db) to inject into this file"),
     cl::cat(LavaCategory),
     cl::init("XXX"));
+
+static cl::opt<std::string> LavaWL("lava-wl",
+    cl::desc("Path to whitelist of fns to instrument with bugs and data_flow "),
+    cl::cat(LavaCategory),
+    cl::init("XXX"));
+
+
 static cl::opt<std::string> LavaDB("lava-db",
     cl::desc("Path to LAVA database (custom binary file for source info).  "
         "Created in query mode."),
@@ -136,6 +143,10 @@ static std::map<std::string, uint32_t> StringIDs;
 // Map of bugs with attack points at a given loc.
 std::map<std::pair<LavaASTLoc, AttackPoint::Type>, std::vector<const Bug *>>
     bugs_with_atp_at;
+
+// white list of function names (and filenames) 
+// that can't 
+std::set<std::pair<std::string,std::string>> whitelist;
 
 struct LvalBytes {
     const SourceLval *lval;
@@ -536,6 +547,44 @@ protected:
     Modifier &Mod;
 };
 
+
+
+
+std::pair<std::string,std::string> fundecl_fun_name(const MatchFinder::MatchResult &Result, const FunctionDecl *fd) {
+    IdentifierInfo *II = fd->getIdentifier();
+    if (II) {
+        StringRef Name = II->getName();
+        std::string funname = Name.str();
+        std::string filename = Result.SourceManager->getFilename(fd->getLocation()).str();
+        printf ("fundecl_fun_name = [%s] [%s]\n", filename.c_str(), funname.c_str());
+        return std::make_pair(filename, funname);
+    }
+    return std::make_pair(std::string("Meh"),std::string("Unknown"));
+}
+
+std::pair<std::string,std::string> get_containing_function_name(const MatchFinder::MatchResult &Result, const Stmt &stmt) {
+
+    for (auto p : Result.Context->getParents(stmt)) {
+        if (p.get<TranslationUnitDecl>()) {
+            return std::make_pair(std::string("Meh"), std::string("Notinafunction"));
+        }
+        if (p.get<FunctionDecl>()) {
+            const FunctionDecl *fd = p.get<FunctionDecl>();
+            assert (fd);
+            return fundecl_fun_name(Result, fd);
+        }
+    }
+
+    auto p = Result.Context->getParents(stmt)[0];        
+    const Stmt *s = p.get<Stmt>();
+    if (s) 
+        return get_containing_function_name(Result, *s);
+    else 
+        assert (1==0);
+
+}
+
+
 struct PriQueryPointHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
@@ -595,6 +644,9 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         const Stmt *toSiphon = Result.Nodes.getNodeAs<Stmt>("stmt");
         const SourceManager &sm = *Result.SourceManager;
 
+        auto fnname = get_containing_function_name(Result, *toSiphon);
+        if (whitelist.count(fnname) == 0) return;
+
         LavaASTLoc ast_loc = GetASTLoc(sm, toSiphon);
         debug(INJECT) << "Have a query point @ " << ast_loc << "!\n";
 
@@ -613,6 +665,14 @@ struct PriQueryPointHandler : public LavaMatchHandler {
     }
 };
 
+
+
+
+
+    
+        
+
+     
 struct FunctionArgHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
@@ -620,25 +680,39 @@ struct FunctionArgHandler : public LavaMatchHandler {
         const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("arg");
         const SourceManager &sm = *Result.SourceManager;
 
+        auto fnname = get_containing_function_name(Result, *toAttack);
+        if (whitelist.count(fnname) == 0) return;
+
         debug(INJECT) << "FunctionArgHandler @ " << GetASTLoc(sm, toAttack) << "\n";
 
-        
-        for (auto p : Result.Context->getParents(*toAttack)) {
-            const CallExpr *ce = p.get<CallExpr>();
-            if (ce) {           
-                const FunctionDecl *fd = ce->getDirectCallee();
-                if (fd) {
-                    IdentifierInfo *II = fd->getIdentifier();
-                    if (II) {
-                        StringRef Name = II->getName();
-                        if (Name.startswith("__builtin_")) {
-                            printf ("OMG we found a builtin [%s]\n", Name.str().c_str());
+//        auto fnname = get_containing_function_name(Result, *toAttack);
+        std::string filename = fnname.first;
+        std::string functionname = fnname.second;
+        if (!(functionname == "Unknown" || functionname == "Notinafunction")) {
+            if (functionname.find("__builtin_") != std::string::npos) {
+                printf ("OMG we found a builtin [%s][%s]\n", filename.c_str(), functionname.c_str());
+                return;
+            }
+        }
+/*
+            for (auto p : Result.Context->getParents(*toAttack)) {
+                const CallExpr *ce = p.get<CallExpr>();
+                if (ce) {           
+                    const FunctionDecl *fd = ce->getDirectCallee();
+                    if (fd) {
+                        IdentifierInfo *II = fd->getIdentifier();
+                        if (II) {
+                            StringRef Name = II->getName();
+                            if (Name.startswith("__builtin_")) {
+                                printf ("OMG we found a builtin [%s]\n", Name.str().c_str());
                             return;
+                            }
                         }
                     }
                 }
             }            
-        }
+*/
+        
         
         AttackExpression(sm, toAttack, nullptr, nullptr, AttackPoint::FUNCTION_ARG);
     }
@@ -650,6 +724,9 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const SourceManager &sm = *Result.SourceManager;
         const CallExpr *callExpr = Result.Nodes.getNodeAs<CallExpr>("call_expression");
+
+        auto fnname = get_containing_function_name(Result, *callExpr);
+        if (whitelist.count(fnname) == 0) return;
 
         LExpr addend = LDecimal(0);
         // iterate through all the arguments in the call expression
@@ -686,6 +763,10 @@ struct MemoryAccessHandler : public LavaMatchHandler {
     virtual void handle(const MatchFinder::MatchResult &Result) override {
         const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("innerExpr");
         const Expr *parent = Result.Nodes.getNodeAs<Expr>("lhs");
+
+        auto fnname = get_containing_function_name(Result, *toAttack);
+        if (whitelist.count(fnname) == 0) return;
+
         const SourceManager &sm = *Result.SourceManager;
         LavaASTLoc ast_loc = GetASTLoc(sm, toAttack);
         debug(INJECT) << "PointerAtpHandler @ " << ast_loc << "\n";
@@ -723,6 +804,9 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
 
         const FunctionDecl *func =
             Result.Nodes.getNodeAs<FunctionDecl>("funcDecl");
+
+        auto fnname = fundecl_fun_name(Result, func);
+        if (whitelist.count(fnname) == 0) return;
 
 
         debug(FNARG) << "adding arg to " << func->getNameAsString() << "\n";
@@ -805,6 +889,9 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         SourceLocation loc = clang::Lexer::findLocationAfterToken(
                 call->getLocStart(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
         
+        auto fnname = get_containing_function_name(Result, *call);
+        if (whitelist.count(fnname) == 0) return;
+
         if (func == nullptr || func->getLocation().isInvalid()) {
             // Function Pointer
             debug(FNARG) << "FUNCTION POINTER USE: ";
@@ -1006,8 +1093,10 @@ void mark_for_siphon(const DuaBytes *dua_bytes) {
     data_slots.insert(std::make_pair(lval_bytes, data_slots.size()));
 }
 
-void parse_whitelist(const char *whitelist_filename) {
-    FILE *fp = fopen(whitelist_filename, "r");
+
+void parse_whitelist(std::string whitelist_filename) {
+    printf ("parsing white list\n");
+    FILE *fp = fopen(whitelist_filename.c_str(), "r");
     char *line = NULL;
     size_t len = 0;
     ssize_t read = 0;
@@ -1017,7 +1106,9 @@ void parse_whitelist(const char *whitelist_filename) {
             p = line + 4;
             char *np = strtok(p, " ");
             char *npp = strtok(np, " ");
-            printf ("file = [%s] func = [%s]\n", np, npp);
+            auto wlp = std::make_pair(std::string(np), std::string(npp));
+            whitelist.insert(wlp);
+            printf ("white list entry: file = [%s] func = [%s]\n", np, npp);
         }
     }
 }
@@ -1046,8 +1137,8 @@ int main(int argc, const char **argv) {
 
     odb::transaction *t = nullptr;
 
-    if (root.isMember("whitelist")) 
-        parse_whitelist(root["whitelist"].asString().c_str());
+    if (LavaWL != "XXX") 
+        parse_whitelist(LavaWL);
 
     if (LavaAction == LavaInjectBugs) {
         db.reset(new odb::pgsql::database("postgres", "postgrespostgres",

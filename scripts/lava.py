@@ -297,6 +297,8 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, 
         '-src-prefix=' + lp.bugs_build, '-project-file=' + project_file,
         '-main-files=' + main_files, join(lp.bugs_build, filename)
     ]
+    if not (args.whitelist is None):
+        cmd.append("-lava-wl=%s" % args.whitelist)
     if args.arg_dataflow: cmd.append('-arg_dataflow')
     if args.knobTrigger != -1: cmd.append('-kt')
     if competition: cmd.append('-competition')

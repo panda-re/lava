@@ -212,10 +212,13 @@ if [ $reset_db -eq 1 ]; then
 
 fi
 
+lfa="$logs/add_queries.log"
+
 if [ $add_queries -eq 1 ]; then
     tick
     progress "everything" 1  "Add queries step -- btrace lavatool and fixups"
-    lf="$logs/add_queries.log"
+    lf=$lfa
+    #lf="$logs/add_queries.log"
     truncate "$lf"
     progress "everything" 1 "Adding queries to source -- logging to $lf"
     run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $json" "$lf"
@@ -280,7 +283,7 @@ if [ $inject -eq 1 ]; then
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -d -e $exitCode $kt $json" "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -d -e $exitCode $kt $json -wl $lfa" "$lf"
     grep yield "$lf"
     done
 fi
