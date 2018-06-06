@@ -22,4 +22,12 @@ directory="$(jq -r .directory $json)"
 name="$(jq -r .name $json)"
 lava=$(dirname $(dirname $(readlink -f "$0")))
 
-${lava}/scripts/docker-shell.sh $json "${lava}/src_clang/build/lavaTool -action=inject -bug-list=3245,14875 -src-prefix=${directory}/${name}/bugs/0/file-5.22 -project-file=${json} -main-files=${directory}/${name}/bugs/0/file-5.22/src/file.c ${directory}/${name}/bugs/0/file-5.22/src/apprentice.c"
+pushd
+cd ${directory}/${name}/bugs/0/file-5.22/src/
+git reset --hard
+rm *.yaml
+popd
+
+#${lava}/scripts/docker-shell.sh $json "${lava}/src_clang/build/lavaTool -action=inject -bug-list=6310, -src-prefix=${directory}/${name}/bugs/0/file-5.22 -project-file=${json} -main-files=${directory}/${name}/bugs/0/file-5.22/src/file.c ${directory}/${name}/bugs/0/file-5.22/src/cdf.c"
+${lava}/scripts/docker-shell.sh $json "${lava}/src_clang/build/lavaTool -action=inject -bug-list=110 -src-prefix=${directory}/${name}/bugs/0/file-5.22 -project-file=${json} -main-files=${directory}/${name}/bugs/0/file-5.22/src/file.c ${directory}/${name}/bugs/0/file-5.22/src/encoding.c"
+

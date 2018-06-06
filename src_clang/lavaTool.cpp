@@ -48,7 +48,7 @@ extern "C" {
 #define MATCHER (1 << 0)
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
-#define DEBUG_FLAGS 0 // (MATCHER | INJECT | FNARG)
+#define DEBUG_FLAGS INJECT // (MATCHER | INJECT | FNARG)
 
 #define ARG_NAME "data_flow"
 
@@ -265,9 +265,23 @@ LExpr Test(const Bug *bug) {
     return MagicTest<Get>(bug);
 }
 
+LExpr Test2(const Bug *bug, LvalBytes x) {
+    return (Get(bug->trigger)^Get(x)) == LHex(bug->magic);
+}
+
+LExpr Test3(const Bug *bug, LvalBytes x, LvalBytes y) {
+    return (Get(bug->trigger)^Get(x)) == (LHex(bug->magic)*Get(y));
+}
+
 LExpr traditionalAttack(const Bug *bug) {
     return Get(bug) * Test(bug);
 }
+
+
+/*
+LExpr Test2(const Bug *bug, const DuaBytes *extra) {
+    return MagicTest2<Get>(bug, extra);
+}*/
 
 LExpr knobTriggerAttack(const Bug *bug) {
     LExpr lava_get_lower = Get(bug) & LHex(0x0000ffff);
@@ -469,8 +483,9 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                 } else if (bug->type == Bug::REL_WRITE) {
                     const DuaBytes *where = db->load<DuaBytes>(bug->extra_duas[0]);
                     const DuaBytes *what = db->load<DuaBytes>(bug->extra_duas[1]);
-                    pointerAddends.push_back(Test(bug) * Get(where));
-                    valueAddends.push_back(Test(bug) * Get(what));
+
+                    pointerAddends.push_back(Test3(bug, where, what) * Get(where));
+                    //valueAddends.push_back(Test(bug) * Get(what));
                 }
             }
             bugs_with_atp_at.erase(std::make_pair(ast_loc, atpType));
@@ -498,11 +513,13 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             }
         }
 
+        /*
         if (!valueAddends.empty()) {
             assert(rhs);
             LExpr addToValue = LBinop("+", std::move(valueAddends));
             Mod.Change(rhs).Add(addToValue, nullptr);
         }
+        */
     }
 
     virtual void handle(const MatchFinder::MatchResult &Result) = 0;
@@ -1008,12 +1025,12 @@ int main(int argc, const char **argv) {
 
             mark_for_siphon(bug->trigger);
 
-            if (bug->type != Bug::RET_BUFFER) {
+            //if (bug->type != Bug::RET_BUFFER) {
                 for (uint64_t dua_id : bug->extra_duas) {
                     const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
                     mark_for_siphon(dua_bytes);
                 }
-            }
+            //}
         }
     }
 
