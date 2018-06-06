@@ -48,7 +48,7 @@ def run_builds(scripts):
 # because otherwise the db might give us all the same dua
 
 def competition_bugs_and_non_bugs(num, db, allowed_bugtypes, buglist):
-    max_duplicates_per_line = 20
+    max_duplicates_per_line = 30
     bugs_and_non_bugs = []
     dfl_fileline = {}
     afl_fileline = {}
@@ -293,11 +293,11 @@ def main():
         print "Bug %d: prediction = [%s]" % (bug.id, prediction)
         print str(bug)
         if not get_trigger_line(lp, bug):
-            print("Warning - unknown trigger, skipping")
-            continue
+            print("Warning - unknown trigger, skipping for answer key")
+            #continue
 
 #        assert not (prediction in predictions)
-        fuzzed_input = fuzzed_input_for_bug(lp, bug)
+        fuzzed_input = fuzzed_input_for_bug(lp, bug) # TODO - this is broken for multidua bugs
         (dc, fi) = os.path.split(fuzzed_input)
         shutil.copy(fuzzed_input, inputsdir)
         predictions.append((prediction, fi))

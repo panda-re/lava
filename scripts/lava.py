@@ -616,6 +616,16 @@ def get_trigger_line(lp, bug):
         lava_get = "lava_get({})".format(bug.trigger.id)
         atp_lines = [line_num + 1 for line_num, line in enumerate(f) if
                     lava_get in line]
+
+TODO look it up in the database - 
+    select * from bug where id=72966;
+  id   | type | trigger | trigger_lval | atp | max_liveness | extra_duas |   magic
+  -------+------+---------+--------------+-----+--------------+------------+------------
+   72966 |    2 |     406 |          317 | 420 |            0 | {273,337}  | 1078163776
+
+   file_rode0day_18_06=# select * from sourcelval where id=317;
+   [the data we actually want here]
+
         """
         # TODO: should really check for lava_get(bug_id), but bug_id in db isn't matching source
         # for now, we'll just look for "(0x[magic]" since that seems to always be there, at least for
