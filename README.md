@@ -50,6 +50,11 @@ tutorials soon, and developer documentation a bit further off in the
 future. If you'd like to contribute documentation, of course, we would
 be thrilled to accept pull requests.
 
+# Publications
+
+* Brendan Dolan-Gavitt, Patrick Hulin, Engin Kirda, Tim Leek, Andrea Mambretti, Wil Robertson, Frederick Ulrich, Ryan Whelan. [LAVA: Large-scale Automated Vulnerability Addition](https://seclab.ccs.neu.edu/static/publications/sp2016lava.pdf). Proceedings of the IEEE Symposium on Security and Privacy (Oakland), May 2016. 
+* Patrick Hulin, Andy Davis, Rahul Sridhar, Andrew Fasano, Cody Gallagher, Aaron Sedlacek, Tim Leek, and Brendan Dolan-Gavitt. [AutoCTF: Creating Diverse Pwnables via Automated Bug Injection](https://www.usenix.org/system/files/conference/woot17/woot17-paper-hulin.pdf). USENIX Workshop on Offensive Technologies (WOOT), August 2017.
+
 # Authors
 
 LAVA is the result of several years of development by many people; a
