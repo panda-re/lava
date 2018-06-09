@@ -39,10 +39,12 @@ def is_package_installed(pkg):
     else:
         return True
 
-
-if not is_package_installed("python-colorama"):
+try:
+    from colorama import Fore, Style
+except ImportError:
     subprocess.check_call(['sudo', 'apt-get', 'install', '-y', 'python-colorama'])
-from colorama import Fore, Style
+    print('Installed python-colorama package, please rerun this script')
+    sys.exit(1);
 
 # this is set to denote user is already in docker group
 ALREADY_IN_DOCKER_GROUP = False
