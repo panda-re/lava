@@ -293,12 +293,6 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0):
 
     # m == a + b + c
 
-    a = 10
-    c = 30
-    b = m - a - c
-
-
-    """
     if (m%4 == 0): # A + B = M * C
         b = m
         c = 1
@@ -318,7 +312,6 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0):
         a = 0
         b = 0
         c = 0
-    """
     
     a_val = struct.pack("<I", a)
     b_val = struct.pack("<I", b)
@@ -649,7 +642,7 @@ def check_competition_bug(lp, project, bug, fuzzed_input):
         print("Clean exit (code {})".format(rv))
         return [] # No bugs unless you crash it
 
-    return process_crash(out)
+    return process_crash(err) # We now use stderr since it flushes better
 
 # use gdb to get a stacktrace for this bug
 def check_stacktrace_bug(lp, project, bug, fuzzed_input):

@@ -277,8 +277,8 @@ LExpr Test3(const Bug *bug, LvalBytes x, LvalBytes y) {
         //return (Get(bug->trigger)<<LHex(3) == (LHex(bug->magic) << LHex(5) + Get(y))); // BAD - segfault
         //return (Get(bug->trigger)^Get(x)) == (LHex(bug->magic)*(Get(y)+LHex(7))); // Segfault
 
-        return ((Get(x)+Get(y) + Get(bug->trigger)) == LHex(bug->magic));
-    /*
+        //return ((Get(x)+Get(y) + Get(bug->trigger)) == LHex(bug->magic));
+
     switch (bug->magic%4)  {
         // bug->trigger = A
         // get(x) = b
@@ -296,7 +296,7 @@ LExpr Test3(const Bug *bug, LvalBytes x, LvalBytes y) {
         default: // CHAFF
             return (Get(x) == (Get(x)+ LHex(bug->magic)));
             break;
-    }*/
+    }
 }
 
 LExpr traditionalAttack(const Bug *bug) {
@@ -512,7 +512,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                         const DuaBytes *what = db->load<DuaBytes>(bug2->extra_duas[1]);
 
                         if (ArgCompetition) {
-                            triggers.push_back(Test3(bug2, where, what) * Get(where));
+                            triggers.push_back(Test3(bug2, where, what));
                         }
 
                         pointerAddends.push_back(Test3(bug2, where, what) * Get(where));
@@ -951,9 +951,11 @@ public:
         std::stringstream competition;
         competition << "#include <stdio.h>\n"
                     << "#ifdef LAVA_LOGGING\n"
-                    << "#define LAVALOG(bugid, x, trigger)  ({trigger && printf(\"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__) && fflush(stdout), (x);})\n"
+                    << "#define LAVALOG(bugid, x, trigger)  ({(trigger && fprintf(stderr, \"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__), (!trigger && fprintf(stderr, \"\\nLAVALOG_MISS: %d: %s:%d\\n\", bugid, __FILE__, __LINE__))) && fflush(NULL), (x);})\n"
+                    << "#define DFLOG(idx, val)  ({fprintf(stderr, \"\\nDFLOG:%d=%d: %s:%d\\n\", idx, val, __FILE__, __LINE__) && fflush(NULL), data_flow[idx]=val;})\n"
                     << "#else\n"
                     << "#define LAVALOG(y,x,z)  (x)\n"
+                    << "#define DFLOG(idx, val) {data_flow[idx]=val;}\n"
                     << "#endif\n";
 
         std::string insert_at_top;

@@ -48,7 +48,7 @@ def run_builds(scripts):
 # because otherwise the db might give us all the same dua
 
 def competition_bugs_and_non_bugs(num, db, allowed_bugtypes, buglist):
-    max_duplicates_per_line = 30
+    max_duplicates_per_line = 100
     bugs_and_non_bugs = []
     dfl_fileline = {}
     afl_fileline = {}
@@ -224,7 +224,7 @@ def main():
             make = project['make'],
             internal_builddir = join(corpdir, "lava-install-internal"),
             install = project['install'],
-            post_install = project['post_install']
+            post_install = project['post_install'] if 'post_install' in project.keys() else "",
             ))
     run_builds([log_build_sh])
 

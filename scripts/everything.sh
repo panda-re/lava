@@ -142,7 +142,7 @@ fi
 json="$(realpath $1)"
 
 # how many bugs will be injected at  time
-many=1000
+many=10000
 
 if [[ $demo -eq 1 ]]
 then
