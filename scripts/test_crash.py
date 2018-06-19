@@ -37,7 +37,7 @@ def main(args):
     p = subprocess32.Popen(command, cwd=None, env=None, stdout=subprocess32.PIPE, stderr=subprocess32.PIPE, shell=True)
     timeout=10
     try:
-        stdout, stderr = p.communicate(timeout) # returns tuple (stdout, stderr)
+        stdout, stderr = p.communicate(timeout=timeout) # returns tuple (stdout, stderr)
     except subprocess32.TimeoutExpired:
         print("Killing process due to timeout expiration.")
         p.terminate()

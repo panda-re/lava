@@ -48,7 +48,7 @@ def run_builds(scripts):
 # because otherwise the db might give us all the same dua
 
 def competition_bugs_and_non_bugs(num, db, allowed_bugtypes, buglist):
-    max_duplicates_per_line = 100
+    max_duplicates_per_line = 1000 # Max we *try* to inject per line
     bugs_and_non_bugs = []
     dfl_fileline = {}
     afl_fileline = {}
@@ -104,12 +104,16 @@ def main():
             help = ('Skip injection step. Use if you must make manual changes to src.'))
     parser.add_argument('-d', '--arg_dataflow', action="store_true", default=False,
             help = ('Inject bugs using function args instead of globals'))
+    parser.add_argument('-c', '--chaff', action="store_true", default=False,
+            help = ('Leave unvalidated bugs in the binary'))
     parser.add_argument('-t', '--bugtypes', action="store", default="rel_write",
                         help = ('bug types to inject'))
     
     args = parser.parse_args()
     project = json.load(args.project)
     project_file = args.project.name
+
+    args.bugtypes = "rel_write" # For multidua bugs
 
     allowed_bugtypes = get_allowed_bugtype_num(args)
 
@@ -152,13 +156,13 @@ def main():
 
     if not args.skipinject:
         # add either bugs to the source code and check that we can still compile
-        try:
-            (build, input_files) = inject_bugs(bug_list, db, lp, project_file, \
-                                              project, args, False, competition=True)
-        except RuntimeError:
+        (build, input_files, bug_list) = inject_bugs(bug_list, db, lp, project_file, \
+                                          project, args, False, competition=True, validated=False, # TODO- leave validated as false and change return_bug_list to be later or delete it
+                                          return_bug_list = True)
+        if build is None: # Function will update bug_list for us
             print("Failed to inject bugs\n{}".format(bug_list))
             print("Manually fix errors and resume execution with:")
-            print("./competition.sh -d -s -l {buglist} {json}".format(
+            print("./scripts/competition.sh -c -d -s -l {buglist} {json}".format(
                 buglist=bug_list_str,
                 json=project_file))
             sys.exit(-1)
@@ -180,9 +184,10 @@ def main():
     else:
         print "\n\n Yield acceptable: {}".format(len(real_bug_list))
 
-    # re-build just with the real bugs. Inject in competition mode
-    (build,input_files) = inject_bugs(real_bug_list, db, lp, project_file, \
-                                          project, args, False, competition=True)
+    if not args.chaff:
+        # re-build just with the real bugs. Inject in competition mode
+        (build,input_files) = inject_bugs(real_bug_list, db, lp, project_file, \
+                                              project, args, False, competition=True, validated=True)
 
 
     corpus_dir = join(compdir, "corpora")
@@ -297,7 +302,7 @@ def main():
             #continue
 
 #        assert not (prediction in predictions)
-        fuzzed_input = fuzzed_input_for_bug(lp, bug) # TODO - this is broken for multidua bugs
+        fuzzed_input = fuzzed_input_for_bug(lp, bug) # TODO - this is broken for multidua bugs - is it?
         (dc, fi) = os.path.split(fuzzed_input)
         shutil.copy(fuzzed_input, inputsdir)
         predictions.append((prediction, fi))

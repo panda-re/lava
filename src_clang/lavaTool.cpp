@@ -48,7 +48,7 @@ extern "C" {
 #define MATCHER (1 << 0)
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
-#define DEBUG_FLAGS 0 // (MATCHER | INJECT | FNARG)
+#define DEBUG_FLAGS INJECT //(MATCHER | INJECT | FNARG)
 
 #define ARG_NAME "data_flow"
 
@@ -277,9 +277,14 @@ LExpr Test3(const Bug *bug, LvalBytes x, LvalBytes y) {
         //return (Get(bug->trigger)<<LHex(3) == (LHex(bug->magic) << LHex(5) + Get(y))); // BAD - segfault
         //return (Get(bug->trigger)^Get(x)) == (LHex(bug->magic)*(Get(y)+LHex(7))); // Segfault
 
-        //return ((Get(x)+Get(y) + Get(bug->trigger)) == LHex(bug->magic));
+    // TESTING - simple multi dua bug if ABC are all == m we pass
+    //return ((Get(x) - Get(y) + Get(bug->trigger)) == LHex(bug->magic));
 
-    switch (bug->magic%4)  {
+    // TEST of bug type 2
+    return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - (Get(bug->trigger)*LHex(2)));
+
+    const int NUM_BUGTYPES=3;
+    switch (bug->magic % NUM_BUGTYPES)  {
         // bug->trigger = A
         // get(x) = b
         // get(y) = c
@@ -293,6 +298,7 @@ LExpr Test3(const Bug *bug, LvalBytes x, LvalBytes y) {
         case 2:     // B % M == M - A*2
             return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - (Get(bug->trigger)*LHex(2)));
             break;
+
         default: // CHAFF
             return (Get(x) == (Get(x)+ LHex(bug->magic)));
             break;
@@ -486,7 +492,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         std::vector<LExpr> triggers;
         std::vector<Bug*> bugs;
 
-        debug(INJECT) << "Inserting expression attack (AttackExpression).\n";
+        //debug(INJECT) << "Inserting expression attack (AttackExpression).\n";
         const Bug *this_bug = NULL;
         if (LavaAction == LavaInjectBugs) {
             const std::vector<const Bug*> &injectable_bugs =
@@ -654,7 +660,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         const SourceManager &sm = *Result.SourceManager;
 
         LavaASTLoc ast_loc = GetASTLoc(sm, toSiphon);
-        debug(INJECT) << "Have a query point @ " << ast_loc << "!\n";
+        //debug(INJECT) << "Have a query point @ " << ast_loc << "!\n";
 
         std::string before;
         if (LavaAction == LavaQueries) {
@@ -678,7 +684,7 @@ struct FunctionArgHandler : public LavaMatchHandler {
         const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("arg");
         const SourceManager &sm = *Result.SourceManager;
 
-        debug(INJECT) << "FunctionArgHandler @ " << GetASTLoc(sm, toAttack) << "\n";
+        //debug(INJECT) << "FunctionArgHandler @ " << GetASTLoc(sm, toAttack) << "\n";
 
         AttackExpression(sm, toAttack, nullptr, nullptr, AttackPoint::FUNCTION_ARG);
     }
@@ -728,7 +734,7 @@ struct MemoryAccessHandler : public LavaMatchHandler {
         const Expr *parent = Result.Nodes.getNodeAs<Expr>("lhs");
         const SourceManager &sm = *Result.SourceManager;
         LavaASTLoc ast_loc = GetASTLoc(sm, toAttack);
-        debug(INJECT) << "PointerAtpHandler @ " << ast_loc << "\n";
+        //debug(INJECT) << "PointerAtpHandler @ " << ast_loc << "\n";
 
         const Expr *rhs = nullptr;
         AttackPoint::Type atpType = AttackPoint::POINTER_READ;
@@ -949,13 +955,19 @@ public:
         debug(INJECT) << "*** handleBeginSource for: " << Filename << "\n";
 
         std::stringstream competition;
-        competition << "#include <stdio.h>\n"
+        competition << "#include <stdio.h>\n" // enable logging with (LAVA_LOGGING, FULL_LAVA_LOGGING) and (DUA_LOGGING) flags
                     << "#ifdef LAVA_LOGGING\n"
-                    << "#define LAVALOG(bugid, x, trigger)  ({(trigger && fprintf(stderr, \"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__), (!trigger && fprintf(stderr, \"\\nLAVALOG_MISS: %d: %s:%d\\n\", bugid, __FILE__, __LINE__))) && fflush(NULL), (x);})\n"
-                    << "#define DFLOG(idx, val)  ({fprintf(stderr, \"\\nDFLOG:%d=%d: %s:%d\\n\", idx, val, __FILE__, __LINE__) && fflush(NULL), data_flow[idx]=val;})\n"
+                        << "#define LAVALOG(bugid, x, trigger)  ({(trigger && fprintf(stderr, \"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__)), (x);})\n"
+                    << "#elif defined FULL_LAVA_LOGGING\n"
+                        << "#define LAVALOG(bugid, x, trigger)  ({(trigger && fprintf(stderr, \"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__), (!trigger && fprintf(stderr, \"\\nLAVALOG_MISS: %d: %s:%d\\n\", bugid, __FILE__, __LINE__))) && fflush(NULL), (x);})\n"
                     << "#else\n"
-                    << "#define LAVALOG(y,x,z)  (x)\n"
-                    << "#define DFLOG(idx, val) {data_flow[idx]=val;}\n"
+                        << "#define LAVALOG(y,x,z)  (x)\n"
+                    << "#endif\n"
+
+                    << "#ifdef DUA_LOGGING\n"
+                        << "#define DFLOG(idx, val)  ({fprintf(stderr, \"\\nDFLOG:%d=%d: %s:%d\\n\", idx, val, __FILE__, __LINE__) && fflush(NULL), data_flow[idx]=val;})\n"
+                    << "#else\n"
+                        << "#define DFLOG(idx, val) {data_flow[idx]=val;}\n"
                     << "#endif\n";
 
         std::string insert_at_top;
@@ -1031,6 +1043,7 @@ void mark_for_siphon(const DuaBytes *dua_bytes) {
 }
 
 int main(int argc, const char **argv) {
+    std::cout << "Starting lavaTool...\n";
     CommonOptionsParser op(argc, argv, LavaCategory);
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
 
@@ -1100,12 +1113,20 @@ int main(int argc, const char **argv) {
                     std::cout << "        " << *bug << "\n";
                 }
             }
+
+            std::cout << "Failed bugs: ";
+            for (const auto &keyvalue : bugs_with_atp_at) {
+                for (const Bug *bug : keyvalue.second) {
+                    std::cout << bug->id << ",";
+                }
+            }
+            std::cout << std::endl;
         }
         if (!siphons_at.empty()) {
             std::cout << "Warning: Failed to inject siphons:\n";
             for (const auto &keyvalue : siphons_at) {
                 std::cout << "    At " << keyvalue.first << "\n";
-                for (const LvalBytes &lval_bytes : keyvalue.second) {
+                for (const LvalBytes &lval_bytes : keyvalue.second) { // TODO print failed bugs for siphons as well
                     std::cout << "        " << lval_bytes << "\n";
                 }
             }

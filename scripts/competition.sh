@@ -32,6 +32,7 @@ min_yield=1
 debug=0
 diversify=""
 skipinject=""
+usechaff=""
 dataflow=""
 echo
 progress "competition" 0 "Parsing args"
@@ -74,6 +75,10 @@ do
       skipinject="-s"
       progress "competition" 0 "-s: skipping injection"
   fi
+  if [ "$flag" = "c" ]; then
+      usechaff="-c"
+      progress "competition" 0 "-c: leaving unvalidated bugs"
+  fi
   if [ "$flag" = "d" ]; then
       progress "competition" 0 "-d: using data flow"
       dataflow="-d"
@@ -106,7 +111,7 @@ mkdir -p $logs
 lf="$logs/competition.log"
 progress "competition" 1 "Starting -- logging to $lf"
 truncate "$lf"
-run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject $dataflow $json" "$lf"
+run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject $dataflow $usechaff $json" "$lf"
 progress "competition" 1 "Everything finished."
 
 grep "Success" $lf
