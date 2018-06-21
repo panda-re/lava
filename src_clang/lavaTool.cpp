@@ -265,11 +265,11 @@ LExpr Test(const Bug *bug) {
     return MagicTest<Get>(bug);
 }
 
-LExpr Test2(const Bug *bug, LvalBytes x) {
+LExpr twoDuaTest(const Bug *bug, LvalBytes x) {
     return (Get(bug->trigger)^Get(x)) == LHex(bug->magic);
 }
 
-LExpr Test3(const Bug *bug, LvalBytes x, LvalBytes y) {
+LExpr threeDuaTest(const Bug *bug, LvalBytes x, LvalBytes y) {
         //return (Get(bug->trigger)+Get(x)) == (LHex(bug->magic)*Get(y)); // GOOD
         //return (Get(x)) == (Get(bug->trigger)*(Get(y)+LHex(bug->magic))); // GOOD
         //return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - Get(bug->trigger)); // GOOD
@@ -281,7 +281,7 @@ LExpr Test3(const Bug *bug, LvalBytes x, LvalBytes y) {
     //return ((Get(x) - Get(y) + Get(bug->trigger)) == LHex(bug->magic));
 
     // TEST of bug type 2
-    return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - (Get(bug->trigger)*LHex(2)));
+    //return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - (Get(bug->trigger)*LHex(2)));
 
     const int NUM_BUGTYPES=3;
     switch (bug->magic % NUM_BUGTYPES)  {
@@ -514,15 +514,14 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                     if (bug->type == Bug::PTR_ADD) {
                         pointerAddends.push_back(pointerAttack(bug));
                     } else if (bug->type == Bug::REL_WRITE) {
-                        const DuaBytes *where = db->load<DuaBytes>(bug2->extra_duas[0]);
-                        const DuaBytes *what = db->load<DuaBytes>(bug2->extra_duas[1]);
+                        const DuaBytes *extra0 = db->load<DuaBytes>(bug2->extra_duas[0]);
+                        const DuaBytes *extra1 = db->load<DuaBytes>(bug2->extra_duas[1]);
 
                         if (ArgCompetition) {
-                            triggers.push_back(Test3(bug2, where, what));
+                            triggers.push_back(threeDuaTest(bug2, extra0, extra1));
                         }
 
-                        pointerAddends.push_back(Test3(bug2, where, what) * Get(where));
-                        //valueAddends.push_back(Test(bug) * Get(what));
+                        pointerAddends.push_back(threeDuaTest(bug2, extra0, extra1) * Get(extra0));
                     }
                 }
             }
@@ -983,7 +982,11 @@ public:
                     top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
                         << "void lava_set(unsigned int, unsigned int);\n"
                         << "__attribute__((visibility(\"default\")))\n"
-                        << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val; }\n"
+                        << "void lava_set(unsigned int slot, unsigned int val) {\n"
+                        << "#ifdef DUA_LOGGING\n"
+                        << "printf(\"LAVA_SET[%d] = 0x%x\\n\", slot, val);\n"
+                        << "#endif\n"
+                        << "lava_val[slot] = val; }\n"
                         << "unsigned int lava_get(unsigned int);\n"
                         << "__attribute__((visibility(\"default\")))\n"
                         << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";

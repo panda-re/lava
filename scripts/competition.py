@@ -54,13 +54,15 @@ def competition_bugs_and_non_bugs(num, db, allowed_bugtypes, buglist):
     afl_fileline = {}
     def get_bugs_non_bugs(fake, limit):
         if buglist is None:
-            items = db.uninjected_random(fake)
+            items = db.uninjected_random(fake, allowed_bugtypes)
         else:
             items = db.session.query(Bug).filter(Bug.id.in_(buglist)).all()
             print "items %d" % (len(items))
             limit = 10000000
+
         for item in items:
             if not (item.type in allowed_bugtypes):
+                print("skipping type {} not in {}".format(item.type, allowed_bugtypes))
                 continue
             dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
             afl = (item.atp.loc_filename, item.atp.loc_begin_line)
@@ -149,17 +151,26 @@ def main():
         bug_list = competition_bugs_and_non_bugs(int(args.many), db, allowed_bugtypes, eval(args.buglist))
     elif args.many:
         bug_list = competition_bugs_and_non_bugs(int(args.many), db, allowed_bugtypes, None)
+    else:
+        print("Fatal error: no bugs specified")
+        raise RuntimeError
+
+    assert len(bug_list)
 
     print('bug_list:')
     bug_list_str = ','.join([str(bug_id) for bug_id in bug_list])
     print(bug_list_str)
 
+    if args.skipinject:
+        project['configure'] = "echo 'no reconfigure- Running with skip inject'";
+
     if not args.skipinject:
         # add either bugs to the source code and check that we can still compile
-        (build, input_files, bug_list) = inject_bugs(bug_list, db, lp, project_file, \
-                                          project, args, False, competition=True, validated=False, # TODO- leave validated as false and change return_bug_list to be later or delete it
-                                          return_bug_list = True)
-        if build is None: # Function will update bug_list for us
+        try:
+            (build, input_files) = inject_bugs(bug_list, db, lp, project_file, \
+                                              project, args, False, competition=True,
+                                              validated=False)
+        except RuntimeError:
             print("Failed to inject bugs\n{}".format(bug_list))
             print("Manually fix errors and resume execution with:")
             print("./scripts/competition.sh -c -d -s -l {buglist} {json}".format(
@@ -186,6 +197,7 @@ def main():
 
     if not args.chaff:
         # re-build just with the real bugs. Inject in competition mode
+        print("REINJECT validated bugs")
         (build,input_files) = inject_bugs(real_bug_list, db, lp, project_file, \
                                               project, args, False, competition=True, validated=True)
 
@@ -292,21 +304,24 @@ def main():
 
     predictions = []
     bug_ids = []
-    for bug in  db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all():
-        prediction = "{}:{}".format(basename(bug.atp.loc_filename),
-                                    get_trigger_line(lp, bug))
-        print "Bug %d: prediction = [%s]" % (bug.id, prediction)
-        print str(bug)
-        if not get_trigger_line(lp, bug):
-            print("Warning - unknown trigger, skipping for answer key")
-            #continue
+    with open(join(corpdir, "ans2"), "w") as ans2:
+        for bug in  db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all():
+            prediction = "{}:{}".format(basename(bug.atp.loc_filename),
+                                        get_trigger_line(lp, bug))
+            ans2.write(str(bug)+"\n") # Simple
+
+            print "Bug %d: prediction = [%s]" % (bug.id, prediction)
+            print str(bug)
+            if not get_trigger_line(lp, bug):
+                print("Warning - unknown trigger, skipping for answer key")
+                #continue
 
 #        assert not (prediction in predictions)
-        fuzzed_input = fuzzed_input_for_bug(lp, bug) # TODO - this is broken for multidua bugs - is it?
-        (dc, fi) = os.path.split(fuzzed_input)
-        shutil.copy(fuzzed_input, inputsdir)
-        predictions.append((prediction, fi))
-        bug_ids.append(bug.id)
+            fuzzed_input = fuzzed_input_for_bug(lp, bug) # TODO - this is broken for multidua bugs - is it?
+            (dc, fi) = os.path.split(fuzzed_input)
+            shutil.copy(fuzzed_input, inputsdir)
+            predictions.append((prediction, fi))
+            bug_ids.append(bug.id)
 
     print "Answer key:"
     with open(join(corpdir, "ans"), "w") as ans:
@@ -363,7 +378,7 @@ def main():
             post_install=project['post_install']
         ))
 
-    public_build_sh = join(corpdir, "public_build.sh")
+    public_build_sh = join(corpdir, "public_build.sh") # Simple
     with open(public_build_sh, "w") as build:
         build.write("""#!/bin/bash
         pushd `pwd`
@@ -392,22 +407,43 @@ def main():
     trigger_all_crashes = join(corpdir, "trigger_crashes.sh")
     with open(trigger_all_crashes, "w") as build:
         build.write("""#!/bin/bash
-        pushd `pwd`
-        cd {corpdir}
+rm -rf validated_inputs.txt validated_bugs.txt
 
-        for fname in {inputdir}/*-fuzzed-*; do
-            LD_LIBRARY_PATH={librarydir} {command}
-            LD_LIBRARY_PATH={librarydir2} {command2}
-            sleep 1
-        done
+trap "echo 'CRASH'" {{1..31}}
 
-        popd
-        """.format(command = project['command'].format(**{"install_dir": join(corpdir, "lava-install-internal"), "input_file": "$fname"}), # This syntax is weird but only thing that works?
+for fname in {inputdir}; do
+    # Get bug ID from filename (# after last -)
+    IFS='-'
+    read -ra fname_parts <<< "$fname"
+    for i in ${{fname_parts[@]}}; do
+        bugid=$i
+    done
+    IFS=' '
+
+    #Non-logging version
+    LD_LIBRARY_PATH={librarydir} {command} &> /dev/null
+    code=$?
+
+    if [ "$code" -gt 130 ]; then # Competition version crashed, check log version
+        LD_LIBRARY_PATH={librarydir2} {command2} &> /dev/null
+        logcode=$?
+        if [ "$logcode" -lt 131 ]; then # internal version didn't crash
+            echo "UNEXPECTED ERROR ($bugid): competition version exited $logcode while normal exited with $code -- Skipping";
+        else
+            if grep -q "LAVALOG: $bugid" /tmp/comp.txt; then
+                echo $fname >> validated_inputs.txt
+                echo $bugid >> validated_bugs.txt
+            else
+                echo "Competition infrastructure failed on $bugid";
+            fi
+        fi
+    fi
+done""".format(command = project['command'].format(**{"install_dir": "./lava-install-internal", "input_file": "$fname"}), # This syntax is weird but only thing that works?
             corpdir = corpdir,
-            librarydir = join(corpdir, "lava-install-internal", "lib"),
-            librarydir2 = join(corpdir, "lava-install", "lib"),
-            command2 = project['command'].format(**{"install_dir": join(corpdir, "lava-install"), "input_file": "$fname"}), # This syntax is weird but only thing that works?
-            inputdir = join(corpdir, "inputs")
+            librarydir = join("./lava-install-internal", "lib"),
+            librarydir2 = join("./lava-install", "lib"),
+            command2 = project['command'].format(**{"install_dir": "./lava-install", "input_file": "$fname"}), # This syntax is weird but only thing that works?
+            inputdir = "./inputs/*-fuzzed-*"
             ))
 
     # Build a version to ship in src

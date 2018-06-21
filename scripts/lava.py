@@ -215,15 +215,18 @@ class LavaDatabase(object):
         return self.session.query(Bug).filter(~Bug.builds.any())
 
     # returns uninjected (not yet in the build table) possibly fake bugs
-    def uninjected2(self, fake):
-        return self.uninjected()\
+    def uninjected2(self, fake, allowed_bugtypes=None):
+        ret= self.uninjected()\
             .join(Bug.atp)\
             .join(Bug.trigger)\
             .join(DuaBytes.dua)\
             .filter(Dua.fake_dua == fake)
+        if allowed_bugtypes:
+            ret.filter(Bug.type.in_(allowed_bugtypes))
+        return ret
 
-    def uninjected_random(self, fake):
-        return self.uninjected2(fake).order_by(func.random())
+    def uninjected_random(self, fake, allowed_bugtypes=None):
+        return self.uninjected2(fake, allowed_bugtypes).order_by(func.random())
 
     def uninjected_random_balance(self, fake, num_required, bug_types):
         bugs = []
@@ -288,14 +291,7 @@ def testmutfile(filename, fuzz_labels_list, new_filename, magic, kt=False, knob=
     # m == a + b + c
     a,b,c = 0,0,0
 
-
-    # TESTING only
-    a = 5
-    b = m-10
-    c = 8
-
-    """
-    NUM_BUGTYEPS=4
+    NUM_BUGTYEPS=3
 
     print("Multi-dua combination type={}".format(m%NUM_BUGTYPES))
 
@@ -314,9 +310,8 @@ def testmutfile(filename, fuzz_labels_list, new_filename, magic, kt=False, knob=
         b = m-10
         c = 8
 
-    #if (m%4 == 3): # CHAFF BUG - skip
-    #    pass
-    """
+    if (m%NUM_BUGTYPES == 3): # CHAFF BUG - skip
+        pass
     
     
     a_val = struct.pack("<I", a)
@@ -567,7 +562,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     # TODO, limit to one per line - Either join onto sourcelval table here or after
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
 
-    if validated: # Already validated all these bugs, limit how many ATP we can put per line
+    if validated: # After validating bugs, reduce how many duplicate ATPs we'll actually inject
         uniq_bugs = []
         seen = {}
         max_validated_bugs_per_line = 3
@@ -872,8 +867,9 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
                         print("... and competition infrastructure agrees")
                         validated &= True
                     else:
-                        validated &= False
-                        print("... but competition infrastructure misidentified it")
+                        pass # TODO - validate these before we use them, but let us get a sane buglist first
+                        #validated &= False
+                        #print("... but competition infrastructure misidentified it")
                 if args.checkStacktrace:
                     if check_stacktrace_bug(lp, project, bug, fuzzed_input):
                         print("... and stacktrace agrees with trigger line")

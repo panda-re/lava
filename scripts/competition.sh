@@ -36,7 +36,7 @@ usechaff=""
 dataflow=""
 echo
 progress "competition" 0 "Parsing args"
-while getopts  "sbdiakm:l:n:e:" flag
+while getopts  "sbdiackm:l:n:e:" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
