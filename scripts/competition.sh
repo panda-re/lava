@@ -107,11 +107,15 @@ if [ "$debug" -eq "1" ]; then
     python=$pdb
 fi
 
+#bugtypes="ptr_add,rel_write"
+bugtypes="rel_write"
+progress "competition" 0 "Inject bugs of type: $bugtypes"
+
 mkdir -p $logs
 lf="$logs/competition.log"
 progress "competition" 1 "Starting -- logging to $lf"
 truncate "$lf"
-run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject $dataflow $usechaff $json" "$lf"
+run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject $dataflow --bugtypes=$bugtypes $usechaff $json" "$lf"
 progress "competition" 1 "Everything finished."
 
 grep "Success" $lf

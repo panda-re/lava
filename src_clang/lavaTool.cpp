@@ -513,13 +513,11 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
                     if (bug->type == Bug::PTR_ADD) {
                         pointerAddends.push_back(pointerAttack(bug));
+                        triggers.push_back(Test(bug)); //  Might fail for knobTriggers?
                     } else if (bug->type == Bug::REL_WRITE) {
                         const DuaBytes *extra0 = db->load<DuaBytes>(bug2->extra_duas[0]);
                         const DuaBytes *extra1 = db->load<DuaBytes>(bug2->extra_duas[1]);
-
-                        if (ArgCompetition) {
-                            triggers.push_back(threeDuaTest(bug2, extra0, extra1));
-                        }
+                        triggers.push_back(threeDuaTest(bug2, extra0, extra1));
 
                         pointerAddends.push_back(threeDuaTest(bug2, extra0, extra1) * Get(extra0));
                     }
@@ -545,9 +543,6 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
                 for (int i=0; i < triggers.size(); i++) {
                     Bug *bug = bugs[i];
-                    if (bug->type != Bug::REL_WRITE) {
-                        continue; // don't care for 18.04
-                    }
                     std::stringstream start_str;
                     start_str << "LAVALOG(" << bug->id << ", ";
                     Mod.Change(toAttack).InsertBefore(start_str.str());
@@ -556,6 +551,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
                     end_str << ", " << triggers[i] << ")";
                     Mod.Change(toAttack).InsertAfter(end_str.str());
+                    free(bug);
                 }
             }
         }
@@ -957,9 +953,13 @@ public:
         competition << "#include <stdio.h>\n" // enable logging with (LAVA_LOGGING, FULL_LAVA_LOGGING) and (DUA_LOGGING) flags
                     << "#ifdef LAVA_LOGGING\n"
                         << "#define LAVALOG(bugid, x, trigger)  ({(trigger && fprintf(stderr, \"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__)), (x);})\n"
-                    << "#elif defined FULL_LAVA_LOGGING\n"
+                    << "#endif\n"
+
+                    << "#ifdef FULL_LAVA_LOGGING\n"
                         << "#define LAVALOG(bugid, x, trigger)  ({(trigger && fprintf(stderr, \"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__), (!trigger && fprintf(stderr, \"\\nLAVALOG_MISS: %d: %s:%d\\n\", bugid, __FILE__, __LINE__))) && fflush(NULL), (x);})\n"
-                    << "#else\n"
+                    << "#endif\n"
+
+                    << "#ifndef LAVALOG\n"
                         << "#define LAVALOG(y,x,z)  (x)\n"
                     << "#endif\n"
 
@@ -989,7 +989,11 @@ public:
                         << "lava_val[slot] = val; }\n"
                         << "unsigned int lava_get(unsigned int);\n"
                         << "__attribute__((visibility(\"default\")))\n"
-                        << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
+                        << "unsigned int lava_get(unsigned int slot) {\n"
+                        << "#ifdef DUA_LOGGING\n"
+                        << "printf(\"LAVA_GET[%d] = 0x%x\\n\", slot, lava_val[slot]);\n"
+                        << "#endif\n"
+                        << "return lava_val[slot]; }\n";
                     insert_at_top.append(top.str());
                 } else {
                     insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"

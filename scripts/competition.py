@@ -48,7 +48,7 @@ def run_builds(scripts):
 # because otherwise the db might give us all the same dua
 
 def competition_bugs_and_non_bugs(num, db, allowed_bugtypes, buglist):
-    max_duplicates_per_line = 1000 # Max we *try* to inject per line
+    max_duplicates_per_line = 0 # Max duplicates we *try* to inject per line
     bugs_and_non_bugs = []
     dfl_fileline = {}
     afl_fileline = {}
@@ -114,8 +114,6 @@ def main():
     args = parser.parse_args()
     project = json.load(args.project)
     project_file = args.project.name
-
-    args.bugtypes = "rel_write" # For multidua bugs
 
     allowed_bugtypes = get_allowed_bugtype_num(args)
 
@@ -421,11 +419,11 @@ for fname in {inputdir}; do
     IFS=' '
 
     #Non-logging version
-    LD_LIBRARY_PATH={librarydir} {command} &> /dev/null
+    LD_LIBRARY_PATH={librarydir2} {command2} &> /dev/null
     code=$?
 
     if [ "$code" -gt 130 ]; then # Competition version crashed, check log version
-        LD_LIBRARY_PATH={librarydir2} {command2} &> /dev/null
+        LD_LIBRARY_PATH={librarydir} {command} &> /tmp/comp.txt
         logcode=$?
         if [ "$logcode" -lt 131 ]; then # internal version didn't crash
             echo "UNEXPECTED ERROR ($bugid): competition version exited $logcode while normal exited with $code -- Skipping";

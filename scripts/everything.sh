@@ -141,8 +141,8 @@ if [ -z "$1" ]; then
 fi
 json="$(realpath $1)"
 
-# how many bugs will be injected at  time
-many=10000
+# how many bugs will be injected at a time
+many=5000
 
 if [[ $demo -eq 1 ]]
 then

@@ -272,80 +272,9 @@ def run_cmd(cmd, envv=None, timeout=30, cwd=None, rr=False, shell=False):
 def run_cmd_notimeout(cmd, **kwargs):
     return run_cmd(cmd, None, None, **kwargs)
 
-def testmutfile(filename, fuzz_labels_list, new_filename, magic, kt=False, knob=0):
-    magic_val = struct.pack("<I", magic)
-    # collect set of tainted offsets in file.
-    file_bytes = bytearray(open(filename).read())
-    # change first 4 bytes in dua to magic value
-    #print(len(fuzz_labels_list))
-    assert(len(fuzz_labels_list) == 3) # YOLO
-
-    # A ^ B = m * C
-    # b = rand1
-    # c = rand2
-    # a^rand1 = m*rand2
-    # a = (m*rand2)^rand1)
-
-    m = magic
-
-    # m == a + b + c
-    a,b,c = 0,0,0
-
-    NUM_BUGTYEPS=3
-
-    print("Multi-dua combination type={}".format(m%NUM_BUGTYPES))
-
-    if (m%NUM_BUGTYPES == 0): # A + B = M * C
-        b = m
-        c = 1
-        a = 0
-
-    if (m%NUM_BUGTYPES == 1): # B = A*(C+M)
-        a = 1
-        c = 0
-        b = m
-
-    if (m%NUM_BUGTYPES == 2): #  C % M == M - A*2      NOT USING B - swapped with c?
-        a = 5
-        b = m-10
-        c = 8
-
-    if (m%NUM_BUGTYPES == 3): # CHAFF BUG - skip
-        pass
-    
-    
-    a_val = struct.pack("<I", a)
-    b_val = struct.pack("<I", b)
-    c_val = struct.pack("<I", c)
-
-    #print("{}^{} =?= {} * {}".format(a, b, bug.magic, c))
-    #print("{} =?= {}".format((a^b)&0xFFFFFFFF, (bug.magic*c)&0xFFFFFFFF))
-
-    for (i, offset) in zip(range(4), fuzz_labels_list[0]):
-        #print("i=%d offset=%d set to value=%s" % (i,offset,a_val[i]))
-        file_bytes[offset] = a_val[i]
-
-    for (i, offset) in zip(range(4), fuzz_labels_list[1]):
-        #print("i=%d offset=%d set to value=%s" % (i,offset,b_val[i]))
-        file_bytes[offset] = b_val[i]
-
-    for (i, offset) in zip(range(4), fuzz_labels_list[2]):
-        #print("i=%d offset=%d set to value=%s" % (i,offset,c_val[i]))
-        file_bytes[offset] = c_val[i]
-
-    """
-    for fuzz_labels in fuzz_labels_list:
-        for (i, offset) in zip(range(4), fuzz_labels):
-            print("i=%d offset=%d len(file_bytes)=%d\t set to value=%s" % (i,offset,len(file_bytes), magic_val[i]))
-            file_bytes[offset] = magic_val[i]
-    """
-    with open(new_filename, 'w') as fuzzed_f:
-        fuzzed_f.write(file_bytes)
-
 # fuzz_labels_list is a list of listof tainted byte offsets within file filename.
 # replace those bytes with random in a new file named new_filename
 def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0):
-    print("lava.testmutfile('{}' {}, '{}', {}, False, 0)".format(filename, repr(fuzz_labels_list), new_filename, bug.magic))
     if kt:
         assert (knob < 2**16-1)
         bug_trigger = bug.magic & 0xffff
@@ -355,62 +284,63 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0):
     # collect set of tainted offsets in file.
     file_bytes = bytearray(open(filename).read())
     # change first 4 bytes in dua to magic value
-    #print(len(fuzz_labels_list))
-    assert(len(fuzz_labels_list) == 3) # YOLO
 
-    # A ^ B = m * C
-    # b = rand1
-    # c = rand2
-    # a^rand1 = m*rand2
-    # a = (m*rand2)^rand1)
+    if bug.type == Bug.REL_WRITE:
+        assert(len(fuzz_labels_list) == 3) # Not sure how else to handle it
 
-    m = bug.magic
+        # A ^ B = m * C
+        # b = rand1
+        # c = rand2
+        # a^rand1 = m*rand2
+        # a = (m*rand2)^rand1)
 
-    # m == a + b + c
-    a,b,c = 0,0,0
+        m = bug.magic
 
-    if (m%4 == 0): # A + B = M * C
-        b = m
-        c = 1
-        a = 0
+        # m == a + b + c
+        a,b,c = 0,0,0
 
-    if (m%4 == 1): # B = A*(C+M)
-        a = 1
-        c = 0
-        b = m
+        if (m%4 == 0): # A + B = M * C
+            b = m
+            c = 1
+            a = 0
 
-    if (m%4 == 2): #  C % M == M - A*2      NOT USING B - validated
-        a = 5
-        c = m-10
+        if (m%4 == 1): # B = A*(C+M)
+            a = 1
+            c = 0
+            b = m
 
-    if (m%4 == 3): # CHAFF BUG - skip
-        pass
-    
-    a_val = struct.pack("<I", a)
-    b_val = struct.pack("<I", b)
-    c_val = struct.pack("<I", c)
+        if (m%4 == 2): #  C % M == M - A*2      NOT USING B - validated
+            a = 5
+            c = m-10
 
-    #print("{}^{} =?= {} * {}".format(a, b, bug.magic, c))
-    #print("{} =?= {}".format((a^b)&0xFFFFFFFF, (bug.magic*c)&0xFFFFFFFF))
+        if (m%4 == 3): # CHAFF BUG - skip
+            pass
+        
+        a_val = struct.pack("<I", a)
+        b_val = struct.pack("<I", b)
+        c_val = struct.pack("<I", c)
 
-    for (i, offset) in zip(range(4), fuzz_labels_list[0]):
-        #print("i=%d offset=%d set to value=%s" % (i,offset,a_val[i]))
-        file_bytes[offset] = a_val[i]
+        #print("{}^{} =?= {} * {}".format(a, b, bug.magic, c))
+        #print("{} =?= {}".format((a^b)&0xFFFFFFFF, (bug.magic*c)&0xFFFFFFFF))
 
-    for (i, offset) in zip(range(4), fuzz_labels_list[1]):
-        #print("i=%d offset=%d set to value=%s" % (i,offset,b_val[i]))
-        file_bytes[offset] = b_val[i]
+        for (i, offset) in zip(range(4), fuzz_labels_list[0]):
+            #print("i=%d offset=%d set to value=%s" % (i,offset,a_val[i]))
+            file_bytes[offset] = a_val[i]
 
-    for (i, offset) in zip(range(4), fuzz_labels_list[2]):
-        #print("i=%d offset=%d set to value=%s" % (i,offset,c_val[i]))
-        file_bytes[offset] = c_val[i]
+        for (i, offset) in zip(range(4), fuzz_labels_list[1]):
+            #print("i=%d offset=%d set to value=%s" % (i,offset,b_val[i]))
+            file_bytes[offset] = b_val[i]
 
-    """
-    for fuzz_labels in fuzz_labels_list:
-        for (i, offset) in zip(range(4), fuzz_labels):
-            print("i=%d offset=%d len(file_bytes)=%d\t set to value=%s" % (i,offset,len(file_bytes), magic_val[i]))
-            file_bytes[offset] = magic_val[i]
-    """
+        for (i, offset) in zip(range(4), fuzz_labels_list[2]):
+            #print("i=%d offset=%d set to value=%s" % (i,offset,c_val[i]))
+            file_bytes[offset] = c_val[i]
+
+    else:
+        for fuzz_labels in fuzz_labels_list:
+            for (i, offset) in zip(range(4), fuzz_labels):
+                print("i=%d offset=%d len(file_bytes)=%d\t set to value=%s" % (i,offset,len(file_bytes), magic_val[i]))
+                file_bytes[offset] = magic_val[i]
+
     with open(new_filename, 'w') as fuzzed_f:
         fuzzed_f.write(file_bytes)
 
@@ -435,15 +365,6 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, 
         print(ret[1][1].replace("\\n", "\n"))
         print("\nFatal error: LavaTool crashed\n")
         assert(False) #LavaTool failed
-
-    """ # If we modify lavaTool to only print failures within the file it was given, this could be useful:
-    failures = []
-    if "Failed bugs: " in ret[1][0]:
-        failures = [x for x in ret[1][0].split("\n") if "Failed bugs: " in x][0]
-        failures = [int(x) for x in failures.split(": ")[1].split(",")]
-
-    return failures # Was ret before
-    """
     return ret
 
 class LavaPaths(object):
@@ -642,19 +563,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
                      llvm_src, filename, competition)
 
     print("Run lavatool on allfiles: {}".format(all_files))
-    #pool.map(modify_source, all_files) # TODO - do it in parallel
-    for f in all_files:
-        modify_source(f)
-        #failed_injections = modify_source(f)
-
-    """
-    if len(failed_injections):
-        print("lavaTool failed to inject bugs: {}".format(failed_injections))
-        bugs_to_inject[:] = [x for x in bugs_to_inject if x not in failed_injections]
-
-        print("\t {} bugs successfully injected: {}".format(len(bugs_to_inject), bugs_to_inject))
-        assert(len(bugs_to_inject)) # If lavaTool completely fails, abort
-    """
+    pool.map(modify_source, all_files)
 
     clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
     def apply_replacements(src_dir):
