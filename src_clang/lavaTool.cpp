@@ -48,7 +48,7 @@ extern "C" {
 #define MATCHER (1 << 0)
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
-#define DEBUG_FLAGS INJECT //(MATCHER | INJECT | FNARG)
+#define DEBUG_FLAGS  0 // (MATCHER | INJECT | FNARG)
 
 #define ARG_NAME "data_flow"
 
@@ -746,16 +746,91 @@ struct MemoryAccessHandler : public LavaMatchHandler {
     }
 };
 
+// getText is from https://github.com/LegalizeAdulthood/remove-void-args
+template <typename T>
+static std::string getText(const SourceManager &SourceManager, const T &Node) {
+  SourceLocation StartSpellingLocation =
+      SourceManager.getSpellingLoc(Node.getLocStart());
+  SourceLocation EndSpellingLocation =
+      SourceManager.getSpellingLoc(Node.getLocEnd());
+  if (!StartSpellingLocation.isValid() || !EndSpellingLocation.isValid()) {
+    return std::string();
+  }
+  bool Invalid = true;
+  const char *Text =
+      SourceManager.getCharacterData(StartSpellingLocation, &Invalid);
+  if (Invalid) {
+    return std::string();
+  }
+  std::pair<FileID, unsigned> Start =
+      SourceManager.getDecomposedLoc(StartSpellingLocation);
+  std::pair<FileID, unsigned> End =
+      SourceManager.getDecomposedLoc(Lexer::getLocForEndOfToken(
+          EndSpellingLocation, 0, SourceManager, LangOptions()));
+  if (Start.first != End.first) {
+    // Start and end are in different files.
+    return std::string();
+  }
+  if (End.second < Start.second) {
+    // Shuffling text with macros may cause this.
+    return std::string();
+  }
+  return std::string(Text, End.second - Start.second);
+}
+
+// FixVoidArg is from https://github.com/LegalizeAdulthood/remove-void-args
+namespace {
+class FixVoidArg : public ast_matchers::MatchFinder::MatchCallback {
+ public:
+  FixVoidArg(tooling::Replacements *Replace)
+      : Replace(Replace) {}
+
+  virtual void run(const ast_matchers::MatchFinder::MatchResult &Result) {
+    BoundNodes Nodes = Result.Nodes;
+    SourceManager const *SM = Result.SourceManager;
+    if (FunctionDecl const *const Function = Nodes.getNodeAs<FunctionDecl>("fn")) {
+        /*
+        if (Function->isExternC()) {
+            return;
+        }
+        */
+        std::string const Text = getText(*SM, *Function);
+        if (!Function->isThisDeclarationADefinition()) {
+            if (Text.length() > 6 && Text.substr(Text.length()-6) == "(void)") {
+                printf("FIRST VOID REPLACE\n");
+                std::string const NoVoid = Text.substr(0, Text.length()-6) + "()";
+                Replace->insert(Replacement(*Result.SourceManager, Function, NoVoid));
+            }
+        } else if (Text.length() > 0) {
+            std::string::size_type EndOfDecl = Text.find_last_of(')', Text.find_first_of('{')) + 1;
+            std::string Decl = Text.substr(0, EndOfDecl);
+            if (Decl.length() > 6 && Decl.substr(Decl.length()-6) == "(void)") {
+                printf("SEC VOID REPLACE\n");
+                std::string NoVoid = Decl.substr(0, Decl.length()-6) + "()" + Text.substr(EndOfDecl);
+                Replace->insert(Replacement(*Result.SourceManager, Function, NoVoid));
+            }
+        }
+    }
+  }
+
+ private:
+  tooling::Replacements *Replace;
+};
+}
+
 struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
 
     void AddArg(const FunctionDecl *func) {
         SourceLocation loc = clang::Lexer::findLocationAfterToken(
                 func->getLocation(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
+
         if (func->getNumParams() == 0) {
-          Mod.InsertAt(loc, "int *" ARG_NAME);
+            // Foo(void) is considered to have 0 params which can lead to `foo(int *data_flowvoid)`
+            // This is fixed by always running FixVoidArg before we get here
+            Mod.InsertAt(loc, "int *" ARG_NAME);
         } else {
-          Mod.InsertAt(loc, "int *" ARG_NAME ", ");
+            Mod.InsertAt(loc, "int *" ARG_NAME ", ");
         }
     }
 
@@ -1052,7 +1127,6 @@ void mark_for_siphon(const DuaBytes *dua_bytes) {
 int main(int argc, const char **argv) {
     std::cout << "Starting lavaTool...\n";
     CommonOptionsParser op(argc, argv, LavaCategory);
-    ClangTool Tool(op.getCompilations(), op.getSourcePathList());
 
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
 
@@ -1101,6 +1175,19 @@ int main(int argc, const char **argv) {
         }
     }
 
+    // Remove void arguments if we're using dataflow
+    if (ArgDataflow && LavaAction == LavaInjectBugs) {
+        tooling::RefactoringTool refTool(op.getCompilations(), op.getSourcePathList());
+        ast_matchers::MatchFinder Finder;
+        FixVoidArg Callback(&refTool.getReplacements());
+        Finder.addMatcher(functionDecl(parameterCountIs(0)).bind("fn"), &Callback);
+        debug(INJECT) << "about to call FixVoidArg Tool.run\n";
+        refTool.runAndSave(clang::tooling::newFrontendActionFactory(&Finder).get());
+        debug(INJECT) << "back from FixVoidArg Tool.run\n";
+    }
+
+    // Create tool after we already have fixed void args
+    ClangTool Tool(op.getCompilations(), op.getSourcePathList());
     debug(INJECT) << "about to call Tool.run \n";
     LavaMatchFinder Matcher;
     Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
