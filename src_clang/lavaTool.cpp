@@ -319,17 +319,17 @@ LExpr threeDuaTest(Bug *bug, LvalBytes x, LvalBytes y) {
     switch (oldmagic % NUM_BUGTYPES)  {
         case 0:
             bug->magic = (a_sol + b_sol) * c_sol;
-            printf("0x%x id == (0x%x + 0x%x) * 0x%x\n", bug->id, a_sol, b_sol, c_sol);
+            printf("0x%llx == (0x%x + 0x%x) * 0x%x\n", bug->id, a_sol, b_sol, c_sol);
             break;
 
         case 1:
             bug->magic = (a_sol * b_sol) - c_sol;
-            printf("0x%x id  == (0x%x * 0x%x) - 0x%x\n", bug->id, a_sol, b_sol, c_sol);
+            printf("0x%llx id  == (0x%x * 0x%x) - 0x%x\n", bug->id, a_sol, b_sol, c_sol);
             break;
 
         case 2:
             bug->magic = (a_sol+2) * (b_sol+1) * (c_sol+3);
-            printf("0x%x id == (0x%x+2) *( 0x%x+1) * (0x%x+3) \n", bug->id, a_sol, b_sol, c_sol);
+            printf("0x%llx id == (0x%x+2) *( 0x%x+1) * (0x%x+3) \n", bug->id, a_sol, b_sol, c_sol);
             break;
 
     }
@@ -568,9 +568,10 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                 } else if (bug->type == Bug::REL_WRITE) {
                     const DuaBytes *extra0 = db->load<DuaBytes>(bug2->extra_duas[0]);
                     const DuaBytes *extra1 = db->load<DuaBytes>(bug2->extra_duas[1]);
-                    triggers.push_back(threeDuaTest(bug2, extra0, extra1));
+                    auto bug_combo = threeDuaTest(bug2, extra0, extra1); // Non-deterministic, need one object for triggers and ptr addends
+                    triggers.push_back(bug_combo);
 
-                    pointerAddends.push_back(threeDuaTest(bug2, extra0, extra1) * Get(extra0));
+                    pointerAddends.push_back(bug_combo * Get(extra0));
                 }
             }
             bugs_with_atp_at.erase(std::make_pair(ast_loc, atpType));

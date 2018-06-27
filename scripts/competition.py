@@ -49,7 +49,7 @@ def run_builds(scripts):
 
 def competition_bugs_and_non_bugs(num, db, allowed_bugtypes, buglist):
     #XXX This works but it's gross and non-pythonic
-    max_duplicates_per_line = 3 # Max duplicates we *try* to inject per line
+    max_duplicates_per_line = 0 # Max duplicates we *try* to inject per line
     bugs_and_non_bugs = []
     dfl_fileline = {}
     afl_fileline = {}
@@ -95,7 +95,7 @@ def competition_bugs_and_non_bugs(num, db, allowed_bugtypes, buglist):
         """
         if buglist is None:
             abort = False
-            for atp_items in db.uninjected_random_by_atp(fake, allowed_bugtypes, lim=3): # Get lim bugs per ATP
+            for atp_items in db.uninjected_random_by_atp(fake, allowed_bugtypes, lim=limit): # Get lim bugs evenly split across all ATPs
                 for item in atp_items:
                     if not parse(item):
                         abort = True
@@ -220,7 +220,7 @@ def main():
     if not args.chaff:
         # re-build just with the real bugs. Inject in competition mode. Deduplicate bugs with the same ATP location
         print("REINJECT validated bugs")
-        (build,input_files) = inject_bugs(real_bug_list, db, lp, project_file, \
+        (build,input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, project_file, \
                                               project, args, False, competition=True, validated=True)
 
 
@@ -253,7 +253,7 @@ def main():
         rm -rf "{internal_builddir}"
         {install}
         {post_install}
-        mv lava-install {internal_builddir}
+        mv lava-install/ {internal_builddir}
 
         popd
         """.format(
@@ -303,7 +303,7 @@ def main():
         # re-validate
         old_yield = len(real_bug_list)
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                          args, False, competition=True)
+                                          args, False, competition=True, bug_solutions=bug_solutions)
         new_yield = len(real_bug_list)
         print('Old yield: {}'.format(old_yield))
         print('New yield: {}'.format(new_yield))
@@ -476,7 +476,7 @@ done""".format(command = project['command'].format(**{"install_dir": "./lava-ins
             ))
 
     # Build a version to ship in src
-    run_builds([build_sh, public_build_sh])
+    run_builds([log_build_sh, public_build_sh])
     print("Success! Competition build in {}".format(corpdir))
 
 

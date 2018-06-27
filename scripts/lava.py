@@ -241,7 +241,9 @@ class LavaDatabase(object):
         atps = [r.id for r in _atps]
         print(atps)
         print("Found {} distinct ATPs".format(len(atps)))
-
+    
+        # Divide limit by the number of ATPs
+        lim = lim/len(atps)
 
 
         results = []
@@ -941,10 +943,10 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
         print("Validating bug {} of {} ". format(
             bug_index + 1, len(bugs_to_inject)))
 
-        if bug_solutions and bug.magic in bug_solutions.keys():
+        if bug_solutions and bug.id in bug_solutions.keys():
             print("HAVE A SOLUTION FOR THIS BUG")
             validated = validate_bug(db, lp, project, bug, bug_index, build,
-                                     args, update_db, unfuzzed_outputs, competition=competition, solution=bug_solutions[bug.magic])
+                                     args, update_db, unfuzzed_outputs, competition=competition, solution=bug_solutions[bug.id])
         else:
             print("No solution for bug with magic={}\nsolutions={}".format(bug.magic, bug_solutions))
             validated = validate_bug(db, lp, project, bug, bug_index, build,
