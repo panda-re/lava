@@ -146,7 +146,7 @@ if __name__ == "__main__":
     bugs_parent = get_bugs_parent(lp)
 
     # Remove all old YAML files
-    run_cmd("rm {}/*.yaml".format(lp.bugs_build), None, 10, cwd="/", shell=True)
+    run_cmd(["rm {}/*.yaml".format(lp.bugs_build)], None, 10, cwd="/", shell=True)
 
     
     # obtain list of bugs to inject based on cmd-line args and consulting db

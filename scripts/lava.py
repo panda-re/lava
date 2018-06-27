@@ -21,6 +21,7 @@ from sqlalchemy.sql.expression import func
 from subprocess32 import PIPE, check_call
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
+from time import sleep
 
 from composite import Composite
 from test_crash import process_crash
@@ -30,6 +31,7 @@ from process_compile_commands import get_c_files
 Base = declarative_base()
 
 debugging = False
+NUM_BUGTYPES = 3 # Make sure this matches what's in lavaTool
 
 class Loc(Composite):
     column = Integer
@@ -228,6 +230,48 @@ class LavaDatabase(object):
     def uninjected_random(self, fake, allowed_bugtypes=None):
         return self.uninjected2(fake, allowed_bugtypes).order_by(func.random())
 
+    def uninjected_random_by_atp(self, fake, allowed_bugtypes=None, lim=100):
+        # For each ATP find X possible bugs
+        # ATP type might != bug types...
+        if allowed_bugtypes:
+            _atps = self.session.query(AttackPoint.id).filter(AttackPoint.typ.in_(allowed_bugtypes)).all() # TODO - could filter for allowed_bugtypes here for a small speedup
+        else:
+            _atps = self.session.query(AttackPoint.id).all() # TODO - could filter for allowed_bugtypes here for a small speedup
+
+        atps = [r.id for r in _atps]
+        print(atps)
+        print("Found {} distinct ATPs".format(len(atps)))
+
+
+
+        results = []
+        for atp in atps:
+            q = self.session.query(Bug).filter(Bug.atp_id==atp).filter(~Bug.builds.any()) \
+            .join(Bug.atp)\
+            .join(Bug.trigger)\
+            #.join(DuaBytes.dua)\
+            #.filter(Dua.fake_dua == fake) # Nobody does that
+            if allowed_bugtypes:
+                q = q.filter(Bug.type.in_(allowed_bugtypes))
+
+            results.append(q.limit(lim).all())
+
+        return results
+            
+
+    def uninjected_random_y(self, fake, allowed_bugtypes=None, yield_count=100):
+        # Same as above but yield results
+        # Yield results
+        # TODO - for each ATP find possible bugs
+        ret = self.session.query(Bug).filter(~Bug.builds.any()).yield_per(yield_count) \
+            .join(Bug.atp)\
+            .join(Bug.trigger)\
+            .join(DuaBytes.dua)\
+            .filter(Dua.fake_dua == fake)
+        if allowed_bugtypes:
+            ret = ret.filter(Bug.type.in_(allowed_bugtypes))
+        yield ret # TODO ranomdize?
+
     def uninjected_random_balance(self, fake, num_required, bug_types):
         bugs = []
         types_present = self.session.query(Bug.type)\
@@ -238,6 +282,7 @@ class LavaDatabase(object):
             if i in bug_types:
                 num_avail += 1
         print("%d bugs available of allowed types" % num_avail)
+        assert(num_avail > 0)
         num_per = num_required / num_avail
         for (i,) in types_present:
             if (i in bug_types): 
@@ -274,7 +319,27 @@ def run_cmd_notimeout(cmd, **kwargs):
 
 # fuzz_labels_list is a list of listof tainted byte offsets within file filename.
 # replace those bytes with random in a new file named new_filename
-def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0):
+
+class FakeBug:
+    magic = 0
+    type = None
+    id = "fake"
+    def __init__(self, magic, type):
+        self.magic = magic
+        self.type = type
+
+def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, solution=None):
+    if isinstance(bug, int): # We can handle getting bug by id instead
+        bug = FakeBug(bug, Bug.REL_WRITE)
+    else:
+        print("mutfile(\"{}\", {}, \"{}\", {}, solution={})\n".format(filename, repr(fuzz_labels_list), new_filename, bug.magic, solution))
+    mutated_buffer = _mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, solution=solution)
+
+    with open(new_filename, 'w') as fuzzed_f:
+        fuzzed_f.write(mutated_buffer)
+    
+
+def _mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, solution=None):
     if kt:
         assert (knob < 2**16-1)
         bug_trigger = bug.magic & 0xffff
@@ -299,26 +364,32 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0):
         # m == a + b + c
         a,b,c = 0,0,0
 
-        if (m%4 == 0): # A + B = M * C
-            b = m
-            c = 1
-            a = 0
+        if solution:
+            a_val = solution[0]
+            b_val = solution[1]
+            c_val = solution[2]
+        else:
+            if (m%NUM_BUGTYPES == 0): # A + B = M * C
+                b = m
+                c = 1
+                a = 0
 
-        if (m%4 == 1): # B = A*(C+M)
-            a = 1
-            c = 0
-            b = m
+            if (m%NUM_BUGTYPES == 1): # B = A*(C+M)
+                a = 1
+                c = 0
+                b = m
 
-        if (m%4 == 2): #  C % M == M - A*2      NOT USING B - validated
-            a = 5
-            c = m-10
+            if (m%NUM_BUGTYPES == 2): #  C % M == M - A*2      NOT USING B, just a 2-dua
+                a = 5
+                c = m-10
 
-        if (m%4 == 3): # CHAFF BUG - skip
-            pass
-        
-        a_val = struct.pack("<I", a)
-        b_val = struct.pack("<I", b)
-        c_val = struct.pack("<I", c)
+            if (m%NUM_BUGTYPES == 3): # Intentional chaff bug - don't even bother
+                pass
+            
+            print("Mutfile with triggers:\n\tA=0x%x\n\tB=0x%x\n\tC=0x%x\n" % (a,b,c))
+            a_val = struct.pack("<I", a)
+            b_val = struct.pack("<I", b)
+            c_val = struct.pack("<I", c)
 
         #print("{}^{} =?= {} * {}".format(a, b, bug.magic, c))
         #print("{} =?= {}".format((a^b)&0xFFFFFFFF, (bug.magic*c)&0xFFFFFFFF))
@@ -340,9 +411,8 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0):
             for (i, offset) in zip(range(4), fuzz_labels):
                 print("i=%d offset=%d len(file_bytes)=%d\t set to value=%s" % (i,offset,len(file_bytes), magic_val[i]))
                 file_bytes[offset] = magic_val[i]
+    return file_bytes
 
-    with open(new_filename, 'w') as fuzzed_f:
-        fuzzed_f.write(file_bytes)
 
 # run lavatool on this file to inject any parts of this list of bugs
 def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, competition=False):
@@ -365,7 +435,24 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, 
         print(ret[1][1].replace("\\n", "\n"))
         print("\nFatal error: LavaTool crashed\n")
         assert(False) #LavaTool failed
-    return ret
+
+    # Get solutions back from lavaTool, parse and return
+    solutions = {}
+    for line in ret[1][0].split("\n"):
+        if " == " in line:
+            magic = line.split("0x")[1].split(" ")[0]
+            magic = int(magic, 16)
+            solutions[magic] = []
+            vals = line.split("0x")[2:] # Skip magic
+            duas = []
+            for val in vals:
+                for idx, c in enumerate(val):
+                    if c not in "0123456789abcdef":
+                        val = val[:idx]
+                        break
+                if not len(val): continue
+                solutions[magic].append(struct.pack("<I", int(val, 16)))
+    return solutions
 
 class LavaPaths(object):
 
@@ -424,7 +511,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         run(['git', 'init'])
         run(['git', 'config', 'user.name', 'LAVA'])
         run(['git', 'config', 'user.email', 'nobody@nowhere'])
-        run(['git', 'add', '-A', '.'])
+        run(['git', 'add', '-f', '-A', '.'])
         run(['git', 'commit', '-m', 'Unmodified source.'])
     if not os.path.exists(join(lp.bugs_build, 'config.log')) or True:
         print('Re-configuring...')
@@ -458,11 +545,11 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
                 join(lp.bugs_top_dir, '../extra_compile_commands.json')
         )
 
-        run(['git', 'add', 'compile_commands.json'])
+        run(['git', 'add', '-f', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json.'])
         run(shlex.split(project['make']))
         try:
-            run(['find', '.', '-name', '*.[ch]', '-exec', 'git', 'add', '{}', ';'])
+            run(['find', '.', '-name', '*.[ch]', '-exec', 'git', 'add', '-f', '{}', ';'])
             run(['git', 'commit', '-m', 'Adding source files'])
         except subprocess32.CalledProcessError:
             pass
@@ -480,21 +567,28 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         except subprocess32.CalledProcessError:
             pass
 
-    # TODO, limit to one per line - Either join onto sourcelval table here or after
+    # TODO, limit to one per line - Either join onto sourcelval table here or after - Look at the code in competition.py
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
 
     if validated: # After validating bugs, reduce how many duplicate ATPs we'll actually inject
         uniq_bugs = []
         seen = {}
-        max_validated_bugs_per_line = 3
+        max_validated_bugs_per_line = 1
         print("Reducing bugs_to_inject to only use {} ATP per line".format(max_validated_bugs_per_line))
         for bug in bugs_to_inject:
             tloc = (bug.atp.loc_filename, bug.atp.loc_begin_line)
+            print("Consider {}".format(tloc))
             if tloc not in seen.keys():
-               seen[tloc] = 0
-               seen[tloc] += 1
-               if seen[tloc] <= max_validated_bugs_per_line:
-                   uniq_bugs.append(bug)
+                seen[tloc] = 0
+                print("\t set to 0")
+            seen[tloc] += 1
+            print("\t++'d to be {}".format(seen[tloc]))
+            if seen[tloc] <= max_validated_bugs_per_line:
+                uniq_bugs.append(bug)
+                print("\t under limit, save bug {}".format(bug))
+            else:
+                print("\t over limit, discard bug")
+
         print("Reduced from {} to {}".format(len(bugs_to_inject), len(uniq_bugs)))
         bugs_to_inject = uniq_bugs
 
@@ -559,11 +653,17 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
 
     pool = ThreadPool(cpu_count())
     def modify_source(filename): # LavaTool only runs on one file at a time
-        run_lavatool(bugs_to_inject, lp, project_file, project, args,
+        sleep(random.random()) # Sleep a random # of MS so our lavaTools can seed rand from time and be different
+        return run_lavatool(bugs_to_inject, lp, project_file, project, args,
                      llvm_src, filename, competition)
 
     print("Run lavatool on allfiles: {}".format(all_files))
-    pool.map(modify_source, all_files)
+    #pool.map(modify_source, all_files)
+    bug_solutions =  {}
+    for fname in all_files:
+        bug_solutions.update(modify_source(fname))
+
+    print(bug_solutions)
 
     clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
     def apply_replacements(src_dir):
@@ -623,7 +723,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     if return_bug_list: # We now modify bug list to filter out per-line duplicates, pass back to callee if they want it
         return (build, input_files, [x.id for x in bugs_to_inject])
 
-    return (build, input_files)
+    return (build, input_files, bug_solutions)
 
 def get_suffix(fn):
     split = basename(fn).split(".")
@@ -633,7 +733,7 @@ def get_suffix(fn):
         return "." + split[-1]
 
 # run the bugged-up program
-def run_modified_program(project, install_dir, input_file, timeout):
+def run_modified_program(project, install_dir, input_file, timeout, shell=False):
     cmd = project['command'].format(install_dir=install_dir,input_file=input_file)
     cmd = "{}".format(cmd)
     #cmd = '/bin/bash -c '+ pipes.quote(cmd)
@@ -733,7 +833,7 @@ def fuzzed_input_for_bug(lp, bug):
     return "{}-fuzzed-{}{}".format(pref, bug.id, suff)
 
 def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
-                 unfuzzed_outputs=None, competition=False):
+                 unfuzzed_outputs=None, competition=False, solution=None):
     unfuzzed_input = unfuzzed_input_for_bug(lp, bug)
     fuzzed_input = fuzzed_input_for_bug(lp, bug)
     print(str(bug))
@@ -749,7 +849,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
         extra_query = db.session.query(DuaBytes)\
             .filter(DuaBytes.id.in_(bug.extra_duas))
         fuzz_labels_list.extend([d.all_labels for d in extra_query])
-    mutfile(unfuzzed_input, fuzz_labels_list, fuzzed_input, bug,
+    mutfile(unfuzzed_input, fuzz_labels_list, fuzzed_input, bug, solution=solution,
             **mutfile_kwargs)
     timeout = project.get('timeout', 5)
     (rv, outp) = run_modified_program(project, lp.bugs_install, fuzzed_input,
@@ -803,7 +903,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     return validated
 
 # validate this set of bugs
-def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db, competition=False):
+def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db, competition=False, bug_solutions=None):
 
     timeout = project.get('timeout', 5)
 
@@ -814,12 +914,15 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
     for input_file in input_files:
         unfuzzed_input = join(lp.top_dir, 'inputs', basename(input_file))
         (rv, outp) = run_modified_program(project, lp.bugs_install,
-                                          unfuzzed_input, timeout)
+                                          unfuzzed_input, timeout, shell=True)
         unfuzzed_outputs[basename(input_file)] = outp
         if rv != args.exitCode:
             print("***** buggy program fails on original input - Exit code {} does not match expected {}".format(rv,
                   args.exitCode))
-            assert False
+            print(outp[0])
+            print()
+            print(outp[1])
+            assert False # Fails on original input
         else:
             print("buggy program succeeds on original input {} with exit code {}".format(input_file, rv))
         print("output:")
@@ -837,8 +940,15 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
         print("=" * 60)
         print("Validating bug {} of {} ". format(
             bug_index + 1, len(bugs_to_inject)))
-        validated = validate_bug(db, lp, project, bug, bug_index, build,
-                                 args, update_db, unfuzzed_outputs, competition=competition)
+
+        if bug_solutions and bug.magic in bug_solutions.keys():
+            print("HAVE A SOLUTION FOR THIS BUG")
+            validated = validate_bug(db, lp, project, bug, bug_index, build,
+                                     args, update_db, unfuzzed_outputs, competition=competition, solution=bug_solutions[bug.magic])
+        else:
+            print("No solution for bug with magic={}\nsolutions={}".format(bug.magic, bug_solutions))
+            validated = validate_bug(db, lp, project, bug, bug_index, build,
+                                     args, update_db, unfuzzed_outputs, competition=competition)
         if validated:
             real_bugs.append(bug.id)
         print()

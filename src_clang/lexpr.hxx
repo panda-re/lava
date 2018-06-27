@@ -230,7 +230,7 @@ LExpr UIntCast(LExpr arg) { return LCast("const unsigned int *", arg); }
 
 LExpr SelectCast(const SourceLval *lval, Range selected) {
     const std::string &lval_name = lval->ast_name;
-    assert(selected.size() == 4);
+    //assert(selected.size() == 4); // Uhhh? 
 
     LExpr pointer = selected.low % 4 == 0
         ? UIntCast(LStr(lval_name)) + LDecimal(selected.low / 4)

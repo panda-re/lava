@@ -15,6 +15,8 @@
 #include <set>
 #include <memory>
 #include <iterator>
+#include <stdlib.h>     /* srand, rand */
+#include <time.h>       /* time */
 
 extern "C" {
 #include <unistd.h>
@@ -48,7 +50,7 @@ extern "C" {
 #define MATCHER (1 << 0)
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
-#define DEBUG_FLAGS  0 // (MATCHER | INJECT | FNARG)
+#define DEBUG_FLAGS 0 //  (MATCHER | INJECT | FNARG)
 
 #define ARG_NAME "data_flow"
 
@@ -269,7 +271,31 @@ LExpr twoDuaTest(const Bug *bug, LvalBytes x) {
     return (Get(bug->trigger)^Get(x)) == LHex(bug->magic);
 }
 
-LExpr threeDuaTest(const Bug *bug, LvalBytes x, LvalBytes y) {
+uint32_t rand_ascii4() {
+    uint32_t ret = 0;
+    for (int i=0; i < 4; i++) {
+        ret += (rand() % (0x7F-0x20)) + 0x20;
+        if (i !=3) ret = ret<<8;
+    }
+    return ret;
+}
+
+uint32_t alphanum(int len) {
+    static const char alphanum[] =
+        "0123456789"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz";
+    uint32_t ret = 0;
+    for (int i=0; i < len; i++) {
+        char c = alphanum[rand() % sizeof(alphanum)-1];
+        ret +=c;
+        if (i+1 != len) ret = ret << 8;
+    }
+
+    return ret;
+}
+
+LExpr threeDuaTest(Bug *bug, LvalBytes x, LvalBytes y) {
         //return (Get(bug->trigger)+Get(x)) == (LHex(bug->magic)*Get(y)); // GOOD
         //return (Get(x)) == (Get(bug->trigger)*(Get(y)+LHex(bug->magic))); // GOOD
         //return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - Get(bug->trigger)); // GOOD
@@ -283,20 +309,45 @@ LExpr threeDuaTest(const Bug *bug, LvalBytes x, LvalBytes y) {
     // TEST of bug type 2
     //return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - (Get(bug->trigger)*LHex(2)));
 
+    uint32_t a_sol = alphanum(4);
+    uint32_t b_sol = alphanum(4);
+    uint32_t c_sol = alphanum(4);
+
+    auto oldmagic = bug->magic;
+
     const int NUM_BUGTYPES=3;
-    switch (bug->magic % NUM_BUGTYPES)  {
+    switch (oldmagic % NUM_BUGTYPES)  {
+        case 0:
+            bug->magic = (a_sol + b_sol) * c_sol;
+            printf("0x%x id == (0x%x + 0x%x) * 0x%x\n", bug->id, a_sol, b_sol, c_sol);
+            break;
+
+        case 1:
+            bug->magic = (a_sol * b_sol) - c_sol;
+            printf("0x%x id  == (0x%x * 0x%x) - 0x%x\n", bug->id, a_sol, b_sol, c_sol);
+            break;
+
+        case 2:
+            bug->magic = (a_sol+2) * (b_sol+1) * (c_sol+3);
+            printf("0x%x id == (0x%x+2) *( 0x%x+1) * (0x%x+3) \n", bug->id, a_sol, b_sol, c_sol);
+            break;
+
+    }
+    //bug->trigger = a_sol;
+
+    switch (oldmagic % NUM_BUGTYPES)  {
         // bug->trigger = A
-        // get(x) = b
-        // get(y) = c
+        // get(x) = B
+        // get(y) = C
         // bug->magic = m
-        case 0:     // A + B == M*C
-            return (Get(bug->trigger)+Get(x)) == (LHex(bug->magic)*Get(y));
+        case 0:     // (A + B)*C == M
+            return (Get(bug->trigger)+Get(x))*Get(y) == (LHex(bug->magic));
             break;
-        case 1:     //B == A*(C+M)
-            return (Get(x)) == (Get(bug->trigger)*(Get(y)+LHex(bug->magic)));
+        case 1:     //(A*B)-C == M
+            return (Get(bug->trigger)*Get(x))-Get(y) == (LHex(bug->magic));
             break;
-        case 2:     // B % M == M - A*2
-            return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - (Get(bug->trigger)*LHex(2)));
+        case 2:     // (A+2)(C+3)(B+1) == M
+            return (Get(bug->trigger)+LHex(2))*(Get(y)+LHex(3))*(Get(bug->trigger)+LHex(1))  == LHex(bug->magic);
             break;
 
         default: // CHAFF
@@ -505,22 +556,21 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             auto pointerAttack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
             for (const Bug *bug : injectable_bugs) {
                 assert(bug->atp->type == atpType);
-                if (ArgCompetition) {
-                    Bug *bug2 = NULL;
-                    bug2 = (Bug*)malloc(sizeof(Bug));
-                    memcpy(bug2, bug, sizeof(Bug));
-                    bugs.push_back(bug2);
+                // was in if ArgCompetition, but we want to inject bugs more often
+                Bug *bug2 = NULL;
+                bug2 = (Bug*)malloc(sizeof(Bug));
+                memcpy(bug2, bug, sizeof(Bug));
+                bugs.push_back(bug2);
 
-                    if (bug->type == Bug::PTR_ADD) {
-                        pointerAddends.push_back(pointerAttack(bug));
-                        triggers.push_back(Test(bug)); //  Might fail for knobTriggers?
-                    } else if (bug->type == Bug::REL_WRITE) {
-                        const DuaBytes *extra0 = db->load<DuaBytes>(bug2->extra_duas[0]);
-                        const DuaBytes *extra1 = db->load<DuaBytes>(bug2->extra_duas[1]);
-                        triggers.push_back(threeDuaTest(bug2, extra0, extra1));
+                if (bug->type == Bug::PTR_ADD) {
+                    pointerAddends.push_back(pointerAttack(bug));
+                    triggers.push_back(Test(bug)); //  Might fail for knobTriggers?
+                } else if (bug->type == Bug::REL_WRITE) {
+                    const DuaBytes *extra0 = db->load<DuaBytes>(bug2->extra_duas[0]);
+                    const DuaBytes *extra1 = db->load<DuaBytes>(bug2->extra_duas[1]);
+                    triggers.push_back(threeDuaTest(bug2, extra0, extra1));
 
-                        pointerAddends.push_back(threeDuaTest(bug2, extra0, extra1) * Get(extra0));
-                    }
+                    pointerAddends.push_back(threeDuaTest(bug2, extra0, extra1) * Get(extra0));
                 }
             }
             bugs_with_atp_at.erase(std::make_pair(ast_loc, atpType));
@@ -626,7 +676,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                 if (ArgCompetition) {
                     result_ss << LIf(Test(bug).render(), {
                             LBlock({
-                                LFunc("LAVALOG", {LDecimal(1), LDecimal(1), LDecimal(bug->id)}), //It's always safe to call lavalog here since we're in the if
+                                LFunc("LAVALOG", {LDecimal(bug->id), LDecimal(1), LDecimal(1)}), //It's always safe to call lavalog here since we're in the if
                                 LIfDef("__x86_64__", {
                                     LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
                                         LDecimal(buffer->selected.low), },
@@ -714,7 +764,6 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
                                         " ? &(" + ExprStr(arg) + ") : ");
                         }
                     }
-
                 }
             }
         }
@@ -747,6 +796,7 @@ struct MemoryAccessHandler : public LavaMatchHandler {
 };
 
 // getText is from https://github.com/LegalizeAdulthood/remove-void-args
+// TODO this can probably be reimplemented as a part of the main lavaTool with everything else
 template <typename T>
 static std::string getText(const SourceManager &SourceManager, const T &Node) {
   SourceLocation StartSpellingLocation =
@@ -797,7 +847,6 @@ class FixVoidArg : public ast_matchers::MatchFinder::MatchCallback {
         std::string const Text = getText(*SM, *Function);
         if (!Function->isThisDeclarationADefinition()) {
             if (Text.length() > 6 && Text.substr(Text.length()-6) == "(void)") {
-                printf("FIRST VOID REPLACE\n");
                 std::string const NoVoid = Text.substr(0, Text.length()-6) + "()";
                 Replace->insert(Replacement(*Result.SourceManager, Function, NoVoid));
             }
@@ -805,7 +854,6 @@ class FixVoidArg : public ast_matchers::MatchFinder::MatchCallback {
             std::string::size_type EndOfDecl = Text.find_last_of(')', Text.find_first_of('{')) + 1;
             std::string Decl = Text.substr(0, EndOfDecl);
             if (Decl.length() > 6 && Decl.substr(Decl.length()-6) == "(void)") {
-                printf("SEC VOID REPLACE\n");
                 std::string NoVoid = Decl.substr(0, Decl.length()-6) + "()" + Text.substr(EndOfDecl);
                 Replace->insert(Replacement(*Result.SourceManager, Function, NoVoid));
             }
@@ -817,6 +865,95 @@ class FixVoidArg : public ast_matchers::MatchFinder::MatchCallback {
   tooling::Replacements *Replace;
 };
 }
+
+/*
+struct MacroDeclArgAdditionHandler : public MatchFinder::MatchCallback {
+    MacroDeclArgAdditionHandler(Modifier &Mod) : Mod(Mod) {}
+
+    virtual void run(const MatchFinder::MatchResult &Result) {
+        const SourceManager &sm = *Result.SourceManager;
+        auto nodesMap = Result.Nodes.getMap();
+
+        debug(MATCHER) << "====== Found MACRO DECL Match =====\n";
+        for (auto &keyValue : nodesMap) {
+            const Stmt *stmt = keyValue.second.get<Stmt>();
+            if (stmt) {
+                SourceLocation start = stmt->getLocStart();
+                if (!sm.getFilename(start).empty() && sm.isInMainFile(start)
+                        && !sm.isMacroArgExpansion(start)) {
+                    debug(MATCHER) << keyValue.first << ": " << ExprStr(stmt) << " ";
+                    stmt->getLocStart().print(debug(MATCHER), sm);
+                    debug(MATCHER) << "\n";
+                    if (DEBUG_FLAGS & MATCHER) stmt->dump();
+                } else return;
+            }
+        }
+        //handle(Result); // TODO
+    }
+
+    void AddArg(const FunctionDecl *func) {
+        SourceLocation loc = clang::Lexer::findLocationAfterToken(
+                func->getLocation(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
+
+        if (func->getNumParams() == 0) {
+            // Foo(void) is considered to have 0 params which can lead to `foo(int *data_flowvoid)`
+            // This is fixed by always running FixVoidArg before we get here
+            Mod.InsertAt(loc, "int *" ARG_NAME);
+        } else {
+            Mod.InsertAt(loc, "int *" ARG_NAME ", ");
+        }
+    }
+
+    virtual void handle(const MatchFinder::MatchResult &Result) {
+        const FunctionDecl *func =
+            Result.Nodes.getNodeAs<FunctionDecl>("funcDecl");
+
+        debug(FNARG) << "adding arg to " << func->getNameAsString() << "\n";
+
+        if (func->isThisDeclarationADefinition()) debug(FNARG) << "has body\n";
+        if (func->getBody()) debug(FNARG) << "can find body\n";
+
+        if (func->getLocation().isInvalid()) return;
+        if (func->getNameAsString().find("lava") == 0) return;
+        if (Mod.sm->isInSystemHeader(func->getLocation())) return;
+        if (Mod.sm->getFilename(func->getLocation()).empty()) return;
+
+        // Comment out format attrs
+        if (func->hasAttrs()) {
+          auto attrs = func->getAttrs();
+          for (const auto &a : func->getAttrs()) {
+            if (a->getKind() == attr::Format) {
+              debug(FNARG) << "found format attr\n";
+              Mod.InsertAt(a->getRange().getBegin(), ")); //");
+            }
+            debug(FNARG) << a->getSpelling() << "\n";
+          }
+        }
+
+        debug(FNARG) << "actually adding arg\n";
+
+        if (func->isMain()) {
+            if (func->isThisDeclarationADefinition()) { // no prototype for main.
+                CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
+                assert(body);
+                Stmt *first = *body->body_begin();
+                assert(first);
+
+                std::stringstream data_array;
+                data_array << "int data[" << data_slots.size() << "] = {0};\n";
+                data_array << "int *" ARG_NAME << "= &data;\n";
+                Mod.InsertAt(first->getLocStart(), data_array.str());
+            }
+        } else {
+            const FunctionDecl *bodyDecl = nullptr;
+            func->hasBody(bodyDecl);
+        }
+        return;
+    }
+protected:
+    Modifier &Mod;
+};
+*/
 
 struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
@@ -996,12 +1133,25 @@ public:
 
         // fortenforge's matchers (for argument addition)
         if (ArgDataflow && LavaAction == LavaInjectBugs) {
+            // Function declaration
             addMatcher(
                     functionDecl().bind("funcDecl"),
                     makeHandler<FuncDeclArgAdditionHandler>());
+
+            // Function call
             addMatcher(
                     callExpr().bind("callExpr"),
                     makeHandler<CallExprArgAdditionHandler>());
+
+            // Macro declaration TODO
+            // TODO not finding any matches
+            /*addMatcher(
+                    fieldDecl().bind("fieldDecl"), // TODO add filter to ensure is macro
+                    new MacroDeclArgAdditionHandler(Mod));*/
+
+            // Macro call TODO
+
+            // Struct
             addMatcher(
                     fieldDecl(anyOf(hasName("as_number"), hasName("as_string"))).bind("fieldDecl"),
                     makeHandler<FunctionPointerFieldHandler>());
@@ -1013,8 +1163,7 @@ public:
                     unless(argumentCountIs(1))).bind("call_expression"),
                 makeHandler<ReadDisclosureHandler>()
                 );
-    }
-
+        }
     virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
         Insert.clear();
         Mod.Reset(&CI.getLangOpts(), &CI.getSourceManager());
@@ -1024,8 +1173,8 @@ public:
 
         debug(INJECT) << "*** handleBeginSource for: " << Filename << "\n";
 
-        std::stringstream competition;
-        competition << "#include <stdio.h>\n" // enable logging with (LAVA_LOGGING, FULL_LAVA_LOGGING) and (DUA_LOGGING) flags
+        std::stringstream logging_macros;
+        logging_macros << "#include <stdio.h>\n" // enable logging with (LAVA_LOGGING, FULL_LAVA_LOGGING) and (DUA_LOGGING) flags
                     << "#ifdef LAVA_LOGGING\n"
                         << "#define LAVALOG(bugid, x, trigger)  ({(trigger && fprintf(stderr, \"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__)), (x);})\n"
                     << "#endif\n"
@@ -1048,9 +1197,7 @@ public:
         if (LavaAction == LavaQueries) {
             insert_at_top = "#include \"pirate_mark_lava.h\"\n";
         } else if (LavaAction == LavaInjectBugs) {
-            if (ArgCompetition) {
-                insert_at_top.append(competition.str());
-            }
+            insert_at_top.append(logging_macros.str());
             if (!ArgDataflow) {
                 if (main_files.count(getAbsolutePath(Filename)) > 0) {
                     std::stringstream top;
@@ -1059,16 +1206,13 @@ public:
                         << "__attribute__((visibility(\"default\")))\n"
                         << "void lava_set(unsigned int slot, unsigned int val) {\n"
                         << "#ifdef DUA_LOGGING\n"
-                        << "printf(\"LAVA_SET[%d] = 0x%x\\n\", slot, val);\n"
+                            << "fprintf(stderr, \"\\nlava_set:%d=%d: %s:%d\\n\", slot, val, __FILE__, __LINE__);\n"
+                            << "fflush(NULL);\n"
                         << "#endif\n"
                         << "lava_val[slot] = val; }\n"
                         << "unsigned int lava_get(unsigned int);\n"
                         << "__attribute__((visibility(\"default\")))\n"
-                        << "unsigned int lava_get(unsigned int slot) {\n"
-                        << "#ifdef DUA_LOGGING\n"
-                        << "printf(\"LAVA_GET[%d] = 0x%x\\n\", slot, lava_val[slot]);\n"
-                        << "#endif\n"
-                        << "return lava_val[slot]; }\n";
+                        << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
                     insert_at_top.append(top.str());
                 } else {
                     insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
@@ -1077,7 +1221,7 @@ public:
             }
         }
 
-        debug(INJECT) << "Inserting at top of file: \n" << insert_at_top;
+        debug(INJECT) << "Inserting Macros and lava_set/get or dataflow at top of file\n";
         TUReplace.Replacements.emplace_back(Filename, 0, 0, insert_at_top);
 
         for (auto it = MatchHandlers.begin();
@@ -1129,6 +1273,8 @@ int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
 
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
+    srand(time(NULL));
+
 
     std::ifstream json_file(ProjectFile);
     Json::Value root;

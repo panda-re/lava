@@ -107,8 +107,8 @@ if [ "$debug" -eq "1" ]; then
     python=$pdb
 fi
 
-#bugtypes="ptr_add,rel_write"
-bugtypes="rel_write"
+#bugtypes="rel_write,ptr_add" # TODO expose as option - rel_write=3FV, ptr_add=1LV
+bugtypes="rel_write"  # TODO change back
 progress "competition" 0 "Inject bugs of type: $bugtypes"
 
 mkdir -p $logs

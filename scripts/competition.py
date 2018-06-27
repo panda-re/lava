@@ -48,32 +48,30 @@ def run_builds(scripts):
 # because otherwise the db might give us all the same dua
 
 def competition_bugs_and_non_bugs(num, db, allowed_bugtypes, buglist):
-    max_duplicates_per_line = 0 # Max duplicates we *try* to inject per line
+    #XXX This works but it's gross and non-pythonic
+    max_duplicates_per_line = 3 # Max duplicates we *try* to inject per line
     bugs_and_non_bugs = []
     dfl_fileline = {}
     afl_fileline = {}
-    def get_bugs_non_bugs(fake, limit):
-        if buglist is None:
-            items = db.uninjected_random(fake, allowed_bugtypes)
-        else:
-            items = db.session.query(Bug).filter(Bug.id.in_(buglist)).all()
-            print "items %d" % (len(items))
-            limit = 10000000
 
-        for item in items:
+    def get_bugs_non_bugs(fake, limit):
+        # Find a set of bugs of allowed_bugtype with limited overlap on trigger and atp location with other selected bugs
+        def parse(item):
             if not (item.type in allowed_bugtypes):
-                print("skipping type {} not in {}".format(item.type, allowed_bugtypes))
-                continue
+                #print("skipping type {} not in {}".format(item.type, allowed_bugtypes))
+                return True
             dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
-            afl = (item.atp.loc_filename, item.atp.loc_begin_line)
-            if (dfl in dfl_fileline and dfl_fileline[dfl] > max_duplicates_per_line): 
-                print "skipping dfl %s" % (str(dfl))
-                continue
-            if (afl in afl_fileline and afl_fileline[afl] > max_duplicates_per_line): 
-                print "skipping afl %s" % (str(afl))
-                continue
-            if not (dfl in dfl_fileline): dfl_fileline[dfl] = 0
-            if not (afl in afl_fileline): afl_fileline[afl] = 0
+            afl = (item.atp.loc_filename, item.atp.loc_begin_line, item.atp.loc_begin_column)
+
+            if not (dfl in dfl_fileline.keys()): dfl_fileline[dfl] = 0
+            if not (afl in afl_fileline.keys()): afl_fileline[afl] = 0
+
+            if (dfl_fileline[dfl] > max_duplicates_per_line): 
+                #print "skipping dfl %s" % (str(dfl))
+                return True
+            if (afl_fileline[afl] > max_duplicates_per_line): 
+                #print "skipping afl %s" % (str(afl))
+                return True
             if fake:
                 print "non-bug", 
             else:
@@ -82,9 +80,35 @@ def competition_bugs_and_non_bugs(num, db, allowed_bugtypes, buglist):
             dfl_fileline[dfl] += 1
             afl_fileline[afl] += 1
             bugs_and_non_bugs.append(item)
-            if (len(bugs_and_non_bugs) == limit):
-                break
-    get_bugs_non_bugs(False, num)
+            if (len(bugs_and_non_bugs) >= limit):
+                print("Abort bug-selection because we already found {} bugs to inject".format(limit))
+                return False
+            return True
+
+        """
+        # Now with even more .~.~GeNeRaToRs~.~. so we don't run out of memory if there are too many bugs
+        if buglist is None:
+            for item_chunk in db.uninjected_random_y(fake, allowed_bugtypes):
+                for item in item_chunk:
+                    if not parse(item):
+                        break
+        """
+        if buglist is None:
+            abort = False
+            for atp_items in db.uninjected_random_by_atp(fake, allowed_bugtypes, lim=3): # Get lim bugs per ATP
+                for item in atp_items:
+                    if not parse(item):
+                        abort = True
+                        break
+                if abort:
+                    break
+        else:
+            for item in db.session.query(Bug).filter(Bug.id.in_(buglist)).all():
+                if not parse(item):
+                    break
+
+
+    get_bugs_non_bugs(False, num) # This populates bugs_and_non_bugs
     # get_bugs_non_bugs(True, 2*num)
     return [b.id for b in bugs_and_non_bugs]
 
@@ -146,7 +170,7 @@ def main():
 
     if args.buglist:
         print ("bug_list incoming %s" % (str(args.buglist)))
-        bug_list = competition_bugs_and_non_bugs(int(args.many), db, allowed_bugtypes, eval(args.buglist))
+        bug_list = competition_bugs_and_non_bugs(len(args.buglist), db, allowed_bugtypes, eval(args.buglist)) # XXX EVAL WHY
     elif args.many:
         bug_list = competition_bugs_and_non_bugs(int(args.many), db, allowed_bugtypes, None)
     else:
@@ -165,7 +189,7 @@ def main():
     if not args.skipinject:
         # add either bugs to the source code and check that we can still compile
         try:
-            (build, input_files) = inject_bugs(bug_list, db, lp, project_file, \
+            (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, project_file, \
                                               project, args, False, competition=True,
                                               validated=False)
         except RuntimeError:
@@ -184,7 +208,7 @@ def main():
     # bug is valid if seg fault (or bus error)
     # AND if stack trace indicates bug manifests at trigger line we inserted
     real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                      args, False, competition=True)
+                                      args, False, competition=True, bug_solutions=bug_solutions)
 
     if len(real_bug_list) < int(args.minYield):
         print "\n\nXXX Yield too low -- %d bugs minimum is required for competition" % int(args.minYield)
@@ -194,7 +218,7 @@ def main():
         print "\n\n Yield acceptable: {}".format(len(real_bug_list))
 
     if not args.chaff:
-        # re-build just with the real bugs. Inject in competition mode
+        # re-build just with the real bugs. Inject in competition mode. Deduplicate bugs with the same ATP location
         print("REINJECT validated bugs")
         (build,input_files) = inject_bugs(real_bug_list, db, lp, project_file, \
                                               project, args, False, competition=True, validated=True)
@@ -229,7 +253,7 @@ def main():
         rm -rf "{internal_builddir}"
         {install}
         {post_install}
-        cp -r lava-install {internal_builddir}
+        mv lava-install {internal_builddir}
 
         popd
         """.format(
@@ -340,8 +364,11 @@ def main():
         subprocess32.check_call(["make", "distclean"])
     except:
         pass
-    shutil.rmtree(join(srcdir, ".git"))
-    shutil.rmtree(join(srcdir, "lava-install"))
+    if os.path.isdir(join(srcdir, ".git")):
+        shutil.rmtree(join(srcdir, ".git"))
+
+    if os.path.isdir(join(srcdir, "lava-install")):
+        shutil.rmtree(join(srcdir, "lava-install"))
     os.remove(join(srcdir, "compile_commands.json"))
     os.remove(join(srcdir, "btrace.log"))
 
@@ -353,6 +380,9 @@ def main():
     #print "created corpus tarball " + tarball + "\n";
 
     #lp.bugs_install = join(corpdir,"lava-install") # Change to be in our corpdir
+
+
+# TODO why do we have both log_build and build.sh?
     # Save the commands we use into files so we can rerun later
     build_sh = join(corpdir, "build.sh")
     with open(build_sh, "w") as build:
@@ -372,8 +402,8 @@ def main():
             configure=project['configure'],
             make=project['make'],
             install=project['install'],
-            outdir=join(corpdir, "lava-install"),
-            post_install=project['post_install']
+            outdir=join(corpdir, "lava-install-internal"),
+            post_install=project['post_install'] if "post_install" in project.keys() else ""
         ))
 
     public_build_sh = join(corpdir, "public_build.sh") # Simple
@@ -389,7 +419,7 @@ def main():
         rm -rf "{public_builddir}"
         {install}
         {post_install}
-        cp -r lava-install {public_builddir}
+        mv lava-install {public_builddir}
 
         popd
         """.format(
@@ -397,9 +427,9 @@ def main():
             make_clean = project["clean"] if "clean" in project.keys() else "",
             configure=project['configure'],
             make = project['make'],
-            public_builddir = join(corpdir, "lava-install"),
+            public_builddir = join(corpdir, "lava-install-public"),
             install = project['install'],
-            post_install = project['post_install']
+            post_install=project['post_install'] if "post_install" in project.keys() else ""
             ))
 
     trigger_all_crashes = join(corpdir, "trigger_crashes.sh")
@@ -417,6 +447,7 @@ for fname in {inputdir}; do
         bugid=$i
     done
     IFS=' '
+    bugid=${{bugid%.*}}
 
     #Non-logging version
     LD_LIBRARY_PATH={librarydir2} {command2} &> /dev/null
@@ -439,8 +470,8 @@ for fname in {inputdir}; do
 done""".format(command = project['command'].format(**{"install_dir": "./lava-install-internal", "input_file": "$fname"}), # This syntax is weird but only thing that works?
             corpdir = corpdir,
             librarydir = join("./lava-install-internal", "lib"),
-            librarydir2 = join("./lava-install", "lib"),
-            command2 = project['command'].format(**{"install_dir": "./lava-install", "input_file": "$fname"}), # This syntax is weird but only thing that works?
+            librarydir2 = join("./lava-install-public", "lib"),
+            command2 = project['command'].format(**{"install_dir": "./lava-install-public", "input_file": "$fname"}), # This syntax is weird but only thing that works?
             inputdir = "./inputs/*-fuzzed-*"
             ))
 
