@@ -34,9 +34,10 @@ diversify=""
 skipinject=""
 usechaff=""
 dataflow=""
+bugtype="ptr_add,rel_write"
 echo
 progress "competition" 0 "Parsing args"
-while getopts  "sbdiackm:l:n:e:" flag
+while getopts  "sbdiackm:l:n:e:t:" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -54,6 +55,10 @@ do
   if [ "$flag" = "l" ]; then
       bug_list="-l $OPTARG"
       progress "competition" 0 "Use bugs with ID: $bug_list"
+  fi
+  if [ "$flag" = "t" ]; then
+      bugtypes=$OPTARG
+      progress "competition" 0 "Injecting bugs of type(s): $bugtypes"
   fi
   if [ "$flag" = "e" ]; then
       exit_code=$OPTARG
@@ -107,10 +112,6 @@ if [ "$debug" -eq "1" ]; then
     python=$pdb
 fi
 
-#bugtypes="rel_write,ptr_add" # TODO expose as option - rel_write=3FV, ptr_add=1LV
-bugtypes="rel_write"  # TODO change back
-progress "competition" 0 "Inject bugs of type: $bugtypes"
-
 mkdir -p $logs
 lf="$logs/competition.log"
 progress "competition" 1 "Starting -- logging to $lf"
@@ -118,4 +119,4 @@ truncate "$lf"
 run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject $dataflow --bugtypes=$bugtypes $usechaff $json" "$lf"
 progress "competition" 1 "Everything finished."
 
-grep "Success" $lf
+tail -n2 $lf

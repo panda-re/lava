@@ -287,7 +287,7 @@ uint32_t alphanum(int len) {
         "abcdefghijklmnopqrstuvwxyz";
     uint32_t ret = 0;
     for (int i=0; i < len; i++) {
-        char c = alphanum[rand() % sizeof(alphanum)-1];
+        char c = alphanum[rand() % (sizeof(alphanum)-1)];
         ret +=c;
         if (i+1 != len) ret = ret << 8;
     }
@@ -1322,7 +1322,8 @@ int main(int argc, const char **argv) {
         }
     }
 
-    // Remove void arguments if we're using dataflow
+    // Remove void arguments if we're using dataflow // TODO this doesn't work with file?
+    /*
     if (ArgDataflow && LavaAction == LavaInjectBugs) {
         tooling::RefactoringTool refTool(op.getCompilations(), op.getSourcePathList());
         ast_matchers::MatchFinder Finder;
@@ -1332,6 +1333,7 @@ int main(int argc, const char **argv) {
         refTool.runAndSave(clang::tooling::newFrontendActionFactory(&Finder).get());
         debug(INJECT) << "back from FixVoidArg Tool.run\n";
     }
+    */
 
     // Create tool after we already have fixed void args
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());

@@ -95,7 +95,9 @@ def competition_bugs_and_non_bugs(num, db, allowed_bugtypes, buglist):
         """
         if buglist is None:
             abort = False
-            for atp_items in db.uninjected_random_by_atp(fake, allowed_bugtypes, lim=limit): # Get lim bugs evenly split across all ATPs
+            atp_types = [AttackPoint.FUNCTION_CALL, AttackPoint.POINTER_WRITE] # TODO we don't find rel_writes at function calls
+            #for atp_items in db.uninjected_random_y(fake, allowed_bugtypes=allowed_bugtypes): #old stylet
+            for atp_items in db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit): # Get lim bugs evenly split across all ATPs
                 for item in atp_items:
                     if not parse(item):
                         abort = True
@@ -177,49 +179,40 @@ def main():
         print("Fatal error: no bugs specified")
         raise RuntimeError
 
-    assert len(bug_list)
+    assert len(bug_list) # Found no bugs
 
-    print('bug_list:')
+    print('bug_list (len={}):'.format(len(bug_list)))
     bug_list_str = ','.join([str(bug_id) for bug_id in bug_list])
     print(bug_list_str)
 
     if args.skipinject:
         project['configure'] = "echo 'no reconfigure- Running with skip inject'";
 
-    if not args.skipinject:
+    real_bug_list = []
+    while len(real_bug_list) < int(args.minYield):
         # add either bugs to the source code and check that we can still compile
-        try:
-            (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, project_file, \
-                                              project, args, False, competition=True,
-                                              validated=False)
-        except RuntimeError:
-            print("Failed to inject bugs\n{}".format(bug_list))
-            print("Manually fix errors and resume execution with:")
-            print("./scripts/competition.sh -c -d -s -l {buglist} {json}".format(
-                buglist=bug_list_str,
-                json=project_file))
-            sys.exit(-1)
-    else:
-        # HACK
-        build = None
-        input_files = project['inputs']
-        print(input_files)
+        (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, project_file, \
+                                          project, args, False, competition=True,
+                                          validated=False)
+        assert build is not None
 
-    # bug is valid if seg fault (or bus error)
-    # AND if stack trace indicates bug manifests at trigger line we inserted
-    real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                      args, False, competition=True, bug_solutions=bug_solutions)
+        # bug is valid if seg fault (or bus error)
+        # AND if stack trace indicates bug manifests at trigger line we inserted
+        real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
+                                          args, False, competition=True, bug_solutions=bug_solutions)
 
-    if len(real_bug_list) < int(args.minYield):
-        print "\n\nXXX Yield too low -- %d bugs minimum is required for competition" % int(args.minYield)
-        print "TODO: Try again.\n" # TODO: Need to loop?
-        sys.exit(-1)
-    else:
-        print "\n\n Yield acceptable: {}".format(len(real_bug_list))
+        if len(real_bug_list) < int(args.minYield):
+            print "\n\nXXX Yield too low -- %d bugs minimum is required for competition" % int(args.minYield)
+            print "Trying again.\n"
+
+    print "\n\n Yield acceptable: {}".format(len(real_bug_list))
+
+    # TODO- the rebuild process may invalidate a previously validated bug because the trigger will change
+    # Need to find a way to pass data between lavaTool and here so we can reinject *identical* bugs as before
 
     if not args.chaff:
         # re-build just with the real bugs. Inject in competition mode. Deduplicate bugs with the same ATP location
-        print("REINJECT validated bugs")
+        print("Reinject only validated bugs")
         (build,input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, project_file, \
                                               project, args, False, competition=True, validated=True)
 
@@ -332,11 +325,11 @@ def main():
                                         get_trigger_line(lp, bug))
             ans2.write(str(bug)+"\n") # Simple
 
-            print "Bug %d: prediction = [%s]" % (bug.id, prediction)
-            print str(bug)
-            if not get_trigger_line(lp, bug):
-                print("Warning - unknown trigger, skipping for answer key")
-                #continue
+            if get_trigger_line(lp, bug):
+                print "Bug %d: prediction = [%s]" % (bug.id, prediction)
+                print str(bug)
+            #else:
+                #print("Warning - unknown trigger, skipping for answer key")
 
 #        assert not (prediction in predictions)
             fuzzed_input = fuzzed_input_for_bug(lp, bug) # TODO - this is broken for multidua bugs - is it?
@@ -380,7 +373,6 @@ def main():
     #print "created corpus tarball " + tarball + "\n";
 
     #lp.bugs_install = join(corpdir,"lava-install") # Change to be in our corpdir
-
 
 # TODO why do we have both log_build and build.sh?
     # Save the commands we use into files so we can rerun later
@@ -478,6 +470,7 @@ done""".format(command = project['command'].format(**{"install_dir": "./lava-ins
     # Build a version to ship in src
     run_builds([log_build_sh, public_build_sh])
     print("Success! Competition build in {}".format(corpdir))
+    print("Injected {} bugs".format(len(real_bug_list)))
 
 
 if __name__ == "__main__":

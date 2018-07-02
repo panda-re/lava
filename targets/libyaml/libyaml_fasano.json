@@ -1,0 +1,30 @@
+{
+    "qemu": "/home/fasano/panda/build/i386-softmmu/qemu-system-i386",
+    "qcow": "/home/fasano/lava/wheezy_panda2.qcow2",
+    "snapshot": "root",
+
+    "directory": "/home/fasano/lava",
+    "name": "libyaml_fasano_g3fv_c",
+    "tarfile": "/home/fasano/lava/libyaml2.tar.gz",
+
+    "_configure_comment": "Running configure, make and then make install must put binaries in build_path/lava-install/... Make sure you don't set an rpath (configure --disable-rpath)",
+    "configure": "./configure --prefix=`pwd`/lava-install --disable-rpath",
+
+    "make": "make CFLAGS=-fvisibility=default CFLAGS+=-g -j 16 test",
+    "clean": "make clean; make -C tests clean",
+    "install": "make install",
+    "post_install": "mkdir ./lava-install/bin; cp tests/.libs/example-deconstructor ./lava-install/bin/deconstruct",
+    "command": "{install_dir}/bin/deconstruct {input_file}",
+    "expect_prompt": "root@debian-i386:~#",
+
+    "db": "libyaml_fasano",
+
+    "max_liveness": 10,
+    "max_cardinality": 100,
+    "max_tcn": 10,
+    "max_lval_size": 100,
+
+    "main_file": [ "src/parser.c" ],
+
+    "inputs": [ "/home/fasano/lava/targets/libyaml/inputs/spec.yaml", "/home/fasano/lava/targets/libyaml/inputs/bin.yaml", "/home/fasano/lava/targets/libyaml/inputs/test_yaml2.yaml"]
+}

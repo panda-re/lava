@@ -230,33 +230,28 @@ class LavaDatabase(object):
     def uninjected_random(self, fake, allowed_bugtypes=None):
         return self.uninjected2(fake, allowed_bugtypes).order_by(func.random())
 
-    def uninjected_random_by_atp(self, fake, allowed_bugtypes=None, lim=100):
+    def uninjected_random_by_atp(self, fake, atp_types=None, allowed_bugtypes=None, atp_lim=10):
         # For each ATP find X possible bugs
-        # ATP type might != bug types...
-        if allowed_bugtypes:
-            _atps = self.session.query(AttackPoint.id).filter(AttackPoint.typ.in_(allowed_bugtypes)).all() # TODO - could filter for allowed_bugtypes here for a small speedup
+        if atp_types:
+            _atps = self.session.query(AttackPoint.id).filter(AttackPoint.typ.in_(atp_types)).all()
         else:
-            _atps = self.session.query(AttackPoint.id).all() # TODO - could filter for allowed_bugtypes here for a small speedup
+            _atps = self.session.query(AttackPoint.id).all()
 
         atps = [r.id for r in _atps]
-        print(atps)
+        #print(atps)
         print("Found {} distinct ATPs".format(len(atps)))
     
-        # Divide limit by the number of ATPs
-        lim = lim/len(atps)
-
-
         results = []
         for atp in atps:
             q = self.session.query(Bug).filter(Bug.atp_id==atp).filter(~Bug.builds.any()) \
             .join(Bug.atp)\
             .join(Bug.trigger)\
-            #.join(DuaBytes.dua)\
-            #.filter(Dua.fake_dua == fake) # Nobody does that
+            .join(DuaBytes.dua)\
+            .filter(Dua.fake_dua == fake)
             if allowed_bugtypes:
                 q = q.filter(Bug.type.in_(allowed_bugtypes))
 
-            results.append(q.limit(lim).all())
+            results.append(q.limit(atp_lim).all())
 
         return results
             
@@ -264,7 +259,6 @@ class LavaDatabase(object):
     def uninjected_random_y(self, fake, allowed_bugtypes=None, yield_count=100):
         # Same as above but yield results
         # Yield results
-        # TODO - for each ATP find possible bugs
         ret = self.session.query(Bug).filter(~Bug.builds.any()).yield_per(yield_count) \
             .join(Bug.atp)\
             .join(Bug.trigger)\
@@ -494,7 +488,7 @@ class LavaPaths(object):
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
 def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, competition=False,
-                validated=False, return_bug_list=False):
+                validated=False):
     if not os.path.exists(lp.bugs_parent):
         os.makedirs(lp.bugs_parent)
 
@@ -575,21 +569,15 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     if validated: # After validating bugs, reduce how many duplicate ATPs we'll actually inject
         uniq_bugs = []
         seen = {}
-        max_validated_bugs_per_line = 1
-        print("Reducing bugs_to_inject to only use {} ATP per line".format(max_validated_bugs_per_line))
+        max_validated_bugs_per_line = 2
+        print("Reducing bugs_to_inject to only (re)use {} ATP per line".format(max_validated_bugs_per_line))
         for bug in bugs_to_inject:
             tloc = (bug.atp.loc_filename, bug.atp.loc_begin_line)
-            print("Consider {}".format(tloc))
             if tloc not in seen.keys():
                 seen[tloc] = 0
-                print("\t set to 0")
             seen[tloc] += 1
-            print("\t++'d to be {}".format(seen[tloc]))
             if seen[tloc] <= max_validated_bugs_per_line:
                 uniq_bugs.append(bug)
-                print("\t under limit, save bug {}".format(bug))
-            else:
-                print("\t over limit, discard bug")
 
         print("Reduced from {} to {}".format(len(bugs_to_inject), len(uniq_bugs)))
         bugs_to_inject = uniq_bugs
@@ -653,7 +641,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         #print('all_files: {}'.format(all_files))
         all_files = all_files.union(all_c_files)
 
-    pool = ThreadPool(cpu_count())
+    pool = ThreadPool(max(cpu_count()-4, 1))
     def modify_source(filename): # LavaTool only runs on one file at a time
         sleep(random.random()) # Sleep a random # of MS so our lavaTools can seed rand from time and be different
         return run_lavatool(bugs_to_inject, lp, project_file, project, args,
@@ -687,6 +675,11 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     if competition:
         makecmd += " CFLAGS+=\"-DLAVA_LOGGING\""
 
+    if args.arg_dataflow and 'df_fixup' in project.keys():
+        project['df_fixup'] = project['df_fixup'].format(bug_build=lp.bugs_build)
+        print("Fixing up dataflow with df_fixup command: {}".format(project['df_fixup']))
+        check_call(project['df_fixup'], cwd=lp.bugs_build, shell=True)
+
     (rv, outp) = run_cmd_notimeout(makecmd, cwd=lp.bugs_build)
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
@@ -705,7 +698,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         print("build succeeded")
         run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
         check_call(project['install'], cwd=lp.bugs_build, shell=True)
-        if 'post_install' in project:
+        if 'post_install' in project.keys():
             check_call(project['post_install'], cwd=lp.bugs_build, shell=True)
     else:
         print("Lava tool error log below:")
@@ -717,13 +710,9 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         print("===================================")
         print()
 
-        if return_bug_list: # If specified, don't raise
-            return None, None, [x.id for x in bugs_to_inject]
-        else:
-            raise RuntimeError("Build of injected bug failed")
-
-    if return_bug_list: # We now modify bug list to filter out per-line duplicates, pass back to callee if they want it
-        return (build, input_files, [x.id for x in bugs_to_inject])
+        print("Build of injected bugs failed")
+        return (None, input_files, bug_solutions)
+        #raise RuntimeError("Build of injected bug failed")
 
     return (build, input_files, bug_solutions)
 
@@ -878,9 +867,8 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
                         print("... and competition infrastructure agrees")
                         validated &= True
                     else:
-                        pass # TODO - validate these before we use them, but let us get a sane buglist first
-                        #validated &= False
-                        #print("... but competition infrastructure misidentified it")
+                        validated &= False
+                        print("... but competition infrastructure misidentified it")
                 if args.checkStacktrace:
                     if check_stacktrace_bug(lp, project, bug, fuzzed_input):
                         print("... and stacktrace agrees with trigger line")
@@ -943,12 +931,11 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
         print("Validating bug {} of {} ". format(
             bug_index + 1, len(bugs_to_inject)))
 
-        if bug_solutions and bug.id in bug_solutions.keys():
-            print("HAVE A SOLUTION FOR THIS BUG")
+        if bug_solutions and bug.id in bug_solutions.keys(): # We should always have solutions for multidua bugs
             validated = validate_bug(db, lp, project, bug, bug_index, build,
                                      args, update_db, unfuzzed_outputs, competition=competition, solution=bug_solutions[bug.id])
         else:
-            print("No solution for bug with magic={}\nsolutions={}".format(bug.magic, bug_solutions))
+            print("No known solution for bug with magic={}".format(bug.magic))
             validated = validate_bug(db, lp, project, bug, bug_index, build,
                                      args, update_db, unfuzzed_outputs, competition=competition)
         if validated:
