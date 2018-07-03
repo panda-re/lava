@@ -265,7 +265,12 @@ if [ $taint -eq 1 ]; then
         progress "everything" 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
         run_remote "$pandahost" "$python $scripts/bug_mining.py $json $input" "$lf"
         echo -n "Num Bugs in db: "
-        run_remote "$pandahost" "psql -At $db -U postgres -c 'select count(*) from bug'"
+        bug_count=$(run_remote "$pandahost" "psql -At $db -U postgres -c 'select count(*) from bug'")
+        if [ "$bug_count" = "0" ]; then
+            echo "FATAL ERROR: no bugs found"
+            exit 1
+        fi
+        echo $bug_count
         echo
         run_remote "$pandahost" "psql $db -U postgres -c 'select count(*), type from bug group by type order by type'"
     done

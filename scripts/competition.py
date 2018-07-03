@@ -54,6 +54,8 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
     dfl_fileline = {}
     afl_fileline = {}
 
+    fake = False
+
     # Find a set of bugs of allowed_bugtype with limited overlap on trigger and atp location with other selected bugs
     def parse(item):
         if not (item.type in allowed_bugtypes):
@@ -195,8 +197,10 @@ def main():
     if not args.chaff:
         # re-build just with the real bugs. Inject in competition mode. Deduplicate bugs with the same ATP location
         print("Reinject only validated bugs")
-        (build,input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, project_file, \
+        (build, input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, project_file, \
                                               project, args, False, competition=True, validated=True)
+
+        assert build is not None # Injection could fail
 
 
     corpus_dir = join(compdir, "corpora")
@@ -219,7 +223,9 @@ def main():
     # build internal version
     log_build_sh = join(corpdir, "log_build.sh")
     with open(log_build_sh, "w") as build:
-        # TODO fix quotes here if we uncomment
+
+        # TODO fix quotes here if we uncomment this
+
         build.write("" "#!/bin/bash
         pushd `pwd`
         cd {bugs_build}

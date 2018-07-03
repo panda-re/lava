@@ -986,4 +986,9 @@ int main (int argc, char **argv) {
     std::cout << num_potential_bugs << " potential bugs\n";
     std::cout << num_potential_nonbugs << " potential non bugs\n";
 
+    if (num_potential_bugs == 0) {
+        printf("Fatal error: no bugs found by FBI\n");
+        return 1;
+    }
+
 }

@@ -12,7 +12,7 @@
     "df_fixup": "/home/fasano/lava/targets/file/file_fixup.sh {bug_build}",
     "make": "make -C src CFLAGS=-fvisibility=default CFLAGS+='-w' CFLAGS+='-g' -j 16",
     "clean": "make clean >/dev/null",
-    "install": "make -C src install; mkdir -p lava-install/share/misc; cp /home/fasano/lava/file/magic.mgc lava-install/share/misc/",
+    "install": "make -C src install; mkdir -p lava-install/share/misc; cp /home/fasano/lava/targets/file/magic.mgc lava-install/share/misc/",
     "command": "{install_dir}/bin/file -m {install_dir}/share/misc/magic.mgc {input_file}",
     "expect_prompt": "root@debian-i386:~#",
 

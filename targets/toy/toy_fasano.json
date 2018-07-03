@@ -1,6 +1,6 @@
 {
 
-    "qemu": "/home/fasano/git/panda/build/i386-softmmu/qemu-system-i386",
+    "qemu": "/home/fasano/panda/build/i386-softmmu/qemu-system-i386",
     "qcow": "/home/fasano/lava/wheezy_panda2.qcow2",
     "snapshot": "root",
 
@@ -25,5 +25,5 @@
 
     "main_file": [ "toy.c" ],
 
-    "inputs": [ "/home/fasano/lava/targets/toy/testsmall.bin" ]
+    "inputs": [ "/home/fasano/lava/targets/toy/inputs/testsmall.bin" ]
 }

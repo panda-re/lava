@@ -264,7 +264,7 @@ class LavaDatabase(object):
             .filter(Dua.fake_dua == fake)
         if allowed_bugtypes:
             ret = ret.filter(Bug.type.in_(allowed_bugtypes))
-        yield ret # TODO ranomdize?
+        yield ret # TODO randomize- or is it ranomized already?
 
     def uninjected_random_balance(self, fake, num_required, bug_types):
         bugs = []
@@ -402,10 +402,10 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, 
     solutions = {}
     for line in ret[1][0].split("\n"):
         if " == " in line:
-            magic = line.split("0x")[1].split(" ")[0]
-            magic = int(magic, 16)
-            solutions[magic] = []
-            vals = line.split("0x")[2:] # Skip magic
+            bugid = line.split("0x")[1].split(" ")[0]
+            bugid = int(bugid, 16)
+            solutions[bugid] = []
+            vals = line.split("0x")[2:] # Skip bugid
             duas = []
             for val in vals:
                 for idx, c in enumerate(val):
@@ -413,7 +413,7 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, 
                         val = val[:idx]
                         break
                 if not len(val): continue
-                solutions[magic].append(struct.pack("<I", int(val, 16)))
+                solutions[bugid].append(struct.pack("<I", int(val, 16)))
     return solutions
 
 class LavaPaths(object):
@@ -605,18 +605,23 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         #print('all_files: {}'.format(all_files))
         all_files = all_files.union(all_c_files)
 
-    pool = ThreadPool(max(cpu_count()-4, 1))
-    #print("Run lavatool on allfiles: {}".format(all_files))
+    try:
+        pool = ThreadPool(max(cpu_count(), 1))
+    except Exception as e:
+        print("Warning: could not create ThreadPool, running with single-thread. {}".format(e))
+        pool = None
+    
+    #print("Run lavatool on: {}".format(all_files))
 
-    # Use our ThreadPool for modifying source and update bug_solutions
-    """
     def modify_source(filename): # LavaTool only runs on one file at a time
         sleep(random.random()) # Sleep a random # of MS so our lavaTools can seed rand from time and be different
         return run_lavatool(bugs_to_inject, lp, project_file, project, args,
                      llvm_src, filename, competition)
 
-    pool.map(modify_source, all_files) # Needs to update bug_solutions with output
-    """
+    # TODO: Use our ThreadPool for modifying source and update bug_solutions with results
+    #if pool:
+        #pool.map(modify_source, all_files)
+
     bug_solutions =  {}
     for fname in all_files:
         bug_solutions.update(modify_source(fname))
@@ -627,7 +632,12 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
                           cwd=join(lp.bugs_build, src_dir))
 
-    pool.map(apply_replacements, set([dirname(f) for f in all_files]))
+    if pool:
+        pool.map(apply_replacements, set([dirname(f) for f in all_files]))
+    else:
+        for f in set([dirname(f) for f in all_files]):
+            apply_replacements(f)
+
 
     # paranoid clean -- some build systems need this
     if 'clean' in project.keys():
@@ -807,9 +817,8 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
         else:
             # this really is supposed to be a bug
             # we should see a seg fault or something
-            # NB: Wrapping programs in bash transforms rv -> 128 - rv
-            # so e.g. -11 goes to 139.
-            if rv in [-6, -11, 134, 139]:
+            # NB: Wrapping programs in bash transforms rv -> 128 - rv, so we do the mod
+            if (rv%256) > 128:
                 print("RV indicates memory corruption")
                 # Default: not checking that bug manifests at same line as trigger point or is found by competition grading infrastructure
                 validated = True
@@ -886,7 +895,7 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
             validated = validate_bug(db, lp, project, bug, bug_index, build,
                                      args, update_db, unfuzzed_outputs, competition=competition, solution=bug_solutions[bug.id])
         else:
-            print("No known solution for bug with magic={}".format(bug.magic))
+            print("No known solution for bug with id={}".format(bug.id))
             validated = validate_bug(db, lp, project, bug, bug_index, build,
                                      args, update_db, unfuzzed_outputs, competition=competition)
         if validated:

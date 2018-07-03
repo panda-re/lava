@@ -40,8 +40,7 @@ def get_bug_list(args, db, allowed_bugtypes):
         update_db = False
     elif args.many:
         num_bugs_to_inject = int(args.many)
-        print "Selecting %d bugs for injection" % num_bugs_to_inject
-        print db.uninjected_random(False).count()
+        print "Selecting %d bugs for injection of %d available" % (num_bugs_to_inject, db.uninjected_random(False).count())
 
         assert db.uninjected_random(False).count() >= num_bugs_to_inject
         if args.balancebugtype:
@@ -153,7 +152,8 @@ if __name__ == "__main__":
     (update_db, bug_list) = get_bug_list(args, db, allowed_bugtypes)
 
     # add all those bugs to the source code and check that it compiles
-    (build, input_files) = inject_bugs(bug_list, db, lp, project_file,
+        # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
+    (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, project_file,
                                        project, args, update_db, competition=args.competition)
     try:
         # determine which of those bugs actually cause a seg fault
