@@ -3,12 +3,11 @@
     "qcow": "/home/fasano/lava/wheezy_panda2.qcow2",
     "snapshot": "root",
 
-    "directory": "/home/fasano/lava",
-    "name": "file_fasano_dataflow",
-    "tarfile": "/home/fasano/lava/file-5.22-hack.tar.gz",
+    "directory": "/home/fasano/lava/target_injections",
+    "name": "file_fasano",
+    "tarfile": "/home/fasano/lava/target_bins/file-5.22-hack.tar.gz",
 
     "configure": "./configure --prefix=`pwd`/lava-install",
-    "post_install": "echo 'yay'",
 
     "df_fixup": "/home/fasano/lava/targets/file/file_fixup.sh {bug_build}",
     "make": "make -C src CFLAGS=-fvisibility=default CFLAGS+='-w' CFLAGS+='-g' -j 16",

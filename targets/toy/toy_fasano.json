@@ -1,0 +1,29 @@
+{
+
+    "qemu": "/home/fasano/git/panda/build/i386-softmmu/qemu-system-i386",
+    "qcow": "/home/fasano/lava/wheezy_panda2.qcow2",
+    "snapshot": "root",
+
+    "directory": "/home/fasano/lava/target_injections",
+    "name": "toy_fasano",
+    "tarfile": "/home/fasano/lava/target_bins/toy.tar.gz",
+
+    "configure": "true",
+    "make": "make CFLAGS+=-g",
+    "clean": "make clean",
+    "install": "make install",
+    "command": "{install_dir}/bin/toy {input_file}",
+
+    "expect_prompt": "root@debian-i386:~#",
+
+    "db": "toy_fasano",
+
+    "max_liveness": 100000,
+    "max_cardinality": 100,
+    "max_tcn": 100000,
+    "max_lval_size": 100,
+
+    "main_file": [ "toy.c" ],
+
+    "inputs": [ "/home/fasano/lava/targets/toy/testsmall.bin" ]
+}

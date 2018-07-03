@@ -3,13 +3,11 @@
     "qcow": "/home/fasano/lava/wheezy_panda2.qcow2",
     "snapshot": "root",
 
-    "directory": "/home/fasano/lava",
-    "name": "libyaml_fasano_g3fv_c",
-    "tarfile": "/home/fasano/lava/libyaml2.tar.gz",
+    "directory": "/home/fasano/lava/target_injections",
+    "name": "libyaml_fasano",
+    "tarfile": "/home/fasano/lava/target_bins/libyaml2.tar.gz",
 
-    "_configure_comment": "Running configure, make and then make install must put binaries in build_path/lava-install/... Make sure you don't set an rpath (configure --disable-rpath)",
     "configure": "./configure --prefix=`pwd`/lava-install --disable-rpath",
-
     "make": "make CFLAGS=-fvisibility=default CFLAGS+=-g -j 16 test",
     "clean": "make clean; make -C tests clean",
     "install": "make install",
