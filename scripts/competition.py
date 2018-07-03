@@ -49,7 +49,7 @@ def run_builds(scripts):
 
 def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
     #XXX This function is prtty gross
-    max_duplicates_per_line = 0 # Max duplicates we *try* to inject per line
+    max_duplicates_per_line = 50 # Max duplicates we *try* to inject per line. After validation, we filter down to ~1 per line
     bugs_and_non_bugs = []
     dfl_fileline = {}
     afl_fileline = {}
@@ -218,15 +218,10 @@ def main():
     bd = join(corpdir, "build-dir")
     shutil.copytree(lava_bd, bd)
 
-    # diversify
-    """
     # build internal version
     log_build_sh = join(corpdir, "log_build.sh")
     with open(log_build_sh, "w") as build:
-
-        # TODO fix quotes here if we uncomment this
-
-        build.write("" "#!/bin/bash
+        build.write("""#!/bin/bash
         pushd `pwd`
         cd {bugs_build}
 
@@ -240,7 +235,7 @@ def main():
         mv lava-install/ {internal_builddir}
 
         popd
-        " "".format(
+        """.format(
             bugs_build=bd,
             make_clean = project["clean"] if "clean" in project.keys() else "",
             configure=project['configure'],
@@ -251,6 +246,8 @@ def main():
             ))
     run_builds([log_build_sh])
 
+    # diversify
+    """
     if args.diversify:
         print('Starting diversification\n')
         compile_commands = join(bugdir, lp.source_root, "compile_commands.json")
@@ -356,28 +353,6 @@ def main():
     #lp.bugs_install = join(corpdir,"lava-install") # Change to be in our corpdir
 
     # Save the commands we use into files so we can rerun later
-    build_sh = join(corpdir, "build.sh")
-    with open(build_sh, "w") as build:
-        build.write("""#!/bin/bash
-        pushd `pwd`
-        cd {bugs_build}
-        {make_clean}
-        {configure}
-        {make}
-        {install}
-        {post_install}
-        mv lava-install {outdir}
-        popd
-        """.format(
-            bugs_build=bd,
-            make_clean = project["clean"] if "clean" in project.keys() else "",
-            configure=project['configure'],
-            make=project['make'],
-            install=project['install'],
-            outdir=join(corpdir, "lava-install-internal"),
-            post_install=project['post_install'] if "post_install" in project.keys() else ""
-        ))
-
     public_build_sh = join(corpdir, "public_build.sh") # Simple
     with open(public_build_sh, "w") as build:
         build.write("""#!/bin/bash

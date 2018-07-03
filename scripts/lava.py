@@ -373,7 +373,10 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, sol
             for (i, offset) in zip(range(4), fuzz_labels):
                 #print("i=%d offset=%d len(file_bytes)=%d\t set to value=%s" % (i,offset,len(file_bytes), magic_val[i]))
                 file_bytes[offset] = magic_val[i]
-    return file_bytes
+
+    with open(new_filename, 'w') as fuzzed_f:
+        fuzzed_f.write(file_bytes)
+
 
 
 # run lavatool on this file to inject any parts of this list of bugs
