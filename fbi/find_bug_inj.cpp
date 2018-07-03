@@ -962,19 +962,10 @@ int main (int argc, char **argv) {
                 << num_fake_duas << " fake duas\n";
         }
 
-        /*
-        if (num_potential_bugs > 100) {
-            std::cout << "DEBUG - found 100 bugs- ending FBI early\n";
-            break;
-        }
-        */
-
-        /*
-        if (num_potential_bugs > 1000) {
+        if (debug && num_potential_bugs > 1000) {
             std::cout << "Found 1000 bugs- ending FBI early\n";
             break;
         }
-        */
 
         if (ple->taint_query_pri) {
             taint_query_pri(ple);

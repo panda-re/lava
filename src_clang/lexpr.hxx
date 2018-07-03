@@ -230,7 +230,7 @@ LExpr UIntCast(LExpr arg) { return LCast("const unsigned int *", arg); }
 
 LExpr SelectCast(const SourceLval *lval, Range selected) {
     const std::string &lval_name = lval->ast_name;
-    //assert(selected.size() == 4); // Uhhh? 
+    assert(selected.size() >= 4); // Maybe too specific?
 
     LExpr pointer = selected.low % 4 == 0
         ? UIntCast(LStr(lval_name)) + LDecimal(selected.low / 4)
@@ -255,16 +255,5 @@ template<LExpr Get(const Bug *)>
 LExpr MagicTest(const Bug *bug) {
     return MagicTest(bug->magic, Get(bug));
 }
-
-/*
-template<typename UInt>
-LExpr MagicTest2(UInt magic_value1, UInt magic_value2) {
-    return LHex(magic_value1) == LHex(magic_value2);
-}
-
-template<LExpr Get(const Bug *, const Bug *)>
-LExpr MagicTest2(const Bug *bug1, const DuaBytes *extra) {
-    return MagicTest2(bug1->magic, extra);
-}*/
 
 #endif

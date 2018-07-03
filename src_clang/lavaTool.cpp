@@ -867,95 +867,6 @@ class FixVoidArg : public ast_matchers::MatchFinder::MatchCallback {
 };
 }
 
-/*
-struct MacroDeclArgAdditionHandler : public MatchFinder::MatchCallback {
-    MacroDeclArgAdditionHandler(Modifier &Mod) : Mod(Mod) {}
-
-    virtual void run(const MatchFinder::MatchResult &Result) {
-        const SourceManager &sm = *Result.SourceManager;
-        auto nodesMap = Result.Nodes.getMap();
-
-        debug(MATCHER) << "====== Found MACRO DECL Match =====\n";
-        for (auto &keyValue : nodesMap) {
-            const Stmt *stmt = keyValue.second.get<Stmt>();
-            if (stmt) {
-                SourceLocation start = stmt->getLocStart();
-                if (!sm.getFilename(start).empty() && sm.isInMainFile(start)
-                        && !sm.isMacroArgExpansion(start)) {
-                    debug(MATCHER) << keyValue.first << ": " << ExprStr(stmt) << " ";
-                    stmt->getLocStart().print(debug(MATCHER), sm);
-                    debug(MATCHER) << "\n";
-                    if (DEBUG_FLAGS & MATCHER) stmt->dump();
-                } else return;
-            }
-        }
-        //handle(Result); // TODO
-    }
-
-    void AddArg(const FunctionDecl *func) {
-        SourceLocation loc = clang::Lexer::findLocationAfterToken(
-                func->getLocation(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
-
-        if (func->getNumParams() == 0) {
-            // Foo(void) is considered to have 0 params which can lead to `foo(int *data_flowvoid)`
-            // This is fixed by always running FixVoidArg before we get here
-            Mod.InsertAt(loc, "int *" ARG_NAME);
-        } else {
-            Mod.InsertAt(loc, "int *" ARG_NAME ", ");
-        }
-    }
-
-    virtual void handle(const MatchFinder::MatchResult &Result) {
-        const FunctionDecl *func =
-            Result.Nodes.getNodeAs<FunctionDecl>("funcDecl");
-
-        debug(FNARG) << "adding arg to " << func->getNameAsString() << "\n";
-
-        if (func->isThisDeclarationADefinition()) debug(FNARG) << "has body\n";
-        if (func->getBody()) debug(FNARG) << "can find body\n";
-
-        if (func->getLocation().isInvalid()) return;
-        if (func->getNameAsString().find("lava") == 0) return;
-        if (Mod.sm->isInSystemHeader(func->getLocation())) return;
-        if (Mod.sm->getFilename(func->getLocation()).empty()) return;
-
-        // Comment out format attrs
-        if (func->hasAttrs()) {
-          auto attrs = func->getAttrs();
-          for (const auto &a : func->getAttrs()) {
-            if (a->getKind() == attr::Format) {
-              debug(FNARG) << "found format attr\n";
-              Mod.InsertAt(a->getRange().getBegin(), ")); //");
-            }
-            debug(FNARG) << a->getSpelling() << "\n";
-          }
-        }
-
-        debug(FNARG) << "actually adding arg\n";
-
-        if (func->isMain()) {
-            if (func->isThisDeclarationADefinition()) { // no prototype for main.
-                CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
-                assert(body);
-                Stmt *first = *body->body_begin();
-                assert(first);
-
-                std::stringstream data_array;
-                data_array << "int data[" << data_slots.size() << "] = {0};\n";
-                data_array << "int *" ARG_NAME << "= &data;\n";
-                Mod.InsertAt(first->getLocStart(), data_array.str());
-            }
-        } else {
-            const FunctionDecl *bodyDecl = nullptr;
-            func->hasBody(bodyDecl);
-        }
-        return;
-    }
-protected:
-    Modifier &Mod;
-};
-*/
-
 struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
 
@@ -1144,14 +1055,6 @@ public:
                     callExpr().bind("callExpr"),
                     makeHandler<CallExprArgAdditionHandler>());
 
-            // Macro declaration TODO
-            // TODO not finding any matches
-            /*addMatcher(
-                    fieldDecl().bind("fieldDecl"), // TODO add filter to ensure is macro
-                    new MacroDeclArgAdditionHandler(Mod));*/
-
-            // Macro call TODO
-
             // Struct
             addMatcher(
                     fieldDecl(anyOf(hasName("as_number"), hasName("as_string"))).bind("fieldDecl"),
@@ -1222,7 +1125,7 @@ public:
             }
         }
 
-        debug(INJECT) << "Inserting Macros and lava_set/get or dataflow at top of file\n";
+        debug(INJECT) << "Inserting macros and lava_set/get or dataflow at top of file\n";
         TUReplace.Replacements.emplace_back(Filename, 0, 0, insert_at_top);
 
         for (auto it = MatchHandlers.begin();
@@ -1313,12 +1216,12 @@ int main(int argc, const char **argv) {
 
             mark_for_siphon(bug->trigger);
 
-            //if (bug->type != Bug::RET_BUFFER) {
+            if (bug->type != Bug::RET_BUFFER) {
                 for (uint64_t dua_id : bug->extra_duas) {
                     const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
                     mark_for_siphon(dua_bytes);
                 }
-            //}
+            }
         }
     }
 

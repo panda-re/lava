@@ -67,11 +67,12 @@ num_trials=0
 kt=""
 demo=0
 ATP_TYPE=""
+bugtypes="ptr_add,rel_write"
 # -s means skip everything up to injection
 # -i 15 means inject 15 bugs (default is 1)
 echo
 progress "everything" 0 "Parsing args"
-while getopts  "arcqmtb:i:z:kd" flag
+while getopts  "arcqmtb:i:z:t:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -79,7 +80,7 @@ do
       make=1
       taint=1
       inject=1
-      num_trials=4
+      num_trials=3
       progress "everything" 0 "All steps will be executed"
   fi
   if [ "$flag" = "r" ]; then
@@ -107,6 +108,10 @@ do
       inject=1
       num_trials=$OPTARG
       progress "everything" 0 "Inject step will be executed: num_trials = $num_trials"
+  fi
+  if [ "$flag" = "t" ]; then
+      bugtypes=$OPTARG
+      progress "competition" 0 "Injecting bugs of type(s): $bugtypes"
   fi
   if [ "$flag" = "z" ]; then
       knob=$OPTARG
@@ -142,7 +147,7 @@ fi
 json="$(realpath $1)"
 
 # how many bugs will be injected at a time
-many=100
+many=50
 
 if [[ $demo -eq 1 ]]
 then
@@ -280,7 +285,7 @@ if [ $inject -eq 1 ]; then
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode $kt -t ptr_add,rel_write $json" "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode $kt -t $bugtypes $json" "$lf"
     grep yield "$lf"
     done
 fi

@@ -25,7 +25,7 @@ from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     fuzzed_input_for_bug, get_trigger_line, AttackPoint, Bug, get_allowed_bugtype_num
 
 # from pycparser.diversifier.diversify import diversify
-from process_compile_commands import get_c_files
+#from process_compile_commands import get_c_files
 
 
 RETRY_COUNT = 0
@@ -47,71 +47,60 @@ def run_builds(scripts):
 # further, we require that no two bugs or non-bugs have same file/line dua
 # because otherwise the db might give us all the same dua
 
-def competition_bugs_and_non_bugs(num, db, allowed_bugtypes, buglist):
-    #XXX This works but it's gross and non-pythonic
+def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
+    #XXX This function is prtty gross
     max_duplicates_per_line = 0 # Max duplicates we *try* to inject per line
     bugs_and_non_bugs = []
     dfl_fileline = {}
     afl_fileline = {}
 
-    def get_bugs_non_bugs(fake, limit):
-        # Find a set of bugs of allowed_bugtype with limited overlap on trigger and atp location with other selected bugs
-        def parse(item):
-            if not (item.type in allowed_bugtypes):
-                #print("skipping type {} not in {}".format(item.type, allowed_bugtypes))
-                return True
-            dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
-            afl = (item.atp.loc_filename, item.atp.loc_begin_line, item.atp.loc_begin_column)
-
-            if not (dfl in dfl_fileline.keys()): dfl_fileline[dfl] = 0
-            if not (afl in afl_fileline.keys()): afl_fileline[afl] = 0
-
-            if (dfl_fileline[dfl] > max_duplicates_per_line): 
-                #print "skipping dfl %s" % (str(dfl))
-                return True
-            if (afl_fileline[afl] > max_duplicates_per_line): 
-                #print "skipping afl %s" % (str(afl))
-                return True
-            if fake:
-                print "non-bug", 
-            else:
-                print "bug    ",
-            print ' dua_fl={} atp_fl={}'.format(str(dfl), str(afl))
-            dfl_fileline[dfl] += 1
-            afl_fileline[afl] += 1
-            bugs_and_non_bugs.append(item)
-            if (len(bugs_and_non_bugs) >= limit):
-                print("Abort bug-selection because we already found {} bugs to inject".format(limit))
-                return False
+    # Find a set of bugs of allowed_bugtype with limited overlap on trigger and atp location with other selected bugs
+    def parse(item):
+        if not (item.type in allowed_bugtypes):
+            #print("skipping type {} not in {}".format(item.type, allowed_bugtypes))
             return True
+        dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
+        afl = (item.atp.loc_filename, item.atp.loc_begin_line, item.atp.loc_begin_column)
 
-        """
-        # Now with even more .~.~GeNeRaToRs~.~. so we don't run out of memory if there are too many bugs
-        if buglist is None:
-            for item_chunk in db.uninjected_random_y(fake, allowed_bugtypes):
-                for item in item_chunk:
-                    if not parse(item):
-                        break
-        """
-        if buglist is None:
-            abort = False
-            atp_types = [AttackPoint.FUNCTION_CALL, AttackPoint.POINTER_WRITE] # TODO we don't find rel_writes at function calls
-            #for atp_items in db.uninjected_random_y(fake, allowed_bugtypes=allowed_bugtypes): #old stylet
-            for atp_items in db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit): # Get lim bugs evenly split across all ATPs
-                for item in atp_items:
-                    if not parse(item):
-                        abort = True
-                        break
-                if abort:
-                    break
+        if not (dfl in dfl_fileline.keys()): dfl_fileline[dfl] = 0
+        if not (afl in afl_fileline.keys()): afl_fileline[afl] = 0
+
+        if (dfl_fileline[dfl] > max_duplicates_per_line):
+            #print "skipping dfl %s" % (str(dfl))
+            return True
+        if (afl_fileline[afl] > max_duplicates_per_line):
+            #print "skipping afl %s" % (str(afl))
+            return True
+        if fake:
+            print "non-bug",
         else:
-            for item in db.session.query(Bug).filter(Bug.id.in_(buglist)).all():
+            print "bug    ",
+        print ' dua_fl={} atp_fl={}'.format(str(dfl), str(afl))
+        dfl_fileline[dfl] += 1
+        afl_fileline[afl] += 1
+        bugs_and_non_bugs.append(item)
+        if (len(bugs_and_non_bugs) >= limit):
+            print("Abort bug-selection because we already found {} bugs to inject".format(limit))
+            return False
+        return True
+
+    if buglist is None:
+        abort = False
+        atp_types = [AttackPoint.FUNCTION_CALL, AttackPoint.POINTER_WRITE] # TODO we don't find rel_writes at function calls
+
+        # Get limit bugs at each ATP
+        for atp_items in db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit):
+            for item in atp_items:
                 if not parse(item):
+                    abort = True
                     break
+            if abort:
+                break
+    else:
+        for item in db.session.query(Bug).filter(Bug.id.in_(buglist)).all():
+            if not parse(item):
+                break
 
-
-    get_bugs_non_bugs(False, num) # This populates bugs_and_non_bugs
-    # get_bugs_non_bugs(True, 2*num)
     return [b.id for b in bugs_and_non_bugs]
 
 def main():
@@ -126,13 +115,11 @@ def main():
             help = 'Inject this list of bugs')
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
             help = ('Expected exit code when program exits without crashing. Default 0'))
-    parser.add_argument('-i', '--diversify', action="store_true", default=False,
-            help = ('Diversify source code. Default false.'))
-    parser.add_argument('-s', '--skipinject', action="store_true", default=False,
-            help = ('Skip injection step. Use if you must make manual changes to src.'))
+    #parser.add_argument('-i', '--diversify', action="store_true", default=False,
+            #help = ('Diversify source code. Default false.'))
     parser.add_argument('-d', '--arg_dataflow', action="store_true", default=False,
             help = ('Inject bugs using function args instead of globals'))
-    parser.add_argument('-c', '--chaff', action="store_true", default=False,
+    parser.add_argument('-c', '--chaff', action="store_true", default=False, # TODO chaf and unvalided bugs aren't always the same thing
             help = ('Leave unvalidated bugs in the binary'))
     parser.add_argument('-t', '--bugtypes', action="store", default="rel_write",
                         help = ('bug types to inject'))
@@ -159,11 +146,10 @@ def main():
     bugs_parent = bugdir
     lp.set_bugs_parent(bugdir)
 
-    if not args.skipinject:
-        try:
-            shutil.rmtree(bugdir)
-        except:
-            pass
+    try:
+        shutil.rmtree(bugdir)
+    except:
+        pass
 
     args.knobTrigger = -1
     args.checkStacktrace = False
@@ -185,19 +171,15 @@ def main():
     bug_list_str = ','.join([str(bug_id) for bug_id in bug_list])
     print(bug_list_str)
 
-    if args.skipinject:
-        project['configure'] = "echo 'no reconfigure- Running with skip inject'";
-
     real_bug_list = []
     while len(real_bug_list) < int(args.minYield):
         # add either bugs to the source code and check that we can still compile
         (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, project_file, \
                                           project, args, False, competition=True,
                                           validated=False)
-        assert build is not None
 
-        # bug is valid if seg fault (or bus error)
-        # AND if stack trace indicates bug manifests at trigger line we inserted
+        assert build is not None # build is none when injection fails. Could block here to allow for manual patches
+
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
                                           args, False, competition=True, bug_solutions=bug_solutions)
 
@@ -232,10 +214,13 @@ def main():
     bd = join(corpdir, "build-dir")
     shutil.copytree(lava_bd, bd)
 
-    # build internal versio)n
+    # diversify
+    """
+    # build internal version
     log_build_sh = join(corpdir, "log_build.sh")
     with open(log_build_sh, "w") as build:
-        build.write("""#!/bin/bash
+        # TODO fix quotes here if we uncomment
+        build.write("" "#!/bin/bash
         pushd `pwd`
         cd {bugs_build}
 
@@ -249,7 +234,7 @@ def main():
         mv lava-install/ {internal_builddir}
 
         popd
-        """.format(
+        " "".format(
             bugs_build=bd,
             make_clean = project["clean"] if "clean" in project.keys() else "",
             configure=project['configure'],
@@ -260,7 +245,6 @@ def main():
             ))
     run_builds([log_build_sh])
 
-    # diversify
     if args.diversify:
         print('Starting diversification\n')
         compile_commands = join(bugdir, lp.source_root, "compile_commands.json")
@@ -300,6 +284,7 @@ def main():
         new_yield = len(real_bug_list)
         print('Old yield: {}'.format(old_yield))
         print('New yield: {}'.format(new_yield))
+    """
 
     # Corpus directory structure: lava-corpus-[date]/
     #   inputs/
@@ -319,24 +304,14 @@ def main():
 
     predictions = []
     bug_ids = []
-    with open(join(corpdir, "ans2"), "w") as ans2:
-        for bug in  db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all():
-            prediction = "{}:{}".format(basename(bug.atp.loc_filename),
-                                        get_trigger_line(lp, bug))
-            ans2.write(str(bug)+"\n") # Simple
 
-            if get_trigger_line(lp, bug):
-                print "Bug %d: prediction = [%s]" % (bug.id, prediction)
-                print str(bug)
-            #else:
-                #print("Warning - unknown trigger, skipping for answer key")
-
-#        assert not (prediction in predictions)
-            fuzzed_input = fuzzed_input_for_bug(lp, bug) # TODO - this is broken for multidua bugs - is it?
-            (dc, fi) = os.path.split(fuzzed_input)
-            shutil.copy(fuzzed_input, inputsdir)
-            predictions.append((prediction, fi))
-            bug_ids.append(bug.id)
+    for bug in db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all():
+        prediction = basename(bug.atp.loc_filename)
+        fuzzed_input = fuzzed_input_for_bug(lp, bug)
+        (dc, fi) = os.path.split(fuzzed_input)
+        shutil.copy(fuzzed_input, inputsdir)
+        predictions.append((prediction, fi))
+        bug_ids.append(bug.id)
 
     print "Answer key:"
     with open(join(corpdir, "ans"), "w") as ans:
@@ -346,7 +321,7 @@ def main():
 
     with open(join(corpdir, "add_bugs.sql"), "w") as f:
         f.write("/* This file will add all the generated lava_id values to the DB, you must update binary_id */\n")
-        f.write("\set binary_id -1\n")
+        f.write("\set binary_id 0\n")
         for bug_id in bug_ids:
             f.write("insert into \"bug\" (\"lava_id\", \"binary\") VALUES (%d, :binary_id); \n" % (bug_id))
 
@@ -374,7 +349,6 @@ def main():
 
     #lp.bugs_install = join(corpdir,"lava-install") # Change to be in our corpdir
 
-# TODO why do we have both log_build and build.sh?
     # Save the commands we use into files so we can rerun later
     build_sh = join(corpdir, "build.sh")
     with open(build_sh, "w") as build:
@@ -429,7 +403,7 @@ def main():
         build.write("""#!/bin/bash
 rm -rf validated_inputs.txt validated_bugs.txt
 
-trap "echo 'CRASH'" {{1..31}}
+trap "echo 'CRASH'" {{3..31}}
 
 for fname in {inputdir}; do
     # Get bug ID from filename (# after last -)

@@ -25,7 +25,7 @@ RUN tar -xJf clang-tools-extra-$release.src.tar.xz
 RUN mv clang-tools-extra-$release.src extra
 
 WORKDIR /$llvm_version
-RUN ./configure --enable-optimized --disable-assertions --enable-targets=x86,arm --enable-shared --enable-pic --host=i486-linux-gnu --build=i486-linux-gnu
+RUN ./configure --enable-optimized --disable-assertions --enable-targets=x86 --enable-shared --enable-pic --host=i486-linux-gnu --build=i486-linux-gnu
 RUN REQUIRES_RTTI=1 make -j $(nproc)
 
 RUN apt-get install -y git jq bc python python-colorama zsh libjsoncpp-dev \

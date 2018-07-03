@@ -34,7 +34,7 @@ diversify=""
 skipinject=""
 usechaff=""
 dataflow=""
-bugtype="ptr_add,rel_write"
+bugtypes="ptr_add,rel_write"
 echo
 progress "competition" 0 "Parsing args"
 while getopts  "sbdiackm:l:n:e:t:" flag

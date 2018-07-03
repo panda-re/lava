@@ -25,8 +25,7 @@ from time import sleep
 
 from composite import Composite
 from test_crash import process_crash
-
-from process_compile_commands import get_c_files
+from process_compile_commands import get_c_files, process_compile_commands
 
 Base = declarative_base()
 
@@ -240,7 +239,7 @@ class LavaDatabase(object):
         atps = [r.id for r in _atps]
         #print(atps)
         print("Found {} distinct ATPs".format(len(atps)))
-    
+
         results = []
         for atp in atps:
             q = self.session.query(Bug).filter(Bug.atp_id==atp).filter(~Bug.builds.any()) \
@@ -252,9 +251,8 @@ class LavaDatabase(object):
                 q = q.filter(Bug.type.in_(allowed_bugtypes))
 
             results.append(q.limit(atp_lim).all())
-
         return results
-            
+
 
     def uninjected_random_y(self, fake, allowed_bugtypes=None, yield_count=100):
         # Same as above but yield results
@@ -316,26 +314,7 @@ def run_cmd_notimeout(cmd, **kwargs):
 # fuzz_labels_list is a list of listof tainted byte offsets within file filename.
 # replace those bytes with random in a new file named new_filename
 
-class FakeBug:
-    magic = 0
-    type = None
-    id = "fake"
-    def __init__(self, magic, type):
-        self.magic = magic
-        self.type = type
-
 def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, solution=None):
-    if isinstance(bug, int): # We can handle getting bug by id instead
-        bug = FakeBug(bug, Bug.REL_WRITE)
-    else:
-        print("mutfile(\"{}\", {}, \"{}\", {}, solution={})\n".format(filename, repr(fuzz_labels_list), new_filename, bug.magic, solution))
-    mutated_buffer = _mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, solution=solution)
-
-    with open(new_filename, 'w') as fuzzed_f:
-        fuzzed_f.write(mutated_buffer)
-    
-
-def _mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, solution=None):
     if kt:
         assert (knob < 2**16-1)
         bug_trigger = bug.magic & 0xffff
@@ -347,17 +326,9 @@ def _mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, so
     # change first 4 bytes in dua to magic value
 
     if bug.type == Bug.REL_WRITE:
-        assert(len(fuzz_labels_list) == 3) # Not sure how else to handle it
-
-        # A ^ B = m * C
-        # b = rand1
-        # c = rand2
-        # a^rand1 = m*rand2
-        # a = (m*rand2)^rand1)
+        assert(len(fuzz_labels_list) == 3) # Must have 3 sets of labels
 
         m = bug.magic
-
-        # m == a + b + c
         a,b,c = 0,0,0
 
         if solution:
@@ -365,6 +336,7 @@ def _mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, so
             b_val = solution[1]
             c_val = solution[2]
         else:
+            # If we don't have solutions from lavaTool, hope this code matches lavaTool and generate non-ascii solutions here
             if (m%NUM_BUGTYPES == 0): # A + B = M * C
                 b = m
                 c = 1
@@ -382,30 +354,24 @@ def _mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, so
             if (m%NUM_BUGTYPES == 3): # Intentional chaff bug - don't even bother
                 pass
             
-            print("Mutfile with triggers:\n\tA=0x%x\n\tB=0x%x\n\tC=0x%x\n" % (a,b,c))
+            #print("Mutfile with triggers:\n\tA=0x%x\n\tB=0x%x\n\tC=0x%x\n" % (a,b,c))
             a_val = struct.pack("<I", a)
             b_val = struct.pack("<I", b)
             c_val = struct.pack("<I", c)
 
-        #print("{}^{} =?= {} * {}".format(a, b, bug.magic, c))
-        #print("{} =?= {}".format((a^b)&0xFFFFFFFF, (bug.magic*c)&0xFFFFFFFF))
-
         for (i, offset) in zip(range(4), fuzz_labels_list[0]):
-            #print("i=%d offset=%d set to value=%s" % (i,offset,a_val[i]))
             file_bytes[offset] = a_val[i]
 
         for (i, offset) in zip(range(4), fuzz_labels_list[1]):
-            #print("i=%d offset=%d set to value=%s" % (i,offset,b_val[i]))
             file_bytes[offset] = b_val[i]
 
         for (i, offset) in zip(range(4), fuzz_labels_list[2]):
-            #print("i=%d offset=%d set to value=%s" % (i,offset,c_val[i]))
             file_bytes[offset] = c_val[i]
 
     else:
         for fuzz_labels in fuzz_labels_list:
             for (i, offset) in zip(range(4), fuzz_labels):
-                print("i=%d offset=%d len(file_bytes)=%d\t set to value=%s" % (i,offset,len(file_bytes), magic_val[i]))
+                #print("i=%d offset=%d len(file_bytes)=%d\t set to value=%s" % (i,offset,len(file_bytes), magic_val[i]))
                 file_bytes[offset] = magic_val[i]
     return file_bytes
 
@@ -509,7 +475,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         run(['git', 'config', 'user.email', 'nobody@nowhere'])
         run(['git', 'add', '-f', '-A', '.'])
         run(['git', 'commit', '-m', 'Unmodified source.'])
-    if not os.path.exists(join(lp.bugs_build, 'config.log')) or True:
+    if not os.path.exists(join(lp.bugs_build, 'config.log')):
         print('Re-configuring...')
         run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
     if not os.path.exists(join(lp.bugs_build, 'btrace.log')):
@@ -535,7 +501,6 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
             llvm_src + "/Release/lib/clang/3.6.2/include"])
         # also insert instr for main() fn in all files that need it
 
-        from process_compile_commands import process_compile_commands
         process_compile_commands(
                 join(lp.bugs_build, 'compile_commands.json'),
                 join(lp.bugs_top_dir, '../extra_compile_commands.json')
@@ -563,7 +528,6 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         except subprocess32.CalledProcessError:
             pass
 
-    # TODO, limit to one per line - Either join onto sourcelval table here or after - Look at the code in competition.py
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
 
     if validated: # After validating bugs, reduce how many duplicate ATPs we'll actually inject
@@ -642,18 +606,20 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         all_files = all_files.union(all_c_files)
 
     pool = ThreadPool(max(cpu_count()-4, 1))
+    #print("Run lavatool on allfiles: {}".format(all_files))
+
+    # Use our ThreadPool for modifying source and update bug_solutions
+    """
     def modify_source(filename): # LavaTool only runs on one file at a time
         sleep(random.random()) # Sleep a random # of MS so our lavaTools can seed rand from time and be different
         return run_lavatool(bugs_to_inject, lp, project_file, project, args,
                      llvm_src, filename, competition)
 
-    print("Run lavatool on allfiles: {}".format(all_files))
-    #pool.map(modify_source, all_files)
+    pool.map(modify_source, all_files) # Needs to update bug_solutions with output
+    """
     bug_solutions =  {}
     for fname in all_files:
         bug_solutions.update(modify_source(fname))
-
-    print(bug_solutions)
 
     clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
     def apply_replacements(src_dir):
@@ -675,6 +641,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     if competition:
         makecmd += " CFLAGS+=\"-DLAVA_LOGGING\""
 
+    # TODO: once dataflow is more stable, remove this
     if args.arg_dataflow and 'df_fixup' in project.keys():
         project['df_fixup'] = project['df_fixup'].format(bug_build=lp.bugs_build)
         print("Fixing up dataflow with df_fixup command: {}".format(project['df_fixup']))
@@ -696,7 +663,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     if rv == 0:
         # build success
         print("build succeeded")
-        run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
+        #run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]) #TODO can we delete this?
         check_call(project['install'], cwd=lp.bugs_build, shell=True)
         if 'post_install' in project.keys():
             check_call(project['post_install'], cwd=lp.bugs_build, shell=True)
@@ -712,7 +679,6 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
 
         print("Build of injected bugs failed")
         return (None, input_files, bug_solutions)
-        #raise RuntimeError("Build of injected bug failed")
 
     return (build, input_files, bug_solutions)
 
@@ -741,21 +707,7 @@ def run_modified_program(project, install_dir, input_file, timeout, shell=False)
 def get_trigger_line(lp, bug):
 # TODO the triggers aren't a simple mapping from trigger of 0xlava - bug_id - But are the lava_get's still corelated to triggers?
     with open(join(lp.bugs_build, bug.atp.loc_filename), "r") as f:
-        """
-        lava_get = "lava_get({})".format(bug.trigger.id)
-        atp_lines = [line_num + 1 for line_num, line in enumerate(f) if
-                    lava_get in line]
 
-TODO look it up in the database - 
-    select * from bug where id=72966;
-  id   | type | trigger | trigger_lval | atp | max_liveness | extra_duas |   magic
-  -------+------+---------+--------------+-----+--------------+------------+------------
-   72966 |    2 |     406 |          317 | 420 |            0 | {273,337}  | 1078163776
-
-   file_rode0day_18_06=# select * from sourcelval where id=317;
-   [the data we actually want here]
-
-        """
         # TODO: should really check for lava_get(bug_id), but bug_id in db isn't matching source
         # for now, we'll just look for "(0x[magic]" since that seems to always be there, at least for
         # old bug types
@@ -828,7 +780,6 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     unfuzzed_input = unfuzzed_input_for_bug(lp, bug)
     fuzzed_input = fuzzed_input_for_bug(lp, bug)
     print(str(bug))
-    print("unfuzzed = [%s]" % unfuzzed_input)
     print("fuzzed = [%s]" % fuzzed_input)
     mutfile_kwargs = {}
     if args.knobTrigger != -1:
