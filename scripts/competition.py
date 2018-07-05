@@ -23,7 +23,7 @@ from os.path import basename, dirname, join, abspath, exists
 from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     run_cmd, run_cmd_notimeout, mutfile, inject_bugs, LavaPaths, \
     validate_bugs, run_modified_program, unfuzzed_input_for_bug, \
-    fuzzed_input_for_bug, get_trigger_line, AttackPoint
+    fuzzed_input_for_bug, get_trigger_line, AttackPoint, Bug, get_allowed_bugtype_num
 
 
 RETRY_COUNT = 0
@@ -44,51 +44,35 @@ def run_builds(scripts):
 # that allows us to easily evaluate systems which say there is a bug at file/line.
 # further, we require that no two bugs or non-bugs have same file/line dua
 # because otherwise the db might give us all the same dua
-def competition_bugs_and_non_bugs(num, db):
+
+def competition_bugs_and_non_bugs(num, db, allowed_bugtypes):
+    max_duplicates_per_line = 2
     bugs_and_non_bugs = []
-    fileline = set()
+    dfl_fileline = {}
+    afl_fileline = {}
     def get_bugs_non_bugs(fake, limit):
         items = db.uninjected_random(fake)
         for item in items:
+            if not (item.type in allowed_bugtypes):
+                continue
             dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
             afl = (item.atp.loc_filename, item.atp.loc_begin_line)
-            # Skip this one if we've already used an ATP or DUA with the same line. Or if this is a function call atp
-            if (dfl in fileline) or (afl in fileline) or (item.atp.typ == AttackPoint.FUNCTION_CALL):
-                continue
+            if (dfl in dfl_fileline and dfl_fileline[dfl] > max_duplicates_per_line): continue
+            if (afl in afl_fileline and afl_fileline[afl] > max_duplicates_per_line): continue
+            if not (dfl in dfl_fileline): dfl_fileline[dfl] = 0
+            if not (afl in afl_fileline): afl_fileline[afl] = 0
             if fake:
                 print "non-bug", 
             else:
                 print "bug    ", 
             print ' dua_fl={} atp_fl={}'.format(str(dfl), str(afl))
-            fileline.add(dfl)
-            fileline.add(afl)
+            dfl_fileline[dfl] += 1
+            afl_fileline[afl] += 1
             bugs_and_non_bugs.append(item)
             if (len(bugs_and_non_bugs) == limit):
                 break
     get_bugs_non_bugs(False, num)
-    get_bugs_non_bugs(True, 2*num)
-    return [b.id for b in bugs_and_non_bugs]
-
-# collect num bugs AND non-bugs
-# with the following constraints
-# 1. Each Atp has exatactly one bug
-# 2. The bug trigger lval is randomized among all bugs at some atp
-def more_competition_bugs_and_non_bugs(db):
-    bugs_and_non_bugs = []
-    atp_dua_map = {}
-    items = db.uninjected_random(False)
-    for item in items:
-        if item.type != 0:
-            continue
-        dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
-        afl = (item.atp.loc_filename, item.atp.loc_begin_line)
-        if afl not in atp_dua_map or atp_dua_map != None:
-            atp_dua_map[afl] = [(item, dfl)]
-        else:
-            atp_dua_map[afl].append((item, dfl))
-
-    for atp in atp_dua_map:
-        bugs_and_non_bugs.append(random.choice(atp_dua_map[atp])[0])
+#    get_bugs_non_bugs(True, 2*num)
     return [b.id for b in bugs_and_non_bugs]
 
 def main():
@@ -103,10 +87,17 @@ def main():
             help = 'Inject this list of bugs')
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
             help = ('Expected exit code when program exits without crashing. Default 0'))
+    parser.add_argument('-d', '--arg_dataflow', action="store_true", default=False,
+            help = ('Inject bugs using function args instead of globals'))
+
+    parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
+                        help = ('bug types to inject'))
     
     args = parser.parse_args()
     project = json.load(args.project)
     project_file = args.project.name
+
+    allowed_bugtypes = get_allowed_bugtype_num(args)
 
     # Set various paths
     lp = LavaPaths(project)
@@ -131,17 +122,13 @@ def main():
 
     args.knobTrigger = -1
     args.checkStacktrace = False
-    args.arg_dataflow = False
     failcount = 0
 
-    numTrial = 10
-    acceptable = False
-    for current_trial in range(numTrial):
+    while True:
         if args.buglist:
             bug_list = eval(args.buglist)
         elif args.many:
-            # bug_list = competition_bugs_and_non_bugs(int(args.many), db)
-            bug_list = more_competition_bugs_and_non_bugs(db)
+            bug_list = competition_bugs_and_non_bugs(int(args.many), db, allowed_bugtypes)
 
         # add either bugs to the source code and check that we can still compile
         try:
@@ -154,8 +141,6 @@ def main():
                 continue
             raise
 
-
-
         # bug is valid if seg fault (or bus error)
         # AND if stack trace indicates bug manifests at trigger line we inserted
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
@@ -166,12 +151,8 @@ def main():
             print "Trying again.\n"
         else:
             print "\n\n Yield acceptable"
-            acceptable = True
             break
 
-    if not acceptable:
-        print("Cannot get enough real bugs")
-        return 0
     # re-build just with the real bugs. Inject in competition mode
     (build,input_files) = inject_bugs(real_bug_list, db, lp, project_file, \
                                           project, args, False, competition=True)
@@ -181,11 +162,16 @@ def main():
     subprocess32.check_call(["mkdir", "-p", corpus_dir])
 
     # original bugs src dir
-    bd = join(lp.bugs_parent, lp.source_root)
     # directory for this corpus
     corpname = "lava-corpus-" + ((datetime.datetime.now()).strftime("%Y-%m-%d-%H-%M-%S"))
     corpdir = join(corpus_dir,corpname)
     subprocess32.check_call(["mkdir", corpdir])
+
+    lava_bd = join(lp.bugs_parent, lp.source_root)
+
+    # Copy lava's builddir into our local build-dir
+    bd = join(corpdir, "build-dir")
+    shutil.copytree(lava_bd, bd)
 
     # Corpus directory structure: lava-corpus-[date]/
     #   inputs/
@@ -203,31 +189,43 @@ def main():
     # copy src
     shutil.copytree(bd, srcdir)
 
-    predictions = {}
+    predictions = []
+    bug_ids = []
     for bug in  db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all():
         prediction = "{}:{}".format(basename(bug.atp.loc_filename),
                                     get_trigger_line(lp, bug))
-#        print "Bug %d: prediction = [%s]" % (bug.id, prediction)
+        print "Bug %d: prediction = [%s]" % (bug.id, prediction)
+        print str(bug)
         if not get_trigger_line(lp, bug):
             print("Warning - unknown trigger, skipping")
             continue
 
-        assert not (prediction in predictions)
+#        assert not (prediction in predictions)
         fuzzed_input = fuzzed_input_for_bug(lp, bug)
         (dc, fi) = os.path.split(fuzzed_input)
         shutil.copy(fuzzed_input, inputsdir)
-        predictions[prediction] = fi
+        predictions.append((prediction, fi))
+        bug_ids.append(bug.id)
 
     print "Answer key:"
-    ans = open(join(corpdir, "ans"), "w")
-    for prediction in predictions:
-        print "ANSWER  [%s] [%s]" % (prediction, predictions[prediction])
-        ans.write("%s %s\n" % (prediction, predictions[prediction]))
-    ans.close()
+    with open(join(corpdir, "ans"), "w") as ans:
+        for (prediction, fi) in predictions:
+            print "ANSWER  [%s] [%s]" % (prediction, fi)
+            ans.write("%s %s\n" % (prediction, fi))
+
+    with open(join(corpdir, "add_bugs.sql"), "w") as f:
+        f.write("/* This file will add all the generated lava_id values to the DB, you must update binary_id */\n")
+        f.write("\set binary_id -1\n")
+        for bug_id in bug_ids:
+            f.write("insert into \"bug\" (\"lava_id\", \"binary\") VALUES (%d, :binary_id); \n" % (bug_id))
 
     # clean up srcdir before tar
     os.chdir(srcdir)
-    subprocess32.check_call(["make", "distclean"])
+    try:
+        # Unconfigure
+        subprocess32.check_call(["make", "distclean"])
+    except:
+        pass
     shutil.rmtree(join(srcdir, ".git"))
     shutil.rmtree(join(srcdir, "lava-install"))
     os.remove(join(srcdir, "compile_commands.json"))
@@ -247,17 +245,18 @@ def main():
         build.write("""#!/bin/bash
         pushd `pwd`
         cd {bugs_build}
-        make distclean
-        make clean
-        {configure} --prefix="{outdir}"
+        {make_clean}
+        {configure} --prefix={tempdir}
         {make}
-        rm -rf "{outdir}"
         {install}
+        mv lava-install {outdir}
         popd
-        """.format(configure=project['configure'],
-            bugs_install=lp.bugs_install,
+        """.format(
             bugs_build=bd,
+            make_clean = project["clean"] if "clean" in project.keys() else "",
+            configure=project['configure'],
             make=project['make'],
+            tempdir=join(bd, "lava-install"),
             install=project['install'].format(install_dir=join(corpdir, "lava-install")),
             outdir=join(corpdir, "lava-install")))
 
@@ -272,29 +271,33 @@ def main():
         cd {bugs_build}
 
         # Build internal version
-        make distclean
-        {configure} --prefix="{internal_builddir}"
+        {log_make}
+        {make_clean}
+        {configure} --prefix={tempdir}
         {log_make}
         rm -rf "{internal_builddir}"
-        {internal_install}
+        {install}
+        mv lava-install {internal_builddir}
 
         # Build public version
-        make distclean
-        {configure} --prefix="{public_builddir}"
+        {make_clean}
+        {configure} --prefix={tempdir}
         {make}
         rm -rf "{public_builddir}"
         {install}
+        mv lava-install {public_builddir}
 
         popd
-        """.format(configure=project['configure'],
-            bugs_install = lp.bugs_install,
+        """.format(
             bugs_build=bd,
+            make_clean = project["clean"] if "clean" in project.keys() else "",
+            configure=project['configure'],
             make = project['make'],
             log_make=log_make,
-            install=project['install'].format(install_dir=join(corpdir, "lava-install")),
-            internal_install=project['install'].format(install_dir=join(corpdir, "lava-install-internal")),
+            tempdir=join(bd, "lava-install"),
             internal_builddir = join(corpdir, "lava-install-internal"),
-            public_builddir = join(corpdir, "lava-install")
+            public_builddir = join(corpdir, "lava-install"),
+            install = project['install'].format(install_dir=join(corpdir, "lava-install")),
             ))
 
     trigger_all_crashes = join(corpdir, "trigger_crashes.sh")
@@ -305,12 +308,16 @@ def main():
 
         for fname in {inputdir}/*-fuzzed-*; do
             LD_LIBRARY_PATH={librarydir} {command}
+            LD_LIBRARY_PATH={librarydir2} {command2}
+            sleep 1
         done
 
         popd
         """.format(command = project['command'].format(**{"install_dir": join(corpdir, "lava-install-internal"), "input_file": "$fname"}), # This syntax is weird but only thing that works?
             corpdir = corpdir,
             librarydir = join(corpdir, "lava-install-internal", "lib"),
+            librarydir2 = join(corpdir, "lava-install", "lib"),
+            command2 = project['command'].format(**{"install_dir": join(corpdir, "lava-install"), "input_file": "$fname"}), # This syntax is weird but only thing that works?
             inputdir = join(corpdir, "inputs")
             ))
 

@@ -296,19 +296,13 @@ public:
 
     void InsertAfter(SourceLocation loc, std::string str) {
         if (!str.empty()) {
-            std::list<std::string> &strs = impl[loc];
-            if (strs.empty() || strs.back() != str || str == ")") {
-                impl[loc].push_back(str);
-            }
+            impl[loc].push_back(str);
         }
     }
 
     void InsertBefore(SourceLocation loc, std::string str) {
         if (!str.empty()) {
-            std::list<std::string> &strs = impl[loc];
-            if (strs.empty() || strs.front() != str || str == "(") {
-                impl[loc].push_front(str);
-            }
+            impl[loc].push_front(str);
         }
     }
 
@@ -362,7 +356,6 @@ public:
         unsigned lastTokenSize = Lexer::MeasureTokenLength(end, *sm, *LangOpts);
         return end.getLocWithOffset(lastTokenSize);
     }
-
     const Modifier &InsertBefore(std::string str) const {
         Insert.InsertBefore(before(), str);
         return *this;
@@ -446,7 +439,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         int this_bug_id = 0;
 
         debug(INJECT) << "Inserting expression attack (AttackExpression).\n";
-        const Bug *this_bug = NULL;
+        std::vector<const Bug *> comp_bugs;
         if (LavaAction == LavaInjectBugs) {
             const std::vector<const Bug*> &injectable_bugs =
                 map_get_default(bugs_with_atp_at,
@@ -458,11 +451,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             auto pointerAttack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
             for (const Bug *bug : injectable_bugs) {
                 assert(bug->atp->type == atpType);
-                if (ArgCompetition) {
-                    assert(this_bug_id == 0);  // You can't inject multiple bugs into the same line for a competition
-                    this_bug_id = bug->id;
-                    this_bug = bug;
-                }
+                if (ArgCompetition) comp_bugs.push_back(bug);                
 
                 if (bug->type == Bug::PTR_ADD) {
                     pointerAddends.push_back(pointerAttack(bug));
@@ -489,12 +478,12 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             // it's effectively just a NOP that prints a message when the trigger is true
             // so we can identify when bugs are potentially triggered
             if (ArgCompetition) {
-                if (this_bug == NULL) return; // Maybe redundant
-                Mod.Change(toAttack).InsertBefore("LAVALOG(");
-
-                std::stringstream end_str;
-                end_str << ", " << Test(this_bug) << "," << this_bug_id << ")";
-                Mod.Change(toAttack).InsertAfter(end_str.str());
+                for (auto bug : comp_bugs) {
+                    Mod.Change(toAttack).InsertBefore("LAVALOG(");
+                    std::stringstream end_str;
+                    end_str << ", " << Test(bug) << "," << bug->id << ")";
+                    Mod.Change(toAttack).InsertAfter(end_str.str());
+                }
             }
         }
 
@@ -686,16 +675,21 @@ struct MemoryAccessHandler : public LavaMatchHandler {
     }
 };
 
+std::set<std::string> data_flow_arg_added;
+
 struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
 
     void AddArg(const FunctionDecl *func) {
         SourceLocation loc = clang::Lexer::findLocationAfterToken(
                 func->getLocation(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
-        if (func->getNumParams() == 0) {
-          Mod.InsertAt(loc, "int *" ARG_NAME);
-        } else {
-          Mod.InsertAt(loc, "int *" ARG_NAME ", ");
+        if (0 == data_flow_arg_added.count(func->getNameAsString())) {
+            if (func->getNumParams() == 0) {
+                Mod.InsertAt(loc, "int *" ARG_NAME);
+            } else {
+                Mod.InsertAt(loc, "int *" ARG_NAME ", ");
+            }
+            data_flow_arg_added.insert(func->getNameAsString());
         }
     }
 
@@ -888,23 +882,27 @@ public:
         std::string insert_at_top;
         if (LavaAction == LavaQueries) {
             insert_at_top = "#include \"pirate_mark_lava.h\"\n";
-        } else if (LavaAction == LavaInjectBugs && !ArgDataflow) {
-            if (ArgCompetition) {
-                insert_at_top.append(competition.str());
-            }
-            if (main_files.count(getAbsolutePath(Filename)) > 0) {
-                std::stringstream top;
-                top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
-                    << "void lava_set(unsigned int, unsigned int);\n"
-                    << "__attribute__((visibility(\"default\")))\n"
-                    << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val; }\n"
-                    << "unsigned int lava_get(unsigned int);\n"
-                    << "__attribute__((visibility(\"default\")))\n"
-                    << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
-                insert_at_top.append(top.str());
-            } else {
-                insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
-                "extern unsigned int lava_get(unsigned int);\n");
+        } else {
+            if (LavaAction == LavaInjectBugs) {
+                if (ArgCompetition) {
+                    insert_at_top.append(competition.str());
+                }
+                if (!ArgDataflow) {
+                    if (main_files.count(getAbsolutePath(Filename)) > 0) {
+                        std::stringstream top;
+                        top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
+                            << "void lava_set(unsigned int, unsigned int);\n"
+                            << "__attribute__((visibility(\"default\")))\n"
+                            << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val; }\n"
+                            << "unsigned int lava_get(unsigned int);\n"
+                            << "__attribute__((visibility(\"default\")))\n"
+                            << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
+                        insert_at_top.append(top.str());
+                    } else {
+                        insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
+                                             "extern unsigned int lava_get(unsigned int);\n");
+                    }
+                }
             }
         }
 

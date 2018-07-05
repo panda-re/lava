@@ -19,7 +19,8 @@ def process_crash(buf):
     for line in buf.split("\n"):
         if line.startswith("LAVALOG:"):
             bugid = get_bug_id(line)
-            bugs.append(bugid)
+            if bugid:
+                bugs.append(bugid)
 
     return bugs
 

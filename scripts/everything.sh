@@ -13,9 +13,7 @@
 # -z [knobSize]: use this to make inject step use knob trigger bugs
 #                and knobSize changes how origFile is mutated
 # -b [bugType] : use this to specify attact point type: [mem_write|mem_read|fn_arg]
-# -n [bugNumber] : number of bugs to inject in each trail
-# -p : print bug number in lava_get if it's triggering a crash
-# 
+#
 # everything -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
 #
 # Here is what everything consists of.
@@ -45,7 +43,7 @@ trap '' PIPE
 set -e # Exit on error
 
 USAGE() {
-  echo "USAGE: $0 -a -d -r -p -q -m -t -i [numSims] -b [bug_type] -z [knobSize] -n [bugNumber] JSONfile"
+  echo "USAGE: $0 -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
   echo "       . . . or just $0 -ak JSONfile"
   exit 1
 }
@@ -71,11 +69,9 @@ demo=0
 ATP_TYPE=""
 # -s means skip everything up to injection
 # -i 15 means inject 15 bugs (default is 1)
-# how many bugs will be injected at  time
-many=100
 echo
 progress "everything" 0 "Parsing args"
-while getopts  "arcqmtb:i:z:n:kd" flag
+while getopts  "arcqmtb:i:z:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -83,7 +79,7 @@ do
       make=1
       taint=1
       inject=1
-      num_trials=4
+      num_trials=3
       progress "everything" 0 "All steps will be executed"
   fi
   if [ "$flag" = "r" ]; then
@@ -136,10 +132,6 @@ do
       demo=1
       progress "everything" 0 "-d: demo mode"
   fi
-  if [ "$flag" = "n" ]; then
-      many="$OPTARG"
-      progress "everything" 0 "-n: $many bugs will be injected in each trial"
-  fi
 done
 shift $((OPTIND -1))
 
@@ -149,6 +141,8 @@ if [ -z "$1" ]; then
 fi
 json="$(realpath $1)"
 
+# how many bugs will be injected at  time
+many=50
 
 if [[ $demo -eq 1 ]]
 then
@@ -174,8 +168,6 @@ fixupscript="$(jq -r .fixupscript $json)"
 makecmd="$(jq -r .make $json)"
 container="$(jq -r .docker $json)"
 install=$(jq -r .install $json)
-# update install by replace {install_dir} with lava-install
-install=$(echo $install | sed -e 's/{install_dir}/lava-install/g' )
 scripts="$lava/scripts"
 python="/usr/bin/python"
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
@@ -200,7 +192,7 @@ if [ $reset -eq 1 ]; then
     lf="$logs/dbwipe.log"
     truncate "$lf"
     progress "everything" 1  "Setting up lava db -- logging to $lf"
-    run_remote "$pandahost" "dropdb -U postgres $db" "$lf"
+    run_remote "$pandahost" "dropdb --if-exists -U postgres $db" "$lf"
     run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
     run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
     run_remote "$pandahost" "echo dbwipe complete" "$lf"
@@ -279,21 +271,13 @@ if [ $inject -eq 1 ]; then
     if [ "$exitCode" = "null" ]; then
         exitCode="0";
     fi
-    if [ "$print_bug" == "1" ]; then
-       print_bug_flag="-p"
-
-    fi
     for i in `seq $num_trials`
     do
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -t $i $kt $print_bug_flag $json" "$lf"
-        echo "Finished trial $i"
-        # ignore error if some trials of inject phase failed
-        set +e
-        grep yield "$lf"
-        set -e
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode -d -bb $kt -t ptr_add,rel_write $json" "$lf"
+    grep yield "$lf"
     done
 fi
 

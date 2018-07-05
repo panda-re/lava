@@ -223,16 +223,22 @@ class LavaDatabase(object):
     def uninjected_random(self, fake):
         return self.uninjected2(fake).order_by(func.random())
 
-    def uninjected_random_balance(self, fake, num_required):
+    def uninjected_random_balance(self, fake, num_required, bug_types):
         bugs = []
         types_present = self.session.query(Bug.type)\
             .filter(~Bug.builds.any())\
             .group_by(Bug.type)
-        num_per = num_required / types_present.count()
+        num_avail = 0
         for (i,) in types_present:
-            bug_query = self.uninjected_random(fake).filter(Bug.type == i)
-            print("found %d bugs of type %d" % (bug_query.count(), i))
-            bugs.extend(bug_query[:num_per])
+            if i in bug_types:
+                num_avail += 1
+        print("%d bugs available of allowed types" % num_avail)
+        num_per = num_required / num_avail
+        for (i,) in types_present:
+            if (i in bug_types): 
+                bug_query = self.uninjected_random(fake).filter(Bug.type == i)
+                print("found %d bugs of type %d" % (bug_query.count(), i))
+                bugs.extend(bug_query[:num_per])
         return bugs
 
     def next_bug_random(self, fake):
@@ -457,12 +463,8 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     pool.map(apply_replacements, set([dirname(f) for f in all_files]))
 
     # paranoid clean -- some build systems need this
-    if 'makeclean' in project and project['makeclean']:
-        if type(project['makeclean']) == bool:
-            print(lp.bugs_build)
-            run_cmd_notimeout("make clean", cwd=lp.bugs_build)
-        else:
-            check_call(project['makeclean'], cwd=lp.bugs_build, shell=True)
+    if 'clean' in project.keys():
+        check_call(project['clean'], cwd=lp.bugs_build, shell=True)
 
     # compile
     print("------------\n")
@@ -543,7 +545,7 @@ def get_trigger_line(lp, bug):
         # old bug types
         lava_get = "(0x{:x}".format(bug.magic)
         atp_lines = [line_num + 1 for line_num, line in enumerate(f) if
-                    lava_get in line and "lava_get" in line]
+                    lava_get in line] #and "lava_get" in line]
         # return closest to original begin line.
         distances = [
             (abs(line - bug.atp.loc_begin_line), line) for line in atp_lines
@@ -555,6 +557,11 @@ def check_competition_bug(lp, project, bug, fuzzed_input):
     (rv, (out, err)) = run_modified_program(project, lp.bugs_install, fuzzed_input, 10)
     for line in out.splitlines(): print(line)
     for line in err.splitlines(): print(line)
+
+    if (rv%256) <= 128:
+        print("Clean exit (code {})".format(rv))
+        return [] # No bugs unless you crash it
+
     return process_crash(out)
 
 # use gdb to get a stacktrace for this bug
@@ -642,7 +649,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
                 # Default: not checking that bug manifests at same line as trigger point or is found by competition grading infrastructure
                 validated = True
                 if competition:
-                    if check_competition_bug(lp, project, bug, fuzzed_input) == [bug.id]:
+                    if set(check_competition_bug(lp, project, bug, fuzzed_input)) == set([bug.id]):
                         print("... and competition infrastructure agrees")
                         validated &= True
                     else:
@@ -666,12 +673,8 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
         validated = False
 
     if update_db:
-        try:
-            output = (outp[0] + '\n' + outp[1]).decode('ascii', 'ignore')
-        except:
-            output = ""
         db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
-                           output=output, success=True, validated=validated))
+                           output=(outp[0] + '\n' + outp[1]).decode('ascii', 'ignore'), success=True, validated=validated))
 
     return validated
 
@@ -733,3 +736,19 @@ def get_bugs(db, bug_id_list):
     for bug_id in bug_id_list:
         bugs.append(db.session.query(Bug).filter(Bug.id == bug_id).all()[0])
     return bugs
+
+
+def get_allowed_bugtype_num(args):    
+    allowed_bugtype_nums = []
+    for bugtype_name in args.bugtypes.split(","):
+        btnl = bugtype_name.lower()
+        bugtype_num = None
+        for i in range(len(Bug.type_strings)):
+            btsl = Bug.type_strings[i].lower()
+            if btnl in btsl:
+                bugtype_num = i
+        if bugtype_num is None:
+            raise RuntimeError( "I dont have a bug type [%s]" % bugtype_name )
+        allowed_bugtype_nums.append(bugtype_num)
+    return allowed_bugtype_nums
+
