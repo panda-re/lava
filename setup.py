@@ -175,7 +175,7 @@ def main():
     # set up postgres authentication.
     if not isfile(join(os.environ['HOME'], '.pgpass')):
         postgres_depends = subprocess.check_output(['dpkg-query', '-W', '-f', '${depends}', 'postgresql']).splitlines()
-        postgres_pkg = [d for d in postgres_depends if re.match(r'postgresql-[0-9]+.[0-9]+', d)][0]
+        postgres_pkg = [d for d in postgres_depends if re.match(r'postgresql-[0-9]+.?[0-9]+', d)][0]
         postgres_version = postgres_pkg.replace('postgresql-', '')
         pg_hba = "/etc/postgresql/{}/main/pg_hba.conf".format(postgres_version)
         postgres_password = 'postgrespostgres'
