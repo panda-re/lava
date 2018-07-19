@@ -74,12 +74,17 @@ CLANG_LIBS := -Wl,--start-group \
 
 BUILDDIR := build
 
-.PHONY: all lavatool
-all: lavatool build/clang-apply-replacements
+.PHONY: all lavatool lavaFnTool
+all: lavatool lavaFnTool build/clang-apply-replacements
 
 lavatool: make_builddir \
 	emit_build_config \
 	$(BUILDDIR)/lavaTool
+
+lavaFnTool: make_builddir \
+	emit_build_config \
+	$(BUILDDIR)/lavaFnTool
+
 
 .PHONY: emit_build_config
 emit_build_config: make_builddir
@@ -101,10 +106,18 @@ $(BUILDDIR)/%.o: %.c
 $(BUILDDIR)/lavaTool: $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
+$(BUILDDIR)/lavaFnTool: $(BUILDDIR)/lavaFnTool.o 
+	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) 
+
+
+
 $(BUILDDIR)/clang-apply-replacements: $(BUILDDIR)/ClangApplyReplacementsMain.o $(BUILDDIR)/ApplyReplacements.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
 $(BUILDDIR)/lavaTool.o: lava-odb.hxx lexpr.hxx Makefile
+
+
+
 
 $(BUILDDIR)/%.o: Makefile
 

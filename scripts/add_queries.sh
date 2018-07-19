@@ -116,6 +116,22 @@ for i in $c_dirs; do
 done
 
 
+# Run another clang tool that provides information about functions,
+# i.e., which have only prototypes, which have bodies.  
+progress "queries" 0 "Figure out functions" 
+for i in $c_files; do
+    $lava/src_clang/build/lavaFnTool $i
+done
+
+# analyze that output and figure out 
+fnfiles=$(echo $c_files | sed 's/\.c/\.c\.fn/g')
+fninstr=$directory/$name/fninstr
+
+echo "Creating fninstr [$fninstr]"
+
+python $lava/scripts/get-fns.py -d -o $fninstr $fnfiles
+
+
 progress "queries" 0  "Inserting queries..."
 for i in $c_files; do
     $lava/src_clang/build/lavaTool -action=query \

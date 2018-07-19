@@ -51,4 +51,7 @@ RUN ldconfig
 RUN pip install --upgrade -v pip -i https://pypi.python.org/simple/
 RUN pip install subprocess32 lockfile sqlalchemy
 
+
+RUN pip install pyyaml
+
 Run apt-get install -y sudo gdb gawk
