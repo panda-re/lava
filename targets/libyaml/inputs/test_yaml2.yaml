@@ -1,0 +1,29 @@
+%YAML 1.1
+---
+name: VHDL
+file_extensions:
+  - vhdl
+scope: source.vhdl
+contexts:
+  main:
+    - include: string
+  string:
+    - include: binary-bit-string-literal
+
+  binary-bit-string-literal:
+    - match: '([bB])(")'
+      captures:
+        1: storage.type.bit.vhdl
+        2: punctuation.definition.string.begin.vhdl
+      push:
+        - meta_scope: string.bit.binary.vhdl
+        - match: '"'
+          scope: punctuation.definition.string.end.vhdl
+          pop: true
+        - match: \n
+          scope: invalid.illegal.unclosed-string.vhdl
+          pop: true
+        - match: '[0-1zZxX\-_]'
+          scope: valid.character.bit.vhdl
+        - match: '.'
+          scope: invalid.illegal.unknown-char.vhdl

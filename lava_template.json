@@ -7,7 +7,8 @@
     "name": "$NAME",
     "tarfile": "$TAR_FILE",
 
-    "configure": "./configure",
+    "_configure_comment": "Running configure, clean, make and then make install must put binaries in build_path/lava-install/ Make sure you don't set an rpath",
+    "configure": "./configure --prefix=`pwd`/lava-install --disable-rpath",
     "make": "$MAKE",
     "clean": "make clean",
     "install": "make install",

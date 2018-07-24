@@ -1,0 +1,29 @@
+{
+    "qemu": "/home/fasano/panda/build/i386-softmmu/qemu-system-i386",
+    "qcow": "/home/fasano/lava/wheezy_panda2.qcow2",
+    "snapshot": "root",
+
+    "directory": "/home/fasano/lava/target_injections",
+    "name": "file_fasano",
+    "tarfile": "/home/fasano/lava/target_bins/file-5.22-hack.tar.gz",
+
+    "configure": "./configure --prefix=`pwd`/lava-install",
+
+    "df_fixup": "/home/fasano/lava/targets/file/file_fixup.sh {bug_build}",
+    "make": "make -C src CFLAGS=-fvisibility=default CFLAGS+='-w' CFLAGS+='-g' -j 16",
+    "clean": "make clean >/dev/null",
+    "install": "make -C src install; mkdir -p lava-install/share/misc; cp /home/fasano/lava/targets/file/magic.mgc lava-install/share/misc/",
+    "command": "{install_dir}/bin/file -m {install_dir}/share/misc/magic.mgc {input_file}",
+    "expect_prompt": "root@debian-i386:~#",
+
+    "db": "file_fasano",
+
+    "max_liveness": 10,
+    "max_cardinality": 1000,
+    "max_tcn": 1,
+    "max_lval_size": 100,
+
+    "main_file": [ "src/file.c" ],
+
+    "inputs": ["/bin/ls"]
+}

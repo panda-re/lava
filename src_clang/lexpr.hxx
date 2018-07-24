@@ -168,6 +168,8 @@ LExpr operator<<(LExpr us, LExpr other) { return LBinop("<<", us, other); }
 LExpr operator&(LExpr us, LExpr other) { return LBinop("&", us, other); }
 LExpr operator|(LExpr us, LExpr other) { return LBinop("|", us, other); }
 LExpr operator<(LExpr us, LExpr other) { return LBinop("<", us, other); }
+LExpr operator^(LExpr us, LExpr other) { return LBinop("^", us, other); }
+LExpr operator%(LExpr us, LExpr other) { return LBinop("%", us, other); }
 
 LExpr LBlock(std::initializer_list<LExpr> stmts) {
     return LExpr(LExpr::BLOCK, 0, "", stmts);
@@ -228,7 +230,7 @@ LExpr UIntCast(LExpr arg) { return LCast("const unsigned int *", arg); }
 
 LExpr SelectCast(const SourceLval *lval, Range selected) {
     const std::string &lval_name = lval->ast_name;
-    assert(selected.size() == 4);
+    assert(selected.size() >= 4); // Maybe too specific?
 
     LExpr pointer = selected.low % 4 == 0
         ? UIntCast(LStr(lval_name)) + LDecimal(selected.low / 4)
@@ -241,7 +243,7 @@ LExpr LavaSet(const SourceLval *lval, Range selected, uint32_t slot) {
 }
 
 LExpr DataFlowSet(const SourceLval *lval, Range selected, uint32_t slot) {
-    return LAssign(LIndex(LStr("data_flow"), slot), SelectCast(lval, selected));
+    return LFunc("DFLOG", { LDecimal(slot), SelectCast(lval, selected) });
 }
 
 template<typename UInt>
