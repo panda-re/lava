@@ -135,7 +135,7 @@ python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles
 progress "queries" 0  "Inserting queries..."
 for i in $c_files; do
     $lava/src_clang/build/lavaTool -action=query \
-    -fninstr-file="$fninstr" \
+    -lava-wl="$fninstr" \
     -lava-db="$directory/$name/lavadb" \
     -p="$source/compile_commands.json" \
     -src-prefix=$(readlink -f "$source") \

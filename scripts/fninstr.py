@@ -310,7 +310,8 @@ for name in instr_fns.keys():
 
 f = open(args.output, "w")
 for name in instr_fns.keys():
-    f.write("%s %d\n" % (name, instr_fns[name]))
+    if instr_fns[name] == OKI:
+        f.write("NOFILENAME %s\n" % name)
 f.close()
 
 
