@@ -637,11 +637,17 @@ std::pair<std::string,std::string> get_containing_function_name(const MatchFinde
         }
         const FunctionDecl *fd = parents[0].get<FunctionDecl>();
         if (fd) return fundecl_fun_name(Result, fd);
-        pstmt = parents[0].get<Stmt>();
+        pstmt = parents[0].get<Stmt>();        
         if (!pstmt) {
             std::cout << "get_containing_function_name: !pstmt \n";
-            return fail;
-        }
+            const VarDecl *pvd = parents[0].get<VarDecl>();
+            if (pvd) {
+                const auto &parents = Result.Context->getParents(*pvd);
+                pstmt = parents[0].get<Stmt>();
+            }
+            if (!pstmt)
+                return fail;
+        }    
     }
     
 }        
