@@ -292,13 +292,15 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, 
     print("Running lavaTool on [{}]...".format(filename))
     bug_list_str = ','.join([str(bug.id) for bug in bug_list])
     main_files = ','.join([join(lp.bugs_build, f) for f in project['main_file']])
+    fninstr = join(join(project['directory'], project['name']), "fninstr")
     cmd = [
         lp.lava_tool, '-action=inject', '-bug-list=' + bug_list_str,
+        '-lava-wl=' + fninstr,
         '-src-prefix=' + lp.bugs_build, '-project-file=' + project_file,
         '-main-files=' + main_files, join(lp.bugs_build, filename)
     ]
-    if not (args.whitelist is None):
-        cmd.append("-lava-wl=%s" % args.whitelist)
+#    if not (args.whitelist is None):
+#        cmd.append("-lava-wl=%s" % args.whitelist)
     if args.arg_dataflow: cmd.append('-arg_dataflow')
     if args.knobTrigger != -1: cmd.append('-kt')
     if competition: cmd.append('-competition')
@@ -460,7 +462,6 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
 
     all_files = src_files | set(project['main_file'])
     if args.arg_dataflow:
-        print('in arg_dataflow if statement')
         # if we're injecting with dataflow, we must modify all files in src
         compile_commands = join(lp.bugs_build, 'compile_commands.json')
         print('compile commands is here: {}'.format(compile_commands))
@@ -470,17 +471,32 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         all_files = all_files.union(all_c_files)
 
     pool = ThreadPool(cpu_count())
-    def modify_source(filename):
+#    def modify_source(filename):
+#        run_lavatool(bugs_to_inject, lp, project_file, project, args,
+#                     llvm_src, filename, competition)
+#   pool.map(modify_source, all_files)
+
+    for filename in all_files:
         run_lavatool(bugs_to_inject, lp, project_file, project, args,
                      llvm_src, filename, competition)
-    pool.map(modify_source, all_files)
+        
 
     clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
-    def apply_replacements(src_dir):
+#    def apply_replacements(src_dir):
+#        run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
+#                          cwd=join(lp.bugs_build, src_dir))
+
+ #   pool.map(apply_replacements, set([dirname(f) for f in all_files]))
+
+    src_dirs = set()
+    for filename in all_files:
+        src_dir = dirname(filename)
+        src_dirs.add(src_dir)
+
+    for src_dir in src_dirs:
         run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
                           cwd=join(lp.bugs_build, src_dir))
-
-    pool.map(apply_replacements, set([dirname(f) for f in all_files]))
+        
 
     # paranoid clean -- some build systems need this
     if 'clean' in project.keys():

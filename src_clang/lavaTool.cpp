@@ -457,6 +457,7 @@ public:
     void InsertAt(SourceLocation loc, std::string str) {
         Insert.InsertBefore(loc, str);
     }
+    
 };
 
 /*******************************
@@ -618,12 +619,29 @@ std::pair<std::string,std::string> get_containing_function_name(const MatchFinde
     std::pair<std::string,std::string> fail = std::make_pair(std::string("Notinafunction"), std::string("Notinafunction"));        
     while (true) {
         const auto &parents = Result.Context->getParents(*pstmt);
-        if (parents.empty()) return fail;            
-        if (parents[0].get<TranslationUnitDecl>()) return fail;
+        std::cout << "get_containing_function_name: " << parents.size() << " parents\n";
+        for (auto &parent : parents) {
+            std::cout << "parent: " << parent.getNodeKind().asStringRef().str() << "\n";
+        }
+        if (parents.empty()) {
+            std::cout << "get_containing_function_name: no parents for stmt? ";
+            pstmt->dumpPretty(*Result.Context);
+            std::cout << "\n";            
+            return fail;       
+        }     
+        if (parents[0].get<TranslationUnitDecl>()) {
+            std::cout << "get_containing_function_name: parents[0].get<TranslationUnitDecl? ";
+            pstmt->dumpPretty(*Result.Context);
+            std::cout << "\n";                        
+            return fail;
+        }
         const FunctionDecl *fd = parents[0].get<FunctionDecl>();
         if (fd) return fundecl_fun_name(Result, fd);
         pstmt = parents[0].get<Stmt>();
-        if (!pstmt) return fail;
+        if (!pstmt) {
+            std::cout << "get_containing_function_name: !pstmt \n";
+            return fail;
+        }
     }
     
 }        
@@ -962,14 +980,44 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
 
     void AddArg(const FunctionDecl *func) {
+        SourceLocation l1 = func->getLocStart();
+        SourceLocation l2 = func->getLocEnd();
+        debug(FNARG) << "func->getLocStart = " << Mod.sm->getFileOffset(l1) << "\n";
+        debug(FNARG) << "func->getLocEnd = " << Mod.sm->getFileOffset(l2) << "\n";
 
-        SourceLocation loc = clang::Lexer::findLocationAfterToken(
+
+        // first '(' in func decl
+        SourceLocation loc1 = clang::Lexer::findLocationAfterToken(
                 func->getLocation(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
+
         if (func->getNumParams() == 0) {
-          Mod.InsertAt(loc, "int *" ARG_NAME);
+            Mod.InsertAt(loc1, "int *" ARG_NAME );
+/*
+            // first ')' in func decl
+            SourceLocation loc2 = clang::Lexer::findLocationAfterToken(
+                loc1, tok::r_paren, *Mod.sm, *Mod.LangOpts, true);
+            unsigned o1 = Mod.sm->getFileOffset(loc1);
+            unsigned o2 = Mod.sm->getFileOffset(loc2);
+            if (o1+1 == o2 || o1+2 == o2) {
+                // () or ( )
+                Mod.InsertAt(loc1, "int *" ARG_NAME);
+            }
+            else {
+                if  (!(o1 < o2)) {
+                    debug(FNARG) << "file offsets o1 = " << o1 << " o2 = " << o2 << "\n";
+                    assert (o1<o2);
+                }
+                // (void) or something
+                Mod.InsertAt(loc1, "int *" ARG_NAME "/ *");
+                // this should be the ')'
+                SourceLocation loc3 = loc2.getLocWithOffset(-1);
+                Mod.InsertAt(loc3, "* /");
+            }
+*/
         } else {
-          Mod.InsertAt(loc, "int *" ARG_NAME ", ");
+          Mod.InsertAt(loc1, "int *" ARG_NAME ", ");
         }
+
     }
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
@@ -1059,7 +1107,6 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const CallExpr *call = Result.Nodes.getNodeAs<CallExpr>("callExpr");
-        const FunctionDecl *func = call->getDirectCallee();
         SourceLocation loc = clang::Lexer::findLocationAfterToken(
                 call->getLocStart(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
 
@@ -1075,14 +1122,18 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
 
         // and if this is a call that is in the body of a function on our whitelist,  
         // only instrument calls to functions that are themselves on our whitelist. 
-        fnname = fundecl_fun_name(Result, func);
-        if (fninstr(fnname)) {
-            debug(FNARG) << "CallExprArgAdditionHandler: Called function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
+        const FunctionDecl *func = call->getDirectCallee();
+        if (func) {
+            fnname = fundecl_fun_name(Result, func);
+            if (fninstr(fnname)) {
+                debug(FNARG) << "CallExprArgAdditionHandler: Called function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
+            }
+            else {
+                debug(FNARG) << "CallExprArgAdditionHandler: Called function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
+                return;
+            }
         }
-        else {
-            debug(FNARG) << "CallExprArgAdditionHandler: Called function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
-            return;
-        }
+
 
         // If we get here, we are instrumenting a call to a function on our whitelist that is in 
         // the body of a function also on our whitelist. 
@@ -1183,7 +1234,6 @@ public:
                 makeHandler<PriQueryPointHandler>()
                 );
 
-        // This 
         addMatcher(
                 callExpr(
                     forEachArgMatcher(expr(isAttackableMatcher()).bind("arg"))).bind("call"),
