@@ -63,7 +63,10 @@ class FnPtrAssign:
 class Call:
 
     def __init__(self, call):
+        # this is the name of the fn called
         self.name = call['name']
+        # and this is what fn the call is in
+        self.containing_function = call['containing_function']
         (self.filename, self.start, self.end, see) = check_start_end(call)
         self.fnptr = call['fnptr']
         self.args = call['args']
@@ -138,17 +141,17 @@ Four sources of information for this.
 
 """ 
 
-allfns = set()
+all_fns = set()
 fns_passed_as_args = {}
 for name in prots.keys():
-    allfns.add(name)
-print "%d fn names in prots" % (len(allfns))
+    all_fns.add(name)
+print "%d fn names in prots" % (len(all_fns))
 for name in fundefs.keys():
-    allfns.add(name)
-print "%d fn names in prots+fundefs" % (len(allfns))
+    all_fns.add(name)
+print "%d fn names in prots+fundefs" % (len(all_fns))
 for name in calls.keys():
-    allfns.add(name)
-print "%d fn names in prots+fundefs+calls" % (len(allfns))
+    all_fns.add(name)
+print "%d fn names in prots+fundefs+calls" % (len(all_fns))
 for name in calls.keys():
     # examine args in each of the calls
     # to see if any are passing a function or fn pointer
@@ -157,10 +160,10 @@ for name in calls.keys():
             for item in call.args:
                 arg = item['arg']
                 if arg['info'] == "function" and arg['name'] != "None":
-                    allfns.add(arg['name'])
+                    all_fns.add(arg['name'])
                     addtohl(fns_passed_as_args, arg['name'], call.name)
 
-print "%d fn names in prots+fundefs+calls+callargs" % (len(allfns))                             
+print "%d fn names in prots+fundefs+calls+callargs" % (len(all_fns))                             
 
 
 """
@@ -216,7 +219,7 @@ example that requires it.
 
 """
 
-instr_fns = {}
+instr_judgement = {}
 
 # ok to instrument
 OKI = 0
@@ -224,9 +227,9 @@ OKI = 0
 DIB = 1
 # don't add data flow arg
 DADFA = 2
-for name in allfns:
+for name in all_fns:
 
-    instr_fns[name] = OKI
+    instr_judgement[name] = OKI
     disposition = OKI
 
     if name in prots: 
@@ -257,12 +260,12 @@ for name in allfns:
 
     # fn is not ok to instrument
     if not (disposition is OKI):
-        instr_fns[name] = disposition
+        instr_judgement[name] = disposition
 
 
 instr = set()
-for name in instr_fns.keys():
-    if instr_fns[name] == 0:
+for name in instr_judgement.keys():
+    if instr_judgement[name] == 0:
         instr.add(name)
 
 
@@ -273,7 +276,7 @@ for name in instr:
     if name in fns_passed_as_args:
         disposition = OKI
         for called_fn in fns_passed_as_args[name]:
-            if not (instr_fns[called_fn] == OKI):
+            if not (instr_judgement[called_fn] == OKI):
                 disposition |= DADFA
                 if data_flow:
                     # if we are using data flow note that we won't
@@ -286,12 +289,35 @@ for name in instr:
                 break
         # fn is not ok to instrument
         if not (disposition is OKI):
-            instr_fns[name] = disposition
+            instr_judgement[name] = disposition
+
+# Ok we have a list of instrumentable functions.
+# Now, we need to transitively close.
+# If fn1 is un-instrumentable, and if contains calls
+# to fn2, then fn2 also cannot be instrumented.
+
+any_change = True
+while any_change:
+    any_change = False
+    for called_fn_name in calls.keys():
+        if (instr_judgement[called_fn_name] is OKI):
+            # We 'think' we can instrument called_fn_name
+            for call in calls[called_fn_name]:
+                if (not (instr_judgement[call.containing_function] is OKI)):
+                    # ... however, it is called from a function that cant be instrumented
+                    # thus it cant really be instrumented.
+                    any_change = True
+                    print "Cant instrument %s because its called from %s which we can't instrument" % (called_fn_name, call.containing_function)
+                    instr_judgement[called_fn_name] = DIB | DADFA
+                    break
+    if any_change:
+        print "instr_judgement changed. Iterating."
+
 
 
 ninstr = {}
 for name in instr:
-    disp = instr_fns[name]
+    disp = instr_judgement[name]
     if not disp in ninstr:
         ninstr[disp] = 0
     ninstr[disp] += 1
@@ -301,16 +327,16 @@ for i in range(4):
     if i in ninstr:
         print "instrflags=%d: count=%d" % (i, ninstr[i])
 
-for name in instr_fns.keys():
-    if instr_fns[name] == OKI:
+for name in instr_judgement.keys():
+    if instr_judgement[name] == OKI:
         print "Intrumenting fun [%s]" % name
     
     
 
 
 f = open(args.output, "w")
-for name in instr_fns.keys():
-    if instr_fns[name] == OKI:
+for name in instr_judgement.keys():
+    if instr_judgement[name] == OKI:
         f.write("NOFILENAME %s\n" % name)
 f.close()
 
