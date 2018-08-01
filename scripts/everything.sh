@@ -166,6 +166,7 @@ buildhost="$(jq -r '.buildhost // "docker"' $json)"
 pandahost="$(jq -r '.pandahost // "localhost"' $json)"
 testinghost="$(jq -r '.testinghost // "docker"' $json)"
 fixupscript="$(jq -r .fixupscript $json)"
+injfixupsscript="$(jq -r .injfixupsscript $json)"
 makecmd="$(jq -r .make $json)"
 container="$(jq -r .docker $json)"
 install=$(jq -r .install $json)
@@ -289,7 +290,11 @@ if [ $inject -eq 1 ]; then
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"        
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -d -e $exitCode $kt $json" "$lf"
+        fix=""
+        if [ "$injfixupsscript" != "null" ]; then
+            fix="-fixups $injfixupsscript"
+        fi
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -d -e $exitCode $kt $fix $json" "$lf"
     grep yield "$lf"
     done
 fi
