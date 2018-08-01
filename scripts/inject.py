@@ -120,6 +120,9 @@ if __name__ == "__main__":
     parser.add_argument('-competition', '--competition', action="store_true", default=False,
             help = ('Inject in competition mode where logging will be added in #IFDEFs'))
 
+    parser.add_argument("-fixups", "--fixupsscript", action="store", default=False,
+                        help = ("script to run after injecting bugs into source to fixup before make"))
+
 #    parser.add_argument('-wl', '--whitelist', action="store", default=None,
 #                        help = ('White list file of functions to bug and data flow'))    
     

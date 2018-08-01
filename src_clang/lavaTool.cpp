@@ -1030,10 +1030,24 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
 
         const FunctionDecl *func =
             Result.Nodes.getNodeAs<FunctionDecl>("funcDecl");
+
         
-        debug(TIM) << "Maybe adding arg to " << func->getNameAsString() << "\n";
+        debug(TIM) << "FuncDeclArgAdditionHandler: Maybe adding arg to " << func->getNameAsString() << "\n";
+
 
         auto fnname = fundecl_fun_name(Result, func);
+
+        if (!func->hasBody()) {
+            debug(TIM) << "Has no body: " << fnname.first << " : " << fnname.second << "\n";
+//            func->dumpPretty(*Result.Context);
+            if (fnname.first == "Meh") {
+                // Function pointer? 
+                SourceRange sr = func->getSourceRange();
+                debug(TIM) << "Meh: function pointer decl";
+                debug(TIM)<< "start: " << sr.getBegin().printToString(*Mod.sm) << "\n"; 
+                debug(TIM) << "end:   " <<  sr.getEnd().printToString(*Mod.sm) << "\n"; 
+            }
+        }
 
         // only instrument if function being decl / def is in whitelist
         if (fninstr(fnname)) {
@@ -1045,7 +1059,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         }
     
         if (fnname.second.find("__builtin") != std::string::npos) {
-            debug(FNARG) << "FunDeclArgAdditionHandler: Function def/decl is builtin" << func->getNameAsString() << "\n";        
+            debug(FNARG) << "FuncDeclArgAdditionHandler: Function def/decl is builtin" << func->getNameAsString() << "\n";        
             return;
         }
 
@@ -1246,6 +1260,7 @@ public:
                 makeHandler<FunctionArgHandler>()
                 );
 
+            
 
         // fortenforge's matchers (for data_flow argument addition)
         if (ArgDataflow && LavaAction == LavaInjectBugs) {

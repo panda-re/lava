@@ -497,6 +497,12 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
                           cwd=join(lp.bugs_build, src_dir))
         
+    # Ugh.  Lavatool very hard to get right
+    # Permit automated fixups via script after bugs inject
+    # but before make
+    if args.fixupsscript:
+        run_cmd(args.fixupsscript, cwd=lp.bugs_build)
+
 
     # paranoid clean -- some build systems need this
     if 'clean' in project.keys():
