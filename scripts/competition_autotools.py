@@ -19,10 +19,15 @@ with open(build_sh, "w") as build:
         bugs_install=lp.bugs_install,
         bugs_build=bd,
         make=project['make'],
-        install=project['install'],
+        install=project['install'].format(install_dir=join(corpdir, 'lava-install')),
         outdir=join(corpdir, "lava-install")))
 
 log_build_sh = join(corpdir, "log_build.sh")
+makes = project['make'].split('&&')
+makes = [make_cmd + ' CFLAGS+=\"-DLAVA_LOGGING\"' for make_cmd in makes]
+log_make = " && ".join(makes)
+internal_builddir = join(corpdir, "lava-install-internal"),
+public_builddir = join(corpdir, "lava-install")
 with open(log_build_sh, "w") as build:
     build.write("""#!/bin/bash
     pushd `pwd`
@@ -31,25 +36,26 @@ with open(log_build_sh, "w") as build:
     # Build internal version
     make distclean
     {configure} --prefix="{internal_builddir}"
-    {make} CFLAGS+="-DLAVA_LOGGING"
+    {log_make}
     rm -rf "{internal_builddir}"
-    {install}
+    {install_int}
 
     # Build public version
     make distclean
     {configure} --prefix="{public_builddir}"
     {make}
     rm -rf "{public_builddir}"
-    {install}
+    {install_pub}
 
     popd
     """.format(configure=project['configure'],
         bugs_install = lp.bugs_install,
         bugs_build=bd,
-        make = project['make'],
-        install = project['install'],
-        internal_builddir = join(corpdir, "lava-install-internal"),
-        public_builddir = join(corpdir, "lava-install")
+        log_make = log_make,
+        install_int = project['install'].format(install_dir=internal_builddir),
+        intsall_pub = project['install'].format(install_dir=public_builddir),
+        internal_builddir = internal_builddir,
+        public_builddir = public_builddir
         ))
 
 trigger_all_crashes = join(corpdir, "trigger_crashes.sh")

@@ -142,7 +142,11 @@ print()
 progress("Starting first and only replay, tainting on file open...")
 
 # process name
-proc_name = basename(command_args[0])
+
+if command_args[0].startswith('LD_PRELOAD'):
+    proc_name = basename(command_args[1])
+else:
+    proc_name = basename(command_args[0])
 
 pandalog = "%s/%s/queries-%s.plog" % (project['directory'], project['name'], os.path.basename(isoname))
 print("pandalog = [%s] " % pandalog)
@@ -221,6 +225,7 @@ print()
 progress("Calling the FBI on queries.plog...")
 fbi_args = [join(lavadir, 'fbi', 'fbi'), project_file, pandalog, input_file_base]
 dprint ("fbi invocation: [%s]" % (subprocess32.list2cmdline(fbi_args)))
+sys.stdout.flush()
 subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
 
 print()
