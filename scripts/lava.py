@@ -478,7 +478,9 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         if competition:
             make_cmd += " CFLAGS+=\"-DLAVA_LOGGING\""
         (rvt,outpt) = run_cmd_notimeout(make_cmd, cwd=lp.bugs_build)
-        rv += rvt
+        if rvt != 0:
+            rv = rvt
+            break
         outp += str(outpt)
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
@@ -626,11 +628,8 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     mutfile(unfuzzed_input, fuzz_labels_list, fuzzed_input, bug,
             **mutfile_kwargs)
     timeout = project.get('timeout', 5)
-    try:
-        (rv, outp) = run_modified_program(project, lp.bugs_install, fuzzed_input,
+    (rv, outp) = run_modified_program(project, lp.bugs_install, fuzzed_input,
                                       timeout)
-    except:
-        return False
     print("retval = %d" % rv)
     validated = False
     if bug.trigger.dua.fake_dua == False:
@@ -695,9 +694,10 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
         if rv != args.exitCode:
             print("***** buggy program fails on original input - Exit code {} does not match expected {}".format(rv,
                   args.exitCode))
-            print("OUTPUT: ")
-            print(str(outp))
-            assert False
+            print(outp[0])
+            print()
+            print(outp[1])
+            assert False # Fails on original input
         else:
             print("buggy program succeeds on original input {} with exit code {}".format(input_file, rv))
         print("output:")
