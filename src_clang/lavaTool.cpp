@@ -808,13 +808,7 @@ struct FunctionArgHandler : public LavaMatchHandler {
         const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("arg");
         // and this is the fn call
         const CallExpr *call = Result.Nodes.getNodeAs<CallExpr>("call");
-        assert (call != nullptr);
-        const Decl *func1 = call->getCalleeDecl();
-        assert (func1 != nullptr);
-        const NamedDecl *nd = dyn_cast<NamedDecl> (func1);
-        assert (nd != nullptr);
-        std::string calleename = nd->getNameAsString();
-        debug(FNARG) << "Callee name is [" << calleename << "]\n";
+        if (call == nullptr) return;
 
         const SourceManager &sm = *Result.SourceManager;
 
@@ -849,10 +843,19 @@ struct FunctionArgHandler : public LavaMatchHandler {
 
         if (functionname.find("__builtin_") != std::string::npos) {
 */
-        if (calleename.find("__builtin_") != std::string::npos) {
-            debug(TIM) << "OMG we found a built-in being called: " << calleename << "\n";
-            return;
-        }        
+
+        const Decl *func1 = call->getCalleeDecl();
+        if (func1 != nullptr) {
+            const NamedDecl *nd = dyn_cast<NamedDecl> (func1);
+            if (nd != nullptr) {
+                std::string calleename = nd->getNameAsString();
+                debug(FNARG) << "Callee name is [" << calleename << "]\n";
+                if (calleename.find("__builtin_") != std::string::npos) {
+                    debug(TIM) << "OMG we found a built-in being called: " << calleename << "\n";
+                    return;
+                }        
+            }
+        }
 
         printf ("FunctionArgHandler handle: ok to instrument %s\n", fnname.second.c_str());
 
