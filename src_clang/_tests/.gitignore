@@ -3,6 +3,8 @@
 */*.c.yaml
 */*.c.fn
 */log.txt
-*/*.with_replacements
+*/*.df.c
+*/*.fnwl
 torture/torture
 evil/evil
+log_hostfninstr.txt

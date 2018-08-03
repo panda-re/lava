@@ -1,7 +1,10 @@
 all: torture
 
 torture: torture.c
-	$(CC) -g -O0 -c -o torture $<
+	$(CC) -c -o torture $<
+
+torture-df: torture.df.c
+	$(CC) -c -o torture-df $<
 
 clean:
 	rm -f torture

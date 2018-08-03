@@ -1089,7 +1089,9 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
                 Stmt *first = *body->body_begin();
                 assert(first);
                 std::stringstream data_array;
-                data_array << "int data[" << data_slots.size() << "] = {0};\n";
+                // Inject valid C even if we have no values
+                int data_slots_size = (data_slots.size() > 0) ? data_slots.size() : 1;
+                data_array << "int data[" << data_slots_size << "] = {0};\n";
                 data_array << "int *" ARG_NAME << "= &data;\n";
                 Mod.InsertAt(first->getLocStart(), data_array.str());
             }
@@ -1390,7 +1392,12 @@ void parse_whitelist(std::string whitelist_filename) {
         printf("Read line %s\n", line);
         char *np = strtok(p, " ");
         char *npp = strtok(NULL, "\n");
-        if (npp == NULL) continue;
+
+        if (npp == NULL) {
+            errs() << "Error parsing whitelist file. Ignoring\n";
+            continue;
+        }
+
         printf("\t np=%s npp=%s\n", np, npp);
         auto wlp = std::make_pair(std::string(np), std::string(npp));
         whitelist.insert(std::string(npp));

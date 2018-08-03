@@ -11,7 +11,6 @@ LAVA=$1
 pushd `pwd` > /dev/null
 cd ${LAVA}/src_clang/_tests
 
-
 # Go into directory X, run lavaFnTool and then lavaTool on x.c
 runtest() {
     cd $1
@@ -23,14 +22,23 @@ runtest() {
     fi
 
     ../../build/lavaFnTool ./$1.c
-    ../../build/lavaTool -debug -lava-wl ./$1.c.fn -arg_dataflow -src-prefix=`pwd`  -action=inject $1.c
+    touch ./built
+
+    echo "Ran lavaFnTool. Waiting for host_fninstr..."
+
+    # Wait for host_fninstr to run
+    while [ -f  ./built ]; do sleep 0.1; done
+
+    echo "host_fninstr finished!"
+
+    ../../build/lavaTool -debug -lava-wl ./$1.fnwl -arg_dataflow -src-prefix=`pwd`  -action=inject $1.c
 
     cp $1.c{,.bak}
     ../../build/clang-apply-replacements .
     make clean
     make &> log.txt
 
-    mv $1.c{,.with_replacements}
+    mv $1{.c,.df.c}
     mv $1.c{.bak,}
 
     cd ..
