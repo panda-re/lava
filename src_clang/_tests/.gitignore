@@ -1,5 +1,6 @@
-brace.log
-compile_commands.json
-evil
-evil.c.yaml
-evil.c.fn
+*/brace.log
+*/compile_commands.json
+*/*.c.yaml
+*/*.c.fn
+torture/torture
+evil/evil

@@ -11,12 +11,23 @@ LAVA=$1
 pushd `pwd` > /dev/null
 cd ${LAVA}/src_clang/_tests
 
-if [ ! -f ./compile_commands.json ]; then
-    ../../btrace/sw-btrace make
-    ../../btrace/sw-btrace-to-compiledb btrace.log
-    rm btrace.log
-fi
 
-../build/lavaFnTool ./evil.c 
-../build/lavaTool -debug -lava-wl ./evil.c.fn -action=inject ./evil.c 
+# Go into directory X, run lavaFnTool and then lavaTool on x.c
+runtest() {
+    cd $1
+    if [ ! -f ./compile_commands.json ]; then
+        make clean
+        ../../../btrace/sw-btrace make
+        ../../../btrace/sw-btrace-to-compiledb btrace.log
+        rm btrace.log
+    fi
+
+    ../../build/lavaFnTool ./$1.c
+    ../../build/lavaTool -debug -lava-wl ./$1.c.fn -src-prefix=`pwd`  -action=inject $1.c
+    cd ..
+}
+
+runtest evil
+runtest torture
+
 popd > /dev/null

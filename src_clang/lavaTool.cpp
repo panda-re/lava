@@ -1380,15 +1380,18 @@ void mark_for_siphon(const DuaBytes *dua_bytes) {
 
 
 void parse_whitelist(std::string whitelist_filename) {
-    printf ("parsing white list\n");
+    printf ("parsing white list %s\n", whitelist_filename.c_str());
     FILE *fp = fopen(whitelist_filename.c_str(), "r");
     char *line = NULL;
     size_t len = 0;
     ssize_t read = 0;
     while ((read = getline(&line, &len, fp)) != -1) {
         char *p = line;
+        printf("Read line %s\n", line);
         char *np = strtok(p, " ");
         char *npp = strtok(NULL, "\n");
+        if (npp == NULL) continue;
+        printf("\t np=%s npp=%s\n", np, npp);
         auto wlp = std::make_pair(std::string(np), std::string(npp));
         whitelist.insert(std::string(npp));
         printf ("white list entry: file = [%s] func = [%s]\n", np, npp);
