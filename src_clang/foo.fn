@@ -1,0 +1,650 @@
+- fun: 
+   start: /usr/include/i386-linux-gnu/bits/sigset.h:102:1
+   end: /usr/include/i386-linux-gnu/bits/sigset.h:102:50
+   name: __sigismember
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: const __sigset_t *
+         - param: int
+- fun: 
+   start: /usr/include/i386-linux-gnu/bits/sigset.h:103:1
+   end: /usr/include/i386-linux-gnu/bits/sigset.h:103:42
+   name: __sigaddset
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: __sigset_t *
+         - param: int
+- fun: 
+   start: /usr/include/i386-linux-gnu/bits/sigset.h:104:1
+   end: /usr/include/i386-linux-gnu/bits/sigset.h:104:42
+   name: __sigdelset
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: __sigset_t *
+         - param: int
+- fun: 
+   start: /usr/include/signal.h:90:1
+   end: /usr/include/signal.h:91:6 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: __sysv_signal
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: __sighandler_t
+      params: 
+         - param: int
+         - param: fnptr __sighandler_t
+- fun: 
+   start: /usr/include/signal.h:102:1
+   end: /usr/include/signal.h:103:6 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: signal
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: __sighandler_t
+      params: 
+         - param: int
+         - param: fnptr __sighandler_t
+- fun: 
+   start: /usr/include/signal.h:127:1
+   end: /usr/include/signal.h:127:44 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: kill
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: __pid_t
+         - param: int
+- fun: 
+   start: /usr/include/signal.h:134:1
+   end: /usr/include/signal.h:134:47 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: killpg
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: __pid_t
+         - param: int
+- fun: 
+   start: /usr/include/signal.h:139:1
+   end: /usr/include/signal.h:139:30 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: raise
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: int
+- fun: 
+   start: /usr/include/signal.h:144:1
+   end: /usr/include/signal.h:145:6 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: ssignal
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: __sighandler_t
+      params: 
+         - param: int
+         - param: fnptr __sighandler_t
+- fun: 
+   start: /usr/include/signal.h:146:1
+   end: /usr/include/signal.h:146:32 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: gsignal
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: int
+- fun: 
+   start: /usr/include/signal.h:151:1
+   end: /usr/include/signal.h:151:48
+   name: psignal
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: void
+      params: 
+         - param: int
+         - param: const char *
+- fun: 
+   start: /usr/include/signal.h:154:1
+   end: /usr/include/signal.h:154:64
+   name: psiginfo
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: void
+      params: 
+         - param: const siginfo_t *
+         - param: const char *
+- fun: 
+   start: /usr/include/signal.h:187:1
+   end: /usr/include/signal.h:187:42 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:254:66>
+   name: sigblock
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: int
+- fun: 
+   start: /usr/include/signal.h:190:1
+   end: /usr/include/signal.h:190:44 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:254:66>
+   name: sigsetmask
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: int
+- fun: 
+   start: /usr/include/signal.h:193:1
+   end: /usr/include/signal.h:193:38 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:254:66>
+   name: siggetmask
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+- fun: 
+   start: /usr/include/signal.h:213:1
+   end: /usr/include/signal.h:213:50 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:285:63>
+   name: sigemptyset
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: sigset_t *
+- fun: 
+   start: /usr/include/signal.h:216:1
+   end: /usr/include/signal.h:216:49 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:285:63>
+   name: sigfillset
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: sigset_t *
+- fun: 
+   start: /usr/include/signal.h:219:1
+   end: /usr/include/signal.h:219:61 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:285:63>
+   name: sigaddset
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: sigset_t *
+         - param: int
+- fun: 
+   start: /usr/include/signal.h:222:1
+   end: /usr/include/signal.h:222:61 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:285:63>
+   name: sigdelset
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: sigset_t *
+         - param: int
+- fun: 
+   start: /usr/include/signal.h:225:1
+   end: /usr/include/signal.h:226:14 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:285:63>
+   name: sigismember
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: const sigset_t *
+         - param: int
+- fun: 
+   start: /usr/include/signal.h:246:1
+   end: /usr/include/signal.h:247:33 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: sigprocmask
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: int
+         - param: const sigset_t *restrict
+         - param: sigset_t *restrict
+- fun: 
+   start: /usr/include/signal.h:254:1
+   end: /usr/include/signal.h:254:47 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:285:63>
+   name: sigsuspend
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: const sigset_t *
+- fun: 
+   start: /usr/include/signal.h:257:1
+   end: /usr/include/signal.h:258:46 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: sigaction
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: int
+         - param: const struct sigaction *restrict
+         - param: struct sigaction *restrict
+- fun: 
+   start: /usr/include/signal.h:261:1
+   end: /usr/include/signal.h:261:49 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:285:63>
+   name: sigpending
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: sigset_t *
+- fun: 
+   start: /usr/include/signal.h:268:1
+   end: /usr/include/signal.h:269:6 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:285:63>
+   name: sigwait
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: const sigset_t *restrict
+         - param: int *restrict
+- fun: 
+   start: /usr/include/signal.h:276:1
+   end: /usr/include/signal.h:277:34 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:285:63>
+   name: sigwaitinfo
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: const sigset_t *restrict
+         - param: siginfo_t *restrict
+- fun: 
+   start: /usr/include/signal.h:284:1
+   end: /usr/include/signal.h:287:6 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:285:63>
+   name: sigtimedwait
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: const sigset_t *restrict
+         - param: siginfo_t *restrict
+         - param: const struct timespec *restrict
+- fun: 
+   start: /usr/include/signal.h:291:1
+   end: /usr/include/signal.h:292:6 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: sigqueue
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: __pid_t
+         - param: int
+         - param: const union sigval
+- fun: 
+   start: /usr/include/signal.h:309:1
+   end: /usr/include/signal.h:309:49 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: sigreturn
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: struct sigcontext *
+- fun: 
+   start: /usr/include/signal.h:321:1
+   end: /usr/include/signal.h:321:54 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: siginterrupt
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: int
+         - param: int
+- fun: 
+   start: /usr/include/signal.h:332:1
+   end: /usr/include/signal.h:333:14 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:254:66>
+   name: sigstack
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: struct sigstack *
+         - param: struct sigstack *
+- fun: 
+   start: /usr/include/signal.h:337:1
+   end: /usr/include/signal.h:338:42 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: sigaltstack
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: const struct sigaltstack *restrict
+         - param: struct sigaltstack *restrict
+- fun: 
+   start: /usr/include/i386-linux-gnu/bits/sigthread.h:30:1
+   end: /usr/include/i386-linux-gnu/bits/sigthread.h:32:41 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: pthread_sigmask
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: int
+         - param: const __sigset_t *restrict
+         - param: __sigset_t *restrict
+- fun: 
+   start: /usr/include/i386-linux-gnu/bits/sigthread.h:35:1
+   end: /usr/include/i386-linux-gnu/bits/sigthread.h:35:61 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: pthread_kill
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+         - param: pthread_t
+         - param: int
+- fun: 
+   start: /usr/include/signal.h:369:1
+   end: /usr/include/signal.h:369:43 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: __libc_current_sigrtmin
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+- fun: 
+   start: /usr/include/signal.h:371:1
+   end: /usr/include/signal.h:371:43 <Spelling=/usr/include/i386-linux-gnu/sys/cdefs.h:55:54>
+   name: __libc_current_sigrtmax
+   hasbody: false
+   fundecl: 
+      extern: True
+      ret_type: int
+      params: 
+- fun: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:4:1
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:4:23
+   name: foo
+   hasbody: false
+   fundecl: 
+      extern: False
+      ret_type: int
+      params: 
+         - param: int
+         - param: float
+- fun: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:5:1
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:5:14
+   name: main
+   hasbody: false
+   fundecl: 
+      extern: False
+      ret_type: int
+      params: 
+- fun: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:8:1
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:10:1
+   name: bar
+   hasbody: true
+   fundecl: 
+      extern: False
+      ret_type: int
+      params: 
+         - param: fnptr int (*)(int, float)
+         - param: int
+         - param: float
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:9:12
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:9:21
+   fnptr: true
+   name: None
+   args: 
+      arg: 
+         name: None
+         type: int
+         info: None
+      arg: 
+         name: None
+         type: float
+         info: None
+- fun: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:12:1
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:15:1
+   name: foo
+   hasbody: true
+   fundecl: 
+      extern: False
+      ret_type: int
+      params: 
+         - param: int
+         - param: float
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:13:24
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:13:36
+   fnptr: false
+   name: foo
+   fundecl: 
+      extern: False
+      ret_type: int
+      params: 
+         - param: int
+         - param: float
+   args: 
+      arg: 
+         name: None
+         type: int
+         info: None
+      arg: 
+         name: None
+         type: float
+         info: None
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:14:12
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:14:24
+   fnptr: false
+   name: foo
+   fundecl: 
+      extern: False
+      ret_type: int
+      params: 
+         - param: int
+         - param: float
+   args: 
+      arg: 
+         name: None
+         type: int
+         info: None
+      arg: 
+         name: None
+         type: float
+         info: None
+- fun: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:17:1
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:31:1
+   name: main
+   hasbody: true
+   fundecl: 
+      extern: False
+      ret_type: int
+      params: 
+- fnPtrAssign:
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:20:5
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:20:34
+   name: foo
+   fundecl: 
+      extern: False
+      ret_type: int
+      params: 
+         - param: int
+         - param: float
+- fnPtrAssign: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:22:5
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:22:10
+   name: foo
+   fundecl: 
+      extern: False
+      ret_type: int
+      params: 
+         - param: int
+         - param: float
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:24:14
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:24:45
+   fnptr: false
+   name: signal
+   fundecl: 
+      extern: True
+      ret_type: __sighandler_t
+      params: 
+         - param: int
+         - param: fnptr __sighandler_t
+   args: 
+      arg: 
+         name: None
+         type: int
+         info: None
+      arg: 
+         name: None
+         type: __sighandler_t
+         info: functionpointer
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:25:11
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:25:28
+   fnptr: false
+   name: signal
+   fundecl: 
+      extern: True
+      ret_type: __sighandler_t
+      params: 
+         - param: int
+         - param: fnptr __sighandler_t
+   args: 
+      arg: 
+         name: None
+         type: int
+         info: None
+      arg: 
+         name: foobar
+         type: sig_t
+         info: functionpointer
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:27:13
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:27:21
+   fnptr: true
+   name: None
+   args: 
+      arg: 
+         name: None
+         type: int
+         info: None
+      arg: 
+         name: None
+         type: double
+         info: None
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:28:11
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:28:26
+   fnptr: false
+   name: bar
+   fundecl: 
+      extern: False
+      ret_type: int
+      params: 
+         - param: fnptr int (*)(int, float)
+         - param: int
+         - param: float
+   args: 
+      arg: 
+         name: foo
+         type: int (int, float)
+         info: function
+      arg: 
+         name: None
+         type: int
+         info: None
+      arg: 
+         name: None
+         type: double
+         info: None
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:29:11
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:29:27
+   fnptr: false
+   name: bar
+   fundecl: 
+      extern: False
+      ret_type: int
+      params: 
+         - param: fnptr int (*)(int, float)
+         - param: int
+         - param: float
+   args: 
+      arg: 
+         name: fp
+         type: int (*)(int, float)
+         info: functionpointer
+      arg: 
+         name: None
+         type: int
+         info: None
+      arg: 
+         name: None
+         type: double
+         info: None
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:30:12
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:30:35
+   fnptr: false
+   name: foo
+   fundecl: 
+      extern: False
+      ret_type: int
+      params: 
+         - param: int
+         - param: float
+   args: 
+      arg: 
+         name: None
+         type: int
+         info: None
+      arg: 
+         name: None
+         type: double
+         info: None
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.c:30:16
+   end: /home/tleek/git/lava-mdb/src_clang/test.c:30:29
+   fnptr: true
+   name: None
+   args: 
+      arg: 
+         name: None
+         type: int
+         info: None
+      arg: 
+         name: None
+         type: int
+         info: None

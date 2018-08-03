@@ -1,0 +1,4 @@
+0x8048000-0x8051000,/home/tleek/lava/file_tleek/file-5.22/lava-install/bin/file
+0xb7571000-0xb76d3978,/lib/i386-linux-gnu/i686/cmov/libc-2.13.so
+0xb76d5000-0xb76ed0fc,/lib/i386-linux-gnu/libz.so.1.2.7
+0xb76f2000-0xb7797d20,/home/tleek/lava/file_tleek/file-5.22/lava-install/lib/libmagic.so.1.0.0

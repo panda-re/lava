@@ -1,0 +1,9 @@
+0xb7592000-0xb76f4978,/lib/i386-linux-gnu/i686/cmov/libc-2.13.so
+0xb759c000-0xb75b4200,/lib/i386-linux-gnu/i686/cmov/libpthread-2.13.so
+0xb75b6000-0xb7718978,/lib/i386-linux-gnu/i686/cmov/libc-2.13.so
+0xb7640000-0xb76450e8,/lib/i386-linux-gnu/libuuid.so.1.3.0
+0xb7647000-0xb77a9978,/lib/i386-linux-gnu/i686/cmov/libc-2.13.so
+0xb76f6000-0xb770e0fc,/lib/i386-linux-gnu/libz.so.1.2.7
+0xb7713000-0xb77d1c80,/home/tleek/lava/file_tleek/file-5.22-preprocess/lava-install/lib/libmagic.so
+0xb7719000-0xb7721250,/lib/i386-linux-gnu/i686/cmov/librt-2.13.so
+0xb77aa000-0xb77d248c,/lib/i386-linux-gnu/libblkid.so.1.1.0

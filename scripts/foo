@@ -1,0 +1,134 @@
+allowed bug types: [0, 2]
+Getting locked bugs directory...
+Using dir /home/tleek/lava/file_tleek/bugs/0
+Picking bugs to inject.
+source_root = file-5.22-preprocess
+
+Re-configuring...
+run( true --prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/lava-install )
+config.mak = [/home/tleek/git/lava-mdb/src_clang/config.mak]
+llvm_src = [/llvm-3.6.2]
+------------
+
+SELECTED 
+BUG
+ 0 : 2048
+   (34,121)
+DUA:
+    DUA[34](lval=Lval[34](loc=src/encoding-pre.c:4220, ast="buf"), labels=[0, 1, 2, 3], viable=[[3], [2], [1], [0]], input=ls, instr=51864785, fake_dua=False)
+ATP:
+    ATP[121](loc=src/encoding-pre.c:4106, type=ATP_FUNCTION_CALL)
+max_tcn=0  max_liveness=0.0
+------------
+
+CLEAN UP SRC
+------------
+
+INJECTING BUGS INTO SOURCE
+1 source files: 
+set([u'src/encoding-pre.c'])
+compile commands is here: /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/compile_commands.json
+all_c_files: set([u'src/file-pre.c', u'src/softmagic-pre.c', u'src/compress-pre.c', u'src/print-pre.c', u'src/cdf_time-pre.c', u'src/encoding-pre.c', u'src/ascmagic-pre.c', u'src/readcdf-pre.c', u'src/is_tar-pre.c', u'src/magic-pre.c', u'src/funcs-pre.c', u'src/strlcpy-pre.c', u'src/apptype-pre.c', u'src/apprentice-pre.c', u'src/readelf-pre.c', u'src/fsmagic-pre.c', u'src/cdf-pre.c', u'src/fmtcheck-pre.c', u'src/strlcat-pre.c'])
+all_files: set([u'src/file.c', u'src/encoding-pre.c'])
+Running lavaTool on [src/file-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file-pre.c -arg_dataflow
+Running lavaTool on [src/cdf_time-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/cdf_time-pre.c -arg_dataflow
+Running lavaTool on [src/print-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/print-pre.c -arg_dataflow
+Running lavaTool on [src/encoding-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/encoding-pre.c -arg_dataflow
+Running lavaTool on [src/magic-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/magic-pre.c -arg_dataflow
+Running lavaTool on [src/readcdf-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/readcdf-pre.c -arg_dataflow
+Running lavaTool on [src/softmagic-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/softmagic-pre.c -arg_dataflow
+Running lavaTool on [src/readelf-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/readelf-pre.c -arg_dataflow
+Running lavaTool on [src/file.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c -arg_dataflow
+Running lavaTool on [src/cdf-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/cdf-pre.c -arg_dataflow
+Running lavaTool on [src/strlcat-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/strlcat-pre.c -arg_dataflow
+Running lavaTool on [src/is_tar-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/is_tar-pre.c -arg_dataflow
+Running lavaTool on [src/compress-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/compress-pre.c -arg_dataflow
+Running lavaTool on [src/ascmagic-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/ascmagic-pre.c -arg_dataflow
+Running lavaTool on [src/apptype-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/apptype-pre.c -arg_dataflow
+Running lavaTool on [src/strlcpy-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/strlcpy-pre.c -arg_dataflow
+Running lavaTool on [src/apprentice-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/apprentice-pre.c -arg_dataflow
+
+make clean -C src;
+	rm -rf lava-install
+make[1]: Entering directory `/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src'
+rm -f *.o \
+	rm -f *.so \
+	rm -f file \
+	rm -f *.Tpo 
+make[1]: Leaving directory `/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src'
+Running lavaTool on [src/funcs-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/funcs-pre.c -arg_dataflow
+Running lavaTool on [src/fsmagic-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/fsmagic-pre.c -arg_dataflow
+Running lavaTool on [src/fmtcheck-pre.c]...
+/home/tleek/git/lava-mdb/src_clang/build/lavaTool -action=inject -bug-list=2048 -lava-wl=/home/tleek/lava/file_tleek/fninstr -src-prefix=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess -project-file=/home/tleek/lava/file_tleek_pre.json -main-files=/home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/file.c /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess/src/fmtcheck-pre.c -arg_dataflow
+------------
+
+ATTEMPTING BUILD OF INJECTED BUG(S)
+build_dir = /home/tleek/lava/file_tleek/bugs/0/file-5.22-preprocess
+Lava tool error log below:
+file-pre.c:4853:14: warning: redundant redeclaration of ‘ctermid’ [-Wredundant-decls]
+file-pre.c:827:14: note: previous declaration of ‘ctermid’ was here
+file-pre.c: In function ‘wctob’:
+file-pre.c:5564:1: warning: comparison of unsigned expression >= 0 is always true [-Wtype-limits]
+file-pre.c: At top level:
+file-pre.c:5925:14: warning: redundant redeclaration of ‘optarg’ [-Wredundant-decls]
+file-pre.c:4686:14: note: previous declaration of ‘optarg’ was here
+file-pre.c:5926:12: warning: redundant redeclaration of ‘optind’ [-Wredundant-decls]
+file-pre.c:4687:12: note: previous declaration of ‘optind’ was here
+file-pre.c:5931:12: warning: redundant redeclaration of ‘opterr’ [-Wredundant-decls]
+file-pre.c:4692:12: note: previous declaration of ‘opterr’ was here
+file-pre.c:5935:12: warning: redundant redeclaration of ‘optopt’ [-Wredundant-decls]
+file-pre.c:4696:12: note: previous declaration of ‘optopt’ was here
+file-pre.c:5945:12: warning: redundant redeclaration of ‘getopt’ [-Wredundant-decls]
+file-pre.c:4697:12: note: previous declaration of ‘getopt’ was here
+file-pre.c: In function ‘main’:
+file-pre.c:6063:17: warning: initialization from incompatible pointer type [enabled by default]
+file-pre.c: In function ‘setparam’:
+file-pre.c:6304:15: warning: unused parameter ‘data_flow’ [-Wunused-parameter]
+file-pre.c: In function ‘file_mbswidth’:
+file-pre.c:6417:20: warning: unused parameter ‘data_flow’ [-Wunused-parameter]
+file-pre.c: In function ‘usage’:
+file-pre.c:6453:24: warning: unused parameter ‘data_flow’ [-Wunused-parameter]
+file-pre.c: In function ‘docprint’:
+file-pre.c:6459:15: warning: unused parameter ‘data_flow’ [-Wunused-parameter]
+apprentice-pre.c:5805:2: warning: initialization from incompatible pointer type [enabled by default]
+apprentice-pre.c:5805:2: warning: (near initialization for ‘bang[0].fun’) [enabled by default]
+apprentice-pre.c:5806:2: warning: initialization from incompatible pointer type [enabled by default]
+apprentice-pre.c:5806:2: warning: (near initialization for ‘bang[1].fun’) [enabled by default]
+apprentice-pre.c:5807:2: warning: initialization from incompatible pointer type [enabled by default]
+apprentice-pre.c:5807:2: warning: (near initialization for ‘bang[2].fun’) [enabled by default]
+apprentice-pre.c: In function ‘load_1’:
+apprentice-pre.c:6715:9: warning: passing argument 1 of ‘bang[i].fun’ from incompatible pointer type [enabled by default]
+apprentice-pre.c:6715:9: note: expected ‘struct magic_set *’ but argument is of type ‘int *’
+apprentice-pre.c:6715:9: warning: passing argument 2 of ‘bang[i].fun’ from incompatible pointer type [enabled by default]
+apprentice-pre.c:6715:9: note: expected ‘struct magic_entry *’ but argument is of type ‘struct magic_set *’
+apprentice-pre.c:6715:9: warning: passing argument 3 of ‘bang[i].fun’ from incompatible pointer type [enabled by default]
+apprentice-pre.c:6715:9: note: expected ‘const char *’ but argument is of type ‘struct magic_entry *’
+apprentice-pre.c:6715:9: error: too many arguments to function ‘bang[i].fun’
+make[1]: *** [apprentice-pre.o] Error 1
+make: *** [all] Error 2
+
+
+===================================
+build of injected bug failed!!!!!!!
+LAVA TOOL FAILED
+===================================
+

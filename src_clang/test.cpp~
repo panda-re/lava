@@ -1,0 +1,20 @@
+
+int foo(int x, float y);
+int main(void);
+
+
+int foo(int x, float y) {
+    if (x < 12) return foo(x*x, y/x);
+    return foo(x-1, x+y);
+}
+
+int main() { 
+
+    int (*fun_ptr)(int, float) = foo;
+    int (*fp)(int, float);
+    fp = foo;
+
+    int y = fp(3,7.4);
+    return foo(fun_ptr(y, 33), 7.2); 
+}
+

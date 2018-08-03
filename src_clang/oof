@@ -1,0 +1,36 @@
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:3:24
+   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:3:36
+   fnptr: false
+   name: foo
+   ret_type: int
+   args: 
+     - arg: int
+     - arg: float
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:4:12
+   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:4:24
+   fnptr: false
+   name: foo
+   ret_type: int
+   args: 
+     - arg: int
+     - arg: float
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:11:12
+   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:11:36
+   fnptr: false
+   name: foo
+   ret_type: int
+   args: 
+     - arg: int
+     - arg: float
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:11:16
+   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:11:30
+   fnptr: true
+   name: NONAMEITSAFNPTR
+   ret_type: int
+   args: 
+     - arg: int
+     - arg: float

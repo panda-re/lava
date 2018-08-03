@@ -297,6 +297,7 @@ bool IsArgAttackable(const Expr *arg) {
     return false;
 }
 
+
 ///////////////// HELPER FUNCTIONS END ////////////////////
 
 uint32_t Slot(LvalBytes lval_bytes) {
@@ -1105,18 +1106,37 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
 };
 
 
-// adding data_flow arg to 
+// adding data_flow.  so look for 
+// struct (and union) fields that are fn ptr types
+// so you can add in the extra arg.
 struct FunctionPointerFieldHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
-        // What the hell is this malarkey?
-        // Assume this is dead code until you encounter it
-        // triggering in the real world
-        assert (1==0);
-        const FieldDecl *decl = Result.Nodes.getNodeAs<FieldDecl>("fieldDecl");
-        debug(FNARG) << decl->getLocEnd().printToString(*Mod.sm) << "\n";
-        Mod.InsertAt(decl->getLocEnd().getLocWithOffset(-14), "int *" ARG_NAME ", ");
+        const FieldDecl *fd = Result.Nodes.getNodeAs<FieldDecl>("fieldDecl");
+        if (!fd) {
+            debug(FNARG) << "fd is null in FunctionPointerFieldHandler\n";
+//        debug(FNARG) << fd->print() << "\n";
+        }
+        else {
+
+            const Type *t = fd->getType().getTypePtr();
+            if (t->isPointerType()) { // || t->isArrayType()) {
+                const Type *pt = t->getPointeeType().getTypePtr(); // t->getPointeeOrArrayElementType();
+                if (pt->isFunctionType()) 
+                    debug(FNARG) << "Its a fn pointer!\n";
+                auto sl1 = fd->getLocStart();
+                auto sl2 = fd->getLocEnd();
+                debug(FNARG) << "start: " << sl1.printToString(*Mod.sm) << "\n"; 
+                debug(FNARG) << "end:   " << sl2.printToString(*Mod.sm) << "\n"; 
+                
+            }
+            
+            
+            
+            //        debug(FNARG) << decl->getLocEnd().printToString(*Mod.sm) << "\n";
+            //        Mod.InsertAt(decl->getLocEnd().getLocWithOffset(-14), "int *" ARG_NAME ", ");
+        }
     }
 };
 
@@ -1275,10 +1295,11 @@ public:
             addMatcher(
                     callExpr().bind("callExpr"),
                     makeHandler<CallExprArgAdditionHandler>());
-            // OMG what is this nonsense?
+
             addMatcher(
-                    fieldDecl(anyOf(hasName("as_number"), hasName("as_string"))).bind("fieldDecl"),
-                    makeHandler<FunctionPointerFieldHandler>());
+                fieldDecl().bind("fielddecl"),
+                makeHandler<FunctionPointerFieldHandler>());
+
         }
 
         addMatcher(

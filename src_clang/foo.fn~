@@ -1,0 +1,114 @@
+- fun: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:2:1
+   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:2:23
+   name: foo
+   hasbody: false
+   fundecl: 
+      name: foo
+      ret_type: int
+      params: 
+         - param: int
+         - param: float
+- fun: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:3:1
+   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:3:14
+   name: main
+   hasbody: false
+   fundecl: 
+      name: main
+      ret_type: int
+      params: 
+- fun: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:6:1
+   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:9:1
+   name: foo
+   hasbody: true
+   fundecl: 
+      name: foo
+      ret_type: int
+      params: 
+         - param: int
+         - param: float
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:7:24
+   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:7:36
+   fnptr: false
+   name: foo
+   ret_type: int
+   fundecl: 
+      name: foo
+      ret_type: int
+      params: 
+         - param: int
+         - param: float
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:8:12
+   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:8:24
+   fnptr: false
+   name: foo
+   ret_type: int
+   fundecl: 
+      name: foo
+      ret_type: int
+      params: 
+         - param: int
+         - param: float
+- fun: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:11:1
+   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:19:1
+   name: main
+   hasbody: true
+   fundecl: 
+      name: main
+      ret_type: int
+      params: 
+- fnPtrAssign
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:13:5
+h   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:13:34
+   name: foo
+   fundecl: 
+      name: foo
+      ret_type: int
+      params: 
+         - param: int
+         - param: float
+- fnPtrAssign: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:15:5
+   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:15:10
+   name: foo
+   fundecl: 
+      name: foo
+      ret_type: int
+      params: 
+         - param: int
+         - param: float
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:17:13
+   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:17:21
+   fnptr: true
+   params: 
+      ret_type: int
+      param: int
+      ret_type: int
+      param: float
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:18:12
+   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:18:35
+   fnptr: false
+   name: foo
+   ret_type: int
+   fundecl: 
+      name: foo
+      ret_type: int
+      params: 
+         - param: int
+         - param: float
+- call: 
+   start: /home/tleek/git/lava-mdb/src_clang/test.cpp:18:16
+   end: /home/tleek/git/lava-mdb/src_clang/test.cpp:18:29
+   fnptr: true
+   params: 
+      ret_type: int
+      param: int
+      ret_type: int
+      param: float

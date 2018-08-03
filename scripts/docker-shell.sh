@@ -38,6 +38,7 @@ fi
 set +x
 # to run debugger you need --privileged here
 docker run --rm -it \
+    --privileged \
     -e "HTTP_PROXY=$HTTP_PROXY" \
     -e "HTTPS_PROXY=$HTTPS_PROXY" \
     -e "http_proxy=$http_proxy" \
