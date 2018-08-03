@@ -137,7 +137,10 @@ static cl::opt<bool> ArgCompetition("competition",
     cl::desc("Log before/after bugs when competition is #defined"),
     cl::cat(LavaCategory),
     cl::init(false));
-
+static cl::opt<bool> ArgDebug("debug",
+    cl::desc("DEBUG: just add dataflow"),
+    cl::cat(LavaCategory),
+    cl::init(false));
 
 
 std::string LavaPath;
@@ -1403,6 +1406,14 @@ int main(int argc, const char **argv) {
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
 
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
+
+    if (ArgDebug) {
+        errs() << "DEBUG MODE: Only adding data_flow\n";
+
+        LavaMatchFinder Matcher;
+        Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
+        return 0;
+    }
 
     std::ifstream json_file(ProjectFile);
     Json::Value root;

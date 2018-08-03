@@ -159,6 +159,7 @@ for name in calls.keys():
         if not (call.args is None):
             for item in call.args:
                 arg = item['arg']
+                if not arg: continue
                 if arg['info'] == "function" and arg['name'] != "None":
                     all_fns.add(arg['name'])
                     addtohl(fns_passed_as_args, arg['name'], call.name)

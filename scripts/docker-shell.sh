@@ -51,6 +51,7 @@ docker run --rm -it \
     -v /etc/shadow:/etc/shadow:ro \
     -v /etc/gshadow:/etc/gshadow:ro \
     -v "$HOME":"$HOME" \
+    --cap-add=SYS_PTRACE \
     $docker_map_args \
     $extradockerargs \
     ${container} sh -c "trap '' PIPE; $cmd"
