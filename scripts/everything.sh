@@ -177,6 +177,12 @@ post_install="$(jq -r .post_install $json)"
 scripts="$lava/scripts"
 python="/usr/bin/python"
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
+
+if [ -z "$source" ]; then
+    echo -e "\nFATAL ERROR: could not get directory name from tarfile. Tar must unarchive and create directory\n";
+    exit 1;
+fi
+
 sourcedir="$directory/$name/$source"
 bugsdir="$directory/$name/bugs"
 logs="$directory/$name/logs"
