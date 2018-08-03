@@ -8,3 +8,4 @@
 torture/torture
 evil/evil
 log_hostfninstr.txt
+getfns.pickle

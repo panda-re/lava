@@ -1109,6 +1109,21 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
     }
 };
 
+// Add dataflow to typedef'd function pointer
+struct FunctionPointerTypedefHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
+
+    virtual void handle(const MatchFinder::MatchResult &Result) {
+        const TypedefType *td = Result.Nodes.getNodeAs<TypedefType>("typedef");
+        if (!td->isFunctionPointerType()) {
+            return;
+        }
+        debug(FNARG) << "It's a fn type";
+
+        //debug(FNARG) << td->getLocEnd().printToString(*Mod.sm) << "\n";
+        //Mod.InsertAt(decl->getLocEnd().getLocWithOffset(-14), "int *" ARG_NAME ", ");
+    }
+};
 
 // adding data_flow arg to 
 struct FunctionPointerFieldHandler : public LavaMatchHandler {
@@ -1284,6 +1299,12 @@ public:
             addMatcher(
                     fieldDecl(anyOf(hasName("as_number"), hasName("as_string"))).bind("fieldDecl"),
                     makeHandler<FunctionPointerFieldHandler>());
+
+            // Match typedefs for function pointers
+            addMatcher(
+                typedefDecl(hasType(pointerType(pointee(ignoringParenCasts(functionType()))))).bind("typedef"),
+                makeHandler<FunctionPointerTypedefHandler>());
+
         }
 
         addMatcher(

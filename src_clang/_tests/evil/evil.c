@@ -60,6 +60,9 @@ int ptr_fn4(int arg) {
 
 typedef int (*fun_ptr_typedef)(int) ;
 
+typedef int myint;
+typedef char* mychar;
+
 struct PtrStr {
     fun_ptr_typedef typedef_fn_ptr;
     int(*fn_ptr)(int);
