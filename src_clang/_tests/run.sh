@@ -23,11 +23,39 @@ runtest() {
     fi
 
     ../../build/lavaFnTool ./$1.c
-    ../../build/lavaTool -debug -lava-wl ./$1.c.fn -src-prefix=`pwd`  -action=inject $1.c
+    ../../build/lavaTool -debug -lava-wl ./$1.c.fn -arg_dataflow -src-prefix=`pwd`  -action=inject $1.c
+
+    cp $1.c{,.bak}
+    ../../build/clang-apply-replacements .
+    make clean
+    make &> log.txt
+
+    mv $1.c{,.with_replacements}
+    mv $1.c{.bak,}
+
     cd ..
 }
 
 runtest evil
 runtest torture
+
+
+echo
+echo
+echo "Evil"
+cat evil/log.txt
+
+echo
+echo
+
+echo "Torture"
+cat torture/log.txt
+
+wc_evil=$(wc -l ./evil/log.txt)
+wc_torture=$(wc -l ./torture/log.txt)
+
+echo
+echo "Evil gcc line count: $wc_evil"
+echo "Torture gcc line count: $wc_torture"
 
 popd > /dev/null
