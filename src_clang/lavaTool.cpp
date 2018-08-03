@@ -1407,6 +1407,11 @@ int main(int argc, const char **argv) {
 
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
 
+    if (LavaWL != "XXX") 
+        parse_whitelist(LavaWL);
+    else 
+        printf ("No whitelist\n");
+
     if (ArgDebug) {
         errs() << "DEBUG MODE: Only adding data_flow\n";
 
@@ -1429,11 +1434,6 @@ int main(int argc, const char **argv) {
     if (LavaDB != "XXX") StringIDs = LoadDB(LavaDB);
 
     odb::transaction *t = nullptr;
-
-    if (LavaWL != "XXX") 
-        parse_whitelist(LavaWL);
-    else 
-        printf ("No whitelist\n");
 
     if (LavaAction == LavaInjectBugs) {
         db.reset(new odb::pgsql::database("postgres", "postgrespostgres",

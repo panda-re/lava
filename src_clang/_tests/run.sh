@@ -17,5 +17,6 @@ if [ ! -f ./compile_commands.json ]; then
     rm btrace.log
 fi
 
-../build/lavaTool -debug -action=inject ./evil.c 
+../build/lavaFnTool ./evil.c 
+../build/lavaTool -debug -lava-wl ./evil.c.fn -action=inject ./evil.c 
 popd > /dev/null
