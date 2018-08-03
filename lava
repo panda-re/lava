@@ -8,9 +8,9 @@ import os
 import glob
 
 parser = argparse.ArgumentParser()
-parser.add_argument("script", help="Base of filename in ./scripts without the trailing .sh")
-parser.add_argument("args", help="Arguments to pass to script")
-parser.add_argument("target", help="Directory within ./target_configs/ to look for json files in")
+parser.add_argument("script", help="Name of the .sh script in scripts/ you wish to run. Will *-complete if there is only one match")
+parser.add_argument("args", help="Arguments to pass to script, do not prefix with a -")
+parser.add_argument("target", help="Directory within ./target_configs/ to look for json files in. Directory must contain a single json file")
 args = parser.parse_args()
 
 def get_one_file(path, filetype="", exactpath=None):
