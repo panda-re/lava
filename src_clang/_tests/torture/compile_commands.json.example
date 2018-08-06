@@ -1,0 +1,7 @@
+[
+{
+  "directory" : "/home/fasano/lava/src_clang/_tests/torture",
+  "command" : "cc -g -O0 -c -o torture torture.c -Ibtrace.log",
+  "file" : "torture.c"
+}
+]
