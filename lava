@@ -1,0 +1,31 @@
+#!/usr/bin/env python
+
+# Helper script to run a script in the scripts directory on a target json file in the target directory
+
+
+import argparse
+import os
+import glob
+
+parser = argparse.ArgumentParser()
+parser.add_argument("script", help="Name of the .sh script in scripts/ you wish to run. Will *-complete if there is only one match")
+parser.add_argument("args", help="Arguments to pass to script, do not prefix with a -")
+parser.add_argument("target", help="Directory within ./target_configs/ to look for json files in. Directory must contain a single json file")
+args = parser.parse_args()
+
+def get_one_file(path, filetype="", exactpath=None):
+    ret = glob.glob(path) # Try wildcard
+    if len(ret) != 1:
+        if exactpath and len(glob.glob(exactpath)) == 1: # If multiple results, check for exact
+            ret=glob.glob(exactpath)
+        else:
+            raise RuntimeError("Error, found {} possible {} files in {}".format(len(ret), filetype, path))
+    return ret[0]
+
+json = get_one_file("./target_configs/{}/*.json".format(args.target), filetype="json")
+script = get_one_file("./scripts/{}*.sh".format(args.script), exactpath="./scripts/{}.sh".format(args.script), filetype="script")
+
+cmd_args = "-" + args.args if len(args.args) else ""
+
+print("Running {} {} {}".format(script, args.args, json))
+os.execvp('/bin/bash', ['/bin/bash', '-c', "{} {} {}".format(script, cmd_args, json)])
