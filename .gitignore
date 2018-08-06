@@ -1,12 +1,13 @@
-includes.h.gch
 *.o
 *.so
 /libexec
-btrace.log
 .*.swp
 ~*
 *.pyc
-/tags
+*.qcow*
+btrace.log
+tags
+includes.h.gch
 /include/lava-odb.*xx
 .gdb_history
 /fbi/fbi

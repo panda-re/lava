@@ -137,7 +137,10 @@ static cl::opt<bool> ArgCompetition("competition",
     cl::desc("Log before/after bugs when competition is #defined"),
     cl::cat(LavaCategory),
     cl::init(false));
-
+static cl::opt<bool> ArgDebug("debug",
+    cl::desc("DEBUG: just add dataflow"),
+    cl::cat(LavaCategory),
+    cl::init(false));
 
 
 std::string LavaPath;
@@ -1087,7 +1090,9 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
                 Stmt *first = *body->body_begin();
                 assert(first);
                 std::stringstream data_array;
-                data_array << "int data[" << data_slots.size() << "] = {0};\n";
+                // Inject valid C even if we have no values
+                int data_slots_size = (data_slots.size() > 0) ? data_slots.size() : 1;
+                data_array << "int data[" << data_slots_size << "] = {0};\n";
                 data_array << "int *" ARG_NAME << "= &data;\n";
                 Mod.InsertAt(first->getLocStart(), data_array.str());
             }
@@ -1105,6 +1110,21 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
     }
 };
 
+// Add dataflow to typedef'd function pointer
+struct FunctionPointerTypedefHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
+
+    virtual void handle(const MatchFinder::MatchResult &Result) {
+        const TypedefType *td = Result.Nodes.getNodeAs<TypedefType>("typedef");
+        if (!td->isFunctionPointerType()) {
+            return;
+        }
+        debug(FNARG) << "It's a fn type";
+
+        //debug(FNARG) << td->getLocEnd().printToString(*Mod.sm) << "\n";
+        //Mod.InsertAt(decl->getLocEnd().getLocWithOffset(-14), "int *" ARG_NAME ", ");
+    }
+};
 
 // adding data_flow.  so look for 
 // struct (and union) fields that are fn ptr types
@@ -1300,6 +1320,11 @@ public:
                 fieldDecl().bind("fielddecl"),
                 makeHandler<FunctionPointerFieldHandler>());
 
+            // Match typedefs for function pointers
+            addMatcher(
+                typedefDecl(hasType(pointerType(pointee(ignoringParenCasts(functionType()))))).bind("typedef"),
+                makeHandler<FunctionPointerTypedefHandler>());
+
         }
 
         addMatcher(
@@ -1398,15 +1423,23 @@ void mark_for_siphon(const DuaBytes *dua_bytes) {
 
 
 void parse_whitelist(std::string whitelist_filename) {
-    printf ("parsing white list\n");
+    printf ("parsing white list %s\n", whitelist_filename.c_str());
     FILE *fp = fopen(whitelist_filename.c_str(), "r");
     char *line = NULL;
     size_t len = 0;
     ssize_t read = 0;
     while ((read = getline(&line, &len, fp)) != -1) {
         char *p = line;
+        printf("Read line %s\n", line);
         char *np = strtok(p, " ");
         char *npp = strtok(NULL, "\n");
+
+        if (npp == NULL) {
+            errs() << "Error parsing whitelist file. Ignoring\n";
+            continue;
+        }
+
+        printf("\t np=%s npp=%s\n", np, npp);
         auto wlp = std::make_pair(std::string(np), std::string(npp));
         whitelist.insert(std::string(npp));
         printf ("white list entry: file = [%s] func = [%s]\n", np, npp);
@@ -1425,6 +1458,19 @@ int main(int argc, const char **argv) {
 
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
 
+    if (LavaWL != "XXX") 
+        parse_whitelist(LavaWL);
+    else 
+        printf ("No whitelist\n");
+
+    if (ArgDebug) {
+        errs() << "DEBUG MODE: Only adding data_flow\n";
+
+        LavaMatchFinder Matcher;
+        Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
+        return 0;
+    }
+
     std::ifstream json_file(ProjectFile);
     Json::Value root;
     if (ProjectFile == "XXX") {
@@ -1439,11 +1485,6 @@ int main(int argc, const char **argv) {
     if (LavaDB != "XXX") StringIDs = LoadDB(LavaDB);
 
     odb::transaction *t = nullptr;
-
-    if (LavaWL != "XXX") 
-        parse_whitelist(LavaWL);
-    else 
-        printf ("No whitelist\n");
 
     if (LavaAction == LavaInjectBugs) {
         db.reset(new odb::pgsql::database("postgres", "postgrespostgres",

@@ -155,7 +155,10 @@ class CallPrinter : public MatchFinder::MatchCallback {
                 outfile << "      - arg: \n";
                 if (atp->isFunctionType()) {
                     const DeclRefExpr *dre = dyn_cast<DeclRefExpr>(arg);
-		    if (dre == NULL) continue;
+                    if (dre == NULL) {
+                        printf("Warning: DeclRefExpr is null- SKIP\n");
+                        continue;
+                    }
                     outfile << "         name: " << dre->getNameInfo().getName().getAsString() << "\n";
                     outfile << "         type: " << at.getAsString() << "\n";
                     outfile << "         info: function\n";

@@ -1,0 +1,11 @@
+*/brace.log
+*/compile_commands.json
+*/*.c.yaml
+*/*.c.fn
+*/log.txt
+*/*.df.c
+*/*.fnwl
+torture/torture
+evil/evil
+log_hostfninstr.txt
+getfns.pickle

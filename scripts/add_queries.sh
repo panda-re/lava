@@ -7,7 +7,7 @@
 # name         name for project, usually the name of the software (binutils-2.25, openssh-2.1, etc)
 # directory    directory in which src-2-src query injection will occur -- should be somewhere on the nas
 # tarfile      path to software tar file
-# configure    how to configure the software (./configure plus arguments)
+# configure    how to configure the software (./configure plus arguments) (will just use /bin/true if not present)
 # make         how to make the software (make might have args or might have FOO=bar required precursors)
 # install      how to install the software (note that configure will be run with --prefix ...lava-install)
 #
@@ -81,7 +81,7 @@ git commit -m 'Unmodified source.'
 
 progress "queries" 0  "Configuring..."
 mkdir -p lava-install
-$(jq -r .configure $json) --prefix=$(pwd)/lava-install
+$(jq -r '.configure // "/bin/true"' $json) --prefix=$(pwd)/lava-install
 
 progress "queries" 0  "Making with btrace..."
 $lava/btrace/sw-btrace $(jq -r .make $json)
