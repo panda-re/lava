@@ -67,7 +67,8 @@ num_trials=0
 kt=""
 demo=0
 ATP_TYPE=""
-bugtypes="ptr_add,rel_write"
+#bugtypes="ptr_add,rel_write"
+bugtypes="ptr_add"
 # -s means skip everything up to injection
 # -i 15 means inject 15 bugs (default is 1)
 echo
@@ -174,6 +175,7 @@ makecmd="$(jq -r .make $json)"
 container="$(jq -r .docker $json)"
 install=$(jq -r .install $json)
 post_install="$(jq -r .post_install $json)"
+install_simple=$(jq -r .install_simple $json)
 scripts="$lava/scripts"
 python="/usr/bin/python"
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
@@ -198,7 +200,7 @@ if [ $reset -eq 1 ]; then
     lf="$logs/dbwipe.log"
     truncate "$lf"
     progress "everything" 1  "Setting up lava db -- logging to $lf"
-    run_remote "$pandahost" "dropdb --if-exists -U postgres $db" "$lf"
+    run_remote "$pandahost" "dropdb -U postgres $db" "$lf"
     run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
     run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
     run_remote "$pandahost" "echo dbwipe complete" "$lf"
@@ -244,7 +246,11 @@ if [ $make -eq 1 ]; then
     truncate "$lf"
     run_remote "$buildhost" "cd $sourcedir && $makecmd" "$lf"
     run_remote "$buildhost" "cd $sourcedir && rm -rf lava-install" "$lf"
-    run_remote "$buildhost" "cd $sourcedir && $install" "$lf"
+    if [ "$install_simple" == "null" ]; then
+        run_remote "$buildhost" "cd $sourcedir && $install" "$lf"
+    else 
+        run_remote "$buildhost" "cd $sourcedir && $install_simple" "$lf"
+    fi
     if [ "$post_install" != "null" ]; then
         run_remote "$buildhost" "cd $sourcedir && $post_install" "$lf"
     fi
@@ -291,7 +297,7 @@ if [ $inject -eq 1 ]; then
         truncate "$lf"
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
         run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode $kt -t $bugtypes $json" "$lf"
-    grep yield "$lf"
+        grep yield "$lf"
     done
 fi
 
