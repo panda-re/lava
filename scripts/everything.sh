@@ -67,8 +67,7 @@ num_trials=0
 kt=""
 demo=0
 ATP_TYPE=""
-#bugtypes="ptr_add,rel_write"
-bugtypes="ptr_add"
+bugtypes="ptr_add,rel_write"
 # -s means skip everything up to injection
 # -i 15 means inject 15 bugs (default is 1)
 echo
@@ -206,7 +205,7 @@ if [ $reset -eq 1 ]; then
     lf="$logs/dbwipe.log"
     truncate "$lf"
     progress "everything" 1  "Setting up lava db -- logging to $lf"
-    run_remote "$pandahost" "dropdb -U postgres $db" "$lf"
+    run_remote "$pandahost" "dropdb --if-exists -U postgres $db" "$lf"
     run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
     run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
     run_remote "$pandahost" "echo dbwipe complete" "$lf"
@@ -303,7 +302,7 @@ if [ $inject -eq 1 ]; then
         truncate "$lf"
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
         run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode $kt -t $bugtypes $json" "$lf"
-        grep yield "$lf"
+    grep yield "$lf"
     done
 fi
 
