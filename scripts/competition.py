@@ -220,6 +220,10 @@ def main():
 
     # build internal version
     log_build_sh = join(corpdir, "log_build.sh")
+    makes = project['make'].split('&&')
+    makes = [make_cmd + ' CFLAGS+=\"-DLAVA_LOGGING\"' for make_cmd in makes]
+    log_make = " && ".join(makes)
+    internal_builddir = join(corpdir, "lava-install-internal")
     with open(log_build_sh, "w") as build:
         build.write("""#!/bin/bash
         pushd `pwd`
@@ -228,7 +232,7 @@ def main():
         # Build internal version
         {make_clean}
         {configure}
-        {make} CFLAGS+="-DLAVA_LOGGING"
+        {log_make}
         rm -rf "{internal_builddir}"
         {install}
         {post_install}
@@ -239,9 +243,9 @@ def main():
             bugs_build=bd,
             make_clean = project["clean"] if "clean" in project.keys() else "",
             configure=project['configure'],
-            make = project['make'],
-            internal_builddir = join(corpdir, "lava-install-internal"),
-            install = project['install'],
+            log_make = log_make,
+            internal_builddir = internal_builddir,
+            install = project['install'].format(install_dir=internal_builddir),
             post_install = project['post_install'] if 'post_install' in project.keys() else "",
             ))
     run_builds([log_build_sh])
@@ -354,7 +358,7 @@ def main():
 
     # Save the commands we use into files so we can rerun later
     public_build_sh = join(corpdir, "public_build.sh") # Simple
-    public_builddir = join(corpdir, "lava-install-public"),
+    public_builddir = join(corpdir, "lava-install-public")
     with open(public_build_sh, "w") as build:
         build.write("""#!/bin/bash
         pushd `pwd`
