@@ -1,5 +1,6 @@
 import json
 import os
+from os.path import join
 
 # processes compile_commands.json to remove duplicate entries and add extra entries
 
@@ -13,8 +14,8 @@ def process_compile_commands(cc_filename, extra_cc_filename):
     file_set = set()
     new_compile_commands = []
     for f in compile_commands:
-        if f['file'] not in file_set:
-            file_set.add(f['file'])
+        if join(f['directory'], f['file']) not in file_set:
+            file_set.add(join(f['directory'], f['file']))
             new_compile_commands.append(f)
     if extra_cc_file:
         extra_compile_commands = json.load(extra_cc_file)
