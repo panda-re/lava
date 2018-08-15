@@ -183,40 +183,20 @@ function we mean both of the following.
 
 When do we instrument a function 'foo'?
 
-1. If 'foo' is EVER seen to have storage class 'extern' then we WONT
-   instrument it.
+1. Obviously, only if 'foo' has an implmentation (body) can it be 
+   a candidate to be instrumented in the first place.
 
-2. If 'foo' is NEVER seen to have a body, we won't instrument it. 
+2. Say a function 'foo' is a candidate for instrumentation. But 
+   'foo' is passed, as a paramenter, to another function, 'bar'.  
+   If 'bar' is not a candidate for instrumention then neither can 
+   'foo' be since calls to 'foo' from bar can't be instrumented.
+   Note that resolving this sort of relation requires recursing.
 
-3. If 'foo' is passed as an arg to a function 'bar', i.e., 
-   bar(..., foo, ...);   
+3. If a function's body isnt instrumented then calls to that function 
+   cannot be instrumnted with data_flow arg.  
 
-There are four possibilities
-
-  i. bar ext, foo ext: bar & foo can't be instrumented since they are ext.
-     Call to bar and prototypes is all we see.
-     Dont add data_flow arg.
-
-  ii. bar ext, foo int: bar can't be instr. Foo -- we can't add data_flow
-     Arg to its prototype since this fn will be called from outside 
-     our code. Should we instrument foo's body?  Well it couldn't use 
-     data_flow but it could be intstrumented (to look for DUAs and ATPs) 
-     if we aren't using data_flow.  
-     This is the qsort(..., my_compare_fn) case by the way.
-
-  iii. bar int, foo ext: fine to instrument bar.  Foo we can't instrument.
-     This is the my_fn(qsort) case.
-
-  iv. bar int, foo int: Fine to instrument both.  
-
-So to summarize, if internal function 'bar' is EVER passed to an external fn
-that means we can't instrument bar's body or change its args.
-
-4. What if we ever assign a fn pointer to a function?  God knows 
-what we do in that case.  We might have the right info in collected
-.fn files from LavaFnTool but will figure that out when we have an 
-example that requires it.  
-
+4. Probably we can safely ignore 'extern' since it is often, oddly,
+   applied to functions for which we observe a body.
 
 """
 
@@ -228,40 +208,22 @@ OKI = 0
 DIB = 1
 # don't add data flow arg
 DADFA = 2
+
 for name in all_fns:
 
-    instr_judgement[name] = OKI
-    disposition = OKI
-
-    if name in prots: 
-        for prot in prots[name]:
-            if prot.extern:
-                disposition |= DIB
-                disposition |= DADFA
-                if debug: print "Won't instrument %s (body or data_flow) since it was def extern" % name
-                break
-
-    if disposition is OKI:
-        if not (name in fundefs):
-            # we have no body for this fn, no definition,
-            # thus we shouldn't instrument since it can't be internal
-            disposition |= DIB
-            disposition |= DADFA
-            if debug: print "Won't instrument %s (body or data_flow) since we don't have body" % name
-        else:
-            for fd in fundefs[name]:
-                assert fd.hasbody
-                if fd.extern:
-                    # fd has body but is also labeled extern?
-                    # seems like something we shouldn't instrument
-                    disposition |= DIB
-                    disposition |= DADFA
-                    if debug: print "Won't instrument %s (body or data_flow) even though we have body since it was def extern" % name
-                    break
-
-    # fn is not ok to instrument
-    if not (disposition is OKI):
-        instr_judgement[name] = disposition
+    if name in fundefs:
+        for fd in fundefs[name]:
+            assert fd.hasbody
+            instr_judgement[name] = OKI
+            if debug:
+                print  "Instr candidate %s has body" % name
+            break
+    else:
+        # we have no fundec for this fn, thus definitely no body. 
+        # so don't instrument
+        instr_judgement[name] = DIB | DADFA
+        if debug:
+            print "Won't instrument %s (data_flow) since we don't have body" % name        
 
 
 instr = set()
@@ -270,23 +232,18 @@ for name in instr_judgement.keys():
         instr.add(name)
 
 
-# make another pass to see if there are any fn passed as args to other fns 
-# that are, themselves, not instrumentable.  which means they, too, cannot 
-# tolerate a change in prototypes (data_flow arg).
+"""
+Make another pass to see if there are any fns passed as args to
+other fns that are, themselves, not instrumentable.  Which means 
+they, too, cannot tolerate a change in prototypes (data_flow arg).
+"""
 for name in instr:
     if name in fns_passed_as_args:
         disposition = OKI
         for called_fn in fns_passed_as_args[name]:
             if not (instr_judgement[called_fn] == OKI):
                 disposition |= DADFA
-                if data_flow:
-                    # if we are using data flow note that we won't
-                    # be able to make use of DUAs / ATPs in this code
-                    # so we shouldn't bother instrumenting body either
-                    disposition |= DIB
-                    print "Won't instrument %s (body or data_flow) bc its passed as a fn to an uninstrumented fn" % name
-                else:
-                    print "Won't instrument %s (data_flow) bc its passed as a fn to an uninstrumented fn" % name
+                disposition |= DIB
                 break
         # fn is not ok to instrument
         if not (disposition is OKI):
@@ -296,7 +253,6 @@ for name in instr:
 # Now, we need to transitively close.
 # If fn1 is un-instrumentable, and if contains calls
 # to fn2, then fn2 also cannot be instrumented.
-
 any_change = True
 while any_change:
     any_change = False

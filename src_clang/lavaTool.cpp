@@ -21,6 +21,7 @@
 extern "C" {
 #include <unistd.h>
 #include <libgen.h>
+#include <string.h>
 }
 
 #include <json/json.h>
@@ -616,6 +617,7 @@ std::pair<std::string,std::string> fundecl_fun_name(const MatchFinder::MatchResu
     return std::make_pair(std::string("Meh"),std::string("Unknown"));
 }
 
+
 std::pair<std::string,std::string> get_containing_function_name(const MatchFinder::MatchResult &Result, const Stmt &stmt) {
 
     const Stmt *pstmt = &stmt;
@@ -987,6 +989,245 @@ struct MemoryAccessHandler : public LavaMatchHandler {
 
 
 
+/*
+  This code finds the location just after the open parenthesis for arg
+  list of a fundec (decl or defn) or function call.
+
+  startOfFnProtOrCall is location in source of first char of def or
+  decl or call.  endOfFnProtOrCall is last loc in call or prototype or
+  the fn type signature of the defn (not the body).  Basicaly this
+  should mean endOfFnProtoOrCall is a ')', I think?
+
+  The algorithm here is to search, iteratively, in the source, between
+  startOfFnProtOrCall and endOfFnProtOrCall for '(' or ')' and keep
+  track of nesting level.  This gives us vector of triples: 
+
+  <loc, openp, level> 
+
+  loc is SourceLocation.
+  openp is true is this is a '(' and false if its a ')'.
+  level is nesting level 
+
+  For example, consider the following.  A and B are
+  startOfFnProtOrCall and endOfFnProtOrCall.  i..p are the locations
+  of open or close parens.
+
+  int (*fun)(int (*)(int), float, char *)
+  A                                     B
+      i    jk    l mn   o               p
+
+  The vetor of triples for this looks like
+
+  [(i, T, 1), (j, F, 1), (k, T, 1), (l, T, 2), (m, F, 2), (n, T, 2), (o, F, 2), (p, F, 1)]
+
+  The last triple here must represent the close of the parens for the
+  arg list (or param list).  Which can be paired to the first open,
+  searching to the right in the vector from there that has the same
+  level.  This is the triple (k,T,1).  So k is the location of the
+  open paren that starts the arg / param list.
+
+  Ugh!  This is obviously an elegant solution to a ridiculous problem
+  created either by Clang or my naive understanding of it.  While we
+  can find the source location of the start of the arg or param list
+  when that list is non-empty, there does not seem to be a way to find
+  those source locations when the list is empty, as in something like
+
+  int foo() {...}
+  
+  or
+  
+  int foo(void);
+
+*/
+
+
+std::string getStringBetween(const SourceManager &sm, SourceLocation &l1, SourceLocation &l2, bool *inv) {
+    const char *buf = sm.getCharacterData(l1, inv);
+    unsigned o1 = sm.getFileOffset(l1);
+    unsigned o2 = sm.getFileOffset(l2);
+    if (*inv)
+        return std::string("");
+    return (std::string(buf, o2-o1+1));
+}
+
+
+
+SourceLocation getLocAfterStr(const SourceManager &sm, SourceLocation &loc, const char *str, unsigned str_len, unsigned max_search, bool *inv) {
+    const char *buf = sm.getCharacterData(loc, inv);
+    if (!(*inv)) {
+        const char *p = buf;
+        *inv = true;
+        while (true) {
+            if (0 == strncmp(p, str, str_len)) {
+                // found the str in the source
+                *inv = false;
+                break;
+            }
+            p++;
+            if (p-buf > max_search) 
+                break;
+        }
+        if (!(*inv)) {
+            unsigned pos = p - buf;
+            debug(FNARG) << "Found [" << str << "] @ " << pos << "\n";
+            std::string uptomatch = std::string(buf, str_len + pos);
+            debug(FNARG) << "uptomatch: [" << uptomatch << "]\n";
+            return loc.getLocWithOffset(str_len + pos);
+        }
+    }
+    return loc;
+}            
+           
+        
+
+
+#define SCMP_LESS (-1)
+#define SCMP_EQUAL (0)
+#define SCMP_GREATER (+1)
+
+// comparison of source locations based on file offset
+// XXX better to make sure l1 and l2 in same file? 
+int srcLocCmp(const SourceManager &sm, SourceLocation &l1, SourceLocation &l2) {
+    unsigned o1 = sm.getFileOffset(l1);
+    unsigned o2 = sm.getFileOffset(l2);
+    if (o1<o2) return SCMP_LESS;
+    if (o1>o2) return SCMP_GREATER;
+    return SCMP_EQUAL;
+}
+
+enum NextThing {NtInvalid=1, NtOpen=2, NtClose=3};
+
+std::vector < std::tuple < SourceLocation, bool, unsigned > > 
+getparens(const SourceManager &sm, const LangOptions &lo, SourceLocation &startOfFnProtOrCall, SourceLocation &endOfFnProtOrCall) {
+    
+    unsigned so = sm.getFileOffset(startOfFnProtOrCall);
+    unsigned eo = sm.getFileOffset(endOfFnProtOrCall);
+
+    std::string fn = sm.getFilename(startOfFnProtOrCall).str();
+    debug(TIM) << "getparens " << "file=" << fn << " : " << so << " .. " << eo << "\n";
+    
+    assert (so < eo);
+
+    bool inv;
+    const char *buf = sm.getCharacterData(startOfFnProtOrCall, &inv);
+    assert (!inv);
+    // should be just this decl/proto/call
+    std::string sbuf = std::string(buf, eo-so);
+    debug(TIM) << "[" << sbuf << "]\n";
+    
+    std::vector < std::tuple < SourceLocation, bool, unsigned > > parens;
+    unsigned level = 0;
+    SourceLocation searchLoc = startOfFnProtOrCall;
+    while (true) {
+        // find next '(' and ')'
+        bool inv1, inv2;
+        SourceLocation nextOpen = getLocAfterStr(sm, searchLoc, "(", 1, 1000, &inv1);
+        bool nextOpenInBounds = false;
+        if (!inv1) 
+            nextOpenInBounds = srcLocCmp(sm, nextOpen, endOfFnProtOrCall) <= SCMP_EQUAL;
+        SourceLocation nextClose = getLocAfterStr(sm, searchLoc, ")", 1, 1000, &inv2);
+        bool nextCloseInBounds = false;
+        if (!inv2) 
+            nextCloseInBounds = srcLocCmp(sm, nextClose, endOfFnProtOrCall) <= SCMP_EQUAL;
+        NextThing nt = NtInvalid;
+        if (nextOpenInBounds && nextCloseInBounds) {
+            // both are in bounds so we can compare them.
+            // the next one is which ever comes first offset-wise
+            if (srcLocCmp(sm, nextOpen, nextClose) == SCMP_LESS) nt = NtOpen;
+            else nt = NtClose;
+        }
+        else {
+            // one or neither are in bounds
+            // which ever is in bounds is the next one
+            if (nextOpenInBounds) nt = NtOpen;
+            else if (nextCloseInBounds) nt = NtClose;
+        }
+        std::tuple<SourceLocation, bool, unsigned> pt;        
+        // no valid next open or close paren -- exit loop
+        if (nt == NtInvalid) 
+            break;
+        SourceLocation nextLoc;
+        switch (nt) {
+        case NtOpen:
+            // '(' is the next thing
+            nextLoc = nextOpen;
+            level ++;
+            pt = std::make_tuple(nextLoc, true, level);
+            break;
+        case NtClose:
+            // ')' is the next thing
+            nextLoc = nextClose;
+            pt = std::make_tuple(nextLoc, false, level);
+            assert (level != 0);
+            level --;
+            break;
+        default:
+            assert (1==0);  // shouldnt happen
+        }
+        // collect the tuples 
+        parens.push_back(pt);
+        searchLoc = nextLoc;
+    }
+    debug(TIM) << sbuf << "\n";
+    for (int i=0; i<sbuf.length(); i++)         
+        debug(TIM) << (i%10);
+    debug(TIM) << "\n";
+    return parens;
+}
+
+                
+
+
+
+std::set<SourceLocation> already_added_arg;
+
+/*
+  The code between startLoc and endLoc contains, and, importantly,
+  ends with an arg list. We want to insert data_flow at the head of it.
+  We assume the *last* matching pair of open-close parens is an arg
+  list. Note that this should work for calls, for fn prototypes, for
+  struct/union field decls.  All end with an arg list.
+  We use the isCall arg to AddArgGen to choose between adding an arg
+  "data_flow" and adding a type "int *data_flow".
+  And the arg numArgs tells us if there is zero args (in which case 
+  we dont need a comma).
+*/
+void AddArgGen(Modifier &Mod, SourceLocation &startLoc, SourceLocation &endLoc,
+               bool isCall, unsigned numArgs) {
+    // get parenthesis info for fn type sig.
+    // XXX should we be using func->getLocation()? 
+    std::vector < std::tuple < SourceLocation, bool, unsigned > > parens
+        = getparens(*Mod.sm, *Mod.LangOpts, startLoc, endLoc);
+    // search backwards in that for first open with level = 1
+    // which should match close of param list
+    int l = parens.size();
+    SourceLocation loc_param_start;
+    for (int i=parens.size() - 1; i>=0; i--) {
+        auto paren = parens[i];
+        auto sl = std::get<0>(paren);
+        auto openp = std::get<1>(paren);
+        auto level = std::get<2>(paren);
+        if (openp && level == 1) {
+            // this should be the open paren matching last close paren
+            loc_param_start = sl;
+            break;
+        }
+    }
+
+    // insert data_flow arg 
+    if (already_added_arg.count(loc_param_start) == 0) {
+        already_added_arg.insert(loc_param_start);
+        std::string dfa = ARG_NAME;
+        if (!isCall) dfa = "int *" ARG_NAME;
+        if (numArgs == 0) {
+            Mod.InsertAt(loc_param_start, dfa );
+        } else {
+            Mod.InsertAt(loc_param_start, dfa + ", ");
+        }
+    }
+}
+
+
 // Add data_flow arg to fn definitions and prototypes
 
 struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
@@ -997,40 +1238,31 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         SourceLocation l2 = func->getLocEnd();
         debug(FNARG) << "func->getLocStart = " << Mod.sm->getFileOffset(l1) << "\n";
         debug(FNARG) << "func->getLocEnd = " << Mod.sm->getFileOffset(l2) << "\n";
+        bool inv;
+        debug(FNARG) << "func : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
 
-
-        // first '(' in func decl
-        SourceLocation loc1 = clang::Lexer::findLocationAfterToken(
-                func->getLocation(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
-
-        if (func->getNumParams() == 0) {
-            Mod.InsertAt(loc1, "int *" ARG_NAME );
-/*
-            // first ')' in func decl
-            SourceLocation loc2 = clang::Lexer::findLocationAfterToken(
-                loc1, tok::r_paren, *Mod.sm, *Mod.LangOpts, true);
-            unsigned o1 = Mod.sm->getFileOffset(loc1);
-            unsigned o2 = Mod.sm->getFileOffset(loc2);
-            if (o1+1 == o2 || o1+2 == o2) {
-                // () or ( )
-                Mod.InsertAt(loc1, "int *" ARG_NAME);
-            }
+        // We need the end of just the type signature part.  
+        // If this decl has a body, then that is the first '{' right? 
+        SourceLocation endOfProt;
+        if (func->hasBody()) {
+            debug(FNARG) << "has body -- looking for {\n";
+            bool inv;
+            endOfProt = getLocAfterStr(*Mod.sm, l1, "{", 1, 1000, &inv);
+            if (!inv) 
+                // hmm I guess there is a body but its not right here?  
+                endOfProt = getLocAfterStr(*Mod.sm, l1, ")", 1, 1000, &inv);
             else {
-                if  (!(o1 < o2)) {
-                    debug(FNARG) << "file offsets o1 = " << o1 << " o2 = " << o2 << "\n";
-                    assert (o1<o2);
-                }
-                // (void) or something
-                Mod.InsertAt(loc1, "int *" ARG_NAME "/ *");
-                // this should be the ')'
-                SourceLocation loc3 = loc2.getLocWithOffset(-1);
-                Mod.InsertAt(loc3, "* /");
-            }
-*/
-        } else {
-          Mod.InsertAt(loc1, "int *" ARG_NAME ", ");
+                debug(FNARG) << " FOUND {\n";
+                if (srcLocCmp(*Mod.sm, endOfProt, l2) == SCMP_LESS) 
+                    // { is past the end of the l1..l2 range
+                    endOfProt = l2;
+            }                    
         }
+        else 
+            endOfProt = l2;
 
+        // add the data_flow arg between l1 and endOfProt
+        AddArgGen(Mod, l1, endOfProt, false, func->getNumParams());
     }
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
@@ -1099,30 +1331,99 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         } else {
             const FunctionDecl *bodyDecl = nullptr;
             func->hasBody(bodyDecl);
-            if (bodyDecl) AddArg(bodyDecl);
-            while (func != NULL) {
+//            if (bodyDecl) AddArg(bodyDecl);
+//            while (func != NULL) {
                 AddArg(func);
-                func = func->getPreviousDecl();
-                if (func) debug(FNARG) << "found a redeclaration\n";
-            }
+//                func = func->getPreviousDecl();
+//                if (func) debug(FNARG) << "found a redeclaration\n";
+//            }
         }
         return;
     }
 };
 
+
+
+/*
+ A field in a struct or union that is fn pointer type
+ field decl looks something like 
+
+ boolean (*empty_output_buffer) (j_compress_ptr cinfo);
+
+ so all we need is to find location just after that open paren
+ of fn arg type list
+*/
+struct FieldDeclArgAdditionHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
+
+    virtual void handle(const MatchFinder::MatchResult &Result) {
+        const FieldDecl *fd = 
+            Result.Nodes.getNodeAs<FieldDecl>("fielddecl");
+        const Type *ft = fd->getType().getTypePtr();
+        if (ft->isFunctionPointerType()) {
+            // field is a fn pointer
+            const Type *pt = ft->getPointeeType().IgnoreParens().getTypePtr();
+            assert(pt);
+            const FunctionType *fun_type = dyn_cast<FunctionType>(pt);
+            assert(fun_type);
+            const FunctionProtoType *prot = dyn_cast<FunctionProtoType>(fun_type);
+            // add the data_flow arg
+            SourceLocation l1 = fd->getLocStart();
+            SourceLocation l2 = fd->getLocEnd();
+            AddArgGen(Mod, l1, l2, false, prot->getNumParams());
+        }
+    }
+};
+
+
+struct VarDeclArgAdditionHandler : public LavaMatchHandler {
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
+
+    virtual void handle(const MatchFinder::MatchResult &Result) {
+        const VarDecl *vd = 
+            Result.Nodes.getNodeAs<VarDecl>("vardecl");
+        SourceLocation l1 = vd->getLocStart();
+        SourceLocation l2 = vd->getLocEnd();
+        bool inv;
+        debug(FNARG) << "vardecl  : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "\n";
+        const Type *ft = vd->getType().getTypePtr();
+        assert (ft);
+        if (ft->isFunctionPointerType()) {
+            // field is a fn pointer
+            const Type *pt = ft->getPointeeType().IgnoreParens().getTypePtr();
+            assert(pt);
+            const FunctionType *fun_type = dyn_cast<FunctionType>(pt);
+            assert(fun_type);
+            const FunctionProtoType *prot = dyn_cast<FunctionProtoType>(fun_type);
+            // add the data_flow arg
+            AddArgGen(Mod, l1, l2, false, prot->getNumParams());
+        }
+    }
+};
+
+
 // Add dataflow to typedef'd function pointer
 struct FunctionPointerTypedefHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
-
+    
     virtual void handle(const MatchFinder::MatchResult &Result) {
-        const TypedefType *td = Result.Nodes.getNodeAs<TypedefType>("typedef");
-        if (!td->isFunctionPointerType()) {
-            return;
+        const TypedefDecl *td = Result.Nodes.getNodeAs<TypedefDecl>("typedefdecl");
+        SourceLocation l1 = td->getLocStart();
+        SourceLocation l2 = td->getLocEnd();
+        bool inv;
+        debug(FNARG) << "typedefdecl  : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "\n";
+        const Type *ft = td->getUnderlyingType().getTypePtr();
+        assert(ft);
+        if (ft->isFunctionPointerType()) {
+            // field is a fn pointer
+            const Type *pt = ft->getPointeeType().IgnoreParens().getTypePtr();
+            assert(pt);
+            const FunctionType *fun_type = dyn_cast<FunctionType>(pt);
+            assert(fun_type);
+            const FunctionProtoType *prot = dyn_cast<FunctionProtoType>(fun_type);
+            // add the data_flow arg
+            AddArgGen(Mod, l1, l2, false, prot->getNumParams());
         }
-        debug(FNARG) << "It's a fn type";
-
-        //debug(FNARG) << td->getLocEnd().printToString(*Mod.sm) << "\n";
-        //Mod.InsertAt(decl->getLocEnd().getLocWithOffset(-14), "int *" ARG_NAME ", ");
     }
 };
 
@@ -1170,16 +1471,25 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const CallExpr *call = Result.Nodes.getNodeAs<CallExpr>("callExpr");
+        debug(FNARG) << "CallExprArgAdditionHandler\n";
+
+        bool inv;
+        SourceLocation l1 = call->getLocStart();
+        SourceLocation l2 = call->getLocEnd();
+        std::string cestr = getStringBetween(*Mod.sm, l1, l2, &inv); 
+        assert (!inv);
+        debug(FNARG) << "callexpr: [" << cestr << "\n";
+
         SourceLocation loc = clang::Lexer::findLocationAfterToken(
                 call->getLocStart(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
 
         auto fnname = get_containing_function_name(Result, *call);
         // only instrument call if its in the body of a function that is on our whitelist
         if (fninstr(fnname)) {
-            debug(FNARG) << "CallExprArgAdditionHandler: Containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
+            debug(FNARG) << "containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
         }
         else {
-            debug(FNARG) << "CallExprArgAdditionHandler: Containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
+            debug(FNARG) << "containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
             return;
         }
 
@@ -1189,27 +1499,29 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         if (func) {
             fnname = fundecl_fun_name(Result, func);
             if (fninstr(fnname)) {
-                debug(FNARG) << "CallExprArgAdditionHandler: Called function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
+                debug(FNARG) << "called function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
             }
             else {
-                debug(FNARG) << "CallExprArgAdditionHandler: Called function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
+                debug(FNARG) << "called function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
                 return;
             }
         }
-
+        else debug(FNARG) << "func is NULL?\n";
 
         // If we get here, we are instrumenting a call to a function on our whitelist that is in 
         // the body of a function also on our whitelist. 
 
-        if (func == nullptr || func->getLocation().isInvalid()) {
+        if (func == nullptr || func->getLocation().isInvalid()) {           
             // Function Pointer
-            debug(FNARG) << "FUNCTION POINTER USE: ";
+            debug(FNARG) << "function pointer use\n";
             call->getLocStart().print(debug(FNARG), *Mod.sm);
             debug(FNARG) << "this many args: " << call->getNumArgs() << "\n";
             loc = call->getArg(0)->getLocStart();
         } else if (Mod.sm->isInSystemHeader(func->getLocation())) {
+            debug(FNARG) << "in system header\n";
             return;
-        }
+        } else 
+            debug(FNARG) << "Neither\n";
 
         loc.print(debug(FNARG), *Mod.sm);
 
@@ -1311,19 +1623,27 @@ public:
             addMatcher(
                     functionDecl().bind("funcDecl"),
                     makeHandler<FuncDeclArgAdditionHandler>());
+
+            addMatcher(
+                fieldDecl().bind("fielddecl"),
+                makeHandler<FieldDeclArgAdditionHandler>());
+                    
+            addMatcher(
+                varDecl().bind("vardecl"),
+                makeHandler<VarDeclArgAdditionHandler>());
+                
             // function calls (direct or via fn pointer)
             addMatcher(
                     callExpr().bind("callExpr"),
                     makeHandler<CallExprArgAdditionHandler>());
 
-            addMatcher(
-                fieldDecl().bind("fielddecl"),
-                makeHandler<FunctionPointerFieldHandler>());
+
 
             // Match typedefs for function pointers
             addMatcher(
-                typedefDecl(hasType(pointerType(pointee(ignoringParenCasts(functionType()))))).bind("typedef"),
+                typedefDecl().bind("typedefdecl"),
                 makeHandler<FunctionPointerTypedefHandler>());
+
 
         }
 
