@@ -1041,6 +1041,74 @@ struct MemoryAccessHandler : public LavaMatchHandler {
 */
 
 
+enum NextThing {NtInvalid=1, NtOpen=2, NtClose=3};
+
+
+// This tuple is
+// position in string (unsigned)
+// isOpenParen        (bool)
+// level              (unsigned) 
+typedef std::tuple < size_t, bool, unsigned > ParenInfo ;
+
+typedef std::vector < ParenInfo > ParensInfo;
+
+// figure out paren info for this string.  
+ParensInfo getparens(std::string sourceString) {
+    
+    size_t searchLoc = 0;
+    unsigned level = 0;
+    ParensInfo parens;
+    while (true) {
+        size_t nextOpen = sourceString.find("(", searchLoc);
+        size_t nextClose = sourceString.find(")", searchLoc);
+        NextThing nt = NtInvalid;
+        if (nextOpen != std::string::npos 
+            && nextClose != std::string::npos) {
+            // both are in bounds so we can compare them
+            // the next one is whichever comes first
+            if (nextOpen < nextClose) nt = NtOpen;
+            else nt = NtClose;
+        }
+        else {
+            // one or neither is in bounds
+            // whever is in bounds is next one
+            if (nextOpen != std::string::npos) nt = NtOpen;
+            else if (nextClose != std::string::npos) nt = NtClose;
+        }
+        ParenInfo pt;
+        // no valid next open or close -- exit loop
+        if (nt == NtInvalid) break;
+        size_t nextLoc;
+        switch (nt) {
+        case NtOpen:
+            // '(' is next thing
+            nextLoc = nextOpen;
+            level ++;
+            pt = std::make_tuple(nextLoc, true, level);
+            break;
+        case NtClose:
+            // ')' is next thing
+            nextLoc = nextClose;
+            pt = std::make_tuple(nextLoc, false, level);
+            level --;
+            break;
+        default:
+            assert (1==0); // should not happen
+        }
+        // collect the tuples 
+        parens.push_back(pt);
+        searchLoc = nextLoc+1;
+    }
+    std::cout << sourceString << "\n";
+    for (auto p : parens) 
+        std::cout << "paren " << std::get<0>(p)
+                  << " " << std::get<1>(p)
+                  << " " << std::get<2>(p) << "\n";
+    return parens;
+}
+
+
+
 std::string getStringBetween(const SourceManager &sm, SourceLocation &l1, SourceLocation &l2, bool *inv) {
     const char *buf = sm.getCharacterData(l1, inv);
     unsigned o1 = sm.getFileOffset(l1);
@@ -1095,84 +1163,33 @@ int srcLocCmp(const SourceManager &sm, SourceLocation &l1, SourceLocation &l2) {
     return SCMP_EQUAL;
 }
 
-enum NextThing {NtInvalid=1, NtOpen=2, NtClose=3};
 
-std::vector < std::tuple < SourceLocation, bool, unsigned > > 
-getparens(const SourceManager &sm, const LangOptions &lo, SourceLocation &startOfFnProtOrCall, SourceLocation &endOfFnProtOrCall) {
-    
-    unsigned so = sm.getFileOffset(startOfFnProtOrCall);
-    unsigned eo = sm.getFileOffset(endOfFnProtOrCall);
+/*
+  returns a vector of paren info tuples in terms of SourceLocation instead of 
+  position in a string
+*/
+typedef std::tuple < SourceLocation, bool, unsigned > SLParenInfo ;
 
-    std::string fn = sm.getFilename(startOfFnProtOrCall).str();
-    debug(TIM) << "getparens " << "file=" << fn << " : " << so << " .. " << eo << "\n";
-    
-    assert (so < eo);
+typedef std::vector < SLParenInfo > SLParensInfo;
 
+SLParensInfo SLgetparens(const SourceManager &sm, SourceLocation &l1, 
+                         SourceLocation &l2) {
+
+    SLParensInfo slparens;
     bool inv;
-    const char *buf = sm.getCharacterData(startOfFnProtOrCall, &inv);
-    assert (!inv);
-    // should be just this decl/proto/call
-    std::string sbuf = std::string(buf, eo-so);
-    debug(TIM) << "[" << sbuf << "]\n";
-    
-    std::vector < std::tuple < SourceLocation, bool, unsigned > > parens;
-    unsigned level = 0;
-    SourceLocation searchLoc = startOfFnProtOrCall;
-    while (true) {
-        // find next '(' and ')'
-        bool inv1, inv2;
-        SourceLocation nextOpen = getLocAfterStr(sm, searchLoc, "(", 1, 1000, &inv1);
-        bool nextOpenInBounds = false;
-        if (!inv1) 
-            nextOpenInBounds = srcLocCmp(sm, nextOpen, endOfFnProtOrCall) <= SCMP_EQUAL;
-        SourceLocation nextClose = getLocAfterStr(sm, searchLoc, ")", 1, 1000, &inv2);
-        bool nextCloseInBounds = false;
-        if (!inv2) 
-            nextCloseInBounds = srcLocCmp(sm, nextClose, endOfFnProtOrCall) <= SCMP_EQUAL;
-        NextThing nt = NtInvalid;
-        if (nextOpenInBounds && nextCloseInBounds) {
-            // both are in bounds so we can compare them.
-            // the next one is which ever comes first offset-wise
-            if (srcLocCmp(sm, nextOpen, nextClose) == SCMP_LESS) nt = NtOpen;
-            else nt = NtClose;
+    std::string sourceStr = getStringBetween(sm, l1, l2, &inv);
+    if (!inv) {
+        ParensInfo parens = getparens(sourceStr);
+        for (auto paren : parens) {
+            size_t pos = std::get<0>(paren);      
+            unsigned isopen = std::get<1>(paren);
+            unsigned level = std::get<2>(paren);
+            SourceLocation sl = l1.getLocWithOffset(pos);
+            SLParenInfo slparen = std::make_tuple(sl, isopen, level);
+            slparens.push_back(slparen);
         }
-        else {
-            // one or neither are in bounds
-            // which ever is in bounds is the next one
-            if (nextOpenInBounds) nt = NtOpen;
-            else if (nextCloseInBounds) nt = NtClose;
-        }
-        std::tuple<SourceLocation, bool, unsigned> pt;        
-        // no valid next open or close paren -- exit loop
-        if (nt == NtInvalid) 
-            break;
-        SourceLocation nextLoc;
-        switch (nt) {
-        case NtOpen:
-            // '(' is the next thing
-            nextLoc = nextOpen;
-            level ++;
-            pt = std::make_tuple(nextLoc, true, level);
-            break;
-        case NtClose:
-            // ')' is the next thing
-            nextLoc = nextClose;
-            pt = std::make_tuple(nextLoc, false, level);
-            assert (level != 0);
-            level --;
-            break;
-        default:
-            assert (1==0);  // shouldnt happen
-        }
-        // collect the tuples 
-        parens.push_back(pt);
-        searchLoc = nextLoc;
     }
-    debug(TIM) << sbuf << "\n";
-    for (int i=0; i<sbuf.length(); i++)         
-        debug(TIM) << (i%10);
-    debug(TIM) << "\n";
-    return parens;
+    return slparens;
 }
 
                 
@@ -1196,8 +1213,7 @@ void AddArgGen(Modifier &Mod, SourceLocation &startLoc, SourceLocation &endLoc,
                bool isCall, unsigned numArgs) {
     // get parenthesis info for fn type sig.
     // XXX should we be using func->getLocation()? 
-    std::vector < std::tuple < SourceLocation, bool, unsigned > > parens
-        = getparens(*Mod.sm, *Mod.LangOpts, startLoc, endLoc);
+    SLParensInfo parens = SLgetparens(*Mod.sm, startLoc, endLoc);
     // search backwards in that for first open with level = 1
     // which should match close of param list
     int l = parens.size();
