@@ -74,8 +74,8 @@ CLANG_LIBS := -Wl,--start-group \
 
 BUILDDIR := build
 
-.PHONY: all lavatool lavaFnTool
-all: lavatool lavaFnTool build/clang-apply-replacements
+.PHONY: all lavatool lavaFnTool omg
+all: lavatool lavaFnTool omg build/clang-apply-replacements
 
 lavatool: make_builddir \
 	emit_build_config \
@@ -84,6 +84,10 @@ lavatool: make_builddir \
 lavaFnTool: make_builddir \
 	emit_build_config \
 	$(BUILDDIR)/lavaFnTool
+
+omg: make_builddir \
+	emit_build_config \
+	$(BUILDDIR)/omg
 
 
 .PHONY: emit_build_config
@@ -103,10 +107,13 @@ $(BUILDDIR)/%.o: %.cxx
 $(BUILDDIR)/%.o: %.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-$(BUILDDIR)/lavaTool: $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o
+$(BUILDDIR)/lavaTool: $(BUILDDIR)/omg.o $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
 $(BUILDDIR)/lavaFnTool: $(BUILDDIR)/lavaFnTool.o 
+	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) 
+
+$(BUILDDIR)/omg: $(BUILDDIR)/omg.o 
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) 
 
 
