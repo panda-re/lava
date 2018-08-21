@@ -72,6 +72,9 @@ using clang::tooling::TranslationUnitReplacements;
 using clang::tooling::ClangTool;
 using clang::tooling::getAbsolutePath;
 
+#include "omg.h"
+
+
 using llvm::yaml::MappingTraits;
 using llvm::yaml::IO;
 using llvm::yaml::Input;
@@ -695,6 +698,7 @@ std::pair<std::string,std::string> get_containing_function_name(const MatchFinde
   exploitable bugs, using these locations as attack points.  
 
 */
+    
 
 struct PriQueryPointHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
@@ -706,7 +710,16 @@ struct PriQueryPointHandler : public LavaMatchHandler {
     std::string SiphonsForLocation(LavaASTLoc ast_loc) {
         std::stringstream result_ss;
         for (const LvalBytes &lval_bytes : map_get_default(siphons_at, ast_loc)) {
-            result_ss << LIf(lval_bytes.lval->ast_name, Set(lval_bytes));
+            // NB: lava_bytes.lval->ast_name is a string that came from
+            // libdwarf.  So it could be something like 
+            // ((*((**(pdtbl)).pub)).sent_table))
+            // We need to test pdtbl, *pdtbl and (**pdtbl).pub 
+            // to make sure they are all not null to reduce risk of 
+            // runtime segfault?
+            std::string nntests = (createNonNullTests(lval_bytes.lval->ast_name));
+            if (nntests.size() > 0) 
+                nntests = nntests + " && ";
+            result_ss << LIf(nntests + lval_bytes.lval->ast_name, Set(lval_bytes));
         }
 
         std::string result = result_ss.str();
@@ -988,210 +1001,6 @@ struct MemoryAccessHandler : public LavaMatchHandler {
 };
 
 
-
-/*
-  This code finds the location just after the open parenthesis for arg
-  list of a fundec (decl or defn) or function call.
-
-  startOfFnProtOrCall is location in source of first char of def or
-  decl or call.  endOfFnProtOrCall is last loc in call or prototype or
-  the fn type signature of the defn (not the body).  Basicaly this
-  should mean endOfFnProtoOrCall is a ')', I think?
-
-  The algorithm here is to search, iteratively, in the source, between
-  startOfFnProtOrCall and endOfFnProtOrCall for '(' or ')' and keep
-  track of nesting level.  This gives us vector of triples: 
-
-  <loc, openp, level> 
-
-  loc is SourceLocation.
-  openp is true is this is a '(' and false if its a ')'.
-  level is nesting level 
-
-  For example, consider the following.  A and B are
-  startOfFnProtOrCall and endOfFnProtOrCall.  i..p are the locations
-  of open or close parens.
-
-  int (*fun)(int (*)(int), float, char *)
-  A                                     B
-      i    jk    l mn   o               p
-
-  The vetor of triples for this looks like
-
-  [(i, T, 1), (j, F, 1), (k, T, 1), (l, T, 2), (m, F, 2), (n, T, 2), (o, F, 2), (p, F, 1)]
-
-  The last triple here must represent the close of the parens for the
-  arg list (or param list).  Which can be paired to the first open,
-  searching to the right in the vector from there that has the same
-  level.  This is the triple (k,T,1).  So k is the location of the
-  open paren that starts the arg / param list.
-
-  Ugh!  This is obviously an elegant solution to a ridiculous problem
-  created either by Clang or my naive understanding of it.  While we
-  can find the source location of the start of the arg or param list
-  when that list is non-empty, there does not seem to be a way to find
-  those source locations when the list is empty, as in something like
-
-  int foo() {...}
-  
-  or
-  
-  int foo(void);
-
-*/
-
-
-enum NextThing {NtInvalid=1, NtOpen=2, NtClose=3};
-
-
-// This tuple is
-// position in string (unsigned)
-// isOpenParen        (bool)
-// level              (unsigned) 
-typedef std::tuple < size_t, bool, unsigned > ParenInfo ;
-
-typedef std::vector < ParenInfo > ParensInfo;
-
-// figure out paren info for this string.  
-ParensInfo getparens(std::string sourceString) {
-    
-    size_t searchLoc = 0;
-    unsigned level = 0;
-    ParensInfo parens;
-    while (true) {
-        size_t nextOpen = sourceString.find("(", searchLoc);
-        size_t nextClose = sourceString.find(")", searchLoc);
-        NextThing nt = NtInvalid;
-        if (nextOpen != std::string::npos 
-            && nextClose != std::string::npos) {
-            // both are in bounds so we can compare them
-            // the next one is whichever comes first
-            if (nextOpen < nextClose) nt = NtOpen;
-            else nt = NtClose;
-        }
-        else {
-            // one or neither is in bounds
-            // whever is in bounds is next one
-            if (nextOpen != std::string::npos) nt = NtOpen;
-            else if (nextClose != std::string::npos) nt = NtClose;
-        }
-        ParenInfo pt;
-        // no valid next open or close -- exit loop
-        if (nt == NtInvalid) break;
-        size_t nextLoc;
-        switch (nt) {
-        case NtOpen:
-            // '(' is next thing
-            nextLoc = nextOpen;
-            level ++;
-            pt = std::make_tuple(nextLoc, true, level);
-            break;
-        case NtClose:
-            // ')' is next thing
-            nextLoc = nextClose;
-            pt = std::make_tuple(nextLoc, false, level);
-            level --;
-            break;
-        default:
-            assert (1==0); // should not happen
-        }
-        // collect the tuples 
-        parens.push_back(pt);
-        searchLoc = nextLoc+1;
-    }
-    std::cout << sourceString << "\n";
-    for (auto p : parens) 
-        std::cout << "paren " << std::get<0>(p)
-                  << " " << std::get<1>(p)
-                  << " " << std::get<2>(p) << "\n";
-    return parens;
-}
-
-
-
-std::string getStringBetween(const SourceManager &sm, SourceLocation &l1, SourceLocation &l2, bool *inv) {
-    const char *buf = sm.getCharacterData(l1, inv);
-    unsigned o1 = sm.getFileOffset(l1);
-    unsigned o2 = sm.getFileOffset(l2);
-    if (*inv)
-        return std::string("");
-    return (std::string(buf, o2-o1+1));
-}
-
-
-
-SourceLocation getLocAfterStr(const SourceManager &sm, SourceLocation &loc, const char *str, unsigned str_len, unsigned max_search, bool *inv) {
-    const char *buf = sm.getCharacterData(loc, inv);
-    if (!(*inv)) {
-        const char *p = buf;
-        *inv = true;
-        while (true) {
-            if (0 == strncmp(p, str, str_len)) {
-                // found the str in the source
-                *inv = false;
-                break;
-            }
-            p++;
-            if (p-buf > max_search) 
-                break;
-        }
-        if (!(*inv)) {
-            unsigned pos = p - buf;
-            debug(FNARG) << "Found [" << str << "] @ " << pos << "\n";
-            std::string uptomatch = std::string(buf, str_len + pos);
-            debug(FNARG) << "uptomatch: [" << uptomatch << "]\n";
-            return loc.getLocWithOffset(str_len + pos);
-        }
-    }
-    return loc;
-}            
-           
-        
-
-
-#define SCMP_LESS (-1)
-#define SCMP_EQUAL (0)
-#define SCMP_GREATER (+1)
-
-// comparison of source locations based on file offset
-// XXX better to make sure l1 and l2 in same file? 
-int srcLocCmp(const SourceManager &sm, SourceLocation &l1, SourceLocation &l2) {
-    unsigned o1 = sm.getFileOffset(l1);
-    unsigned o2 = sm.getFileOffset(l2);
-    if (o1<o2) return SCMP_LESS;
-    if (o1>o2) return SCMP_GREATER;
-    return SCMP_EQUAL;
-}
-
-
-/*
-  returns a vector of paren info tuples in terms of SourceLocation instead of 
-  position in a string
-*/
-typedef std::tuple < SourceLocation, bool, unsigned > SLParenInfo ;
-
-typedef std::vector < SLParenInfo > SLParensInfo;
-
-SLParensInfo SLgetparens(const SourceManager &sm, SourceLocation &l1, 
-                         SourceLocation &l2) {
-
-    SLParensInfo slparens;
-    bool inv;
-    std::string sourceStr = getStringBetween(sm, l1, l2, &inv);
-    if (!inv) {
-        ParensInfo parens = getparens(sourceStr);
-        for (auto paren : parens) {
-            size_t pos = std::get<0>(paren);      
-            unsigned isopen = std::get<1>(paren);
-            unsigned level = std::get<2>(paren);
-            SourceLocation sl = l1.getLocWithOffset(pos);
-            SLParenInfo slparen = std::make_tuple(sl, isopen, level);
-            slparens.push_back(slparen);
-        }
-    }
-    return slparens;
-}
-
                 
 
 
@@ -1211,13 +1020,26 @@ std::set<SourceLocation> already_added_arg;
 */
 void AddArgGen(Modifier &Mod, SourceLocation &startLoc, SourceLocation &endLoc,
                bool isCall, unsigned numArgs) {
-    // get parenthesis info for fn type sig.
-    // XXX should we be using func->getLocation()? 
-    SLParensInfo parens = SLgetparens(*Mod.sm, startLoc, endLoc);
+
+    bool inv;
+    debug(FNARG) << "AddArgGen : [" << getStringBetween(*Mod.sm, startLoc, endLoc, &inv) << "]\n";
+    if (inv) {
+        debug(FNARG) << "invalid\n";
+        return;
+    }
+
+    SLParensInfo parens = SLgetParens(*Mod.sm, startLoc, endLoc);
+    if (parens.size() == 0) {
+        debug(FNARG) << "no parens\n";
+        return;
+    }
+
     // search backwards in that for first open with level = 1
     // which should match close of param list
+    // NB: SLgetParens requires that last item in parens is a close paren of level 1
     int l = parens.size();
     SourceLocation loc_param_start;
+    bool found = false;    
     for (int i=parens.size() - 1; i>=0; i--) {
         auto paren = parens[i];
         auto sl = std::get<0>(paren);
@@ -1225,9 +1047,20 @@ void AddArgGen(Modifier &Mod, SourceLocation &startLoc, SourceLocation &endLoc,
         auto level = std::get<2>(paren);
         if (openp && level == 1) {
             // this should be the open paren matching last close paren
-            loc_param_start = sl;
+            // note that we want one char to right of that open paren
+            loc_param_start = sl.getLocWithOffset(1);
+            found = true;
             break;
         }
+    }
+
+    // has to be there -- see getParens 
+    assert (found);
+    
+    debug(FNARG) << "adding data flow at head of [" << getStringBetween(*Mod.sm, loc_param_start, endLoc, &inv) << "]\n";
+    if (inv) {
+        debug(FNARG) << "invalid\n";
+        return;
     }
 
     // insert data_flow arg 
@@ -1264,15 +1097,16 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
             debug(FNARG) << "has body -- looking for {\n";
             bool inv;
             endOfProt = getLocAfterStr(*Mod.sm, l1, "{", 1, 1000, &inv);
-            if (!inv) 
-                // hmm I guess there is a body but its not right here?  
-                endOfProt = getLocAfterStr(*Mod.sm, l1, ")", 1, 1000, &inv);
-            else {
+            if (!inv) {
+                // this means we found "{"
                 debug(FNARG) << " FOUND {\n";
-                if (srcLocCmp(*Mod.sm, endOfProt, l2) == SCMP_LESS) 
+                if (srcLocCmp(*Mod.sm, l2, endOfProt) == SCMP_LESS) 
                     // { is past the end of the l1..l2 range
                     endOfProt = l2;
-            }                    
+            }
+            else 
+                // hmm I guess there is a body but its not right here?  
+                endOfProt = getLocAfterStr(*Mod.sm, l1, ")", 1, 1000, &inv);
         }
         else 
             endOfProt = l2;
@@ -1318,7 +1152,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
             return;
         }
 
-        printf ("FuncDeclArgAdditionHandler handle: ok to instrument %s\n", fnname.second.c_str());
+        debug(FNARG) << "FuncDeclArgAdditionHandler handle: ok to instrument " <<  fnname.second << "\n";
         debug(FNARG) << "adding arg to " << func->getNameAsString() << "\n";
         
         if (func->isThisDeclarationADefinition()) debug(FNARG) << "has body\n";
@@ -1375,6 +1209,14 @@ struct FieldDeclArgAdditionHandler : public LavaMatchHandler {
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const FieldDecl *fd = 
             Result.Nodes.getNodeAs<FieldDecl>("fielddecl");
+        SourceLocation l1 = fd->getLocStart();
+        SourceLocation l2 = fd->getLocEnd();
+        bool inv;
+        debug(FNARG) << "fielddecl  : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
+        if (inv) {
+            debug(FNARG) << "... is invalid\n";
+            return;
+        }
         const Type *ft = fd->getType().getTypePtr();
         if (ft->isFunctionPointerType()) {
             // field is a fn pointer
@@ -1401,7 +1243,11 @@ struct VarDeclArgAdditionHandler : public LavaMatchHandler {
         SourceLocation l1 = vd->getLocStart();
         SourceLocation l2 = vd->getLocEnd();
         bool inv;
-        debug(FNARG) << "vardecl  : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "\n";
+        debug(FNARG) << "vardecl  : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
+        if (inv) {
+            debug(FNARG) << "... is invalid\n";            
+            return;
+        }
         const Type *ft = vd->getType().getTypePtr();
         assert (ft);
         if (ft->isFunctionPointerType()) {
@@ -1428,6 +1274,10 @@ struct FunctionPointerTypedefHandler : public LavaMatchHandler {
         SourceLocation l2 = td->getLocEnd();
         bool inv;
         debug(FNARG) << "typedefdecl  : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "\n";
+        if (inv) {
+            debug(FNARG) << "... is invalid\n";
+            return;
+        }
         const Type *ft = td->getUnderlyingType().getTypePtr();
         assert(ft);
         if (ft->isFunctionPointerType()) {
@@ -1643,6 +1493,7 @@ public:
             addMatcher(
                 fieldDecl().bind("fielddecl"),
                 makeHandler<FieldDeclArgAdditionHandler>());
+
                     
             addMatcher(
                 varDecl().bind("vardecl"),
