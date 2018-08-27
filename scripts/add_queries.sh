@@ -84,7 +84,17 @@ mkdir -p lava-install
 $(jq -r '.configure // "/bin/true"' $json) --prefix=$(pwd)/lava-install
 
 progress "queries" 0  "Making with btrace..."
-$lava/btrace/sw-btrace $(jq -r .make $json)
+ORIGIN_IFS=$IFS
+IFS='&&'
+read -ra MAKES <<< "$(jq -r .make $json)"
+for i in ${MAKES[@]}; do
+    IFS=' '
+    read -ra ARGS <<< $i
+    $lava/btrace/sw-btrace ${ARGS[@]}
+    IFS='&&'
+done
+IFS=$ORIGIN_IFS
+
 
 progress "queries" 0  "Installing..."
 bash -c "$(jq -r .install $json)"
@@ -112,7 +122,9 @@ c_dirs=$(for i in $c_files; do dirname $i; done | sort | uniq)
 progress "queries" 0  "Copying include files..."
 for i in $c_dirs; do
   echo "   $i"
-  cp $lava/include/*.h $i/
+  if [ -d $i ]; then
+    cp $lava/include/*.h $i/
+  fi
 done
 
 

@@ -176,6 +176,7 @@ makecmd="$(jq -r .make $json)"
 container="$(jq -r .docker $json)"
 install=$(jq -r .install $json)
 post_install="$(jq -r .post_install $json)"
+install_simple=$(jq -r .install_simple $json)
 scripts="$lava/scripts"
 python="/usr/bin/python"
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
@@ -184,6 +185,7 @@ if [ -z "$source" ]; then
     echo -e "\nFATAL ERROR: could not get directory name from tarfile. Tar must unarchive and create directory\n";
     exit 1;
 fi
+
 sourcedir="$directory/$name/$source"
 bugsdir="$directory/$name/bugs"
 logs="$directory/$name/logs"
@@ -247,7 +249,11 @@ if [ $make -eq 1 ]; then
     truncate "$lf"
     run_remote "$buildhost" "cd $sourcedir && $makecmd" "$lf"
     run_remote "$buildhost" "cd $sourcedir && rm -rf lava-install" "$lf"
-    run_remote "$buildhost" "cd $sourcedir && $install" "$lf"
+    if [ "$install_simple" == "null" ]; then
+        run_remote "$buildhost" "cd $sourcedir && $install" "$lf"
+    else 
+        run_remote "$buildhost" "cd $sourcedir && $install_simple" "$lf"
+    fi
     if [ "$post_install" != "null" ]; then
         run_remote "$buildhost" "cd $sourcedir && $post_install" "$lf"
     fi

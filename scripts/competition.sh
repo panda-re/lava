@@ -32,10 +32,12 @@ min_yield=1
 debug=0
 diversify=""
 skipinject=""
+usechaff=""
 dataflow=""
+bugtypes="ptr_add,rel_write"
 echo
 progress "competition" 0 "Parsing args"
-while getopts  "sbdiakm:l:n:e:" flag
+while getopts  "sbdiackm:l:n:e:t:" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -53,6 +55,10 @@ do
   if [ "$flag" = "l" ]; then
       bug_list="-l $OPTARG"
       progress "competition" 0 "Use bugs with ID: $bug_list"
+  fi
+  if [ "$flag" = "t" ]; then
+      bugtypes=$OPTARG
+      progress "competition" 0 "Injecting bugs of type(s): $bugtypes"
   fi
   if [ "$flag" = "e" ]; then
       exit_code=$OPTARG
@@ -73,6 +79,10 @@ do
   if [ "$flag" = "s" ]; then
       skipinject="-s"
       progress "competition" 0 "-s: skipping injection"
+  fi
+  if [ "$flag" = "c" ]; then
+      usechaff="-c"
+      progress "competition" 0 "-c: leaving unvalidated bugs"
   fi
   if [ "$flag" = "d" ]; then
       progress "competition" 0 "-d: using data flow"
@@ -106,7 +116,7 @@ mkdir -p $logs
 lf="$logs/competition.log"
 progress "competition" 1 "Starting -- logging to $lf"
 truncate "$lf"
-run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject $dataflow $json" "$lf"
+run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject $dataflow --bugtypes=$bugtypes $usechaff $json" "$lf"
 progress "competition" 1 "Everything finished."
 
-grep "Success" $lf
+tail -n2 $lf

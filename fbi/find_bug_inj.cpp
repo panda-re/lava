@@ -965,6 +965,11 @@ int main (int argc, char **argv) {
                 << num_fake_duas << " fake duas\n";
         }
 
+        if (debug && num_potential_bugs > 1000) {
+            std::cout << "Found 1000 bugs- ending FBI early\n";
+            break;
+        }
+
         if (ple->taint_query_pri) {
             taint_query_pri(ple);
         } else if (ple->tainted_branch) {
@@ -988,5 +993,10 @@ int main (int argc, char **argv) {
 
     std::cout << num_potential_bugs << " potential bugs\n";
     std::cout << num_potential_nonbugs << " potential non bugs\n";
+
+    if (num_potential_bugs == 0) {
+        printf("Fatal error: no bugs found by FBI\n");
+        return 1;
+    }
 
 }
