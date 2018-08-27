@@ -21,3 +21,7 @@ includes.h.gch
 /src_clang/lava.sql
 /scripts/getfns.pickle
 /lava.mak
+/target_bins/*
+!/target_bins/.gitkeep
+/target_injections/*
+!/target_injections/.gitkeep

@@ -51,9 +51,8 @@ extern "C" {
 #define MATCHER (1 << 0)
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
-#define TIM (1 << 3)
-#define PRI (1 << 4)
-#define DEBUG_FLAGS (TIM | INJECT | FNARG | PRI) // (MATCHER | INJECT | FNARG)
+#define PRI (1 << 3)
+#define DEBUG_FLAGS 0 // (MATCHER | INJECT | FNARG | PRI)
 
 #define ARG_NAME "data_flow"
 
@@ -73,8 +72,6 @@ using clang::tooling::ClangTool;
 using clang::tooling::getAbsolutePath;
 
 #include "omg.h"
-
-
 using llvm::yaml::MappingTraits;
 using llvm::yaml::IO;
 using llvm::yaml::Input;
@@ -544,8 +541,6 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             }
             bugs_with_atp_at.erase(std::make_pair(ast_loc, atpType));
         } else if (LavaAction == LavaQueries) {
-            debug(TIM) << "LavaQueries I'm in this handle thing\n";
-            
             // call attack point hypercall and return 0
             pointerAddends.push_back(LavaAtpQuery(ast_loc, atpType));
             num_atp_queries++;
@@ -740,7 +735,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                 if (ArgCompetition) {
                     result_ss << LIf(Test(bug).render(), {
                             LBlock({
-                                    //It's always safe to call lavalog here since we're in the if
+                                //It's always safe to call lavalog here since we're in the if
                                 LFunc("LAVALOG", {LDecimal(1), LDecimal(1), LDecimal(bug->id)}), 
                                 LIfDef("__x86_64__", {
                                     LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
@@ -791,7 +786,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             // this is used in first pass clang tool, adding queries
             // to be intercepted by panda to query taint on in-scope variables
             before = "; " + LFunc("vm_lava_pri_query_point", {
-               LDecimal(GetStringID(StringIDs, ast_loc)),
+                LDecimal(GetStringID(StringIDs, ast_loc)),
                 LDecimal(ast_loc.begin.line),
                 LDecimal(0)}).render() + "; ";
 
@@ -808,12 +803,6 @@ struct PriQueryPointHandler : public LavaMatchHandler {
     }
 };
 
-
-
-
-
-    
-        
 /*
   This matcher handles arguments to function calls that are 'attackable', which is basically
   pointers or integers to which would could add something.    
@@ -870,7 +859,6 @@ struct FunctionArgHandler : public LavaMatchHandler {
                 std::string calleename = nd->getNameAsString();
                 debug(FNARG) << "Callee name is [" << calleename << "]\n";
                 if (calleename.find("__builtin_") != std::string::npos) {
-                    debug(TIM) << "OMG we found a built-in being called: " << calleename << "\n";
                     return;
                 }        
             }
@@ -878,7 +866,6 @@ struct FunctionArgHandler : public LavaMatchHandler {
 
         printf ("FunctionArgHandler handle: ok to instrument %s\n", fnname.second.c_str());
 
-        debug(TIM) <<"FunctionArgHandler @ " << GetASTLoc(sm, toAttack) << "\n";
         debug(INJECT) << "FunctionArgHandler @ " << GetASTLoc(sm, toAttack) << "\n";
 
 /*
@@ -887,10 +874,8 @@ struct FunctionArgHandler : public LavaMatchHandler {
         std::string functionname = fnname.second;
         if (functionname == "Notinafunction") return;
 
-        debug(TIM) << "filename=[" << filename << "] functionname=[" << functionname << "]\n";
 
         if (functionname.find("__builtin_") != std::string::npos) {
-            debug(TIM) << "OMG we found a builtin " << filename << " : " << functionname << "\n";
             return;
         }
 */        
@@ -1121,22 +1106,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
             Result.Nodes.getNodeAs<FunctionDecl>("funcDecl");
 
         
-        debug(TIM) << "FuncDeclArgAdditionHandler: Maybe adding arg to " << func->getNameAsString() << "\n";
-
-
         auto fnname = fundecl_fun_name(Result, func);
-
-        if (!func->hasBody()) {
-            debug(TIM) << "Has no body: " << fnname.first << " : " << fnname.second << "\n";
-//            func->dumpPretty(*Result.Context);
-            if (fnname.first == "Meh") {
-                // Function pointer? 
-                SourceRange sr = func->getSourceRange();
-                debug(TIM) << "Meh: function pointer decl";
-                debug(TIM)<< "start: " << sr.getBegin().printToString(*Mod.sm) << "\n"; 
-                debug(TIM) << "end:   " <<  sr.getEnd().printToString(*Mod.sm) << "\n"; 
-            }
-        }
 
         // only instrument if function being decl / def is in whitelist
         if (fninstr(fnname)) {
@@ -1490,6 +1460,7 @@ public:
                     functionDecl().bind("funcDecl"),
                     makeHandler<FuncDeclArgAdditionHandler>());
 
+            // Function call
             addMatcher(
                 fieldDecl().bind("fielddecl"),
                 makeHandler<FieldDeclArgAdditionHandler>());
@@ -1510,8 +1481,6 @@ public:
             addMatcher(
                 typedefDecl().bind("typedefdecl"),
                 makeHandler<FunctionPointerTypedefHandler>());
-
-
         }
 
         addMatcher(
