@@ -483,7 +483,10 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
     if not os.path.exists(join(lp.bugs_build, 'btrace.log')):
         print("Making with btrace...")
-        run([join(lp.lava_dir, 'btrace', 'sw-btrace')] + shlex.split(project['make']))
+        # run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]) # Remove?
+        for make_cmd in project['make'].split('&&'):
+            print('Make Cmd', make_cmd)
+            run([join(lp.lava_dir, 'btrace', 'sw-btrace')] + shlex.split(make_cmd))
     sys.stdout.flush()
     sys.stderr.flush()
 
@@ -511,7 +514,8 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
 
         run(['git', 'add', '-f', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json.'])
-        run(shlex.split(project['make']))
+        for make_cmd in project['make'].split('&&'):
+            run(shlex.split(make_cmd))    
         try:
             run(['find', '.', '-name', '*.[ch]', '-exec', 'git', 'add', '-f', '{}', ';'])
             run(['git', 'commit', '-m', 'Adding source files'])
@@ -520,11 +524,12 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
 
         # Here we run make install but it may also run again later
         if not os.path.exists(lp.bugs_install):
-            check_call(project['install'], cwd=lp.bugs_build, shell=True)
+            check_call(project['install'].format(install_dir="lava-install"), cwd=lp.bugs_build, shell=True)
 
         # ugh binutils readelf.c will not be lavaTool-able without
         # bfd.h which gets created by make.
-        run(shlex.split(project["make"]))
+        for make_cmd in project['make'].split('&&'):
+            run(shlex.split(make_cmd))
         run(['find', '.', '-name', '*.[ch]', '-exec', 'git', 'add', '{}', ';'])
         try:
             run(['git', 'commit', '-m', 'Adding any make-generated source files'])
@@ -650,20 +655,27 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
-    makecmd = project["make"]
-    if competition:
-        makecmd += " CFLAGS+=\"-DLAVA_LOGGING\""
-
+    
     # TODO: once dataflow is more stable, remove this
     if args.arg_dataflow and 'df_fixup' in project.keys():
         project['df_fixup'] = project['df_fixup'].format(bug_build=lp.bugs_build)
         print("Fixing up dataflow with df_fixup command: {}".format(project['df_fixup']))
         check_call(project['df_fixup'], cwd=lp.bugs_build, shell=True)
 
-    (rv, outp) = run_cmd_notimeout(makecmd, cwd=lp.bugs_build)
+    rv = 0
+    outp = ""
+    for make_cmd in project['make'].split('&&'):
+        if competition:
+            make_cmd += " CFLAGS+=\"-DLAVA_LOGGING\""
+        (rvt,outpt) = run_cmd_notimeout(make_cmd, cwd=lp.bugs_build)
+        if rvt != 0:
+            rv = rvt
+            break
+        outp += str(outpt)
+    
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
-
+    
     # add a row to the build table in the db
     if update_db:
         db.session.add(build)
@@ -677,7 +689,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         # build success
         print("build succeeded")
         #run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]) #TODO can we delete this?
-        check_call(project['install'], cwd=lp.bugs_build, shell=True)
+        check_call(project['install'].format(install_dir="lava-install"), cwd=lp.bugs_build, shell=True)
         if 'post_install' in project.keys():
             check_call(project['post_install'], cwd=lp.bugs_build, shell=True)
     else:
@@ -689,6 +701,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         print("LAVA TOOL FAILED")
         print("===================================")
         print()
+        print(outp.replace("\\n", "\n"))
 
         print("Build of injected bugs failed")
         return (None, input_files, bug_solutions)
