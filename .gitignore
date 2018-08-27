@@ -3,6 +3,7 @@
 /libexec
 .*.swp
 ~*
+*~
 *.pyc
 *.qcow*
 btrace.log
