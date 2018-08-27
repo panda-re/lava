@@ -181,7 +181,7 @@ python="/usr/bin/python"
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
 
 if [ -z "$source" ]; then
-    echo -e "\nFATAL ERROR: Could not get directory name from tarfile. Tar must unarchive and create directory\n";
+    echo -e "\nFATAL ERROR: could not get directory name from tarfile. Tar must unarchive and create directory\n";
     exit 1;
 fi
 sourcedir="$directory/$name/$source"

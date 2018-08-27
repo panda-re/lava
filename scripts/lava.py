@@ -297,10 +297,7 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, 
         lp.lava_tool, '-action=inject', '-bug-list=' + bug_list_str,
         '-lava-wl=' + fninstr,
         '-src-prefix=' + lp.bugs_build, '-project-file=' + project_file,
-        '-main-files=' + main_files, join(lp.bugs_build, filename)
-    ]
-#    if not (args.whitelist is None):
-#        cmd.append("-lava-wl=%s" % args.whitelist)
+        '-main-files=' + main_files, join(lp.bugs_build, filename)]
     if args.arg_dataflow: cmd.append('-arg_dataflow')
     if args.knobTrigger != -1: cmd.append('-kt')
     if competition: cmd.append('-competition')
@@ -469,24 +466,27 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         print('all_c_files: {}'.format(all_c_files))
         print('all_files: {}'.format(all_files))
         all_files = all_files.union(all_c_files)
+# BOTH
+     try:
+         pool = ThreadPool(max(cpu_count(), 1))
+     except Exception as e:
+         print("Warning: could not create ThreadPool, running with single-thread. {}".format(e))
+         pool = None
 
-    pool = ThreadPool(cpu_count())
-#    def modify_source(filename):
-#        run_lavatool(bugs_to_inject, lp, project_file, project, args,
-#                     llvm_src, filename, competition)
-#   pool.map(modify_source, all_files)
+     def modify_source(dirname):
+         sleep(random.random()) # Sleep a random # of MS so our lavaTools can seed rand from time and be different
+         return run_lavatool(bugs_to_inject, lp, project_file, project, args,
+                      llvm_src, dirname, competition)
 
-    for filename in all_files:
-        run_lavatool(bugs_to_inject, lp, project_file, project, args,
-                     llvm_src, filename, competition)
-        
+     bug_solutions =  {} # Returned by lavaTool
+     for filename in all_files:
+         bug_solutions.update(modify_source(filename))
+
+     # TODO: Use our ThreadPool for modifying source and update bug_solutions with results instead of single-thread
+     #if pool:
+         #pool.map(modify_source, all_files)
 
     clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
-#    def apply_replacements(src_dir):
-#        run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
-#                          cwd=join(lp.bugs_build, src_dir))
-
- #   pool.map(apply_replacements, set([dirname(f) for f in all_files]))
 
     src_dirs = set()
     for filename in all_files:
@@ -494,6 +494,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         src_dirs.add(src_dir)
 
     for src_dir in src_dirs:
+         print("Apply replacements in {} with {}".format(join(lp.bugs_build, src_dir), " ".join([clang_apply, '.', '-remove-change-desc-files'])))
         run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
                           cwd=join(lp.bugs_build, src_dir))
         
