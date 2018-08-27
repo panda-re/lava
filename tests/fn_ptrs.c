@@ -29,6 +29,3 @@ int main() {
         + bar(fp, 66, 0.33);
     return foo(fun_ptr(y, 33), 7.2); 
 }
-
-
-
