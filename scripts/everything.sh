@@ -67,11 +67,12 @@ num_trials=0
 kt=""
 demo=0
 ATP_TYPE=""
+bugtypes="ptr_add,rel_write"
 # -s means skip everything up to injection
 # -i 15 means inject 15 bugs (default is 1)
 echo
 progress "everything" 0 "Parsing args"
-while getopts  "arcqmtb:i:z:kd" flag
+while getopts  "arcqmtb:i:z:t:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -80,7 +81,7 @@ do
       make=1
       taint=1
       inject=1
-      num_trials=4
+      num_trials=3
       progress "everything" 0 "All steps will be executed"
   fi
   if [ "$flag" = "r" ]; then
@@ -108,6 +109,10 @@ do
       inject=1
       num_trials=$OPTARG
       progress "everything" 0 "Inject step will be executed: num_trials = $num_trials"
+  fi
+  if [ "$flag" = "t" ]; then
+      bugtypes=$OPTARG
+      progress "everything" 0 "Injecting bugs of type(s): $bugtypes"
   fi
   if [ "$flag" = "z" ]; then
       knob=$OPTARG
@@ -142,8 +147,8 @@ if [ -z "$1" ]; then
 fi
 json="$(realpath $1)"
 
-# how many bugs will be injected at  time
-many=100
+# how many bugs will be injected at a time
+many=50
 
 if [[ $demo -eq 1 ]]
 then
@@ -174,6 +179,11 @@ post_install="$(jq -r .post_install $json)"
 scripts="$lava/scripts"
 python="/usr/bin/python"
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
+
+if [ -z "$source" ]; then
+    echo -e "\nFATAL ERROR: Could not get directory name from tarfile. Tar must unarchive and create directory\n";
+    exit 1;
+fi
 sourcedir="$directory/$name/$source"
 bugsdir="$directory/$name/bugs"
 logs="$directory/$name/logs"
@@ -198,18 +208,11 @@ if [ $reset -eq 1 ]; then
     deldir "$directory/$name/"'*rr-*'
     # remove all plog files in the directory
     deldir "$directory/$name/*.plog"
-    progress "everything" 0 "Truncatng logs..."
+    progress "everything" 0 "Truncating logs..."
     for i in $(ls "$logs" | grep '.log$'); do
         truncate "$logs/$i"
     done
-#    RESET_DB
-#    lf="$logs/dbwipe.log"
-#    truncate "$lf"
-#    progress "everything" 1  "Setting up lava db -- logging to $lf"
-#    run_remote "$pandahost" "dropdb --if-exists -U postgres $db" "$lf"
-#    run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
-#    run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
-#    run_remote "$pandahost" "echo dbwipe complete" "$lf"
+    RESET_DB
     tock
     echo "reset complete $time_diff seconds"
 fi
@@ -269,7 +272,12 @@ if [ $taint -eq 1 ]; then
         progress "everything" 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
         run_remote "$pandahost" "$python $scripts/bug_mining.py $json $input" "$lf"
         echo -n "Num Bugs in db: "
-        run_remote "$pandahost" "psql -At $db -U postgres -c 'select count(*) from bug'"
+        bug_count=$(run_remote "$pandahost" "psql -At $db -U postgres -c 'select count(*) from bug'")
+        if [ "$bug_count" = "0" ]; then
+            echo "FATAL ERROR: no bugs found"
+            exit 1
+        fi
+        echo "Found $bug_count bugs"
         echo
         run_remote "$pandahost" "psql $db -U postgres -c 'select count(*), type from bug group by type order by type'"
     done
@@ -284,12 +292,11 @@ if [ $inject -eq 1 ]; then
     if [ "$exitCode" = "null" ]; then
         exitCode="0";
     fi
-    whitelist=
     for i in `seq $num_trials`
     do
         lf="$logs/inject-$i.log"
         truncate "$lf"
-        progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"        
+        progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
         fix=""
         if [ "$injfixupsscript" != "null" ]; then
             fix="-fixups $injfixupsscript"

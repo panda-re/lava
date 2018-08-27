@@ -19,4 +19,5 @@ includes.h.gch
 /src_clang/build
 /src_clang/lava-odb.*xx
 /src_clang/lava.sql
+/scripts/getfns.pickle
 /lava.mak
