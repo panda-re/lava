@@ -1,0 +1,7 @@
+[
+{
+  "directory" : "/home/fasano/lava/src_clang/_tests/evil",
+  "command" : "gcc -c evil.c -o evil -Ibtrace.log",
+  "file" : "evil.c"
+}
+]

@@ -77,6 +77,7 @@ uint32_t max_card = 0;
 uint32_t max_tcn = 0;
 uint32_t max_lval = 0;
 bool chaff_bugs = false;
+uint32_t curtail = 0;
 
 uint32_t num_potential_bugs = 0;
 uint32_t num_potential_nonbugs = 0;
@@ -937,6 +938,8 @@ int main (int argc, char **argv) {
     max_lval = root["max_lval_size"].asUInt();
     printf("max lval size = %d\n", max_lval);
     chaff_bugs = root.get("chaff", false).asBool();
+    curtail = root["curtail_fbi"].asUInt();
+
     inputfile = std::string(argv[3]);
 
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
@@ -979,6 +982,11 @@ int main (int argc, char **argv) {
             record_ret(ple);
         }
         pandalog_free_entry(ple);
+
+        if (curtail > 0 && num_real_duas > curtail) {
+            std::cout << "*** Curtailing output of fbi at " << num_real_duas << "\n";
+            break;
+        }
     }
     std::cout << num_bugs_added_to_db << " added to db ";
     pandalog_close();

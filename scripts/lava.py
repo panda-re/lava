@@ -386,8 +386,10 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, 
 
     bug_list_str = ','.join([str(bug.id) for bug in bug_list])
     main_files = ','.join([join(lp.bugs_build, f) for f in project['main_file']])
+    fninstr = join(join(project['directory'], project['name']), "fninstr")
     cmd = [
         lp.lava_tool, '-action=inject', '-bug-list=' + bug_list_str,
+        '-lava-wl=' + fninstr,
         '-src-prefix=' + lp.bugs_build, '-project-file=' + project_file,
         '-main-files=' + main_files, join(lp.bugs_build, filename)]
     if args.arg_dataflow: cmd.append('-arg_dataflow')
@@ -612,40 +614,43 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         #print('all_c_files: {}'.format(all_c_files))
         #print('all_files: {}'.format(all_files))
         all_files = all_files.union(all_c_files)
-
     try:
         pool = ThreadPool(max(cpu_count(), 1))
     except Exception as e:
         print("Warning: could not create ThreadPool, running with single-thread. {}".format(e))
         pool = None
-    
-    #print("Run lavatool on: {}".format(all_files))
 
-    def modify_source(filename): # LavaTool only runs on one file at a time
+    def modify_source(dirname):
         sleep(random.random()) # Sleep a random # of MS so our lavaTools can seed rand from time and be different
         return run_lavatool(bugs_to_inject, lp, project_file, project, args,
-                     llvm_src, filename, competition)
+                     llvm_src, dirname, competition)
 
-    # TODO: Use our ThreadPool for modifying source and update bug_solutions with results
+    bug_solutions =  {} # Returned by lavaTool
+    for filename in all_files:
+        bug_solutions.update(modify_source(filename))
+
+    # TODO: Use our ThreadPool for modifying source and update bug_solutions with results instead of single-thread
     #if pool:
         #pool.map(modify_source, all_files)
 
-    bug_solutions =  {}
-    for fname in all_files:
-        bug_solutions.update(modify_source(fname))
-
     clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
-    def apply_replacements(src_dir):
+
+    src_dirs = set()
+    for filename in all_files:
+        src_dir = dirname(filename)
+        src_dirs.add(src_dir)
+
+    # TODO use pool here as well
+    for src_dir in src_dirs:
         print("Apply replacements in {} with {}".format(join(lp.bugs_build, src_dir), " ".join([clang_apply, '.', '-remove-change-desc-files'])))
         run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
                           cwd=join(lp.bugs_build, src_dir))
-
-    if pool:
-        pool.map(apply_replacements, set([dirname(f) for f in all_files]))
-    else:
-        for f in set([dirname(f) for f in all_files]):
-            apply_replacements(f)
-
+        
+    # Ugh.  Lavatool very hard to get right
+    # Permit automated fixups via script after bugs inject
+    # but before make
+    if args.fixupsscript:
+        run_cmd(args.fixupsscript.format(bug_build=lp.bugs_build) , cwd=lp.bugs_build)
 
     # paranoid clean -- some build systems need this
     if 'clean' in project.keys():
@@ -656,22 +661,17 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
     
-    # TODO: once dataflow is more stable, remove this
-    if args.arg_dataflow and 'df_fixup' in project.keys():
-        project['df_fixup'] = project['df_fixup'].format(bug_build=lp.bugs_build)
-        print("Fixing up dataflow with df_fixup command: {}".format(project['df_fixup']))
-        check_call(project['df_fixup'], cwd=lp.bugs_build, shell=True)
-
     rv = 0
-    outp = ""
+    outp = ["", ""]
     for make_cmd in project['make'].split('&&'):
         if competition:
             make_cmd += " CFLAGS+=\"-DLAVA_LOGGING\""
-        (rvt,outpt) = run_cmd_notimeout(make_cmd, cwd=lp.bugs_build)
-        if rvt != 0:
-            rv = rvt
+        (this_rv,this_outp) = run_cmd_notimeout(make_cmd, cwd=lp.bugs_build)
+        if this_rv != 0:
+            rv = this_rv
             break
-        outp += str(outpt)
+        outp[0] +=this_outp[0]
+        outp[1] +=this_outp[1]
     
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)

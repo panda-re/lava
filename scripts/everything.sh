@@ -76,6 +76,7 @@ while getopts  "arcqmtb:i:z:t:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
+      reset_db=1
       add_queries=1
       make=1
       taint=1
@@ -111,7 +112,7 @@ do
   fi
   if [ "$flag" = "t" ]; then
       bugtypes=$OPTARG
-      progress "competition" 0 "Injecting bugs of type(s): $bugtypes"
+      progress "everything" 0 "Injecting bugs of type(s): $bugtypes"
   fi
   if [ "$flag" = "z" ]; then
       knob=$OPTARG
@@ -170,6 +171,7 @@ buildhost="$(jq -r '.buildhost // "docker"' $json)"
 pandahost="$(jq -r '.pandahost // "localhost"' $json)"
 testinghost="$(jq -r '.testinghost // "docker"' $json)"
 fixupscript="$(jq -r .fixupscript $json)"
+injfixupsscript="$(jq -r .injfixupsscript $json)"
 makecmd="$(jq -r .make $json)"
 container="$(jq -r .docker $json)"
 install=$(jq -r .install $json)
@@ -190,6 +192,16 @@ logs="$directory/$name/logs"
 
 /bin/mkdir -p "$logs"
 
+RESET_DB() {
+    lf="$logs/dbwipe.log"
+    truncate "$lf"
+    progress "everything" 1  "Resetting (cleaning) up lava db -- logging to $lf"
+    run_remote "$pandahost" "dropdb --if-exists -U postgres $db" "$lf"
+    run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
+    run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
+    run_remote "$pandahost" "echo dbwipe complete" "$lf"
+}
+
 if [ $reset -eq 1 ]; then
     tick
     deldir "$sourcedir"
@@ -202,27 +214,13 @@ if [ $reset -eq 1 ]; then
     for i in $(ls "$logs" | grep '.log$'); do
         truncate "$logs/$i"
     done
-    lf="$logs/dbwipe.log"
-    truncate "$lf"
-    progress "everything" 1  "Setting up lava db -- logging to $lf"
-    run_remote "$pandahost" "dropdb --if-exists -U postgres $db" "$lf"
-    run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
-    run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
-    run_remote "$pandahost" "echo dbwipe complete" "$lf"
+    RESET_DB
     tock
     echo "reset complete $time_diff seconds"
 fi
 
-if [ $reset_db -eq 1 ]; then
-    lf="$logs/dbwipe.log"
-    truncate "$lf"
-    progress "everything" 1  "Resetting (cleaning) up lava db -- logging to $lf"
-    run_remote "$pandahost" "dropdb --if-exists -U postgres $db" "$lf"
-    run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
-    run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
-    run_remote "$pandahost" "echo dbwipe complete" "$lf"
 
-fi
+
 
 if [ $add_queries -eq 1 ]; then
     tick
@@ -264,6 +262,10 @@ if [ $make -eq 1 ]; then
     echo "make complete $time_diff seconds" >> "$lf"
 fi
 
+if [ $reset_db -eq 1 ]; then
+    RESET_DB
+fi
+
 
 if [ $taint -eq 1 ]; then
     tick
@@ -281,7 +283,7 @@ if [ $taint -eq 1 ]; then
             echo "FATAL ERROR: no bugs found"
             exit 1
         fi
-        echo $bug_count
+        echo "Found $bug_count bugs"
         echo
         run_remote "$pandahost" "psql $db -U postgres -c 'select count(*), type from bug group by type order by type'"
     done
@@ -301,7 +303,11 @@ if [ $inject -eq 1 ]; then
         lf="$logs/inject-$i.log"
         truncate "$lf"
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode $kt -t $bugtypes $json" "$lf"
+        fix=""
+        if [ "$injfixupsscript" != "null" ]; then
+            fix="-fixups $injfixupsscript"
+        fi
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -d -e $exitCode $kt $fix $json" "$lf"
     grep yield "$lf"
     done
 fi

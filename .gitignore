@@ -1,33 +1,36 @@
-includes.h.gch
-*.o
-*.so
-.*.swp
-~*
-*.pyc
-/tags
-*/tags
-/libexec
-*.qcow2
-
 .gdb_history
+/lava.mak
+/libexec
 btrace.log
+includes.h.gch
+tags
 
-/include/lava.sql
-/include/lava-odb.*xx
+*.o
+*.pyc
+*.qcow*
+*.qcow2
+*.so
+*~
+~*
+.*.sw*
+
 
 /fbi/fbi
-/fbi/panda.mak
 /fbi/lava-odb.*xx
 /fbi/lava.sql
+/fbi/panda.mak
+
+/include/lava-odb.*xx
+/include/lava-odb.*xx
+/include/lava.sql
+
+/scripts/getfns.pickle
 
 /src_clang/build
 /src_clang/lava-odb.*xx
 /src_clang/lava.sql
 
-/lava.mak
-
 /target_bins/*
-!/target_bins/.gitkeep
-
 /target_injections/*
+!/target_bins/.gitkeep
 !/target_injections/.gitkeep

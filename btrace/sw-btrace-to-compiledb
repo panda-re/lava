@@ -114,12 +114,14 @@ def extractSourceFile(command, include_path):
     # filename is lost.  The approach taken here is to ignore any subprocesses
     # of a compiler driver invocation.
 
+    # TODO: this misses gcc foo.c -o foo; it only catches gcc -c foo.c -o foo. Can't we default to assuming it's -c?
     if not command.isCompilerDriver or isChildOfCompilerDriver(command) or \
             compileMode(command.argv) != "-c":
         return None
 
     args = command.argv[1:]
     inputFile = None
+
 
     while len(args) > 0:
         arg = args.pop(0)

@@ -38,6 +38,7 @@ fi
 set +x
 # to run debugger you need --privileged here
 docker run --rm -it \
+    --privileged \
     -e "HTTP_PROXY=$HTTP_PROXY" \
     -e "HTTPS_PROXY=$HTTPS_PROXY" \
     -e "http_proxy=$http_proxy" \
@@ -51,6 +52,7 @@ docker run --rm -it \
     -v /etc/shadow:/etc/shadow:ro \
     -v /etc/gshadow:/etc/gshadow:ro \
     -v "$HOME":"$HOME" \
+    --cap-add=SYS_PTRACE \
     $docker_map_args \
     $extradockerargs \
     ${container} sh -c "trap '' PIPE; $cmd"
