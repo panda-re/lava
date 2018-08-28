@@ -1729,8 +1729,8 @@ void parse_whitelist(std::string whitelist_filename) {
 int main(int argc, const char **argv) {
     std::cout << "Starting lavaTool...\n";
     CommonOptionsParser op(argc, argv, LavaCategory);
-
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
+    ClangTool Tool(op.getCompilations(), op.getSourcePathList());
     srand(time(NULL));
 
 
@@ -1793,21 +1793,6 @@ int main(int argc, const char **argv) {
         }
     }
 
-    // Remove void arguments if we're using dataflow // TODO this doesn't work with file?
-    /*
-    if (ArgDataflow && LavaAction == LavaInjectBugs) {
-        tooling::RefactoringTool refTool(op.getCompilations(), op.getSourcePathList());
-        ast_matchers::MatchFinder Finder;
-        FixVoidArg Callback(&refTool.getReplacements());
-        Finder.addMatcher(functionDecl(parameterCountIs(0)).bind("fn"), &Callback);
-        debug(INJECT) << "about to call FixVoidArg Tool.run\n";
-        refTool.runAndSave(clang::tooling::newFrontendActionFactory(&Finder).get());
-        debug(INJECT) << "back from FixVoidArg Tool.run\n";
-    }
-    */
-
-    // Create tool after we already have fixed void args
-    ClangTool Tool(op.getCompilations(), op.getSourcePathList());
     debug(INJECT) << "about to call Tool.run \n";
     LavaMatchFinder Matcher;
     Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());

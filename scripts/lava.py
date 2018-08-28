@@ -614,24 +614,24 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         #print('all_c_files: {}'.format(all_c_files))
         #print('all_files: {}'.format(all_files))
         all_files = all_files.union(all_c_files)
-     try:
-         pool = ThreadPool(max(cpu_count(), 1))
-     except Exception as e:
-         print("Warning: could not create ThreadPool, running with single-thread. {}".format(e))
-         pool = None
+    try:
+        pool = ThreadPool(max(cpu_count(), 1))
+    except Exception as e:
+        print("Warning: could not create ThreadPool, running with single-thread. {}".format(e))
+        pool = None
 
-     def modify_source(dirname):
-         sleep(random.random()) # Sleep a random # of MS so our lavaTools can seed rand from time and be different
-         return run_lavatool(bugs_to_inject, lp, project_file, project, args,
-                      llvm_src, dirname, competition)
+    def modify_source(dirname):
+        sleep(random.random()) # Sleep a random # of MS so our lavaTools can seed rand from time and be different
+        return run_lavatool(bugs_to_inject, lp, project_file, project, args,
+                     llvm_src, dirname, competition)
 
-     bug_solutions =  {} # Returned by lavaTool
-     for filename in all_files:
-         bug_solutions.update(modify_source(filename))
+    bug_solutions =  {} # Returned by lavaTool
+    for filename in all_files:
+        bug_solutions.update(modify_source(filename))
 
-     # TODO: Use our ThreadPool for modifying source and update bug_solutions with results instead of single-thread
-     #if pool:
-         #pool.map(modify_source, all_files)
+    # TODO: Use our ThreadPool for modifying source and update bug_solutions with results instead of single-thread
+    #if pool:
+        #pool.map(modify_source, all_files)
 
     clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
 
@@ -642,7 +642,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
 
     # TODO use pool here as well
     for src_dir in src_dirs:
-         print("Apply replacements in {} with {}".format(join(lp.bugs_build, src_dir), " ".join([clang_apply, '.', '-remove-change-desc-files'])))
+        print("Apply replacements in {} with {}".format(join(lp.bugs_build, src_dir), " ".join([clang_apply, '.', '-remove-change-desc-files'])))
         run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
                           cwd=join(lp.bugs_build, src_dir))
         
@@ -662,15 +662,16 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     print("build_dir = " + lp.bugs_build)
     
     rv = 0
-    outp = ""
+    outp = ["", ""]
     for make_cmd in project['make'].split('&&'):
         if competition:
             make_cmd += " CFLAGS+=\"-DLAVA_LOGGING\""
-        (rvt,outpt) = run_cmd_notimeout(make_cmd, cwd=lp.bugs_build)
-        if rvt != 0:
-            rv = rvt
+        (this_rv,this_outp) = run_cmd_notimeout(make_cmd, cwd=lp.bugs_build)
+        if this_rv != 0:
+            rv = this_rv
             break
-        outp += str(outpt)
+        outp[0] +=this_outp[0]
+        outp[1] +=this_outp[1]
     
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
