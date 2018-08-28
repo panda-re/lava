@@ -25,7 +25,7 @@ def get_one_file(path, filetype="", exactpath=None):
 json = get_one_file("./target_configs/{}/*.json".format(args.target), filetype="json")
 script = get_one_file("./scripts/{}*.sh".format(args.script), exactpath="./scripts/{}.sh".format(args.script), filetype="script")
 
-cmd_args = "-" + args.args if len(args.args) else ""
+cmd_args = ("-" + args.args) if len(args.args) and args.args != "-" else ""
 
-print("Running {} {} {}".format(script, args.args, json))
+print("Running {} {} {}".format(script, cmd_args, json))
 os.execvp('/bin/bash', ['/bin/bash', '-c', "{} {} {}".format(script, cmd_args, json)])
