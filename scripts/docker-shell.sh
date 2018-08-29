@@ -2,21 +2,8 @@
 
 json="$(readlink -f $1)"
 cmd="${@:2}"
-container="lava32debug"
-#Alternatively you can use the "lava32" container
-
-lava="$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )")" db="$(jq -r .db $json)" extradockerargs="$(jq -r .extra_docker_args $json)"
-tarfile="$(jq -r .tarfile $json)"
-tarfiledir="$(dirname $tarfile)"
-directory="$(jq -r .directory $json)"
-name="$(jq -r .name $json)"
-inputs=`jq -r '.inputs' $json  | jq 'join (" ")' | sed 's/\"//g' `
-buildhost="$(jq -r '.buildhost // "docker"' $json)"
-pandahost="$(jq -r '.pandahost // "localhost"' $json)"
-testinghost="$(jq -r '.testinghost // "docker"' $json)"
-fixupscript="$(jq -r .fixupscript $json)"
-makecmd="$(jq -r .make $json)"
-container="$(jq -r .docker $json)"
+#Container name (lava32 or lava32debug) comes from config
+. `dirname $0`/vars.sh
 
 docker_map_args="-v $tarfiledir:$tarfiledir"
 if [[ "$directory" = "$tarfiledir"* ]]; then true; else

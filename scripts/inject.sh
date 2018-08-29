@@ -67,21 +67,8 @@ done
 shift $((OPTIND -1))
 
 json="$(realpath $1)"
-name="$(jq -r .name $json)"
+. `dirname $0`/vars.sh
 progress "inject" 1 "JSON file is $json"
-lava=$(dirname $(dirname $(readlink -f "$0")))
-scripts="$lava/scripts"
-testinghost="$(jq -r '.testinghost // "docker"' $json)"
-pandahost="$(jq -r '.pandahost // "localhost"' $json)"
-tarfile="$(jq -r .tarfile $json)"
-tarfiledir="$(dirname $tarfile)"
-directory="$(jq -r .directory $json)"
-logs="$directory/$name/logs"
-
-dockername="lava32"
-python="/usr/bin/python"
-
-pdb="/usr/bin/python -m pdb "
 
 mkdir -p $logs
 lf="$logs/inject.log"

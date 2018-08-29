@@ -1,7 +1,7 @@
 #!/bin/bash
 # Query insertion script.
 #
-# Takes one argument, a json project file.
+# Takes one argument, the project name
 # That json file must contain all of the following
 #
 # name         name for project, usually the name of the software (binutils-2.25, openssh-2.1, etc)
@@ -26,7 +26,7 @@
 # and run the bug_mining.py script (which uses PANDA to trace taint).
 #
 
-# Load lava-functions
+# Load lava-functions and vars
 . `dirname $0`/funcs.sh
 
 tick
@@ -49,15 +49,12 @@ else
 fi
 
 lava="$(dirname $(dirname $(readlink -f $0)))"
-
-directory="$(jq -r .directory $json)"
-name="$(jq -r .name $json)"
+project_name="$1"
+. `dirname $0`/vars.sh
 
 progress "queries" 0  "Entering $directory/$name."
 mkdir -p "$directory/$name"
 cd "$directory/$name"
-
-tarfile="$(jq -r .tarfile $json)"
 
 progress "queries" 0  "Untarring $tarfile..."
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
@@ -81,12 +78,13 @@ git commit -m 'Unmodified source.'
 
 progress "queries" 0  "Configuring..."
 mkdir -p lava-install
-$(jq -r '.configure // "/bin/true"' $json) --prefix=$(pwd)/lava-install
+$configure_cmd --prefix=$(pwd)/lava-install
+
 
 progress "queries" 0  "Making with btrace..."
 ORIGIN_IFS=$IFS
 IFS='&&'
-read -ra MAKES <<< "$(jq -r .make $json)"
+read -ra MAKES <<< $makecmd
 for i in ${MAKES[@]}; do
     IFS=' '
     read -ra ARGS <<< $i
@@ -97,7 +95,7 @@ IFS=$ORIGIN_IFS
 
 
 progress "queries" 0  "Installing..."
-bash -c "$(jq -r .install $json)"
+bash -c $install
 
 
 # figure out where llvm is

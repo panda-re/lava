@@ -107,8 +107,8 @@ static cl::opt<std::string> LavaDB("lava-db",
         "Created in query mode."),
     cl::cat(LavaCategory),
     cl::init("XXX"));
-static cl::opt<std::string> ProjectFile("project-file",
-    cl::desc("Path to project.json file."),
+static cl::opt<std::string> DBName("db",
+    cl::desc("database name."),
     cl::cat(LavaCategory),
     cl::init("XXX"));
 
@@ -1746,24 +1746,17 @@ int main(int argc, const char **argv) {
         return 0;
     }
 
-    std::ifstream json_file(ProjectFile);
-    Json::Value root;
-    if (ProjectFile == "XXX") {
-        if (LavaAction == LavaInjectBugs) {
-            errs() << "Error: Specify a json file with \"-project-file\".  Exiting . . .\n";
-            exit(1);
-        }
-    } else {
-        json_file >> root;
-    }
-
     if (LavaDB != "XXX") StringIDs = LoadDB(LavaDB);
 
     odb::transaction *t = nullptr;
 
     if (LavaAction == LavaInjectBugs) {
+        if (DBName == "XXX") {
+            errs() << "Error: Specify a json file with \"-project-file\".  Exiting . . .\n";
+            exit(1);
+        }
         db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
-                    root["db"].asString()));
+                    DBName));
         t = new odb::transaction(db->begin());
 
         main_files = parse_commas_strings(MainFileList);

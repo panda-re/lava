@@ -384,13 +384,14 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, 
     print("Running lavaTool on [{}]...".format(filename))
     assert(len(bug_list)) # Can't call with no bugs
 
+    db_name = project["db"]
     bug_list_str = ','.join([str(bug.id) for bug in bug_list])
     main_files = ','.join([join(lp.bugs_build, f) for f in project['main_file']])
     fninstr = join(join(project['directory'], project['name']), "fninstr")
     cmd = [
         lp.lava_tool, '-action=inject', '-bug-list=' + bug_list_str,
         '-lava-wl=' + fninstr,
-        '-src-prefix=' + lp.bugs_build, '-project-file=' + project_file,
+        '-src-prefix=' + lp.bugs_build, '-DBName=' + db_name,
         '-main-files=' + main_files, join(lp.bugs_build, filename)]
     if args.arg_dataflow: cmd.append('-arg_dataflow')
     if args.knobTrigger != -1: cmd.append('-kt')

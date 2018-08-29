@@ -43,8 +43,8 @@ trap '' PIPE
 set -e # Exit on error
 
 USAGE() {
-  echo "USAGE: $0 -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
-  echo "       . . . or just $0 -ak JSONfile"
+  echo "USAGE: $0 -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] ProjectName"
+  echo "       . . . or just $0 -ak ProjectName"
   exit 1
 }
 
@@ -54,6 +54,7 @@ fi
 
 # Load lava-functions
 . `dirname $0`/funcs.sh
+lava=$(dirname $(dirname $(readlink -f "$0")))
 
 # defaults
 ok=0
@@ -145,7 +146,8 @@ shift $((OPTIND -1))
 if [ -z "$1" ]; then
     USAGE
 fi
-json="$(realpath $1)"
+project_name="$1"
+. `dirname $0`/vars.sh
 
 # how many bugs will be injected at a time
 many=50
@@ -156,29 +158,7 @@ then
 fi
 
 progress "everything" 1 "JSON file is $json"
-dockername="lava32"
 
-lava=$(dirname $(dirname $(readlink -f "$0")))
-db="$(jq -r .db $json)"
-extradockerargs="$(jq -r .extra_docker_args $json)"
-exitCode="$(jq -r .expected_exit_code $json)"
-tarfile="$(jq -r .tarfile $json)"
-tarfiledir="$(dirname $tarfile)"
-directory="$(jq -r .directory $json)"
-name="$(jq -r .name $json)"
-inputs=`jq -r '.inputs' $json  | jq 'join (" ")' | sed 's/\"//g' `
-buildhost="$(jq -r '.buildhost // "docker"' $json)"
-pandahost="$(jq -r '.pandahost // "localhost"' $json)"
-testinghost="$(jq -r '.testinghost // "docker"' $json)"
-fixupscript="$(jq -r .fixupscript $json)"
-injfixupsscript="$(jq -r .injfixupsscript $json)"
-makecmd="$(jq -r .make $json)"
-container="$(jq -r .docker $json)"
-install=$(jq -r .install $json)
-post_install="$(jq -r .post_install $json)"
-install_simple=$(jq -r .install_simple $json)
-scripts="$lava/scripts"
-python="/usr/bin/python"
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
 
 if [ -z "$source" ]; then
@@ -228,7 +208,7 @@ if [ $add_queries -eq 1 ]; then
     lf="$logs/add_queries.log"
     truncate "$lf"
     progress "everything" 1 "Adding queries to source -- logging to $lf"
-    run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $json" "$lf"
+    run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $project_name" "$lf"
     if [ "$fixupscript" != "null" ]; then
         lf="$logs/fixups.log"
         truncate "$lf"
@@ -276,7 +256,7 @@ if [ $taint -eq 1 ]; then
         lf="$logs/bug_mining-$i.log"
         truncate "$lf"
         progress "everything" 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
-        run_remote "$pandahost" "$python $scripts/bug_mining.py $json $input" "$lf"
+        run_remote "$pandahost" "$python $scripts/bug_mining.py $hostjson $project_name $input" "$lf"
         echo -n "Num Bugs in db: "
         bug_count=$(run_remote "$pandahost" "psql -At $db -U postgres -c 'select count(*) from bug'")
         if [ "$bug_count" = "0" ]; then
