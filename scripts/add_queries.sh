@@ -150,7 +150,7 @@ for i in $c_files; do
     -p="$source/compile_commands.json" \
     -src-prefix=$(readlink -f "$source") \
     $ATP_TYPE \
-    -project-file="$json" \
+    -db="$db" \
     $i
 done
 

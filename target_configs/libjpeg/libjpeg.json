@@ -1,6 +1,7 @@
 {
     "name": "libjpeg",
     "db": "libjpeg",
+    "preprocessed": true,
 
     "tarfile": "libjpeg-9c-pre-m32.tgz",
 

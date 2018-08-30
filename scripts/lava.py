@@ -380,7 +380,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, sol
 
 
 # run lavatool on this file to inject any parts of this list of bugs
-def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, competition=False):
+def run_lavatool(bug_list, lp, host_file, project, args, llvm_src, filename, competition=False):
     print("Running lavaTool on [{}]...".format(filename))
     assert(len(bug_list)) # Can't call with no bugs
 
@@ -390,11 +390,11 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, 
     fninstr = join(join(project['directory'], project['name']), "fninstr")
     cmd = [
         lp.lava_tool, '-action=inject', '-bug-list=' + bug_list_str,
-        '-lava-wl=' + fninstr,
-        '-src-prefix=' + lp.bugs_build, '-DBName=' + db_name,
+        '-src-prefix=' + lp.bugs_build, '-db=' + db_name,
         '-main-files=' + main_files, join(lp.bugs_build, filename)]
     if args.arg_dataflow: cmd.append('-arg_dataflow')
     if args.knobTrigger != -1: cmd.append('-kt')
+    if project["preprocessed"]: cmd.append( '-lava-wl=' + fninstr)
     if competition: cmd.append('-competition')
     print("lavaTool command: {}".format(' '.join(cmd)))
 
@@ -425,7 +425,7 @@ def run_lavatool(bug_list, lp, project_file, project, args, llvm_src, filename, 
 class LavaPaths(object):
 
     def __init__(self, project):
-        self.top_dir = join(project['directory'], project['name'])
+        self.top_dir = join(project['output_dir'], project['name'])
         self.lavadb = join(self.top_dir, 'lavadb')
         self.lava_dir = dirname(dirname(abspath(sys.argv[0])))
         self.lava_tool = join(self.lava_dir, 'src_clang', 'build', 'lavaTool')
@@ -459,7 +459,7 @@ class LavaPaths(object):
 
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
-def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, competition=False,
+def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, competition=False,
                 validated=False):
     if not os.path.exists(lp.bugs_parent):
         os.makedirs(lp.bugs_parent)
@@ -623,7 +623,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
 
     def modify_source(dirname):
         sleep(random.random()) # Sleep a random # of MS so our lavaTools can seed rand from time and be different
-        return run_lavatool(bugs_to_inject, lp, project_file, project, args,
+        return run_lavatool(bugs_to_inject, lp, host_file, project, args,
                      llvm_src, dirname, competition)
 
     bug_solutions =  {} # Returned by lavaTool
@@ -667,6 +667,7 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
     for make_cmd in project['make'].split('&&'):
         if competition:
             make_cmd += " CFLAGS+=\"-DLAVA_LOGGING\""
+        print("Running make cmd: {}".format(make_cmd))
         (this_rv,this_outp) = run_cmd_notimeout(make_cmd, cwd=lp.bugs_build)
         if this_rv != 0:
             rv = this_rv
@@ -674,6 +675,28 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         outp[0] +=this_outp[0]
         outp[1] +=this_outp[1]
     
+    if rv != 0:
+        print("Lava tool returned {}! Error log below:".format(rv))
+        print(outp[1])
+        print()
+        print("===================================")
+        print("build of injected bug failed!!!!!!!")
+        print("LAVA TOOL FAILED")
+        print("===================================")
+        print()
+        print(outp[0].replace("\\n", "\n"))
+        print(outp[1].replace("\\n", "\n"))
+
+        print("Build of injected bugs failed")
+        return (None, input_files, bug_solutions)
+
+    # build success
+    print("build succeeded")
+    #run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]) #TODO can we delete this?
+    check_call(project['install'].format(install_dir="lava-install"), cwd=lp.bugs_build, shell=True)
+    if 'post_install' in project.keys():
+        check_call(project['post_install'], cwd=lp.bugs_build, shell=True)
+
     build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
                   bugs=bugs_to_inject)
     
@@ -684,28 +707,8 @@ def inject_bugs(bug_list, db, lp, project_file, project, args, update_db, compet
         assert build.id is not None
         run(['git', 'commit', '-am', 'Bugs for build {}.'.format(build.id)])
         run(['git', 'branch', 'build' + str(build.id), 'master'])
-        run(['git', 'reset', 'HEAD~'])
+        run(['git', 'reset', 'HEAD~', '--hard'])
 
-    if rv == 0:
-        # build success
-        print("build succeeded")
-        #run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]) #TODO can we delete this?
-        check_call(project['install'].format(install_dir="lava-install"), cwd=lp.bugs_build, shell=True)
-        if 'post_install' in project.keys():
-            check_call(project['post_install'], cwd=lp.bugs_build, shell=True)
-    else:
-        print("Lava tool error log below:")
-        print(outp[1])
-        print()
-        print("===================================")
-        print("build of injected bug failed!!!!!!!")
-        print("LAVA TOOL FAILED")
-        print("===================================")
-        print()
-        print(outp.replace("\\n", "\n"))
-
-        print("Build of injected bugs failed")
-        return (None, input_files, bug_solutions)
 
     return (build, input_files, bug_solutions)
 
@@ -792,20 +795,20 @@ def check_stacktrace_bug(lp, project, bug, fuzzed_input):
     return False
 
 
-def unfuzzed_input_for_bug(lp, bug):
-    return join(lp.top_dir, 'inputs', basename(bug.trigger.dua.inputfile))
+def unfuzzed_input_for_bug(project, bug):
+    return join(project["output_dir"], 'inputs', basename(bug.trigger.dua.inputfile))
 
 
-def fuzzed_input_for_bug(lp, bug):
-    unfuzzed_input = unfuzzed_input_for_bug(lp, bug)
+def fuzzed_input_for_bug(project, bug):
+    unfuzzed_input = unfuzzed_input_for_bug(project, bug)
     suff = get_suffix(unfuzzed_input)
     pref = unfuzzed_input[:-len(suff)] if suff != "" else unfuzzed_input
     return "{}-fuzzed-{}{}".format(pref, bug.id, suff)
 
 def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
                  unfuzzed_outputs=None, competition=False, solution=None):
-    unfuzzed_input = unfuzzed_input_for_bug(lp, bug)
-    fuzzed_input = fuzzed_input_for_bug(lp, bug)
+    unfuzzed_input = unfuzzed_input_for_bug(project, bug)
+    fuzzed_input = fuzzed_input_for_bug(project, bug)
     print(str(bug))
     print("fuzzed = [%s]" % fuzzed_input)
     mutfile_kwargs = {}
@@ -879,7 +882,7 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
     print("TESTING -- ORIG INPUT")
     unfuzzed_outputs = {}
     for input_file in input_files:
-        unfuzzed_input = join(lp.top_dir, 'inputs', basename(input_file))
+        unfuzzed_input = join(project["output_dir"], 'inputs', basename(input_file))
         (rv, outp) = run_modified_program(project, lp.bugs_install,
                                           unfuzzed_input, timeout, shell=True)
         unfuzzed_outputs[basename(input_file)] = outp

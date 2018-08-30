@@ -1,6 +1,7 @@
 #!/bin/bash
 
-json="$(readlink -f $1)"
+project_name=$1
+lava="$(dirname $(dirname $(readlink -f $0)))"
 cmd="${@:2}"
 #Container name (lava32 or lava32debug) comes from config
 . `dirname $0`/vars.sh

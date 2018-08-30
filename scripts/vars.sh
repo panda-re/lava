@@ -7,6 +7,11 @@ if [ -z ${project_name+x} ]; then
     exit 1;
 fi
 
+if [ -z ${lava+x} ]; then
+    echo "Fatal error: lava variable unset when calling var.sh"
+    exit 1;
+fi
+
 hostjson="$lava/host.json"
 if [ ! -f $hostjson ]; then
     echo "Fatal error: host.json not found. Copy host.json.example to host.json"

@@ -287,7 +287,7 @@ if [ $inject -eq 1 ]; then
         if [ "$injfixupsscript" != "null" ]; then
             fix="-fixups $injfixupsscript"
         fi
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -d -e $exitCode $kt $fix $json" "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -d -e $exitCode $kt $fix $hostjson $project_name" "$lf"
     grep yield "$lf"
     done
 fi

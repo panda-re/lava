@@ -914,13 +914,10 @@ int main (int argc, char **argv) {
     // We want decimation to be deterministic, so srand w/ magic value.
     srand(0x6c617661);
 
-    std::string projectName = argv[2];
-
     std::ifstream host_json(argv[1]);
     Json::Value host;
     host_json >> host;
 
-    //std::string name = project["name"].asString();
     std::string name = argv[2];
 
     // Find project json
@@ -939,7 +936,6 @@ int main (int argc, char **argv) {
     ind2str = LoadIDB(lavadb);
     printf("%d strings in lavadb\n", (int)ind2str.size());
 
-    // TODO load these from host.json instead of our json file
     max_liveness = project["max_liveness"].asUInt();
     printf("maximum liveness score of %lu\n", max_liveness);
     max_card = project["max_cardinality"].asUInt();
@@ -951,7 +947,7 @@ int main (int argc, char **argv) {
     chaff_bugs = project.get("chaff", false).asBool();
     curtail = project["curtail_fbi"].asUInt();
 
-    inputfile = std::string(argv[3]);
+    inputfile = std::string(argv[4]);
 
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
                 project["db"].asString()));

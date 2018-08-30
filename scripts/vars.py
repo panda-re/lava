@@ -20,6 +20,8 @@ class Project:
             return self.values[field]
         else:
             return default
+    def keys(self):
+        return self.values.keys()
 
 def validate_host(host):
     # Path to configs
@@ -81,10 +83,8 @@ def parse_vars(host_json, project_name):
                             name=project["name"], field=project[field]))
 
     project["qemu"] = host["qemu"]
-    print("Host outputdir={}".format(host["output_dir"]))
     project["output_dir"] = host["output_dir"] + "/" + project["name"]
     project["directory"] = host["output_dir"]
-
     project["config_dir"] = host["config_dir"]+"/" + project["name"]
 
     return Project(project)
