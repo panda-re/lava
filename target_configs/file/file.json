@@ -1,0 +1,28 @@
+{
+    "name": "file",
+    "db": "file",
+    "preprocessed": false,
+
+    "tarfile": "file-5.22.tar.gz",
+
+    "qcow": "wheezy_panda2.qcow2",
+    "snapshot": "root",
+    "expect_prompt": "root@debian-i386:~#",
+
+    "injfixupsscript": "file_fixup.sh {bug_build}",
+
+    "configure": "./configure --prefix=`pwd`/lava-install",
+    "make": "make -C src CFLAGS=-fvisibility=default CFLAGS+='-w' CFLAGS+='-g' -j 16",
+    "clean": "make clean >/dev/null",
+    "install": "make -C src install; mkdir -p lava-install/share/misc; cp {config_dir}/magic.mgc lava-install/share/misc/",
+    "command": "{install_dir}/bin/file -m {install_dir}/share/misc/magic.mgc {input_file}",
+
+    "max_liveness": 10,
+    "max_cardinality": 1000,
+    "max_tcn": 1,
+    "max_lval_size": 100,
+
+    "main_file": [ "src/file.c" ],
+
+    "inputs": ["file.json"]
+}

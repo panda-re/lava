@@ -22,7 +22,7 @@
     "max_tcn": 100000,
     "max_lval_size": 100,
 
-    "curtail_fbi": 5000,
+    "curtail_fbi": 500,
 
     "main_file": [ "memdjpeg-pre.c" ], 
 

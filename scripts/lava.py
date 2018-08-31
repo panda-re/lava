@@ -15,7 +15,7 @@ from sqlalchemy import Table, Column, ForeignKey, create_engine
 from sqlalchemy.types import Integer, Text, Float, BigInteger, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import relationship, sessionmaker, load_only
 from sqlalchemy.sql.expression import func
 
 from subprocess32 import PIPE, check_call
@@ -212,6 +212,10 @@ class LavaDatabase(object):
         self.Session = sessionmaker(bind=self.engine)
         self.session = self.Session()
 
+    # If we have over a million bugs, don't bother counting things
+    def huge(self):
+        return self.session.query(Bug.id).count() > 1000000
+
     def uninjected(self):
         return self.session.query(Bug).filter(~Bug.builds.any())
 
@@ -253,10 +257,18 @@ class LavaDatabase(object):
             results.append(q.limit(atp_lim).all())
         return results
 
+    def uninjected_random_limit(self, allowed_bugtypes=None, count=100):
+        # Fast, doesn't support fake bugs, only return IDs of allowed bugtypes
+        ret = self.session.query(Bug)\
+            .filter(~Bug.builds.any()) \
+            .options(load_only("id"))
+        if allowed_bugtypes:
+            ret = ret.filter(Bug.type.in_(allowed_bugtypes))
+        return ret.order_by(func.random()).limit(count).all()
+
 
     def uninjected_random_y(self, fake, allowed_bugtypes=None, yield_count=100):
         # Same as above but yield results
-        # Yield results
         ret = self.session.query(Bug).filter(~Bug.builds.any()).yield_per(yield_count) \
             .join(Bug.atp)\
             .join(Bug.trigger)\
@@ -264,7 +276,7 @@ class LavaDatabase(object):
             .filter(Dua.fake_dua == fake)
         if allowed_bugtypes:
             ret = ret.filter(Bug.type.in_(allowed_bugtypes))
-        yield ret # TODO randomize- or is it ranomized already?
+        yield ret.all() # TODO randomize- or is it ranomized already?
 
     def uninjected_random_balance(self, fake, num_required, bug_types):
         bugs = []
@@ -669,11 +681,12 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, competiti
             make_cmd += " CFLAGS+=\"-DLAVA_LOGGING\""
         print("Running make cmd: {}".format(make_cmd))
         (this_rv,this_outp) = run_cmd_notimeout(make_cmd, cwd=lp.bugs_build)
+
+        outp[0] +=this_outp[0]
+        outp[1] +=this_outp[1]
         if this_rv != 0:
             rv = this_rv
             break
-        outp[0] +=this_outp[0]
-        outp[1] +=this_outp[1]
     
     if rv != 0:
         print("Lava tool returned {}! Error log below:".format(rv))

@@ -73,7 +73,7 @@ bugtypes="ptr_add,rel_write"
 # -i 15 means inject 15 bugs (default is 1)
 echo
 progress "everything" 0 "Parsing args"
-while getopts  "arcqmtb:i:z:t:kd" flag
+while getopts  "arcqmtb:i:z:y:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -111,7 +111,7 @@ do
       num_trials=$OPTARG
       progress "everything" 0 "Inject step will be executed: num_trials = $num_trials"
   fi
-  if [ "$flag" = "t" ]; then
+  if [ "$flag" = "y" ]; then
       bugtypes=$OPTARG
       progress "everything" 0 "Injecting bugs of type(s): $bugtypes"
   fi

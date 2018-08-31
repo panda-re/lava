@@ -132,8 +132,6 @@ ParensInfo getParens(std::string sourceString) {
                   << " " << std::get<1>(p)
                   << " " << std::get<2>(p) << "\n";
 
-    std::cout << "I AM HERE\n";
-
     unsigned l = parens.size();
     if (l==0) {
         std::cout << "Hmm.  No parens at all\n";

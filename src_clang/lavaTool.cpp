@@ -874,19 +874,21 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         const Stmt *toSiphon = Result.Nodes.getNodeAs<Stmt>("stmt");
         const SourceManager &sm = *Result.SourceManager;
 
-        auto fnname = get_containing_function_name(Result, *toSiphon);
+        if (ArgDataflow) {
+            auto fnname = get_containing_function_name(Result, *toSiphon);
 
-        // only instrument this stmt 
-        // if it's in the body of a function that is on our whitelist
-        if (fninstr(fnname)) {
-            debug(PRI) << "PriQueryPointHandler: Containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
-        }
-        else {
-            debug(PRI) << "PriQueryPointHandler: Containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
-            return;
-        }
+            // only instrument this stmt 
+            // if it's in the body of a function that is on our whitelist
+            if (fninstr(fnname)) {
+                debug(PRI) << "PriQueryPointHandler: Containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
+            }
+            else {
+                debug(PRI) << "PriQueryPointHandler: Containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
+                return;
+            }
 
-        printf ("PriQueryPointHandler handle: ok to instrument %s\n", fnname.second.c_str());
+            printf ("PriQueryPointHandler handle: ok to instrument %s\n", fnname.second.c_str());
+        }
 
         LavaASTLoc ast_loc = GetASTLoc(sm, toSiphon);
         debug(PRI) << "Have a query point @ " << ast_loc << "!\n";
@@ -936,45 +938,43 @@ struct FunctionArgHandler : public LavaMatchHandler {
         debug(FNARG) << "end:   " << sl2.printToString(sm) << "\n"; 
 
 
-        printf ("I'm in FunctionArgHandler\n");
+        if (ArgDataflow) {
+            auto fnname = get_containing_function_name(Result, *toAttack);
 
-        auto fnname = get_containing_function_name(Result, *toAttack);
-
-        // only instrument this function arg 
-        // if it's in the body of a function that is on our whitelist
-        if (fninstr(fnname)) {
-            debug(FNARG) << "FunctionArgHandler: Containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
-        }
-        else {
-            debug(FNARG) << "FunctionArgHandler: Containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
-            return;
-        }
-
-/*
-        // and if this is a call to a function that is something like "__builtin_..." we dont instr
-        // only instrument calls to functions that are themselves on our whitelist. 
-        assert (call != nullptr);
-        assert (func != nullptr);
-        fnname = fundecl_fun_name(Result, func);
-        std::string filename = fnname.first;
-        std::string functionname = fnname.second;
-
-        if (functionname.find("__builtin_") != std::string::npos) {
-*/
-
-        const Decl *func1 = call->getCalleeDecl();
-        if (func1 != nullptr) {
-            const NamedDecl *nd = dyn_cast<NamedDecl> (func1);
-            if (nd != nullptr) {
-                std::string calleename = nd->getNameAsString();
-                debug(FNARG) << "Callee name is [" << calleename << "]\n";
-                if (calleename.find("__builtin_") != std::string::npos) {
-                    return;
-                }        
+            // only instrument this function arg 
+            // if it's in the body of a function that is on our whitelist
+            if (fninstr(fnname)) {
+                debug(FNARG) << "FunctionArgHandler: Containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
+            } else {
+                debug(FNARG) << "FunctionArgHandler: Containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
+                return;
             }
-        }
+    /*
+            // and if this is a call to a function that is something like "__builtin_..." we dont instr
+            // only instrument calls to functions that are themselves on our whitelist. 
+            assert (call != nullptr);
+            assert (func != nullptr);
+            fnname = fundecl_fun_name(Result, func);
+            std::string filename = fnname.first;
+            std::string functionname = fnname.second;
 
-        printf ("FunctionArgHandler handle: ok to instrument %s\n", fnname.second.c_str());
+            if (functionname.find("__builtin_") != std::string::npos) {
+    */
+
+            const Decl *func1 = call->getCalleeDecl();
+            if (func1 != nullptr) {
+                const NamedDecl *nd = dyn_cast<NamedDecl> (func1);
+                if (nd != nullptr) {
+                    std::string calleename = nd->getNameAsString();
+                    debug(FNARG) << "Callee name is [" << calleename << "]\n";
+                    if (calleename.find("__builtin_") != std::string::npos) {
+                        return;
+                    }        
+                }
+            }
+
+            printf ("FunctionArgHandler handle: ok to instrument %s\n", fnname.second.c_str());
+        }
 
         debug(INJECT) << "FunctionArgHandler @ " << GetASTLoc(sm, toAttack) << "\n";
 
@@ -1001,19 +1001,21 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
         const SourceManager &sm = *Result.SourceManager;
         const CallExpr *callExpr = Result.Nodes.getNodeAs<CallExpr>("call_expression");
 
-        auto fnname = get_containing_function_name(Result, *callExpr);
+        if (ArgDataflow) {
+            auto fnname = get_containing_function_name(Result, *callExpr);
 
-        // only instrument this printf with a read disclosure 
-        // if it's in the body of a function that is on our whitelist
-        if (fninstr(fnname)) {
-            debug(INJECT) << "ReadDisclosureHandler: Containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
-        }
-        else {
-            debug(INJECT) << "ReadDisclosureHandler: Containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
-            return;
-        }
+            // only instrument this printf with a read disclosure 
+            // if it's in the body of a function that is on our whitelist
+            if (fninstr(fnname)) {
+                debug(INJECT) << "ReadDisclosureHandler: Containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
+            }
+            else {
+                debug(INJECT) << "ReadDisclosureHandler: Containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
+                return;
+            }
 
-        printf ("ReadDisclosureHandler handle: ok to instrument %s\n", fnname.second.c_str());
+            printf ("ReadDisclosureHandler handle: ok to instrument %s\n", fnname.second.c_str());
+        }
 
         LExpr addend = LDecimal(0);
         // iterate through all the arguments in the call expression
@@ -1064,16 +1066,19 @@ struct MemoryAccessHandler : public LavaMatchHandler {
         const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("innerExpr");
         const Expr *parent = Result.Nodes.getNodeAs<Expr>("lhs");
 
-        auto fnname = get_containing_function_name(Result, *toAttack);
-        if (fninstr(fnname)) {
-            debug(INJECT) << "MemoryAccessHandler: Containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
-        }
-        else {
-            debug(INJECT) << "MemoryAccessHandler: Containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
-            return;
-        }
+        if (ArgDataflow) {
+            // data_flow bugs can only work in functions defined in the source, 
+            auto fnname = get_containing_function_name(Result, *toAttack);
+            if (fninstr(fnname)) {
+                debug(INJECT) << "MemoryAccessHandler: Containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
+            }
+            else {
+                debug(INJECT) << "MemoryAccessHandler: Containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
+                return;
+            }
 
-        printf ("MemoryAccessHandler: ok to instrument %s\n", fnname.second.c_str());
+            printf ("MemoryAccessHandler: ok to instrument %s\n", fnname.second.c_str());
+        }
 
         const SourceManager &sm = *Result.SourceManager;
         LavaASTLoc ast_loc = GetASTLoc(sm, toAttack);
@@ -1422,6 +1427,7 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         SourceLocation loc = clang::Lexer::findLocationAfterToken(
                 call->getLocStart(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
 
+        // No need to check for ArgDataflow, since matcher only called then
         auto fnname = get_containing_function_name(Result, *call);
         // only instrument call if its in the body of a function that is on our whitelist
         if (fninstr(fnname)) {

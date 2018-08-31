@@ -53,6 +53,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
         if [ -z "$logfile" ]; then
             logfile=/dev/stdout
         fi
+        echo $command >> $logfile;
         set +e
         docker_map_args="-v $lava:$lava -v $tarfiledir:$tarfiledir"
 

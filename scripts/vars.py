@@ -69,6 +69,9 @@ def parse_vars(host_json, project_name):
     for field, prefix in [("tarfile", "tar_dir"), ("qcow", "qcow_dir")]:
         project[field] = host[prefix]+"/"+project[field]
 
+    for field, suffix in [("db", "db_suffix")]:
+        project[field] = project[field] + host[suffix]
+
     for field in ["inputs"]:
         if field not in project.keys(): continue
         target_val = []
@@ -86,6 +89,9 @@ def parse_vars(host_json, project_name):
     project["output_dir"] = host["output_dir"] + "/" + project["name"]
     project["directory"] = host["output_dir"]
     project["config_dir"] = host["config_dir"]+"/" + project["name"]
+
+    # Replace format strings in project configs
+    project["install"] = project["install"].format(config_dir=project["config_dir"])
 
     return Project(project)
 
