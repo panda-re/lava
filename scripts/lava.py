@@ -473,6 +473,8 @@ class LavaPaths(object):
 # version of the program in bug_dir
 def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, competition=False,
                 validated=False):
+    # TODO: don't pass args, just pass the data we need to run
+
     if not os.path.exists(lp.bugs_parent):
         os.makedirs(lp.bugs_parent)
 
@@ -662,7 +664,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, competiti
     # Ugh.  Lavatool very hard to get right
     # Permit automated fixups via script after bugs inject
     # but before make
-    if args.fixupsscript:
+    if  hasattr(args, "fixupscript"):
         run_cmd(args.fixupsscript.format(bug_build=lp.bugs_build) , cwd=lp.bugs_build)
 
     # paranoid clean -- some build systems need this

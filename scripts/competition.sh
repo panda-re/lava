@@ -11,14 +11,15 @@ set -e # Exit on error
 
 # Load lava-functions
 . `dirname $0`/funcs.sh
+lava=$(dirname $(dirname $(readlink -f "$0")))
 
 USAGE() {
-  echo "USAGE: $0 -a -k -m [Num bugs] -n [Minimum real bugs] -l [List of bug IDs to use] -e [Expected exit code of original program] JSONfile"
-  echo "       . . . or just $0 JSONfile"
+  echo "USAGE: $0 -a -k -m [Num bugs] -n [Minimum real bugs] -l [List of bug IDs to use] -e [Expected exit code of original program] ProjectName"
+  echo "       . . . or just $0 ProjectName"
   exit 1
 }
 
-if [ -z "$1" ]; then
+if [ $# -lt 1 ]; then
     USAGE
 fi
 
@@ -91,9 +92,9 @@ do
 done
 shift $((OPTIND -1))
 
-json="$(realpath $1)"
+project_name="$1"
 . `dirname $0`/vars.sh
-progress "competition" 1 "JSON file is $json"
+progress "competition" 1 "Found configuration for project '$project_name'"
 
 if [ "$debug" -eq "1" ]; then
     python=$pdb
@@ -103,7 +104,7 @@ mkdir -p $logs
 lf="$logs/competition.log"
 progress "competition" 1 "Starting -- logging to $lf"
 truncate "$lf"
-run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject $dataflow --bugtypes=$bugtypes $usechaff $json" "$lf"
+run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject $dataflow --bugtypes=$bugtypes $usechaff $hostjson $project_name" "$lf"
 progress "competition" 1 "Everything finished."
 
 tail -n2 $lf

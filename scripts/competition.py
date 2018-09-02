@@ -19,6 +19,7 @@ import time
 from math import sqrt
 from os.path import basename, dirname, join, abspath, exists
 
+from vars import parse_vars
 from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     run_cmd, run_cmd_notimeout, mutfile, inject_bugs, LavaPaths, \
     validate_bugs, run_modified_program, unfuzzed_input_for_bug, \
@@ -107,8 +108,9 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
 
 def main():
     parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
-    parser.add_argument('project', type=argparse.FileType('r'),
-            help = 'JSON project file')
+    parser.add_argument('host_json', help = 'Host JSON file')
+    parser.add_argument('project', help = 'Project name')
+
     parser.add_argument('-m', '--many', action="store", default=-1,
             help = 'Inject this many bugs and this many non-bugs (chosen randomly)')
     parser.add_argument('-n', '--minYield', action="store", default=-1,
@@ -127,8 +129,8 @@ def main():
                         help = ('bug types to inject'))
     
     args = parser.parse_args()
-    project = json.load(args.project)
-    project_file = args.project.name
+    global project
+    project = parse_vars(args.host_json, args.project)
 
     allowed_bugtypes = get_allowed_bugtype_num(args)
 
@@ -176,7 +178,7 @@ def main():
     real_bug_list = []
     while len(real_bug_list) < int(args.minYield):
         # add either bugs to the source code and check that we can still compile
-        (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, project_file, \
+        (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json, \
                                           project, args, False, competition=True,
                                           validated=False)
 
@@ -197,7 +199,7 @@ def main():
     if not args.chaff:
         # re-build just with the real bugs. Inject in competition mode. Deduplicate bugs with the same ATP location
         print("Reinject only validated bugs")
-        (build, input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, project_file, \
+        (build, input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, args.host_json, \
                                               project, args, False, competition=True, validated=True)
 
         assert build is not None # Injection could fail
@@ -315,7 +317,7 @@ def main():
 
     for bug in db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all():
         prediction = basename(bug.atp.loc_filename)
-        fuzzed_input = fuzzed_input_for_bug(lp, bug)
+        fuzzed_input = fuzzed_input_for_bug(project, bug)
         (dc, fi) = os.path.split(fuzzed_input)
         shutil.copy(fuzzed_input, inputsdir)
         predictions.append((prediction, fi))
