@@ -394,7 +394,11 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, sol
 # run lavatool on this file to inject any parts of this list of bugs
 def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename, knobTrigger=False, dataflow=False, competition=False):
     print("Running lavaTool on [{}]...".format(filename))
-    assert(len(bug_list)) # Can't call with no bugs
+    lt_debug=False
+    if (len(bug_list)) == 0:
+        print("\nWARNING: Running lavaTool but no bugs selected for injection\n")
+        print("Running with -debug to just inject data_flow")
+        lt_debug=True
 
     db_name = project["db"]
     bug_list_str = ','.join([str(bug.id) for bug in bug_list])
@@ -407,6 +411,7 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename, knobTrigg
         lp.lava_tool, '-action=inject', '-bug-list=' + bug_list_str,
         '-src-prefix=' + lp.bugs_build, '-db=' + db_name,
         '-main-files=' + main_files, join(lp.bugs_build, filename)]
+    if lt_debug: cmd.append("-debug")
     if dataflow: cmd.append('-arg_dataflow')
     if knobTrigger: cmd.append('-kt')
     if project["preprocessed"]: cmd.append( '-lava-wl=' + fninstr)
@@ -749,7 +754,12 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
         db.session.add(build)
         db.session.commit()
         assert build.id is not None
-        run(['git', 'commit', '-am', 'Bugs for build {}.'.format(build.id)])
+        try:
+            run(['git', 'commit', '-am', 'Bugs for build {}.'.format(build.id)])
+        except Exception:
+            print("\nFatal error: git commit failed! This may be caused by lavaTool not modifying anything")
+            raise
+
         run(['git', 'branch', 'build' + str(build.id), 'master'])
         run(['git', 'reset', 'HEAD~', '--hard'])
 

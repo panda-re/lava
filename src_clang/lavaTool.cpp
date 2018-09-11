@@ -54,7 +54,7 @@ extern "C" {
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
 #define PRI (1 << 3)
-#define DEBUG_FLAGS 0 // ( MATCHER | INJECT | FNARG | PRI)
+#define DEBUG_FLAGS (FNARG | PRI) // ( MATCHER | INJECT | FNARG | PRI)
 #define ARG_NAME "data_flow"
 
 using namespace odb::core;

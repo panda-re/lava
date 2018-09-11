@@ -68,12 +68,14 @@ num_trials=0
 kt=""
 demo=0
 ATP_TYPE=""
+# default bugtypes
 bugtypes="ptr_add,rel_write"
-# -s means skip everything up to injection
-# -i 15 means inject 15 bugs (default is 1)
+# default # of bugs to be injected at a time
+many=50
+
 echo
 progress "everything" 0 "Parsing args"
-while getopts  "arcqmtb:i:z:y:kd" flag
+while getopts  "farcqmtb:i:z:y:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -110,6 +112,12 @@ do
       inject=1
       num_trials=$OPTARG
       progress "everything" 0 "Inject step will be executed: num_trials = $num_trials"
+  fi
+  if [ "$flag" = "f" ]; then
+      inject=1
+      many=0
+      num_trials=1
+      progress "everything" 0 "[TESTING] Inject data_flow only, 0 bugs"
   fi
   if [ "$flag" = "y" ]; then
       bugtypes=$OPTARG
@@ -148,9 +156,6 @@ if [ -z "$1" ]; then
 fi
 project_name="$1"
 . `dirname $0`/vars.sh
-
-# how many bugs will be injected at a time
-many=50
 
 if [[ $demo -eq 1 ]]
 then
@@ -278,8 +283,6 @@ if [ $taint -eq 1 ]; then
     echo "bug_mining complete $time_diff seconds"
 fi
 
-
-na=1
 if [ $inject -eq 1 ]; then
     progress "everything" 1 "Injecting step -- $num_trials trials"
     if [ "$exitCode" = "null" ]; then
