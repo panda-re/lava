@@ -81,6 +81,11 @@ typedef std::vector < ParenInfo > ParensInfo;
 
 // figure out paren info for this string.  
 ParensInfo getParens(std::string sourceString) {
+    size_t attribute_idx = sourceString.find("__attribute");
+    if (attribute_idx != std::string::npos) {
+        std::cout << "Attribute in function name, ignoring";
+        sourceString.resize(attribute_idx, '\0');
+    }
     
     size_t searchLoc = 0;
     unsigned level = 0;

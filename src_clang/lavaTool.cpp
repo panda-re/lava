@@ -1419,13 +1419,13 @@ struct FunctionPointerFieldHandler : public LavaMatchHandler {
 struct CallExprArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
-    void CAddArg(const CallExpr *func) {
-        SourceLocation l1 = func->getLocStart();
-        SourceLocation l2 = func->getLocEnd();
-        debug(FNARG) << "func->getLocStart = " << Mod.sm->getFileOffset(l1) << "\n";
-        debug(FNARG) << "func->getLocEnd = " << Mod.sm->getFileOffset(l2) << "\n";
+    void CAddArg(const CallExpr *call) {
+        SourceLocation l1 = call->getLocStart();
+        SourceLocation l2 = call->getLocEnd();
+        debug(FNARG) << "call->getLocStart = " << Mod.sm->getFileOffset(l1) << "\n";
+        debug(FNARG) << "call->getLocEnd = " << Mod.sm->getFileOffset(l2) << "\n";
         bool inv;
-        debug(FNARG) << "func : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
+        debug(FNARG) << "call : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
 
         // We need the end of just the type signature part.  
         // If this decl has a body, then that is the first '{' right? 
@@ -1433,7 +1433,7 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         endOfProt = getLocAfterStr(*Mod.sm, l1, ")", 1, 1000, &inv);
 
         // add the data_flow arg between l1 and endOfProt
-        AddArgGen(Mod, l1, endOfProt, true, func->getNumArgs());
+        AddArgGen(Mod, l1, endOfProt, true, call->getNumArgs());
     }
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
