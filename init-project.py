@@ -94,6 +94,14 @@ def main():
     else:
         progress("Found existing host.json")
 
+    progress("(re)building the fbi")
+    os.chdir(join(LAVA_DIR, "fbi"))
+    run(["make", "-j4"])
+
+    progress("(re)building lavaTool")
+    os.chdir(join(LAVA_DIR, "src_clang"))
+    run(["./compile-on-docker.sh"])
+
     progress("Sucessful!  Now run:\n  $ scripts/everything.sh -ak file")
     return 0
 
