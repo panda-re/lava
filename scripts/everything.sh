@@ -110,7 +110,7 @@ do
       num_trials=$OPTARG
       progress "everything" 0 "Inject step will be executed: num_trials = $num_trials"
   fi
-  if [ "$flag" = "t" ]; then
+  if [ "$flag" = "y" ]; then
       bugtypes=$OPTARG
       progress "everything" 0 "Injecting bugs of type(s): $bugtypes"
   fi

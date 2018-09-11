@@ -25,5 +25,5 @@
 
     "main_file": [ "toy.c" ],
 
-    "inputs": [ "/home/fasano/lava/targets/toy/inputs/testsmall.bin" ]
+    "inputs": [ "/home/fasano/lava/target_configs/toy/inputs/testsmall.bin" ]
 }
