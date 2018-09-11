@@ -118,8 +118,6 @@ if __name__ == "__main__":
             help = ('No need to take lock on bugs dir'))
     parser.add_argument('-c', '--checkStacktrace', action="store_true", default=False,
             help = ('When validating a bug, make sure it manifests at same line as lava-inserted trigger'))
-    parser.add_argument('-d', '--arg_dataflow', action="store_true", default=False,
-            help = ('Inject bugs using function args instead of globals'))
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
             help = ('Expected exit code when program exits without crashing. Default 0'))
     parser.add_argument('-bb', '--balancebugtype', action="store_true", default=False, 
@@ -140,6 +138,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     global project
     project = parse_vars(args.host_json, args.project)
+    dataflow = project.get("dataflow", False)
 
     allowed_bugtypes = get_allowed_bugtype_num(args)
     
@@ -167,7 +166,7 @@ if __name__ == "__main__":
     # add all those bugs to the source code and check that it compiles
         # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
     (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json,
-                                       project, args, update_db, competition=args.competition)
+                                       project, args, update_db, dataflow=dataflow, competition=args.competition)
     if build is None:
         raise RuntimeError("LavaTool failed to bulid target binary")
 

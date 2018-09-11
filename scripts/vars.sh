@@ -37,6 +37,7 @@ name="$(jq -r .name $json)"
 db="$(jq -r .db $json)$db_suffix"
 extradockerargs="$(jq -r .extra_docker_args $json)"
 exitCode="$(jq -r .expected_exit_code $json)"
+dataflow="$(jq -r '.dataflow // "false"' $json)" # TODO use everywhere, stop passing as argument
 
 tarfiledir="$tar_dir"
 tarfile="$tarfiledir/$(jq -r '.tarfile' $json)"

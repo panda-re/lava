@@ -12,6 +12,7 @@ import shlex
 import shutil
 import signal
 import string
+import stat
 import subprocess32
 import sys
 import time
@@ -121,8 +122,6 @@ def main():
             help = ('Expected exit code when program exits without crashing. Default 0'))
     #parser.add_argument('-i', '--diversify', action="store_true", default=False,
             #help = ('Diversify source code. Default false.'))
-    parser.add_argument('-d', '--arg_dataflow', action="store_true", default=False,
-            help = ('Inject bugs using function args instead of globals'))
     parser.add_argument('-c', '--chaff', action="store_true", default=False, # TODO chaf and unvalided bugs aren't always the same thing
             help = ('Leave unvalidated bugs in the binary'))
     parser.add_argument('-t', '--bugtypes', action="store", default="rel_write",
@@ -131,6 +130,8 @@ def main():
     args = parser.parse_args()
     global project
     project = parse_vars(args.host_json, args.project)
+
+    dataflow = project.get("dataflow", False) # Default to false
 
     allowed_bugtypes = get_allowed_bugtype_num(args)
 
@@ -179,7 +180,7 @@ def main():
     while len(real_bug_list) < int(args.minYield):
         # add either bugs to the source code and check that we can still compile
         (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json, \
-                                          project, args, False, competition=True,
+                                          project, args, False, dataflow=dataflow, competition=True,
                                           validated=False)
 
         assert build is not None # build is none when injection fails. Could block here to allow for manual patches
@@ -189,7 +190,8 @@ def main():
 
         if len(real_bug_list) < int(args.minYield):
             print "\n\nXXX Yield too low -- %d bugs minimum is required for competition" % int(args.minYield)
-            print "Trying again.\n"
+            #print "Trying again.\n"
+            raise RuntimeError("Failure")
 
     print "\n\n Yield acceptable: {}".format(len(real_bug_list))
 
@@ -200,7 +202,7 @@ def main():
         # re-build just with the real bugs. Inject in competition mode. Deduplicate bugs with the same ATP location
         print("Reinject only validated bugs")
         (build, input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, args.host_json, \
-                                              project, args, False, competition=True, validated=True)
+                                              project, args, False, dataflow=dataflow, competition=True, validated=True)
 
         assert build is not None # Injection could fail
 
@@ -430,7 +432,7 @@ done""".format(command = project['command'].format(**{"install_dir": "./lava-ins
             command2 = project['command'].format(**{"install_dir": "./lava-install-public", "input_file": "$fname"}), # This syntax is weird but only thing that works?
             inputdir = "./inputs/*-fuzzed-*"
             ))
-
+    os.chmod(trigger_all_crashes, (stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IROTH | stat.S_IXOTH))
     # Build a version to ship in src
     run_builds([log_build_sh, public_build_sh])
     print("Success! Competition build in {}".format(corpdir))

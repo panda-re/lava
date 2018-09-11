@@ -125,34 +125,52 @@ for i in $c_dirs; do
   fi
 done
 
+if [ "$dataflow" = "true" ]; then
+    progress "queries" 0 "Using dataflow as specified in project.json"
 
 # Run another clang tool that provides information about functions,
 # i.e., which have only prototypes, which have bodies.  
-progress "queries" 0 "Figure out functions" 
-for i in $c_files; do
-    $lava/src_clang/build/lavaFnTool $i
-done
+    progress "queries" 0 "Figure out functions" 
+    for i in $c_files; do
+        $lava/src_clang/build/lavaFnTool $i
+    done
 
 # analyze that output and figure out 
-fnfiles=$(echo $c_files | sed 's/\.c/\.c\.fn/g')
-fninstr=$directory/$name/fninstr
+    fnfiles=$(echo $c_files | sed 's/\.c/\.c\.fn/g')
+    fninstr=$directory/$name/fninstr
 
-echo "Creating fninstr [$fninstr]"
+    echo "Creating fninstr [$fninstr]"
+    echo -e "\twith command: \"python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles\""
+    python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles
 
-python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles
+    # Insert queries with DF - could merge this with the else if logic below instead of duplicating
+    # TODO: Just make lavaTool load dataflow from project.json instead of passing as CLI arg.
+    # Since it's okay to pass the whitelist either way
+    progress "queries" 0  "Inserting queries with dataflow"
+    for i in $c_files; do
+        $lava/src_clang/build/lavaTool -action=query \
+        -lava-db="$directory/$name/lavadb" \
+        -p="$source/compile_commands.json" \
+        -arg_dataflow \
+        -lava-wl="$fninstr" \
+        -src-prefix=$(readlink -f "$source") \
+        $ATP_TYPE \
+        -db="$db" \
+        $i
+    done
+else
 
-
-progress "queries" 0  "Inserting queries..."
-for i in $c_files; do
-    $lava/src_clang/build/lavaTool -action=query \
-    -lava-wl="$fninstr" \
-    -lava-db="$directory/$name/lavadb" \
-    -p="$source/compile_commands.json" \
-    -src-prefix=$(readlink -f "$source") \
-    $ATP_TYPE \
-    -db="$db" \
-    $i
-done
+    progress "queries" 0  "Inserting queries..."
+    for i in $c_files; do
+        $lava/src_clang/build/lavaTool -action=query \
+        -lava-db="$directory/$name/lavadb" \
+        -p="$source/compile_commands.json" \
+        -src-prefix=$(readlink -f "$source") \
+        $ATP_TYPE \
+        -db="$db" \
+        $i
+    done
+fi
 
 for i in $c_dirs; do
     echo "  Applying replacements to $i"

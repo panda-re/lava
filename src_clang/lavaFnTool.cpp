@@ -13,12 +13,20 @@
 
 #include <iostream>
 
+#define LOG (1 << 0)
+#define DEBUG_FLAGS 0 // ( LOG )
+
 using namespace clang::tooling;
 using namespace llvm;using namespace clang;
 using namespace clang;
 using namespace clang::ast_matchers;
 
 using namespace std;
+
+
+static llvm::raw_null_ostream null_ostream;
+#define debug(flag) ((DEBUG_FLAGS & (flag)) ? llvm::errs() : null_ostream)
+
 
 
 static cl::OptionCategory LavaFnCategory("LAVA Function diagnosis");
@@ -83,21 +91,21 @@ std::string get_containing_function_name(const MatchFinder::MatchResult &Result,
 //    std::pair<std::string,std::string> fail = std::make_pair(std::string("Notinafunction"), std::string("Notinafunction"));        
     while (true) {
         const auto &parents = Result.Context->getParents(*pstmt);
-        std::cout << "get_containing_function_name: " << parents.size() << " parents\n";
+        debug(LOG) << "get_containing_function_name: " << parents.size() << " parents\n";
         for (auto &parent : parents) {
-            std::cout << "parent: " << parent.getNodeKind().asStringRef().str() << "\n";
+            debug(LOG) << "parent: " << parent.getNodeKind().asStringRef().str() << "\n";
         }
         if (parents.empty()) {
-            std::cout << "get_containing_function_name: no parents for stmt? ";
+            debug(LOG) << "get_containing_function_name: no parents for stmt? ";
             pstmt->dumpPretty(*Result.Context);
-            std::cout << "\n";            
+            debug(LOG) << "\n";            
             assert (1==0);
 //            return fail;       
         }     
         if (parents[0].get<TranslationUnitDecl>()) {
-            std::cout << "get_containing_function_name: parents[0].get<TranslationUnitDecl? ";
+            debug(LOG) << "get_containing_function_name: parents[0].get<TranslationUnitDecl? ";
             pstmt->dumpPretty(*Result.Context);
-            std::cout << "\n";                        
+            debug(LOG) << "\n";                        
             assert(1==0);
 //            return fail;
         }
@@ -106,7 +114,7 @@ std::string get_containing_function_name(const MatchFinder::MatchResult &Result,
             return fundecl_fun_name(Result, fd);
         pstmt = parents[0].get<Stmt>();        
         if (!pstmt) {
-            std::cout << "get_containing_function_name: !pstmt \n";
+            debug(LOG) << "get_containing_function_name: !pstmt \n";
             const VarDecl *pvd = parents[0].get<VarDecl>();
             if (pvd) {
                 const auto &parents = Result.Context->getParents(*pvd);

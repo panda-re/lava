@@ -54,7 +54,7 @@ extern "C" {
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
 #define PRI (1 << 3)
-#define DEBUG_FLAGS 0 // (MATCHER | INJECT | FNARG | PRI)
+#define DEBUG_FLAGS (FNARG | INJECT) // ( MATCHER | INJECT | FNARG | PRI)
 #define ARG_NAME "data_flow"
 
 using namespace odb::core;
@@ -372,20 +372,21 @@ LExpr threeDuaTest(Bug *bug, LvalBytes x, LvalBytes y) {
     auto oldmagic = bug->magic;
 
     const int NUM_BUGTYPES=3;
+    // Todo remove the pring switch or print to a debug output
     switch (oldmagic % NUM_BUGTYPES)  {
         case 0:
             bug->magic = (a_sol + b_sol) * c_sol;
-            printf("0x%llx == (0x%x + 0x%x) * 0x%x\n", bug->id, a_sol, b_sol, c_sol);
+            printf("SOL 0x%llx == (0x%x + 0x%x) * 0x%x\n", bug->id, a_sol, b_sol, c_sol);
             break;
 
         case 1:
             bug->magic = (a_sol * b_sol) - c_sol;
-            printf("0x%llx id  == (0x%x * 0x%x) - 0x%x\n", bug->id, a_sol, b_sol, c_sol);
+            printf("SOL 0x%llx id  == (0x%x * 0x%x) - 0x%x\n", bug->id, a_sol, b_sol, c_sol);
             break;
 
         case 2:
             bug->magic = (a_sol+2) * (b_sol+1) * (c_sol+3);
-            printf("0x%llx id == (0x%x+2) *( 0x%x+1) * (0x%x+3) \n", bug->id, a_sol, b_sol, c_sol);
+            printf("SOL 0x%llx id == (0x%x+2) *( 0x%x+1) * (0x%x+3) \n", bug->id, a_sol, b_sol, c_sol);
             break;
 
     }
@@ -733,27 +734,27 @@ std::pair<std::string,std::string> get_containing_function_name(const MatchFinde
     std::pair<std::string,std::string> fail = std::make_pair(std::string("Notinafunction"), std::string("Notinafunction"));        
     while (true) {
         const auto &parents = Result.Context->getParents(*pstmt);
-        std::cout << "get_containing_function_name: " << parents.size() << " parents\n";
+        //debug(FNARG) << "get_containing_function_name: " << parents.size() << " parents\n";
         for (auto &parent : parents) {
-            std::cout << "parent: " << parent.getNodeKind().asStringRef().str() << "\n";
+            //debug(FNARG) << "parent: " << parent.getNodeKind().asStringRef().str() << "\n";
         }
         if (parents.empty()) {
-            std::cout << "get_containing_function_name: no parents for stmt? ";
+            //debug(FNARG) << "get_containing_function_name: no parents for stmt? ";
             pstmt->dumpPretty(*Result.Context);
-            std::cout << "\n";            
+            //debug(FNARG) << "\n";            
             return fail;       
         }     
         if (parents[0].get<TranslationUnitDecl>()) {
-            std::cout << "get_containing_function_name: parents[0].get<TranslationUnitDecl? ";
+            //debug(FNARG)<< "get_containing_function_name: parents[0].get<TranslationUnitDecl? ";
             pstmt->dumpPretty(*Result.Context);
-            std::cout << "\n";                        
+            //debug(FNARG) << "\n";                        
             return fail;
         }
         const FunctionDecl *fd = parents[0].get<FunctionDecl>();
         if (fd) return fundecl_fun_name(Result, fd);
         pstmt = parents[0].get<Stmt>();        
         if (!pstmt) {
-            std::cout << "get_containing_function_name: !pstmt \n";
+            //debug(FNARG) << "get_containing_function_name: !pstmt \n";
             const VarDecl *pvd = parents[0].get<VarDecl>();
             if (pvd) {
                 const auto &parents = Result.Context->getParents(*pvd);
@@ -887,7 +888,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                 return;
             }
 
-            printf ("PriQueryPointHandler handle: ok to instrument %s\n", fnname.second.c_str());
+            debug(PRI) << "PriQueryPointHandler handle: ok to instrument " << fnname.second << "\n";
         }
 
         LavaASTLoc ast_loc = GetASTLoc(sm, toSiphon);
@@ -958,7 +959,6 @@ struct FunctionArgHandler : public LavaMatchHandler {
             std::string filename = fnname.first;
             std::string functionname = fnname.second;
 
-            if (functionname.find("__builtin_") != std::string::npos) {
     */
 
             const Decl *func1 = call->getCalleeDecl();
@@ -971,9 +971,11 @@ struct FunctionArgHandler : public LavaMatchHandler {
                         return;
                     }        
                 }
+            }else{
+                debug(INJECT) << "Unknown (none) callee name\n";
             }
 
-            printf ("FunctionArgHandler handle: ok to instrument %s\n", fnname.second.c_str());
+            debug(INJECT) << "FunctionArgHandler handle: ok to instrument " << fnname.second << "\n";
         }
 
         debug(INJECT) << "FunctionArgHandler @ " << GetASTLoc(sm, toAttack) << "\n";
@@ -1014,7 +1016,7 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
                 return;
             }
 
-            printf ("ReadDisclosureHandler handle: ok to instrument %s\n", fnname.second.c_str());
+            debug(INJECT) << "ReadDisclosureHandler handle: ok to instrument " << fnname.second << "\n";
         }
 
         LExpr addend = LDecimal(0);
@@ -1077,7 +1079,7 @@ struct MemoryAccessHandler : public LavaMatchHandler {
                 return;
             }
 
-            printf ("MemoryAccessHandler: ok to instrument %s\n", fnname.second.c_str());
+            debug(INJECT) << "MemoryAccessHandler: ok to instrument " << fnname.second << "\n";;
         }
 
         const SourceManager &sm = *Result.SourceManager;
@@ -1301,6 +1303,11 @@ struct FieldDeclArgAdditionHandler : public LavaMatchHandler {
             const Type *pt = ft->getPointeeType().IgnoreParens().getTypePtr();
             assert(pt);
             const FunctionType *fun_type = dyn_cast<FunctionType>(pt);
+            if (fun_type == NULL) {
+                debug(FNARG) << "... clang could not determine function type, abort\n";
+                return;
+            }
+
             assert(fun_type);
             const FunctionProtoType *prot = dyn_cast<FunctionProtoType>(fun_type);
             // add the data_flow arg
@@ -1409,9 +1416,25 @@ struct FunctionPointerFieldHandler : public LavaMatchHandler {
 
 
 //  Add data_flow arg to call expression
-
 struct CallExprArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
+
+    void CAddArg(const CallExpr *func) {
+        SourceLocation l1 = func->getLocStart();
+        SourceLocation l2 = func->getLocEnd();
+        debug(FNARG) << "func->getLocStart = " << Mod.sm->getFileOffset(l1) << "\n";
+        debug(FNARG) << "func->getLocEnd = " << Mod.sm->getFileOffset(l2) << "\n";
+        bool inv;
+        debug(FNARG) << "func : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
+
+        // We need the end of just the type signature part.  
+        // If this decl has a body, then that is the first '{' right? 
+        SourceLocation endOfProt;
+        endOfProt = getLocAfterStr(*Mod.sm, l1, ")", 1, 1000, &inv);
+
+        // add the data_flow arg between l1 and endOfProt
+        AddArgGen(Mod, l1, endOfProt, true, func->getNumArgs());
+    }
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const CallExpr *call = Result.Nodes.getNodeAs<CallExpr>("callExpr");
@@ -1445,13 +1468,11 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
             fnname = fundecl_fun_name(Result, func);
             if (fninstr(fnname)) {
                 debug(FNARG) << "called function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
-            }
-            else {
+            } else {
                 debug(FNARG) << "called function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
                 return;
             }
-        }
-        else debug(FNARG) << "func is NULL?\n";
+        } else debug(FNARG) << "We have a func pointer?\n";
 
         // If we get here, we are instrumenting a call to a function on our whitelist that is in 
         // the body of a function also on our whitelist. 
@@ -1460,21 +1481,28 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
             // Function Pointer
             debug(FNARG) << "function pointer use\n";
             call->getLocStart().print(debug(FNARG), *Mod.sm);
-            debug(FNARG) << "this many args: " << call->getNumArgs() << "\n";
-            loc = call->getArg(0)->getLocStart();
+            debug(FNARG) << "\n";
+            //debug(FNARG) << " argcount=" << call->getNumArgs() << "\n";
+            //loc = call->getArg(0)->getLocStart();
         } else if (Mod.sm->isInSystemHeader(func->getLocation())) {
             debug(FNARG) << "in system header\n";
             return;
-        } else 
+        } else {
             debug(FNARG) << "Neither\n";
+        }
 
+        debug(FNARG) << "Call addarg for dataflow\n";
+        CAddArg(call);
+        debug(FNARG) << "Done with addarg\n";
+
+        /*
         loc.print(debug(FNARG), *Mod.sm);
 
         if (call->getNumArgs() == 0) {
             Mod.InsertAt(loc, ARG_NAME);
         } else {
             Mod.InsertAt(loc, ARG_NAME ", ");
-        }
+        }*/
     }
 };
 
@@ -1590,12 +1618,12 @@ public:
                 makeHandler<FunctionPointerTypedefHandler>());
         }
 
-        addMatcher(
+        /* addMatcher(
                 callExpr(
                     callee(functionDecl(hasName("::printf"))),
                     unless(argumentCountIs(1))).bind("call_expression"),
                 makeHandler<ReadDisclosureHandler>()
-                );
+                ); */
         }
     virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
         Insert.clear();
@@ -1702,14 +1730,13 @@ void mark_for_siphon(const DuaBytes *dua_bytes) {
 
 
 void parse_whitelist(std::string whitelist_filename) {
-    printf ("parsing white list %s\n", whitelist_filename.c_str());
+    debug(FNARG) <<  "parsing white list " << whitelist_filename << "\n";
     FILE *fp = fopen(whitelist_filename.c_str(), "r");
     char *line = NULL;
     size_t len = 0;
     ssize_t read = 0;
     while ((read = getline(&line, &len, fp)) != -1) {
         char *p = line;
-        printf("Read line %s\n", line);
         char *np = strtok(p, " ");
         char *npp = strtok(NULL, "\n");
 
@@ -1718,13 +1745,13 @@ void parse_whitelist(std::string whitelist_filename) {
             continue;
         }
 
-        printf("\t np=%s npp=%s\n", np, npp);
+        debug(FNARG) << "\t np= " << np << " npp=" << npp << "\n";
         auto wlp = std::make_pair(std::string(np), std::string(npp));
         whitelist.insert(std::string(npp));
-        printf ("white list entry: file = [%s] func = [%s]\n", np, npp);
+        debug(FNARG) << "white list entry: file = [" << np << "] func = [" << npp << "]\n";
         
     }
-    printf ("whitelist is %d entries\n", whitelist.size());
+    debug(FNARG) << "whitelist is " << whitelist.size() << " entries\n";
 }
 
 
@@ -1732,6 +1759,12 @@ void parse_whitelist(std::string whitelist_filename) {
             
 
 int main(int argc, const char **argv) {
+
+    getParens("quote (arglist[i])");
+    return 0;
+
+
+
     std::cout << "Starting lavaTool...\n";
     CommonOptionsParser op(argc, argv, LavaCategory);
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
@@ -1742,7 +1775,7 @@ int main(int argc, const char **argv) {
     if (LavaWL != "XXX") 
         parse_whitelist(LavaWL);
     else 
-        printf ("No whitelist\n");
+        debug(FNARG) << "No whitelist\n";
 
     if (ArgDebug) {
         errs() << "DEBUG MODE: Only adding data_flow\n";
@@ -1802,6 +1835,7 @@ int main(int argc, const char **argv) {
 
         if (LavaDB != "XXX") SaveDB(StringIDs, LavaDB);
     } else if (LavaAction == LavaInjectBugs) {
+        // TODO this logic is flawed, bugs can be injected across files/directories and this is specific to one single run of lavaTool
         if (!bugs_with_atp_at.empty()) {
             std::cout << "Warning: Failed to inject attacks for bugs:\n";
             for (const auto &keyvalue : bugs_with_atp_at) {

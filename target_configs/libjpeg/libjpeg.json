@@ -3,7 +3,7 @@
     "db": "libjpeg",
     "preprocessed": true,
 
-    "tarfile": "libjpeg-9c-pre-m32.tgz",
+    "tarfile": "libjpeg-pre.tgz",
 
     "qcow": "wheezy_panda2.qcow2",
     "snapshot": "root",

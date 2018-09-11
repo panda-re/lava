@@ -8,6 +8,8 @@ debug = True
 
 
 parser = argparse.ArgumentParser(description='Use output of LavaFnTool to figure out which parts of preproc code to instrument')
+
+# TODO use vars.py to figure this out instead of arguments
 parser.add_argument('-d', '--dataflow', action="store_true", default=False,
                     help="lava is using dataflow")
 parser.add_argument('-i', '--input', action="store", default=None,

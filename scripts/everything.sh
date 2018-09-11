@@ -159,7 +159,7 @@ fi
 
 progress "everything" 1 "JSON file is $json"
 
-source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
+source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1 2>/dev/null)
 
 if [ -z "$source" ]; then
     echo -e "\nFATAL ERROR: could not get directory name from tarfile. Tar must unarchive and create directory\n";
@@ -175,7 +175,7 @@ logs="$directory/$name/logs"
 RESET_DB() {
     lf="$logs/dbwipe.log"
     truncate "$lf"
-    progress "everything" 1  "Resetting (cleaning) up lava db -- logging to $lf"
+    progress "everything" 1  "Resetting lava db -- logging to $lf"
     run_remote "$pandahost" "dropdb --if-exists -U postgres $db" "$lf"
     run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
     run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
@@ -249,6 +249,13 @@ fi
 
 if [ $taint -eq 1 ]; then
     tick
+
+    if [ $reset_db -eq 0 ]; then
+        # If we didn't just reset the DB, we need clear out any existing taint labels before running FBI
+        progress "everything" 1 "Clearing taint data from DB"
+        lf="$logs/dbwipe_taint.log"
+        run_remote "$pandahost" "psql -U postgres -c \"delete from dua_viable_bytes; delete from labelset;\" $db" "$lf"
+    fi
     progress "everything" 1 "Taint step -- running panda and fbi"
     for input in $inputs
     do

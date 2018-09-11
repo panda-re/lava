@@ -91,6 +91,7 @@ ParensInfo getParens(std::string sourceString) {
         NextThing nt = NtInvalid;
         if (nextOpen != std::string::npos 
             && nextClose != std::string::npos) {
+            std::cout << "Both in bounds\n";
             // both are in bounds so we can compare them
             // the next one is whichever comes first
             if (nextOpen < nextClose) nt = NtOpen;
@@ -99,6 +100,7 @@ ParensInfo getParens(std::string sourceString) {
         else {
             // one or neither is in bounds
             // whever is in bounds is next one
+            std::cout << "One/neither in bounds\n";
             if (nextOpen != std::string::npos) nt = NtOpen;
             else if (nextClose != std::string::npos) nt = NtClose;
         }
@@ -106,6 +108,7 @@ ParensInfo getParens(std::string sourceString) {
         // no valid next open or close -- exit loop
         if (nt == NtInvalid) break;
         size_t nextLoc;
+        std::cout << "NT is " << nt << "\n";
         switch (nt) {
         case NtOpen:
             // '(' is next thing
@@ -134,10 +137,10 @@ ParensInfo getParens(std::string sourceString) {
 
     unsigned l = parens.size();
     if (l==0) {
-        std::cout << "Hmm.  No parens at all\n";
+        //std::cout << "Hmm.  No parens at all\n";
     }
     else {
-        std::cout << "There are parens\n";
+        //std::cout << "There are parens\n";
         ParenInfo &cp = parens[l-1];
         ParenInfo &op = parens[0];
         if (std::get<1>(op) == true && std::get<1>(cp) == false) {
@@ -146,12 +149,12 @@ ParensInfo getParens(std::string sourceString) {
                 // and both are level 1 -- good
             }
             else {
-                std::cout << "Clearing parens since levels of open/close arent both 1\n";
+                //std::cout << "Clearing parens since levels of open/close arent both 1\n";
                 parens.clear();
             }       
         }    
         else {
-            std::cout << "Clearing parens since we dont have op/close as first/last\n";
+            //std::cout << "Clearing parens since we dont have op/close as first/last\n";
             parens.clear();
         }       
     }
@@ -222,12 +225,12 @@ std::string createNonNullTests(std::string sourceString) {
             if (cand[num_stars] != '*') break;
         num_stars--;
         if (num_stars > 0) {
-            std::cout << "cand = [" << cand << "]\n";
-            std::cout << "num_stars = " << num_stars << "\n";
+            //std::cout << "cand = [" << cand << "]\n";
+            //std::cout << "num_stars = " << num_stars << "\n";
             for (unsigned i=0; i<num_stars; i++) {
                 size_t start = i+2;
                 size_t len = cand.size() - start - 1;
-                std::cout << "start = " << start << " len = " << len << "\n";                
+                //std::cout << "start = " << start << " len = " << len << "\n";                
                 std::string test = " (" + (cand.substr(start, len)) + ")";
                 if (tests.size() == 0) 
                     tests = test;
@@ -323,6 +326,7 @@ SLParensInfo SLgetParens(const SourceManager &sm, SourceLocation &l1,
             size_t pos = std::get<0>(paren);      
             unsigned isopen = std::get<1>(paren);
             unsigned level = std::get<2>(paren);
+            printf("Found paren pair open=%d, level=%d\n", isopen, level);
             SourceLocation sl = l1.getLocWithOffset(pos);
             SLParenInfo slparen = std::make_tuple(sl, isopen, level);
             slparens.push_back(slparen);
