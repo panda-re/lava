@@ -54,7 +54,7 @@ extern "C" {
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
 #define PRI (1 << 3)
-#define DEBUG_FLAGS (FNARG | INJECT) // ( MATCHER | INJECT | FNARG | PRI)
+#define DEBUG_FLAGS 0 // ( MATCHER | INJECT | FNARG | PRI)
 #define ARG_NAME "data_flow"
 
 using namespace odb::core;
@@ -1759,12 +1759,6 @@ void parse_whitelist(std::string whitelist_filename) {
             
 
 int main(int argc, const char **argv) {
-
-    getParens("quote (arglist[i])");
-    return 0;
-
-
-
     std::cout << "Starting lavaTool...\n";
     CommonOptionsParser op(argc, argv, LavaCategory);
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));

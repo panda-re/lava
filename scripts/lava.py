@@ -524,7 +524,11 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
             run([join(lp.lava_dir, 'btrace', 'sw-btrace')] + shlex.split(make_cmd))
     sys.stdout.flush()
     sys.stderr.flush()
-    dataflow = args.arg_dataflow or dataflow
+    dataflow = dataflow
+    try:
+        dataflow |= args.arg_dataflow
+    except: # arg_dataflow missing from args which is okay
+        pass
 
     llvm_src = None
     # find llvm_src dir so we can figure out where clang #includes are for btrace
@@ -675,9 +679,11 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
 
     # TODO use pool here as well
     for src_dir in src_dirs:
-        print("Apply replacements in {} with {}".format(join(lp.bugs_build, src_dir), " ".join([clang_apply, '.', '-remove-change-desc-files'])))
-        run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
-                          cwd=join(lp.bugs_build, src_dir))
+        clang_cmd = [clang_apply, '.', '-remove-change-desc-files']
+        if debugging: # Don't remove desc files
+            clang_cmd =  [clang_apply, '.']
+        print("Apply replacements in {} with {}".format(join(lp.bugs_build, src_dir), clang_cmd))
+        run_cmd_notimeout(clang_cmd, cwd=join(lp.bugs_build, src_dir))
         
     # Ugh.  Lavatool very hard to get right
     # Permit automated fixups via script after bugs inject
