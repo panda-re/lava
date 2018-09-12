@@ -83,7 +83,7 @@ typedef std::vector < ParenInfo > ParensInfo;
 ParensInfo getParens(std::string sourceString) {
     size_t attribute_idx = sourceString.find("__attribute");
     if (attribute_idx != std::string::npos) {
-        std::cout << "Attribute in function name, ignoring";
+        std::cerr << "Attribute in function name, ignoring that part";
         sourceString.resize(attribute_idx, '\0');
     }
     
@@ -96,7 +96,7 @@ ParensInfo getParens(std::string sourceString) {
         NextThing nt = NtInvalid;
         if (nextOpen != std::string::npos 
             && nextClose != std::string::npos) {
-            std::cout << "Both in bounds\n";
+            std::cerr << "Both in bounds\n";
             // both are in bounds so we can compare them
             // the next one is whichever comes first
             if (nextOpen < nextClose) nt = NtOpen;
@@ -105,7 +105,7 @@ ParensInfo getParens(std::string sourceString) {
         else {
             // one or neither is in bounds
             // whever is in bounds is next one
-            std::cout << "One/neither in bounds\n";
+            std::cerr << "One/neither in bounds\n";
             if (nextOpen != std::string::npos) nt = NtOpen;
             else if (nextClose != std::string::npos) nt = NtClose;
         }
@@ -113,7 +113,7 @@ ParensInfo getParens(std::string sourceString) {
         // no valid next open or close -- exit loop
         if (nt == NtInvalid) break;
         size_t nextLoc;
-        std::cout << "NT is " << nt << "\n";
+        std::cerr << "NT is " << nt << "\n";
         switch (nt) {
         case NtOpen:
             // '(' is next thing
@@ -134,18 +134,18 @@ ParensInfo getParens(std::string sourceString) {
         parens.push_back(pt);
         searchLoc = nextLoc+1;
     }
-    std::cout << sourceString << "\n";
+    std::cerr << sourceString << "\n";
     for (auto p : parens) 
-        std::cout << "paren " << std::get<0>(p)
+        std::cerr << "paren " << std::get<0>(p)
                   << " " << std::get<1>(p)
                   << " " << std::get<2>(p) << "\n";
 
     unsigned l = parens.size();
     if (l==0) {
-        //std::cout << "Hmm.  No parens at all\n";
+        //std::cerr << "Hmm.  No parens at all\n";
     }
     else {
-        //std::cout << "There are parens\n";
+        //std::cerr << "There are parens\n";
         ParenInfo &cp = parens[l-1];
         ParenInfo &op = parens[0];
         if (std::get<1>(op) == true && std::get<1>(cp) == false) {
@@ -154,12 +154,12 @@ ParensInfo getParens(std::string sourceString) {
                 // and both are level 1 -- good
             }
             else {
-                //std::cout << "Clearing parens since levels of open/close arent both 1\n";
+                //std::cerr << "Clearing parens since levels of open/close arent both 1\n";
                 parens.clear();
             }       
         }    
         else {
-            //std::cout << "Clearing parens since we dont have op/close as first/last\n";
+            //std::cerr << "Clearing parens since we dont have op/close as first/last\n";
             parens.clear();
         }       
     }
@@ -230,12 +230,12 @@ std::string createNonNullTests(std::string sourceString) {
             if (cand[num_stars] != '*') break;
         num_stars--;
         if (num_stars > 0) {
-            //std::cout << "cand = [" << cand << "]\n";
-            //std::cout << "num_stars = " << num_stars << "\n";
+            //std::cerr << "cand = [" << cand << "]\n";
+            //std::cerr << "num_stars = " << num_stars << "\n";
             for (unsigned i=0; i<num_stars; i++) {
                 size_t start = i+2;
                 size_t len = cand.size() - start - 1;
-                //std::cout << "start = " << start << " len = " << len << "\n";                
+                //std::cerr << "start = " << start << " len = " << len << "\n";                
                 std::string test = " (" + (cand.substr(start, len)) + ")";
                 if (tests.size() == 0) 
                     tests = test;
@@ -322,8 +322,9 @@ SLParensInfo SLgetParens(const SourceManager &sm, SourceLocation &l1,
     SLParensInfo slparens;
     bool inv;
     std::string sourceStr = getStringBetween(sm, l1, l2, &inv);
+    std::cerr << "SLgetParens sourceStr = [" << sourceStr << "]\n";
     if (inv) {
-        std::cout << "Invalid\n";
+        std::cerr << "Invalid\n";
     }
     else {
         ParensInfo parens = getParens(sourceStr);

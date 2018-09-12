@@ -1424,16 +1424,8 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         SourceLocation l2 = call->getLocEnd();
         debug(FNARG) << "call->getLocStart = " << Mod.sm->getFileOffset(l1) << "\n";
         debug(FNARG) << "call->getLocEnd = " << Mod.sm->getFileOffset(l2) << "\n";
-        bool inv;
         debug(FNARG) << "call : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
-
-        // We need the end of just the type signature part.  
-        // If this decl has a body, then that is the first '{' right? 
-        SourceLocation endOfProt;
-        endOfProt = getLocAfterStr(*Mod.sm, l1, ")", 1, 1000, &inv);
-
-        // add the data_flow arg between l1 and endOfProt
-        AddArgGen(Mod, l1, endOfProt, true, call->getNumArgs());
+        AddArgGen(Mod, l1, l2, true, call->getNumArgs());
     }
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
