@@ -295,7 +295,7 @@ if [ $inject -eq 1 ]; then
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
         fix=""
         if [ "$injfixupsscript" != "null" ]; then
-            fix="-fixups $injfixupsscript"
+            fix="--fixupsscript='$injfixupsscript'"
         fi
         run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
     grep yield "$lf"

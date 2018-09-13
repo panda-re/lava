@@ -50,9 +50,12 @@ if [ "$(jq -r .fixupscript $json)" != "null" ]; then
     fixupscript="$config_dir/$(jq -r .fixupscript $json)"
 fi
 
+bug_build="$output_dir/$name/$name/bugs/" # TODO why does this have name twice?
 injfixupsscript="null"
 if [ "$(jq -r .injfixupsscript $json)" != "null" ]; then
     injfixupsscript="$config_dir/$(jq -r .injfixupsscript $json)"
+    # replace {bug_build} with string
+    injfixupsscript="${injfixupsscript/\{bug_build\}/$bug_build}"
 fi
 
 buildhost="$(jq -r '.buildhost // "docker"' $json)"
