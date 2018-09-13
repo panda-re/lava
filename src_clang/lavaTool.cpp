@@ -54,7 +54,7 @@ extern "C" {
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
 #define PRI (1 << 3)
-#define DEBUG_FLAGS (FNARG | PRI) // ( MATCHER | INJECT | FNARG | PRI)
+#define DEBUG_FLAGS 0 // ( MATCHER | INJECT | FNARG | PRI)
 #define ARG_NAME "data_flow"
 
 using namespace odb::core;
@@ -1424,7 +1424,9 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         SourceLocation l2 = call->getLocEnd();
         debug(FNARG) << "call->getLocStart = " << Mod.sm->getFileOffset(l1) << "\n";
         debug(FNARG) << "call->getLocEnd = " << Mod.sm->getFileOffset(l2) << "\n";
+        bool inv;
         debug(FNARG) << "call : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
+        assert(!inv);
         AddArgGen(Mod, l1, l2, true, call->getNumArgs());
     }
 
@@ -1777,7 +1779,7 @@ int main(int argc, const char **argv) {
 
     if (LavaAction == LavaInjectBugs) {
         if (DBName == "XXX") {
-            errs() << "Error: Specify a json file with \"-project-file\".  Exiting . . .\n";
+            errs() << "Error: Specify a database name with \"--db [name]\".  Exiting . . .\n";
             exit(1);
         }
         db.reset(new odb::pgsql::database("postgres", "postgrespostgres",

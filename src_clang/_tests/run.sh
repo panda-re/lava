@@ -21,7 +21,7 @@ runtest() {
         rm btrace.log
     fi
 
-    ../../build/lavaFnTool ./$1.c
+    ../../build/lavaFnTool ./$1.c &> lavaFnTool.log
     touch ./built
 
     echo "Ran lavaFnTool. Waiting for host_fninstr..."
@@ -31,12 +31,12 @@ runtest() {
 
     echo "host_fninstr finished!"
 
-    ../../build/lavaTool -debug -lava-wl ./$1.fnwl -arg_dataflow -src-prefix=`pwd`  -action=inject $1.c
+    ../../build/lavaTool -debug -lava-wl ./$1.fnwl -arg_dataflow -src-prefix=`pwd`  -action=inject $1.c &> lavaTool.log
 
     cp $1.c{,.bak}
     ../../build/clang-apply-replacements .
     make clean
-    make &> log.txt
+    make &> cc.log
 
     mv $1{.c,.df.c}
     mv $1.c{.bak,}
@@ -44,25 +44,32 @@ runtest() {
     cd ..
 }
 
-runtest evil
-runtest torture
+runtest attr
+#runtest evil
+#runtest torture
 
+
+echo
+echo
+echo "Attribute"
+cat attr/cc.log
 
 echo
 echo
 echo "Evil"
-cat evil/log.txt
+cat evil/cc.log
 
 echo
 echo
-
 echo "Torture"
-cat torture/log.txt
+cat torture/cc.log
 
-wc_evil=$(wc -l ./evil/log.txt)
-wc_torture=$(wc -l ./torture/log.txt)
+wc_attribute=$(wc -l ./attr/cc.log)
+wc_evil=$(wc -l ./evil/cc.log)
+wc_torture=$(wc -l ./torture/cc.log)
 
 echo
+echo "Attribute gcc line count: $wc_attribute"
 echo "Evil gcc line count: $wc_evil"
 echo "Torture gcc line count: $wc_torture"
 
