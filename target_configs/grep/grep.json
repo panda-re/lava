@@ -15,7 +15,7 @@
     "make": "make",
     "clean": "make clean",
     "install": "make install",
-    "command": "{install_dir}/bin/grep -E '^[A-Z].*\\.$' {input_file}",
+    "command": "{install_dir}/bin/grep -E '^[A-Za-z].*' {input_file}",
     "injfixupsscript": "fixup.sh {bug_build}",
 
     "max_liveness": 100000,
