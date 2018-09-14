@@ -55,8 +55,21 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
             // this should be a function bug -> LExpr to add.
             auto pointerAttack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
+            bool inject = false;
             for (const Bug *bug : injectable_bugs) {
+                debug(INJECT) << "Modifying to parent\n";
+                if (parent != NULL && !inject) {
+                    inject = true;
+                    Mod.Change(parent);
+                    debug(INJECT) << "inserting start "+std::to_string(bug->id)+"\n";
+                    Mod.InsertBefore("__builtin_ia32_lava_instr_start(2,"+std::to_string(bug->id)+");\n\t");
+                    Mod.Change(rhs);
+                    debug(INJECT) << "inserting end\n";
+                    Mod.InsertAfterEnd("\t__builtin_ia32_lava_instr_end(2,"+std::to_string(bug->id)+");\n\t");
+                    debug(INJECT) << "done\n";
+                }
                 assert(bug->atp->type == atpType);
+                debug(INJECT) << "BUG ID " << bug->id << "\n";
                 if (bug->type == Bug::PTR_ADD) {
                     pointerAddends.push_back(pointerAttack(bug));
                 } else if (bug->type == Bug::REL_WRITE) {

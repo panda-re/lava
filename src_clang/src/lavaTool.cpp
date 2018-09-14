@@ -97,7 +97,7 @@ int main(int argc, const char **argv) {
         }
     }
 
-    debug(INJECT) << "about to call Tool.run \n";
+    std::cout << "about to call Tool.run \n";
     if (LavaStage == stage_all) {
         LavaMatchFinder Matcher;
         Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
@@ -111,7 +111,7 @@ int main(int argc, const char **argv) {
         LavaStageThreeFinder Matcher;
         Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
     }
-    debug(INJECT) << "back from calling Tool.run \n";
+    std::cout << "back from calling Tool.run \n";
 
     if (LavaAction == LavaQueries) {
         std::cout << "num taint queries added " << num_taint_queries << "\n";

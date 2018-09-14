@@ -47,7 +47,7 @@ using clang::tooling::CommonOptionsParser;
 #define MATCHER (1 << 0)
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
-#define DEBUG_FLAGS MATCHER | INJECT | FNARG
+#define DEBUG_FLAGS  INJECT | FNARG
 
 #define ARG_NAME "data_flow"
 
@@ -376,6 +376,13 @@ public:
 
     const Modifier &InsertAfter(std::string str) const {
         Insert.InsertAfter(after(), str);
+        return *this;
+    }
+
+    const Modifier &InsertAfterEnd (std::string str) const {
+        SourceLocation end = range().second;
+        unsigned lastTokenSize = Lexer::MeasureTokenLength(end, *sm, *LangOpts);
+        Insert.InsertAfter(end.getLocWithOffset(lastTokenSize+2), str);
         return *this;
     }
 

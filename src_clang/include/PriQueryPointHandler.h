@@ -26,6 +26,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         std::stringstream result_ss;
         auto key = std::make_pair(ast_loc, AttackPoint::QUERY_POINT);
         for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
+            debug(INJECT) << "BUG ID" << bug->id << "\n";
             if (bug->type == Bug::RET_BUFFER) {
                 const DuaBytes *buffer = db->load<DuaBytes>(bug->extra_duas[0]);
                 result_ss << LIf(Test(bug).render(), {

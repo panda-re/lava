@@ -49,8 +49,7 @@ RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/usr-local-lib.conf
 RUN ldconfig
 
 RUN pip install --upgrade -v pip -i https://pypi.python.org/simple/
-RUN pip install subprocess32 lockfile sqlalchemy
-
+RUN pip install subprocess32 lockfile sqlalchemy -i https://pypi.python.org/simple
 
 RUN pip install pyyaml
 

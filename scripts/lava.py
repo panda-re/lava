@@ -318,7 +318,9 @@ def run_cmd(cmd, envv=None, timeout=30, cwd=None, rr=False, shell=False):
         print("run_cmd(" + env_string + " " + subprocess32.list2cmdline(cmd) + ")")
     p = subprocess32.Popen(cmd, cwd=cwd, env=envv, stdout=PIPE, stderr=PIPE, shell=shell)
     try:
-        output = p.communicate(timeout=timeout) # returns tuple (stdout, stderr)
+        # returns tuple (stdout, stderr)
+        output = p.communicate(timeout=timeout)
+        print(output[1])
     except subprocess32.TimeoutExpired:
         print("Killing process due to timeout expiration.")
         p.terminate()
@@ -665,7 +667,6 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
     print(src_files)
 
     all_files = src_files | set(project['main_file'])
-<<<<<<< HEAD
 
     if dataflow:
         # if we're injecting with dataflow, we must modify all files in src
@@ -980,6 +981,8 @@ def validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db
     print("------------\n")
     # first, try the original files
     print("TESTING -- ORIG INPUT")
+    print(bug_list)
+    print("------------\n")
     unfuzzed_outputs = {}
     for input_file in input_files:
         unfuzzed_input = join(project["output_dir"], 'inputs', basename(input_file))
