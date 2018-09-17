@@ -16,6 +16,7 @@ import stat
 import subprocess32
 import sys
 import time
+import random
 
 from math import sqrt
 from os.path import basename, dirname, join, abspath, exists
@@ -50,7 +51,7 @@ def run_builds(scripts):
 # because otherwise the db might give us all the same dua
 
 def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
-    #XXX This function is prtty gross
+    #XXX This function is prtty gross, definitely needs a rewrite
     max_duplicates_per_line = 50 # Max duplicates we *try* to inject per line. After validation, we filter down to ~1 per line
     bugs_and_non_bugs = []
     dfl_fileline = {}
@@ -60,6 +61,12 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
 
     # Find a set of bugs of allowed_bugtype with limited overlap on trigger and atp location with other selected bugs
     def parse(item):
+        """
+        Given a bug, decide if we should add it to bugs_and_non_bugs, if so add it
+
+        return False IFF we have reached limit bugs and should stop parsing
+        """
+    
         if not (item.type in allowed_bugtypes):
             #print("skipping type {} not in {}".format(item.type, allowed_bugtypes))
             return True
@@ -93,17 +100,34 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
         atp_types = [AttackPoint.FUNCTION_CALL, AttackPoint.POINTER_WRITE] # TODO we don't find rel_writes at function calls
 
         # Get limit bugs at each ATP
-        for atp_items in db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit):
-            for item in atp_items:
-                if not parse(item):
-                    abort = True
-                    break
+        atp_item_lists = db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
+        while True:
+            potential_bugs_remaining = sum([len(x) for x in atp_item_lists])
+            if potential_bugs_remaining == 0:
+                print("Abort bug-selection because we've selected all {} potential bugs we have (Failed to find all {} requested bugs)".format(len(bugs_and_non_bugs), limit))
+                break
+            atp_items = random.choice([x for x in atp_item_lists if len(x)]) # Select bug_list for an ATP randomly
+            item = atp_items.pop() # Take the first bug since it was sorted randomly - This needs to modify the item in atp_items
+            abort |= not parse(item) # Once parse returns true, break
             if abort:
                 break
     else:
         for item in db.session.query(Bug).filter(Bug.id.in_(buglist)).all():
             if not parse(item):
                 break
+
+    # Show some stats about requested bugs
+    afls = {}
+    for item in bugs_and_non_bugs:
+        afl = (item.atp.loc_filename, item.atp.loc_begin_line, item.atp.loc_begin_column)
+        if afl not in afls.keys():
+            afls[afl] = 0
+        afls[afl] +=1
+    
+    print("{} bugs were found across {} ATPs:".format(len(bugs_and_non_bugs), len(afls)))
+    for atp, count in afls.items():
+        print("\t{}\t bugs at {}".format(count, atp))
+
 
     return [b.id for b in bugs_and_non_bugs]
 
