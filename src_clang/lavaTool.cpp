@@ -1629,7 +1629,8 @@ public:
         debug(INJECT) << "*** handleBeginSource for: " << Filename << "\n";
 
         std::stringstream logging_macros;
-        logging_macros << "#ifdef LAVA_LOGGING\n" // enable logging with (LAVA_LOGGING, FULL_LAVA_LOGGING) and (DUA_LOGGING) flags
+        logging_macros << "#ifdef stdin\n" // Can only log if stdio.h is included (will define stdin)
+                       << "#ifdef LAVA_LOGGING\n" // enable logging with (LAVA_LOGGING, FULL_LAVA_LOGGING) and (DUA_LOGGING) flags
                           << "#define LAVALOG(bugid, x, trigger)  ({(trigger && fprintf(stderr, \"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__)), (x);})\n"
                        << "#endif\n"
 
@@ -1645,7 +1646,8 @@ public:
                         << "#define DFLOG(idx, val)  ({fprintf(stderr, \"\\nDFLOG:%d=%d: %s:%d\\n\", idx, val, __FILE__, __LINE__) && fflush(0), data_flow[idx]=val;})\n"
                     << "#else\n"
                         << "#define DFLOG(idx, val) {data_flow[idx]=val;}\n"
-                    << "#endif\n";
+                    << "#endif\n"
+                    << "#endif\n"; // end stdin check
 
         std::string insert_at_top;
         if (LavaAction == LavaQueries) {
