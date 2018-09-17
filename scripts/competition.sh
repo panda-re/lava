@@ -85,10 +85,6 @@ do
       usechaff="-c"
       progress "competition" 0 "-c: leaving unvalidated bugs"
   fi
-  if [ "$flag" = "d" ]; then
-      progress "competition" 0 "-d: using data flow"
-      dataflow="-d"
-  fi
 done
 shift $((OPTIND -1))
 
@@ -104,7 +100,7 @@ mkdir -p $logs
 lf="$logs/competition.log"
 progress "competition" 1 "Starting -- logging to $lf"
 truncate "$lf"
-run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject $dataflow --bugtypes=$bugtypes $usechaff $hostjson $project_name" "$lf"
+run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject --bugtypes=$bugtypes $usechaff $hostjson $project_name" "$lf"
 progress "competition" 1 "Everything finished."
 
 tail -n2 $lf

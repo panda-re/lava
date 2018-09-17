@@ -1634,7 +1634,7 @@ public:
                        << "#endif\n"
 
                     << "#ifdef FULL_LAVA_LOGGING\n"
-                        << "#define LAVALOG(bugid, x, trigger)  ({(trigger && fprintf(stderr, \"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__), (!trigger && fprintf(stderr, \"\\nLAVALOG_MISS: %d: %s:%d\\n\", bugid, __FILE__, __LINE__))) && fflush(NULL), (x);})\n"
+                        << "#define LAVALOG(bugid, x, trigger)  ({(trigger && fprintf(stderr, \"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__), (!trigger && fprintf(stderr, \"\\nLAVALOG_MISS: %d: %s:%d\\n\", bugid, __FILE__, __LINE__))) && fflush(0), (x);})\n"
                     << "#endif\n"
 
                     << "#ifndef LAVALOG\n"
@@ -1642,7 +1642,7 @@ public:
                     << "#endif\n"
 
                     << "#ifdef DUA_LOGGING\n"
-                        << "#define DFLOG(idx, val)  ({fprintf(stderr, \"\\nDFLOG:%d=%d: %s:%d\\n\", idx, val, __FILE__, __LINE__) && fflush(NULL), data_flow[idx]=val;})\n"
+                        << "#define DFLOG(idx, val)  ({fprintf(stderr, \"\\nDFLOG:%d=%d: %s:%d\\n\", idx, val, __FILE__, __LINE__) && fflush(0), data_flow[idx]=val;})\n"
                     << "#else\n"
                         << "#define DFLOG(idx, val) {data_flow[idx]=val;}\n"
                     << "#endif\n";

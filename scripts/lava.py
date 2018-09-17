@@ -669,7 +669,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
 
     bug_solutions =  {} # Returned by lavaTool
     for filename in all_files:
-        bug_solutions.update(modify_source(filename))
+        bug_solutions.update(modify_source(filename)) #TODO call on directories instead of each file, but still store results in bug_solutions
 
     # TODO: Use our ThreadPool for modifying source and update bug_solutions with results instead of single-thread
     #if pool:
@@ -759,6 +759,12 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
         except Exception:
             print("\nFatal error: git commit failed! This may be caused by lavaTool not modifying anything")
             raise
+
+        try:
+            run(['git', 'branch', '-d', 'build' + str(build.id)])
+            print("Deleted stale buggy branch from a prior run")
+        except Exception:
+            pass
 
         run(['git', 'branch', 'build' + str(build.id), 'master'])
         run(['git', 'reset', 'HEAD~', '--hard'])
