@@ -166,8 +166,8 @@ static std::map<std::string, uint32_t> StringIDs;
 std::map<std::pair<LavaASTLoc, AttackPoint::Type>, std::vector<const Bug *>>
     bugs_with_atp_at;
 
-// white list of function names (and filenames) 
-// that can be instrumented 
+// white list of function names (and filenames)
+// that can be instrumented
 // with dua and atp queries (which will later mean bugs)
 // also with data_flow.
 std::set<std::string> whitelist;
@@ -277,7 +277,7 @@ bool QueriableType(const Type *lval_type) {
     return true;
 }
 
-// an arg is attackable if it is a pointer 
+// an arg is attackable if it is a pointer
 // and so on.
 bool IsArgAttackable(const Expr *arg) {
     debug(MATCHER) << "IsArgAttackable \n";
@@ -559,7 +559,7 @@ public:
     void InsertAt(SourceLocation loc, std::string str) {
         Insert.InsertBefore(loc, str);
     }
-    
+
 };
 
 /*******************************
@@ -585,8 +585,8 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         return LavaASTLoc(src_filename, fullLocStart, fullLocEnd);
     }
 
-    // A query inserted at a possible attack point. Used, dynamically, just to 
-    // tell us when an input gets to the attack point.  
+    // A query inserted at a possible attack point. Used, dynamically, just to
+    // tell us when an input gets to the attack point.
     LExpr LavaAtpQuery(LavaASTLoc ast_loc, AttackPoint::Type atpType) {
         return LBlock({
                 LFunc("vm_lava_attack_point2",
@@ -598,8 +598,8 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
     /*
       An attack expression.  That is, this is where we would *like* to
       attack something.  Currently used by FunctionArgHandler and
-      MemoryAccessHandler.  So, for 
-    */ 
+      MemoryAccessHandler.  So, for
+    */
     void AttackExpression(const SourceManager &sm, const Expr *toAttack,
             const Expr *parent, const Expr *rhs, AttackPoint::Type atpType) {
         LavaASTLoc ast_loc = GetASTLoc(sm, toAttack);
@@ -731,7 +731,7 @@ std::pair<std::string,std::string> get_containing_function_name(const MatchFinde
 
     const Stmt *pstmt = &stmt;
 
-    std::pair<std::string,std::string> fail = std::make_pair(std::string("Notinafunction"), std::string("Notinafunction"));        
+    std::pair<std::string,std::string> fail = std::make_pair(std::string("Notinafunction"), std::string("Notinafunction"));
     while (true) {
         const auto &parents = Result.Context->getParents(*pstmt);
         //debug(FNARG) << "get_containing_function_name: " << parents.size() << " parents\n";
@@ -741,18 +741,18 @@ std::pair<std::string,std::string> get_containing_function_name(const MatchFinde
         if (parents.empty()) {
             //debug(FNARG) << "get_containing_function_name: no parents for stmt? ";
             pstmt->dumpPretty(*Result.Context);
-            //debug(FNARG) << "\n";            
-            return fail;       
-        }     
+            //debug(FNARG) << "\n";
+            return fail;
+        }
         if (parents[0].get<TranslationUnitDecl>()) {
             //debug(FNARG)<< "get_containing_function_name: parents[0].get<TranslationUnitDecl? ";
             pstmt->dumpPretty(*Result.Context);
-            //debug(FNARG) << "\n";                        
+            //debug(FNARG) << "\n";
             return fail;
         }
         const FunctionDecl *fd = parents[0].get<FunctionDecl>();
         if (fd) return fundecl_fun_name(Result, fd);
-        pstmt = parents[0].get<Stmt>();        
+        pstmt = parents[0].get<Stmt>();
         if (!pstmt) {
             //debug(FNARG) << "get_containing_function_name: !pstmt \n";
             const VarDecl *pvd = parents[0].get<VarDecl>();
@@ -762,18 +762,18 @@ std::pair<std::string,std::string> get_containing_function_name(const MatchFinde
             }
             if (!pstmt)
                 return fail;
-        }    
+        }
     }
-    
-}        
+
+}
 
 /*
   This code is used both to inject 'queries' used during taint analysis but
   also to inject bug parts (mostly DUA siphoning (first half of bug) but also
-  stack pivot).  
+  stack pivot).
 
   First use is to instrument code with vm_lava_pri_query_point calls.
-  These get inserted in between stmts in a compound statement.  
+  These get inserted in between stmts in a compound statement.
 
   Thus, if code was
 
@@ -796,15 +796,15 @@ std::pair<std::string,std::string> get_containing_function_name(const MatchFinde
   tainted is logged along with taint-compute number and other info to
   the pandalog.  The pandalog is consumed by the
   find_bugs_injectable.cpp program to identify DUAs (which
-  additionally have liveness constraints).  
+  additionally have liveness constraints).
 
   When lavaTool.cpp is used during bug injection, we insert DUA
   'siphoning' code in exactly the same place as the corresponding
-  vm_lava_pri_query_points.  We also can add stack-pivot style 
-  exploitable bugs, using these locations as attack points.  
+  vm_lava_pri_query_points.  We also can add stack-pivot style
+  exploitable bugs, using these locations as attack points.
 
 */
-    
+
 
 struct PriQueryPointHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
@@ -817,13 +817,13 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         std::stringstream result_ss;
         for (const LvalBytes &lval_bytes : map_get_default(siphons_at, ast_loc)) {
             // NB: lava_bytes.lval->ast_name is a string that came from
-            // libdwarf.  So it could be something like 
+            // libdwarf.  So it could be something like
             // ((*((**(pdtbl)).pub)).sent_table))
-            // We need to test pdtbl, *pdtbl and (**pdtbl).pub 
-            // to make sure they are all not null to reduce risk of 
+            // We need to test pdtbl, *pdtbl and (**pdtbl).pub
+            // to make sure they are all not null to reduce risk of
             // runtime segfault?
             std::string nntests = (createNonNullTests(lval_bytes.lval->ast_name));
-            if (nntests.size() > 0) 
+            if (nntests.size() > 0)
                 nntests = nntests + " && ";
             result_ss << LIf(nntests + lval_bytes.lval->ast_name, Set(lval_bytes));
         }
@@ -847,7 +847,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                     result_ss << LIf(Test(bug).render(), {
                             LBlock({
                                 //It's always safe to call lavalog here since we're in the if
-                                LFunc("LAVALOG", {LDecimal(1), LDecimal(1), LDecimal(bug->id)}), 
+                                LFunc("LAVALOG", {LDecimal(1), LDecimal(1), LDecimal(bug->id)}),
                                 LIfDef("__x86_64__", {
                                     LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
                                         LDecimal(buffer->selected.low), },
@@ -878,7 +878,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         if (ArgDataflow) {
             auto fnname = get_containing_function_name(Result, *toSiphon);
 
-            // only instrument this stmt 
+            // only instrument this stmt
             // if it's in the body of a function that is on our whitelist
             if (fninstr(fnname)) {
                 debug(PRI) << "PriQueryPointHandler: Containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
@@ -918,9 +918,9 @@ struct PriQueryPointHandler : public LavaMatchHandler {
 
 /*
   This matcher handles arguments to function calls that are 'attackable', which is basically
-  pointers or integers to which would could add something.    
+  pointers or integers to which would could add something.
 */
-     
+
 struct FunctionArgHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
@@ -935,14 +935,14 @@ struct FunctionArgHandler : public LavaMatchHandler {
 
         auto sl1 = call->getLocStart();
         auto sl2 = call->getLocEnd();
-        debug(FNARG) << "start: " << sl1.printToString(sm) << "\n"; 
-        debug(FNARG) << "end:   " << sl2.printToString(sm) << "\n"; 
+        debug(FNARG) << "start: " << sl1.printToString(sm) << "\n";
+        debug(FNARG) << "end:   " << sl2.printToString(sm) << "\n";
 
 
         if (ArgDataflow) {
             auto fnname = get_containing_function_name(Result, *toAttack);
 
-            // only instrument this function arg 
+            // only instrument this function arg
             // if it's in the body of a function that is on our whitelist
             if (fninstr(fnname)) {
                 debug(FNARG) << "FunctionArgHandler: Containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
@@ -952,7 +952,7 @@ struct FunctionArgHandler : public LavaMatchHandler {
             }
     /*
             // and if this is a call to a function that is something like "__builtin_..." we dont instr
-            // only instrument calls to functions that are themselves on our whitelist. 
+            // only instrument calls to functions that are themselves on our whitelist.
             assert (call != nullptr);
             assert (func != nullptr);
             fnname = fundecl_fun_name(Result, func);
@@ -969,7 +969,7 @@ struct FunctionArgHandler : public LavaMatchHandler {
                     debug(FNARG) << "Callee name is [" << calleename << "]\n";
                     if (calleename.find("__builtin_") != std::string::npos) {
                         return;
-                    }        
+                    }
                 }
             }else{
                 debug(INJECT) << "Unknown (none) callee name\n";
@@ -990,7 +990,7 @@ struct FunctionArgHandler : public LavaMatchHandler {
         if (functionname.find("__builtin_") != std::string::npos) {
             return;
         }
-*/        
+*/
         AttackExpression(sm, toAttack, nullptr, nullptr, AttackPoint::FUNCTION_ARG);
     }
 };
@@ -1006,7 +1006,7 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
         if (ArgDataflow) {
             auto fnname = get_containing_function_name(Result, *callExpr);
 
-            // only instrument this printf with a read disclosure 
+            // only instrument this printf with a read disclosure
             // if it's in the body of a function that is on our whitelist
             if (fninstr(fnname)) {
                 debug(INJECT) << "ReadDisclosureHandler: Containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
@@ -1050,7 +1050,7 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
 
 /*
   This handler is for AST items of the form
-  LHS = RHS 
+  LHS = RHS
   where LHS is a write to array element or via pointer.
   i.e. x[i] = ... or *p = ...
   Actually, to be precise, "lhs" binds to the 'i' or 'p'
@@ -1069,7 +1069,7 @@ struct MemoryAccessHandler : public LavaMatchHandler {
         const Expr *parent = Result.Nodes.getNodeAs<Expr>("lhs");
 
         if (ArgDataflow) {
-            // data_flow bugs can only work in functions defined in the source, 
+            // data_flow bugs can only work in functions defined in the source,
             auto fnname = get_containing_function_name(Result, *toAttack);
             if (fninstr(fnname)) {
                 debug(INJECT) << "MemoryAccessHandler: Containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
@@ -1111,7 +1111,7 @@ std::set<SourceLocation> already_added_arg;
   struct/union field decls.  All end with an arg list.
   We use the isCall arg to AddArgGen to choose between adding an arg
   "data_flow" and adding a type "int *data_flow".
-  And the arg numArgs tells us if there is zero args (in which case 
+  And the arg numArgs tells us if there is zero args (in which case
   we dont need a comma).
 */
 void AddArgGen(Modifier &Mod, SourceLocation &startLoc, SourceLocation &endLoc,
@@ -1135,7 +1135,7 @@ void AddArgGen(Modifier &Mod, SourceLocation &startLoc, SourceLocation &endLoc,
     // NB: SLgetParens requires that last item in parens is a close paren of level 1
     int l = parens.size();
     SourceLocation loc_param_start;
-    bool found = false;    
+    bool found = false;
     for (int i=parens.size() - 1; i>=0; i--) {
         auto paren = parens[i];
         auto sl = std::get<0>(paren);
@@ -1150,16 +1150,16 @@ void AddArgGen(Modifier &Mod, SourceLocation &startLoc, SourceLocation &endLoc,
         }
     }
 
-    // has to be there -- see getParens 
+    // has to be there -- see getParens
     assert (found);
-    
+
     debug(FNARG) << "adding data flow at head of [" << getStringBetween(*Mod.sm, loc_param_start, endLoc, &inv) << "]\n";
     if (inv) {
         debug(FNARG) << "invalid\n";
         return;
     }
 
-    // insert data_flow arg 
+    // insert data_flow arg
     if (already_added_arg.count(loc_param_start) == 0) {
         already_added_arg.insert(loc_param_start);
         std::string dfa = ARG_NAME;
@@ -1185,8 +1185,8 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         bool inv;
         debug(FNARG) << "func : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
 
-        // We need the end of just the type signature part.  
-        // If this decl has a body, then that is the first '{' right? 
+        // We need the end of just the type signature part.
+        // If this decl has a body, then that is the first '{' right?
         SourceLocation endOfProt;
         if (func->hasBody()) {
             debug(FNARG) << "has body -- looking for {\n";
@@ -1195,15 +1195,15 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
             if (!inv) {
                 // this means we found "{"
                 debug(FNARG) << " FOUND {\n";
-                if (srcLocCmp(*Mod.sm, l2, endOfProt) == SCMP_LESS) 
+                if (srcLocCmp(*Mod.sm, l2, endOfProt) == SCMP_LESS)
                     // { is past the end of the l1..l2 range
                     endOfProt = l2;
             }
-            else 
-                // hmm I guess there is a body but its not right here?  
+            else
+                // hmm I guess there is a body but its not right here?
                 endOfProt = getLocAfterStr(*Mod.sm, l1, ")", 1, 1000, &inv);
         }
-        else 
+        else
             endOfProt = l2;
 
         // add the data_flow arg between l1 and endOfProt
@@ -1215,7 +1215,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         const FunctionDecl *func =
             Result.Nodes.getNodeAs<FunctionDecl>("funcDecl");
 
-        
+
         auto fnname = fundecl_fun_name(Result, func);
 
         // only instrument if function being decl / def is in whitelist
@@ -1226,15 +1226,15 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
             debug(FNARG) << "FuncDeclArgAdditionHandler: Function def/decl is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
             return;
         }
-    
+
         if (fnname.second.find("__builtin") != std::string::npos) {
-            debug(FNARG) << "FuncDeclArgAdditionHandler: Function def/decl is builtin" << func->getNameAsString() << "\n";        
+            debug(FNARG) << "FuncDeclArgAdditionHandler: Function def/decl is builtin" << func->getNameAsString() << "\n";
             return;
         }
 
         debug(FNARG) << "FuncDeclArgAdditionHandler handle: ok to instrument " <<  fnname.second << "\n";
         debug(FNARG) << "adding arg to " << func->getNameAsString() << "\n";
-        
+
         if (func->isThisDeclarationADefinition()) debug(FNARG) << "has body\n";
         if (func->getBody()) debug(FNARG) << "can find body\n";
 
@@ -1276,7 +1276,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
 
 /*
  A field in a struct or union that is fn pointer type
- field decl looks something like 
+ field decl looks something like
 
  boolean (*empty_output_buffer) (j_compress_ptr cinfo);
 
@@ -1287,7 +1287,7 @@ struct FieldDeclArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
-        const FieldDecl *fd = 
+        const FieldDecl *fd =
             Result.Nodes.getNodeAs<FieldDecl>("fielddecl");
         SourceLocation l1 = fd->getLocStart();
         SourceLocation l2 = fd->getLocEnd();
@@ -1323,14 +1323,14 @@ struct VarDeclArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
-        const VarDecl *vd = 
+        const VarDecl *vd =
             Result.Nodes.getNodeAs<VarDecl>("vardecl");
         SourceLocation l1 = vd->getLocStart();
         SourceLocation l2 = vd->getLocEnd();
         bool inv;
         debug(FNARG) << "vardecl  : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
         if (inv) {
-            debug(FNARG) << "... is invalid\n";            
+            debug(FNARG) << "... is invalid\n";
             return;
         }
         const Type *ft = vd->getType().getTypePtr();
@@ -1352,7 +1352,7 @@ struct VarDeclArgAdditionHandler : public LavaMatchHandler {
 // Add dataflow to typedef'd function pointer
 struct FunctionPointerTypedefHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
-    
+
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const TypedefDecl *td = Result.Nodes.getNodeAs<TypedefDecl>("typedefdecl");
         SourceLocation l1 = td->getLocStart();
@@ -1378,7 +1378,7 @@ struct FunctionPointerTypedefHandler : public LavaMatchHandler {
     }
 };
 
-// adding data_flow.  so look for 
+// adding data_flow.  so look for
 // struct (and union) fields that are fn ptr types
 // so you can add in the extra arg.
 struct FunctionPointerFieldHandler : public LavaMatchHandler {
@@ -1395,17 +1395,17 @@ struct FunctionPointerFieldHandler : public LavaMatchHandler {
             const Type *t = fd->getType().getTypePtr();
             if (t->isPointerType()) { // || t->isArrayType()) {
                 const Type *pt = t->getPointeeType().getTypePtr(); // t->getPointeeOrArrayElementType();
-                if (pt->isFunctionType()) 
+                if (pt->isFunctionType())
                     debug(FNARG) << "Its a fn pointer!\n";
                 auto sl1 = fd->getLocStart();
                 auto sl2 = fd->getLocEnd();
-                debug(FNARG) << "start: " << sl1.printToString(*Mod.sm) << "\n"; 
-                debug(FNARG) << "end:   " << sl2.printToString(*Mod.sm) << "\n"; 
-                
+                debug(FNARG) << "start: " << sl1.printToString(*Mod.sm) << "\n";
+                debug(FNARG) << "end:   " << sl2.printToString(*Mod.sm) << "\n";
+
             }
-            
-            
-            
+
+
+
             //        debug(FNARG) << decl->getLocEnd().printToString(*Mod.sm) << "\n";
             //        Mod.InsertAt(decl->getLocEnd().getLocWithOffset(-14), "int *" ARG_NAME ", ");
         }
@@ -1437,7 +1437,7 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         bool inv;
         SourceLocation l1 = call->getLocStart();
         SourceLocation l2 = call->getLocEnd();
-        std::string cestr = getStringBetween(*Mod.sm, l1, l2, &inv); 
+        std::string cestr = getStringBetween(*Mod.sm, l1, l2, &inv);
         assert (!inv);
         debug(FNARG) << "callexpr: [" << cestr << "\n";
 
@@ -1455,8 +1455,8 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
             return;
         }
 
-        // and if this is a call that is in the body of a function on our whitelist,  
-        // only instrument calls to functions that are themselves on our whitelist. 
+        // and if this is a call that is in the body of a function on our whitelist,
+        // only instrument calls to functions that are themselves on our whitelist.
         const FunctionDecl *func = call->getDirectCallee();
         if (func) {
             fnname = fundecl_fun_name(Result, func);
@@ -1468,10 +1468,10 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
             }
         } else debug(FNARG) << "We have a func pointer?\n";
 
-        // If we get here, we are instrumenting a call to a function on our whitelist that is in 
-        // the body of a function also on our whitelist. 
+        // If we get here, we are instrumenting a call to a function on our whitelist that is in
+        // the body of a function also on our whitelist.
 
-        if (func == nullptr || func->getLocation().isInvalid()) {           
+        if (func == nullptr || func->getLocation().isInvalid()) {
             // Function Pointer
             debug(FNARG) << "function pointer use\n";
             call->getLocStart().print(debug(FNARG), *Mod.sm);
@@ -1535,13 +1535,13 @@ public:
     LavaMatchFinder() : Mod(Insert) {
 
         // This is a write to array element or pointer
-        // i.e. we have *p = ... or x[i] = ...        
+        // i.e. we have *p = ... or x[i] = ...
         // Really the 'p' or 'i' is what gets matched
         // This is a potential attack point.
         StatementMatcher memoryAccessMatcher =
             allOf(
                 expr(anyOf(
-                         // "lhs" part matches i in x[i] or p in *p 
+                         // "lhs" part matches i in x[i] or p in *p
                     arraySubscriptExpr(
                         hasIndex(ignoringImpCasts(
                                 expr().bind("innerExpr")))),
@@ -1566,7 +1566,7 @@ public:
         addMatcher(memoryAccessMatcher, makeHandler<MemoryAccessHandler>());
 
         // This matches every stmt in a compound statement
-        // So "stmt" in 
+        // So "stmt" in
         // stmt; stmt'; stmt''; stmt'''; etc
         // Used to add pri queries (in turn used by PANDA to know where it is
         // in the source whe querying taint).  Also used to insert DUA siphons
@@ -1582,7 +1582,7 @@ public:
                 makeHandler<FunctionArgHandler>()
                 );
 
-            
+
 
         // fortenforge's matchers (for data_flow argument addition)
         if (ArgDataflow && LavaAction == LavaInjectBugs) {
@@ -1596,11 +1596,11 @@ public:
                 fieldDecl().bind("fielddecl"),
                 makeHandler<FieldDeclArgAdditionHandler>());
 
-                    
+
             addMatcher(
                 varDecl().bind("vardecl"),
                 makeHandler<VarDeclArgAdditionHandler>());
-                
+
             // function calls (direct or via fn pointer)
             addMatcher(
                     callExpr().bind("callExpr"),
@@ -1629,8 +1629,9 @@ public:
         debug(INJECT) << "*** handleBeginSource for: " << Filename << "\n";
 
         std::stringstream logging_macros;
-        logging_macros << "#ifdef LAVA_LOGGING\n" // enable logging with (LAVA_LOGGING, FULL_LAVA_LOGGING) and (DUA_LOGGING) flags. Logging requires stdio to be included
-                       << "#define LAVALOG(bugid, x, trigger)  ({(trigger && fprintf(stderr, \"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__)), (x);})\n"
+        logging_macros << "#ifdef stdin\n" // Can only log if stdio.h is included (will define stdin)
+                       << "#ifdef LAVA_LOGGING\n" // enable logging with (LAVA_LOGGING, FULL_LAVA_LOGGING) and (DUA_LOGGING) flags
+                          << "#define LAVALOG(bugid, x, trigger)  ({(trigger && fprintf(stderr, \"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__)), (x);})\n"
                        << "#endif\n"
 
                     << "#ifdef FULL_LAVA_LOGGING\n"
@@ -1645,7 +1646,8 @@ public:
                         << "#define DFLOG(idx, val)  ({fprintf(stderr, \"\\nDFLOG:%d=%d: %s:%d\\n\", idx, val, __FILE__, __LINE__) && fflush(0), data_flow[idx]=val;})\n"
                     << "#else\n"
                         << "#define DFLOG(idx, val) {data_flow[idx]=val;}\n"
-                    << "#endif\n";
+                    << "#endif\n"
+                    << "#endif\n"; // end stdin check
 
         std::string insert_at_top;
         if (LavaAction == LavaQueries) {
@@ -1743,14 +1745,14 @@ void parse_whitelist(std::string whitelist_filename) {
         auto wlp = std::make_pair(std::string(np), std::string(npp));
         whitelist.insert(std::string(npp));
         debug(FNARG) << "white list entry: file = [" << np << "] func = [" << npp << "]\n";
-        
+
     }
     debug(FNARG) << "whitelist is " << whitelist.size() << " entries\n";
 }
 
 
 
-            
+
 
 int main(int argc, const char **argv) {
     std::cout << "Starting lavaTool...\n";
@@ -1760,9 +1762,9 @@ int main(int argc, const char **argv) {
     srand(time(NULL));
 
 
-    if (LavaWL != "XXX") 
+    if (LavaWL != "XXX")
         parse_whitelist(LavaWL);
-    else 
+    else
         debug(FNARG) << "No whitelist\n";
 
     if (ArgDebug) {
