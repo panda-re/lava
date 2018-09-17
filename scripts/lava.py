@@ -480,7 +480,7 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename, knobTrigg
 class LavaPaths(object):
 
     def __init__(self, project):
-        self.top_dir = join(project['output_dir'], project['name'])
+        self.top_dir = project['output_dir']
         self.lavadb = join(self.top_dir, 'lavadb')
         self.lava_dir = dirname(dirname(abspath(sys.argv[0])))
         self.lava_tool = join(self.lava_dir, 'src_clang', 'build', 'lavaTool')
@@ -800,12 +800,6 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
         except Exception:
             print("\nFatal error: git commit failed! This may be caused by lavaTool not modifying anything")
             raise
-
-        try:
-            run(['git', 'branch', '-d', 'build' + str(build.id)])
-            print("Deleted stale buggy branch from a prior run")
-        except Exception:
-            pass
 
         run(['git', 'branch', 'build' + str(build.id), 'master'])
         run(['git', 'reset', 'HEAD~', '--hard'])
