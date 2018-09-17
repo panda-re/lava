@@ -234,7 +234,9 @@ class LavaDatabase(object):
         return self.uninjected2(fake, allowed_bugtypes).order_by(func.random())
 
     def uninjected_random_by_atp(self, fake, atp_types=None, allowed_bugtypes=None, atp_lim=10):
-        # For each ATP find X possible bugs
+        # For each ATP find X possible bugs,
+        # Returns list of lists: [[atp0_bug0, atp0_bug1,..], [atp1_bug0, atp1_bug1,..]]
+        # Where sublists are randomly sorted
         if atp_types:
             _atps = self.session.query(AttackPoint.id).filter(AttackPoint.typ.in_(atp_types)).all()
         else:
@@ -254,7 +256,7 @@ class LavaDatabase(object):
             if allowed_bugtypes:
                 q = q.filter(Bug.type.in_(allowed_bugtypes))
 
-            results.append(q.limit(atp_lim).all())
+            results.append(q.order_by(func.random()).limit(atp_lim).all())
         return results
 
     def uninjected_random_limit(self, allowed_bugtypes=None, count=100):
