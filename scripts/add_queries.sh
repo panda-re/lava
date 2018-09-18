@@ -32,7 +32,7 @@
 tick
 
 set -e # Exit on error
-set -x # Debug mode
+#set -x # Debug mode
 
 if [ $# -lt 1 ]; then
   echo "Usage: $0 [ATP_Type] JSONfile"
