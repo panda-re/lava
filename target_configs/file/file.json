@@ -1,9 +1,10 @@
 {
     "name": "file",
     "db": "file",
-    "preprocessed": false,
+    "dataflow": true,
+    "preprocessed": true,
 
-    "tarfile": "file-5.22.tar.gz",
+    "tarfile": "file-5.22-pre.tar.gz",
 
     "qcow": "wheezy_panda2.qcow2",
     "snapshot": "root",
@@ -11,10 +12,9 @@
 
     "injfixupsscript": "file_fixup.sh {bug_build}",
 
-    "configure": "./configure --prefix=`pwd`/lava-install",
-    "make": "make -C src CFLAGS=-fvisibility=default CFLAGS+='-w' CFLAGS+='-g' -j 16",
-    "clean": "make clean >/dev/null",
-    "install": "make -C src install; mkdir -p lava-install/share/misc; cp {config_dir}/magic.mgc lava-install/share/misc/",
+    "make": "make CFLAGS+=-fvisibility=default -j 16",
+    "clean": "make clean",
+    "install": "make install",
     "command": "{install_dir}/bin/file -m {install_dir}/share/misc/magic.mgc {input_file}",
 
     "max_liveness": 10,
@@ -22,7 +22,7 @@
     "max_tcn": 1,
     "max_lval_size": 100,
 
-    "main_file": [ "src/file.c" ],
+    "main_file": [ "inputs/compressed.gz" ],
 
     "inputs": ["file.json"]
 }
