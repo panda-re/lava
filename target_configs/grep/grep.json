@@ -23,7 +23,7 @@
     "max_tcn": 100000,
     "max_lval_size": 100,
 
-    "curtail_fbi": 500,
+    "curtail_fbi": 5000,
 
     "main_file": [ "grep-pre.c" ], 
 

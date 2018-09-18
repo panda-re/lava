@@ -962,7 +962,13 @@ int main (int argc, char **argv) {
     while (1) {
         // collect log entries that have same instr count (and pc).
         // these are to be considered together.
-        Panda__LogEntry *ple = pandalog_read_entry();
+        Panda__LogEntry *ple;
+        try {
+            ple = pandalog_read_entry();
+        }catch(...) {
+            std::cerr << "Failed to read pandalog entry, skipping\n";
+            continue;
+        }
         if (ple == NULL)  break;
         num_entries_read++;
         if ((num_entries_read % 10000) == 0) {
