@@ -2,7 +2,7 @@
 */compile_commands.json
 */*.c.yaml
 */*.c.fn
-*/log.txt
+*/*.log
 */*.df.c
 */*.fnwl
 torture/torture

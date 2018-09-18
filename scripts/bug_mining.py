@@ -1,11 +1,7 @@
 '''
 This script assumes you have already done src-to-src transformation with
 lavaTool to add taint and attack point queries to a program, AND managed to
-get it to compile.  The script 
-
-Only two inputs to the script.
-
-First is a json project file.  The set of asserts below 
+json project file.  The set of asserts below 
 indicate the required json fields and their meaning.
 
 Second is input file you want to run, under panda, to get taint info.  
@@ -13,7 +9,6 @@ Second is input file you want to run, under panda, to get taint info.
 
 from __future__ import print_function
 
-import json
 import os
 import pipes
 import shlex
@@ -27,6 +22,7 @@ from errno import EEXIST
 from os.path import abspath, basename, dirname, join
 
 from lava import LavaDatabase, Dua, Bug, AttackPoint
+from vars import parse_vars
 
 debug = True
 qemu_use_rr = False
@@ -53,38 +49,20 @@ def progress(msg):
     else:
         print('[bug_mining.py] ' + msg)
 
-if len(sys.argv) < 3:
-    print("Usage: python project.json inputfile", file=sys.stderr)
+if len(sys.argv) < 4:
+    print("Usage: python host.json project_name inputfile", file=sys.stderr)
     sys.exit(1)
 
 tick()
 
-project_file = abspath(sys.argv[1])
-input_file = abspath(sys.argv[2])
+host_json = abspath(sys.argv[1])
+project_name = sys.argv[2]
+
+project = parse_vars(host_json, project_name)
+
+input_file = abspath(project["config_dir"] + "/" + sys.argv[3])
 input_file_base = os.path.basename(input_file)
-
-print("bug_mining.py %s %s" % (project_file, input_file))
-
-with open(project_file, 'r') as project_f:
-    project = json.load(project_f)
-
-# *** Required json fields
-# path to qemu exec (correct guest)
-assert 'qemu' in project
-# name of snapshot from which to revert which will be booted & logged in as root?
-assert 'snapshot' in project
-# same directory as in add_queries.sh, under which will be the build
-assert 'directory' in project
-# command line to run the target program (already instrumented with taint and attack queries)
-assert 'command' in project
-# path to guest qcow
-assert 'qcow' in project
-# name of project
-assert 'name' in project
-# path to tarfile for target (original source)
-assert 'tarfile' in project
-# namespace in db for prospective bugs
-assert 'db' in project
+print("bug_mining.py %s %s" % (project_name, input_file))
 
 qemu_path = project['qemu']
 qemu_build_dir = dirname(dirname(abspath(qemu_path)))
@@ -106,9 +84,9 @@ panda_os_string = project.get('panda_os_string', 'linux-32-lava32')
 
 lavadir = dirname(dirname(abspath(sys.argv[0])))
 
-progress("Entering {}.".format(project['directory']))
+progress("Entering {}".format(project['output_dir']))
 
-os.chdir(os.path.join(project['directory'], project['name']))
+os.chdir(os.path.join(project['output_dir']))
 
 tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']])
 sourcedir = tar_files.splitlines()[0].split(os.path.sep)[0]
@@ -148,7 +126,7 @@ if command_args[0].startswith('LD_PRELOAD'):
 else:
     proc_name = basename(command_args[0])
 
-pandalog = "%s/%s/queries-%s.plog" % (project['directory'], project['name'], os.path.basename(isoname))
+pandalog = "%s/queries-%s.plog" % (project['output_dir'], os.path.basename(isoname))
 print("pandalog = [%s] " % pandalog)
 
 panda_args = {
@@ -223,7 +201,8 @@ else:
 
 print()
 progress("Calling the FBI on queries.plog...")
-fbi_args = [join(lavadir, 'fbi', 'fbi'), project_file, pandalog, input_file_base]
+#fbi_args = [join(lavadir, 'fbi', 'fbi'), project_file, pandalog, input_file_base]
+fbi_args = [join(lavadir, 'fbi', 'fbi'), host_json, project_name, pandalog, input_file_base]
 dprint ("fbi invocation: [%s]" % (subprocess32.list2cmdline(fbi_args)))
 sys.stdout.flush()
 subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)

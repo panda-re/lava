@@ -1,0 +1,9 @@
+{   "___README___": "Copy this file to host.json and update the info for your system",
+
+    "qemu":       "/home/fasano/panda/build/i386-softmmu/qemu-system-i386",
+    "qcow_dir":   "/home/fasano/lava/",
+    "output_dir": "/home/fasano/lava/target_injections",
+    "config_dir": "/home/fasano/lava/target_configs",
+    "tar_dir":    "/home/fasano/lava/target_bins",
+    "db_suffix":  "_fasano"
+}

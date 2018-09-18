@@ -157,6 +157,7 @@ def get_atp_line(bug, bugs_build):
                                                         bug.atp.loc_filename))
 
 def do_function(inp):
+    # TODO: someone document this please
     global timeout
     global queries_install
     global bugs_install
@@ -444,6 +445,7 @@ if __name__ == "__main__":
         # first, try the original file
         print "TESTING -- ORIG INPUT"
         orig_input = join(top_dir, 'inputs', basename(bug.trigger.dua.inputfile))
+
         (rv, outp) = run_modified_program(bugs_install, orig_input, timeout)
         if rv != args.exitCode
             print "***** buggy program fails on original input!"

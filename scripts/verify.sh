@@ -20,11 +20,8 @@ if [ -z "$1" ]; then
 else
     json="$1"
 fi
+. `dirname $0`/vars.sh
 
-directory="$(jq -r .directory $json)"
-name="$(jq -r .name $json)"
-exitCode="$(jq -r .expected_exit_code $json)"
-logs=$directory/$name/logs
 inject_log="$logs/$(ls -t $logs | grep -E "inject-[0-9]+.log" | head -n 1)"
 
 [ "$exitCode" = "null" ] && exitCode="0";

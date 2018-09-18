@@ -43,8 +43,8 @@ trap '' PIPE
 set -e # Exit on error
 
 USAGE() {
-  echo "USAGE: $0 -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
-  echo "       . . . or just $0 -ak JSONfile"
+  echo "USAGE: $0 -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] ProjectName"
+  echo "       . . . or just $0 -ak ProjectName"
   exit 1
 }
 
@@ -54,6 +54,7 @@ fi
 
 # Load lava-functions
 . `dirname $0`/funcs.sh
+lava=$(dirname $(dirname $(readlink -f "$0")))
 
 # defaults
 ok=0
@@ -67,12 +68,14 @@ num_trials=0
 kt=""
 demo=0
 ATP_TYPE=""
+# default bugtypes
 bugtypes="ptr_add,rel_write"
-# -s means skip everything up to injection
-# -i 15 means inject 15 bugs (default is 1)
+# default # of bugs to be injected at a time
+many=50
+
 echo
 progress "everything" 0 "Parsing args"
-while getopts  "arcqmtb:i:z:t:kd" flag
+while getopts  "farcqmtb:i:z:y:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -110,6 +113,12 @@ do
       num_trials=$OPTARG
       progress "everything" 0 "Inject step will be executed: num_trials = $num_trials"
   fi
+  if [ "$flag" = "f" ]; then
+      inject=1
+      many=0
+      num_trials=1
+      progress "everything" 0 "[TESTING] Inject data_flow only, 0 bugs"
+  fi
   if [ "$flag" = "y" ]; then
       bugtypes=$OPTARG
       progress "everything" 0 "Injecting bugs of type(s): $bugtypes"
@@ -145,10 +154,8 @@ shift $((OPTIND -1))
 if [ -z "$1" ]; then
     USAGE
 fi
-json="$(realpath $1)"
-
-# how many bugs will be injected at a time
-many=50
+project_name="$1"
+. `dirname $0`/vars.sh
 
 if [[ $demo -eq 1 ]]
 then
@@ -156,30 +163,8 @@ then
 fi
 
 progress "everything" 1 "JSON file is $json"
-dockername="lava32"
 
-lava=$(dirname $(dirname $(readlink -f "$0")))
-db="$(jq -r .db $json)"
-extradockerargs="$(jq -r .extra_docker_args $json)"
-exitCode="$(jq -r .expected_exit_code $json)"
-tarfile="$(jq -r .tarfile $json)"
-tarfiledir="$(dirname $tarfile)"
-directory="$(jq -r .directory $json)"
-name="$(jq -r .name $json)"
-inputs=`jq -r '.inputs' $json  | jq 'join (" ")' | sed 's/\"//g' `
-buildhost="$(jq -r '.buildhost // "docker"' $json)"
-pandahost="$(jq -r '.pandahost // "localhost"' $json)"
-testinghost="$(jq -r '.testinghost // "docker"' $json)"
-fixupscript="$(jq -r .fixupscript $json)"
-injfixupsscript="$(jq -r .injfixupsscript $json)"
-makecmd="$(jq -r .make $json)"
-container="$(jq -r .docker $json)"
-install=$(jq -r .install $json)
-post_install="$(jq -r .post_install $json)"
-install_simple=$(jq -r .install_simple $json)
-scripts="$lava/scripts"
-python="/usr/bin/python"
-source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
+source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1 2>/dev/null)
 
 if [ -z "$source" ]; then
     echo -e "\nFATAL ERROR: could not get directory name from tarfile. Tar must unarchive and create directory\n";
@@ -195,7 +180,7 @@ logs="$directory/$name/logs"
 RESET_DB() {
     lf="$logs/dbwipe.log"
     truncate "$lf"
-    progress "everything" 1  "Resetting (cleaning) up lava db -- logging to $lf"
+    progress "everything" 1  "Resetting lava db -- logging to $lf"
     run_remote "$pandahost" "dropdb --if-exists -U postgres $db" "$lf"
     run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
     run_remote "$pandahost" "psql -d $db -f $lava/fbi/lava.sql -U postgres" "$lf"
@@ -228,7 +213,7 @@ if [ $add_queries -eq 1 ]; then
     lf="$logs/add_queries.log"
     truncate "$lf"
     progress "everything" 1 "Adding queries to source -- logging to $lf"
-    run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $json" "$lf"
+    run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $project_name" "$lf"
     if [ "$fixupscript" != "null" ]; then
         lf="$logs/fixups.log"
         truncate "$lf"
@@ -269,6 +254,13 @@ fi
 
 if [ $taint -eq 1 ]; then
     tick
+
+    if [ $reset_db -eq 0 ]; then
+        # If we didn't just reset the DB, we need clear out any existing taint labels before running FBI
+        progress "everything" 1 "Clearing taint data from DB"
+        lf="$logs/dbwipe_taint.log"
+        run_remote "$pandahost" "psql -U postgres -c \"delete from dua_viable_bytes; delete from labelset;\" $db" "$lf"
+    fi
     progress "everything" 1 "Taint step -- running panda and fbi"
     for input in $inputs
     do
@@ -276,7 +268,7 @@ if [ $taint -eq 1 ]; then
         lf="$logs/bug_mining-$i.log"
         truncate "$lf"
         progress "everything" 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
-        run_remote "$pandahost" "$python $scripts/bug_mining.py $json $input" "$lf"
+        run_remote "$pandahost" "$python $scripts/bug_mining.py $hostjson $project_name $input" "$lf"
         echo -n "Num Bugs in db: "
         bug_count=$(run_remote "$pandahost" "psql -At $db -U postgres -c 'select count(*) from bug'")
         if [ "$bug_count" = "0" ]; then
@@ -291,8 +283,6 @@ if [ $taint -eq 1 ]; then
     echo "bug_mining complete $time_diff seconds"
 fi
 
-
-na=1
 if [ $inject -eq 1 ]; then
     progress "everything" 1 "Injecting step -- $num_trials trials"
     if [ "$exitCode" = "null" ]; then
@@ -305,9 +295,9 @@ if [ $inject -eq 1 ]; then
         progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
         fix=""
         if [ "$injfixupsscript" != "null" ]; then
-            fix="-fixups $injfixupsscript"
+            fix="--fixupsscript='$injfixupsscript'"
         fi
-        run_remote "$testinghost" "$python $scripts/inject.py -m $many -d -e $exitCode $kt $fix $json" "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
     grep yield "$lf"
     done
 fi

@@ -7,7 +7,7 @@ lava="$(dirname "$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )")"
 
 # Start host_fninstr.sh, a watchdog that runs fninstr.sh on the host as necessary
 # Argument = number of targets to rebuild
-NUM_TARGETS="2"
+NUM_TARGETS="3"
 $lava/src_clang/_tests/host_fninstr.sh "$lava/src_clang/_tests" $NUM_TARGETS &> $lava/src_clang/_tests/log_hostfninstr.txt &
 PID="$!"
 echo "Started host_fninstr with pid=$PID"

@@ -12,13 +12,16 @@ import shlex
 import shutil
 import signal
 import string
+import stat
 import subprocess32
 import sys
 import time
+import random
 
 from math import sqrt
 from os.path import basename, dirname, join, abspath, exists
 
+from vars import parse_vars
 from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     run_cmd, run_cmd_notimeout, mutfile, inject_bugs, LavaPaths, \
     validate_bugs, run_modified_program, unfuzzed_input_for_bug, \
@@ -48,7 +51,7 @@ def run_builds(scripts):
 # because otherwise the db might give us all the same dua
 
 def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
-    #XXX This function is prtty gross
+    #XXX This function is prtty gross, definitely needs a rewrite
     max_duplicates_per_line = 50 # Max duplicates we *try* to inject per line. After validation, we filter down to ~1 per line
     bugs_and_non_bugs = []
     dfl_fileline = {}
@@ -58,6 +61,12 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
 
     # Find a set of bugs of allowed_bugtype with limited overlap on trigger and atp location with other selected bugs
     def parse(item):
+        """
+        Given a bug, decide if we should add it to bugs_and_non_bugs, if so add it
+
+        return False IFF we have reached limit bugs and should stop parsing
+        """
+    
         if not (item.type in allowed_bugtypes):
             #print("skipping type {} not in {}".format(item.type, allowed_bugtypes))
             return True
@@ -91,11 +100,15 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
         atp_types = [AttackPoint.FUNCTION_CALL, AttackPoint.POINTER_WRITE] # TODO we don't find rel_writes at function calls
 
         # Get limit bugs at each ATP
-        for atp_items in db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit):
-            for item in atp_items:
-                if not parse(item):
-                    abort = True
-                    break
+        atp_item_lists = db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
+        while True:
+            potential_bugs_remaining = sum([len(x) for x in atp_item_lists])
+            if potential_bugs_remaining == 0:
+                print("Abort bug-selection because we've selected all {} potential bugs we have (Failed to find all {} requested bugs)".format(len(bugs_and_non_bugs), limit))
+                break
+            atp_items = random.choice([x for x in atp_item_lists if len(x)]) # Select bug_list for an ATP randomly
+            item = atp_items.pop() # Take the first bug since it was sorted randomly - This needs to modify the item in atp_items
+            abort |= not parse(item) # Once parse returns true, break
             if abort:
                 break
     else:
@@ -103,12 +116,26 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             if not parse(item):
                 break
 
+    # Show some stats about requested bugs
+    afls = {}
+    for item in bugs_and_non_bugs:
+        afl = (item.atp.loc_filename, item.atp.loc_begin_line, item.atp.loc_begin_column)
+        if afl not in afls.keys():
+            afls[afl] = 0
+        afls[afl] +=1
+    
+    print("{} bugs were found across {} ATPs:".format(len(bugs_and_non_bugs), len(afls)))
+    for atp, count in afls.items():
+        print("\t{}\t bugs at {}".format(count, atp))
+
+
     return [b.id for b in bugs_and_non_bugs]
 
 def main():
     parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
-    parser.add_argument('project', type=argparse.FileType('r'),
-            help = 'JSON project file')
+    parser.add_argument('host_json', help = 'Host JSON file')
+    parser.add_argument('project', help = 'Project name')
+
     parser.add_argument('-m', '--many', action="store", default=-1,
             help = 'Inject this many bugs and this many non-bugs (chosen randomly)')
     parser.add_argument('-n', '--minYield', action="store", default=-1,
@@ -119,16 +146,16 @@ def main():
             help = ('Expected exit code when program exits without crashing. Default 0'))
     #parser.add_argument('-i', '--diversify', action="store_true", default=False,
             #help = ('Diversify source code. Default false.'))
-    parser.add_argument('-d', '--arg_dataflow', action="store_true", default=False,
-            help = ('Inject bugs using function args instead of globals'))
     parser.add_argument('-c', '--chaff', action="store_true", default=False, # TODO chaf and unvalided bugs aren't always the same thing
             help = ('Leave unvalidated bugs in the binary'))
     parser.add_argument('-t', '--bugtypes', action="store", default="rel_write",
                         help = ('bug types to inject'))
     
     args = parser.parse_args()
-    project = json.load(args.project)
-    project_file = args.project.name
+    global project
+    project = parse_vars(args.host_json, args.project)
+
+    dataflow = project.get("dataflow", False) # Default to false
 
     allowed_bugtypes = get_allowed_bugtype_num(args)
 
@@ -176,8 +203,8 @@ def main():
     real_bug_list = []
     while len(real_bug_list) < int(args.minYield):
         # add either bugs to the source code and check that we can still compile
-        (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, project_file, \
-                                          project, args, False, competition=True,
+        (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json, \
+                                          project, args, False, dataflow=dataflow, competition=True,
                                           validated=False)
 
         assert build is not None # build is none when injection fails. Could block here to allow for manual patches
@@ -187,7 +214,8 @@ def main():
 
         if len(real_bug_list) < int(args.minYield):
             print "\n\nXXX Yield too low -- %d bugs minimum is required for competition" % int(args.minYield)
-            print "Trying again.\n"
+            #print "Trying again.\n"
+            raise RuntimeError("Failure")
 
     print "\n\n Yield acceptable: {}".format(len(real_bug_list))
 
@@ -197,8 +225,8 @@ def main():
     if not args.chaff:
         # re-build just with the real bugs. Inject in competition mode. Deduplicate bugs with the same ATP location
         print("Reinject only validated bugs")
-        (build, input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, project_file, \
-                                              project, args, False, competition=True, validated=True)
+        (build, input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, args.host_json, \
+                                              project, args, False, dataflow=dataflow, competition=True, validated=True)
 
         assert build is not None # Injection could fail
 
@@ -315,7 +343,7 @@ def main():
 
     for bug in db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all():
         prediction = basename(bug.atp.loc_filename)
-        fuzzed_input = fuzzed_input_for_bug(lp, bug)
+        fuzzed_input = fuzzed_input_for_bug(project, bug)
         (dc, fi) = os.path.split(fuzzed_input)
         shutil.copy(fuzzed_input, inputsdir)
         predictions.append((prediction, fi))
@@ -428,7 +456,7 @@ done""".format(command = project['command'].format(**{"install_dir": "./lava-ins
             command2 = project['command'].format(**{"install_dir": "./lava-install-public", "input_file": "$fname"}), # This syntax is weird but only thing that works?
             inputdir = "./inputs/*-fuzzed-*"
             ))
-
+    os.chmod(trigger_all_crashes, (stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IROTH | stat.S_IXOTH))
     # Build a version to ship in src
     run_builds([log_build_sh, public_build_sh])
     print("Success! Competition build in {}".format(corpdir))

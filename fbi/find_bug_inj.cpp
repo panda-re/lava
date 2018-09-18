@@ -899,9 +899,9 @@ void record_call(Panda__LogEntry *ple) { }
 void record_ret(Panda__LogEntry *ple) { }
 
 int main (int argc, char **argv) {
-    if (argc != 4) {
-        printf("usage: fbi project.json pandalog inputfile\n");
-        printf("    JSON file should have properties:\n");
+    if (argc != 5) {
+        printf("usage: fbi host.json ProjectName pandalog inputfile\n");
+        printf("    Project JSON file should have properties:\n");
         printf("        max_liveness: Maximum liveness for DUAs\n");
         printf("        max_cardinality: Maximum cardinality for labelsets on DUAs\n");
         printf("        max_tcn: Maximum taint compute number for DUAs\n");
@@ -914,36 +914,44 @@ int main (int argc, char **argv) {
     // We want decimation to be deterministic, so srand w/ magic value.
     srand(0x6c617661);
 
-    std::ifstream json_file(argv[1]);
-    Json::Value root;
-    json_file >> root;
+    std::ifstream host_json(argv[1]);
+    Json::Value host;
+    host_json >> host;
 
-    std::string root_directory = root["directory"].asString();
-    std::string name = root["name"].asString();
+    std::string name = argv[2];
+
+    // Find project json
+    std::string project_json_path = host["config_dir"].asString() + "/" + name +"/"+name+".json";
+    std::ifstream project_json(project_json_path.c_str());
+    Json::Value project;
+    project_json >> project;
+
+    std::string root_directory = host["output_dir"].asString();
     std::string directory = root_directory + "/" + name;
 
-    std::string plog = argv[2];
+    std::string plog = argv[3];
     std::string lavadb = directory + "/lavadb";
 
     // maps from ind -> (filename, lvalname, attackpointname)
     ind2str = LoadIDB(lavadb);
     printf("%d strings in lavadb\n", (int)ind2str.size());
 
-    max_liveness = root["max_liveness"].asUInt();
+    max_liveness = project["max_liveness"].asUInt();
     printf("maximum liveness score of %lu\n", max_liveness);
-    max_card = root["max_cardinality"].asUInt();
+    max_card = project["max_cardinality"].asUInt();
     printf("max card of taint set returned by query = %d\n", max_card);
-    max_tcn = root["max_tcn"].asUInt();
+    max_tcn = project["max_tcn"].asUInt();
     printf("max tcn for addr = %d\n", max_tcn);
-    max_lval = root["max_lval_size"].asUInt();
+    max_lval = project["max_lval_size"].asUInt();
     printf("max lval size = %d\n", max_lval);
-    chaff_bugs = root.get("chaff", false).asBool();
-    curtail = root["curtail_fbi"].asUInt();
+    chaff_bugs = project.get("chaff", false).asBool();
+    curtail = project["curtail_fbi"].asUInt();
 
-    inputfile = std::string(argv[3]);
+    inputfile = std::string(argv[4]);
 
+    std::string db_name = project["db"].asString() + host.get("db_suffix", "").asString();
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
-                root["db"].asString()));
+                db_name));
     /*
      re-read pandalog, this time focusing on taint queries.  Look for
      dead available data, attack points, and thus bug injection oppotunities
@@ -954,7 +962,13 @@ int main (int argc, char **argv) {
     while (1) {
         // collect log entries that have same instr count (and pc).
         // these are to be considered together.
-        Panda__LogEntry *ple = pandalog_read_entry();
+        Panda__LogEntry *ple;
+        try {
+            ple = pandalog_read_entry();
+        }catch(...) {
+            std::cerr << "Failed to read pandalog entry, skipping\n";
+            continue;
+        }
         if (ple == NULL)  break;
         num_entries_read++;
         if ((num_entries_read % 10000) == 0) {

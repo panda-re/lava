@@ -11,6 +11,7 @@ import time
 
 from os.path import join
 
+from vars import parse_vars
 from lava import LavaDatabase, Run, Bug, \
                  inject_bugs, LavaPaths, validate_bugs, \
                  get_bugs, run_cmd, get_allowed_bugtype_num
@@ -36,21 +37,28 @@ def get_bug_list(args, db, allowed_bugtypes):
         bug_list.append(bug.id)
         update_db = True
     elif args.buglist:
-        bug_list = eval(args.buglist)
+        bug_list = eval(args.buglist) # TODO
         update_db = False
     elif args.many:
         num_bugs_to_inject = int(args.many)
-        print "Selecting %d bugs for injection of %d available" % (num_bugs_to_inject, db.uninjected_random(False).count())
+        huge = db.huge()
 
-        assert db.uninjected_random(False).count() >= num_bugs_to_inject
+        available = "tons" if huge else db.uninjected().count() # Only count if not huge
+        print "Selecting %d bugs for injection of %s available" % (num_bugs_to_inject, str(available))
+
+        if not huge:
+            assert available >= num_bugs_to_inject
+
         if args.balancebugtype:
             bugs_to_inject = db.uninjected_random_balance(False, num_bugs_to_inject, allowed_bugtypes)
         else:
-            bugs_to_inject = db.uninjected_random(False)[:num_bugs_to_inject]
+            bugs_to_inject = db.uninjected_random_limit(allowed_bugtypes=allowed_bugtypes, count=num_bugs_to_inject)
+
         bug_list = [b.id for b in bugs_to_inject]
         print "%d is size of bug_list" % (len(bug_list))
         update_db = True
-    else: assert False
+    else:
+        assert False
 
     return update_db, bug_list
 
@@ -92,8 +100,8 @@ def get_bugs_parent(lp):
 if __name__ == "__main__":
     update_db = False
     parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
-    parser.add_argument('project', type=argparse.FileType('r'),
-            help = 'JSON project file')
+    parser.add_argument('host_json', help = 'Host JSON file')
+    parser.add_argument('project', help = 'Project name')
     parser.add_argument('-b', '--bugid', action="store", default=-1,
             help = 'Bug id (otherwise, highest scored will be chosen)')
     parser.add_argument('-r', '--randomize', action='store_true', default = False,
@@ -110,8 +118,6 @@ if __name__ == "__main__":
             help = ('No need to take lock on bugs dir'))
     parser.add_argument('-c', '--checkStacktrace', action="store_true", default=False,
             help = ('When validating a bug, make sure it manifests at same line as lava-inserted trigger'))
-    parser.add_argument('-d', '--arg_dataflow', action="store_true", default=False,
-            help = ('Inject bugs using function args instead of globals'))
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
             help = ('Expected exit code when program exits without crashing. Default 0'))
     parser.add_argument('-bb', '--balancebugtype', action="store_true", default=False, 
@@ -131,8 +137,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     global project
-    project = json.load(args.project)
-    project_file = args.project.name
+    project = parse_vars(args.host_json, args.project)
+    dataflow = project.get("dataflow", False)
 
     allowed_bugtypes = get_allowed_bugtype_num(args)
     
@@ -159,8 +165,11 @@ if __name__ == "__main__":
 
     # add all those bugs to the source code and check that it compiles
         # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
-    (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, project_file,
-                                       project, args, update_db, competition=args.competition)
+    (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json,
+                                       project, args, update_db, dataflow=dataflow, competition=args.competition)
+    if build is None:
+        raise RuntimeError("LavaTool failed to bulid target binary")
+
     try:
         # determine which of those bugs actually cause a seg fault
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build,

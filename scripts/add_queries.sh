@@ -1,7 +1,7 @@
 #!/bin/bash
 # Query insertion script.
 #
-# Takes one argument, a json project file.
+# Takes one argument, the project name
 # That json file must contain all of the following
 #
 # name         name for project, usually the name of the software (binutils-2.25, openssh-2.1, etc)
@@ -26,13 +26,13 @@
 # and run the bug_mining.py script (which uses PANDA to trace taint).
 #
 
-# Load lava-functions
+# Load lava-functions and vars
 . `dirname $0`/funcs.sh
 
 tick
 
 set -e # Exit on error
-set -x # Debug mode
+#set -x # Debug mode
 
 if [ $# -lt 1 ]; then
   echo "Usage: $0 [ATP_Type] JSONfile"
@@ -49,15 +49,12 @@ else
 fi
 
 lava="$(dirname $(dirname $(readlink -f $0)))"
-
-directory="$(jq -r .directory $json)"
-name="$(jq -r .name $json)"
+project_name="$1"
+. `dirname $0`/vars.sh
 
 progress "queries" 0  "Entering $directory/$name."
 mkdir -p "$directory/$name"
 cd "$directory/$name"
-
-tarfile="$(jq -r .tarfile $json)"
 
 progress "queries" 0  "Untarring $tarfile..."
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1)
@@ -81,12 +78,13 @@ git commit -m 'Unmodified source.'
 
 progress "queries" 0  "Configuring..."
 mkdir -p lava-install
-$(jq -r '.configure // "/bin/true"' $json) --prefix=$(pwd)/lava-install
+$configure_cmd --prefix=$(pwd)/lava-install
+
 
 progress "queries" 0  "Making with btrace..."
 ORIGIN_IFS=$IFS
 IFS='&&'
-read -ra MAKES <<< "$(jq -r .make $json)"
+read -ra MAKES <<< $makecmd
 for i in ${MAKES[@]}; do
     IFS=' '
     read -ra ARGS <<< $i
@@ -97,7 +95,7 @@ IFS=$ORIGIN_IFS
 
 
 progress "queries" 0  "Installing..."
-bash -c "$(jq -r .install $json)"
+bash -c $install
 
 
 # figure out where llvm is
@@ -127,34 +125,52 @@ for i in $c_dirs; do
   fi
 done
 
+if [ "$dataflow" = "true" ]; then
+    progress "queries" 0 "Using dataflow as specified in project.json"
 
 # Run another clang tool that provides information about functions,
 # i.e., which have only prototypes, which have bodies.  
-progress "queries" 0 "Figure out functions" 
-for i in $c_files; do
-    $lava/src_clang/build/lavaFnTool $i
-done
+    progress "queries" 0 "Figure out functions" 
+    for i in $c_files; do
+        $lava/src_clang/build/lavaFnTool $i
+    done
 
 # analyze that output and figure out 
-fnfiles=$(echo $c_files | sed 's/\.c/\.c\.fn/g')
-fninstr=$directory/$name/fninstr
+    fnfiles=$(echo $c_files | sed 's/\.c/\.c\.fn/g')
+    fninstr=$directory/$name/fninstr
 
-echo "Creating fninstr [$fninstr]"
+    echo "Creating fninstr [$fninstr]"
+    echo -e "\twith command: \"python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles\""
+    python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles
 
-python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles
+    # Insert queries with DF - could merge this with the else if logic below instead of duplicating
+    # TODO: Just make lavaTool load dataflow from project.json instead of passing as CLI arg.
+    # Since it's okay to pass the whitelist either way
+    progress "queries" 0  "Inserting queries with dataflow"
+    for i in $c_files; do
+        $lava/src_clang/build/lavaTool -action=query \
+        -lava-db="$directory/$name/lavadb" \
+        -p="$source/compile_commands.json" \
+        -arg_dataflow \
+        -lava-wl="$fninstr" \
+        -src-prefix=$(readlink -f "$source") \
+        $ATP_TYPE \
+        -db="$db" \
+        $i
+    done
+else
 
-
-progress "queries" 0  "Inserting queries..."
-for i in $c_files; do
-    $lava/src_clang/build/lavaTool -action=query \
-    -lava-wl="$fninstr" \
-    -lava-db="$directory/$name/lavadb" \
-    -p="$source/compile_commands.json" \
-    -src-prefix=$(readlink -f "$source") \
-    $ATP_TYPE \
-    -project-file="$json" \
-    $i
-done
+    progress "queries" 0  "Inserting queries..."
+    for i in $c_files; do
+        $lava/src_clang/build/lavaTool -action=query \
+        -lava-db="$directory/$name/lavadb" \
+        -p="$source/compile_commands.json" \
+        -src-prefix=$(readlink -f "$source") \
+        $ATP_TYPE \
+        -db="$db" \
+        $i
+    done
+fi
 
 for i in $c_dirs; do
     echo "  Applying replacements to $i"

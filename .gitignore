@@ -4,6 +4,7 @@
 btrace.log
 includes.h.gch
 tags
+host.json
 
 *.o
 *.pyc

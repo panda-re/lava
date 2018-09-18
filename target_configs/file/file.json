@@ -1,0 +1,28 @@
+{
+    "name": "file",
+    "db": "file",
+    "preprocessed": true,
+    "dataflow": true,
+
+    "tarfile": "file-5.22-pre.tar.gz",
+
+    "qcow": "wheezy_panda2.qcow2",
+    "snapshot": "root",
+    "expect_prompt": "root@debian-i386:~#",
+
+
+    "make": "make CFLAGS+=-fvisibility=default -j 16",
+    "clean": "make clean",
+    "install": "make install",
+    "command": "{install_dir}/bin/file -m {install_dir}/share/misc/magic.mgc {input_file}",
+    "injfixupsscript": "file_fixup.sh {bug_build}",
+
+    "max_liveness": 100000,
+    "max_cardinality": 100,
+    "max_tcn": 10,
+    "max_lval_size": 100,
+
+    "main_file": [ "file.c" ],
+
+    "inputs": ["inputs/compressed.gz"]
+}

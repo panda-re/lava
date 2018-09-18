@@ -5,16 +5,11 @@ import os
 import sys
 import subprocess
 import shlex
+import json
 from string import Template
 from os.path import join, isdir, isfile, dirname, abspath, basename
 from colorama import Fore, Style
 
-# constants to get rid of
-MAKE_CMD = "make CFLAGS=-fvisibility=default CFLAGS+=-g -j 16"
-CMD = "{install_dir}/bin/file -m {install_dir}/share/misc/magic.mgc {input_file}"
-input_file = "/bin/ls"
-main_file = "src/file.c"
-# end constants to get rid of
 QCOW_URL = "http://panda.moyix.net/~moyix/wheezy_panda2.qcow2"
 TAR_URL = "ftp://ftp.astron.com/pub/file/file-5.22.tar.gz"
 LAVA_DIR = dirname(abspath(sys.argv[0]))
@@ -58,42 +53,56 @@ def main():
             # help = 'Whether or not to skip building docker image')
     # args = parser.parse_args()
     # IGNORE_DOCKER = args.skip_docker_build
-    progress("In LAVA dir at {}".format(LAVA_DIR))
-    # create PROJ_HOME if it doesn't already exist
-    PROJ_HOME = join(os.environ["HOME"], "lava")
-    if not isdir(PROJ_HOME):
-        os.mkdir(PROJ_HOME)
+    progress("In LAVA git dir at {}".format(LAVA_DIR))
+
+    # Tars should just be tracked by git now, maybe we can change that later
+    TAR_DIR = join(LAVA_DIR, "target_bins")
+    if not isdir(TAR_DIR):
+        os.mkdir(TAR_DIR)
 
     # summon tar and qcow files
-    os.chdir(PROJ_HOME)
-    if not isfile(join(PROJ_HOME, basename(TAR_URL))):
+    if not isfile(join(TAR_DIR, basename(TAR_URL))):
+        progress("Downloading %s".format(basename(TAR_URL)))
+        os.chdir(TAR_DIR)
         run(["wget", TAR_URL])
-    if not isfile(join(PROJ_HOME, basename(QCOW_URL))):
+        os.chdir(LAVA_DIR)
+    else:
+        progress("Found existing target_bins/{}".format(basename(TAR_URL)))
+
+    if not isfile(join(LAVA_DIR, basename(QCOW_URL))):
+        progress("Downloading {}".format(basename(QCOW_URL)))
         run(["wget", QCOW_URL])
-    os.chdir(LAVA_DIR)
+    else:
+        progress("Found existing {}".format(basename(QCOW_URL)))
 
-    # name is $program_$USER in order to avoid collisions
-    name = "file_{}".format(os.environ["USER"])
-    # populate configs
-    json_configs = {}
-    json_configs["PANDA_BUILD_DIR"] = PANDA_BUILD_DIR
-    json_configs["QCOW"] = join(PROJ_HOME, basename(QCOW_URL))
-    json_configs["DIRECTORY"] = PROJ_HOME
-    json_configs["NAME"] = name
-    json_configs["TAR_FILE"] = join(PROJ_HOME, basename(TAR_URL))
-    json_configs["MAKE"] = MAKE_CMD
-    json_configs["CMD"] = CMD
-    json_configs["DB_NAME"] = name
-    json_configs["MAIN_FILE"] = main_file
-    json_configs["INPUT"] = input_file
+    if not isfile(join(LAVA_DIR, "host.json")):
+        progress("Building host.json")
+        # Build host.json
+        json_configs = {}
+        json_configs["qemu"] = join(join(PANDA_BUILD_DIR, "i386-softmmu"), "qemu-system-i386")
+        json_configs["qcow_dir"] = LAVA_DIR
+        json_configs["output_dir"] = join(LAVA_DIR, "target_injections")
+        json_configs["config_dir"] = join(LAVA_DIR, "target_configs")
+        json_configs["tar_dir"] = join(LAVA_DIR, "target_bins")
+        json_configs["db_suffix"] = "_" + os.environ["USER"]
 
-    # write out json file
-    out_json = join(PROJ_HOME, "{}.json".format(name))
-    json_template = Template(open("lava_template.json").read())
-    with open(out_json, 'w') as f:
-        f.write(json_template.substitute(json_configs))
+        # write out json file
+        out_json = join(LAVA_DIR, "host.json")
 
-    progress("Sucessful!  Now run:\n  $ scripts/everything.sh -ak {}".format(out_json))
+        with open(out_json, 'w') as f:
+            f.write(json.dumps(json_configs))
+    else:
+        progress("Found existing host.json")
+
+    progress("(re)building the fbi")
+    os.chdir(join(LAVA_DIR, "fbi"))
+    run(["make", "-j4"])
+
+    progress("(re)building lavaTool")
+    os.chdir(join(LAVA_DIR, "src_clang"))
+    run(["./compile-on-docker.sh"])
+
+    progress("Sucessful!  Now run:\n  $ scripts/everything.sh -ak file")
     return 0
 
 if __name__ == "__main__":
