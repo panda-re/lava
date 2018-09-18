@@ -7,7 +7,7 @@
     "db": "toy",
     "preprocessed": true,
 
-    "tarfile": "toy_pre.tar.gz",
+    "tarfile": "toy-pre.tar.gz",
 
     "configure": "true",
     "make": "make CFLAGS+=-g",
