@@ -2,6 +2,7 @@
     "name": "libjpeg",
     "db": "libjpeg",
     "preprocessed": true,
+    "dataflow": true,
 
     "tarfile": "libjpeg-pre.tgz",
 
