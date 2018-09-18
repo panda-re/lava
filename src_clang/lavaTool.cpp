@@ -6,7 +6,6 @@
 #include "LavaMatchHandler.h"
 #include "MatchFinder.h"
 
-
 void parse_whitelist(std::string whitelist_filename) {
     debug(FNARG) <<  "parsing white list " << whitelist_filename << "\n";
     FILE *fp = fopen(whitelist_filename.c_str(), "r");
@@ -27,12 +26,9 @@ void parse_whitelist(std::string whitelist_filename) {
         auto wlp = std::make_pair(std::string(np), std::string(npp));
         whitelist.insert(std::string(npp));
         debug(FNARG) << "white list entry: file = [" << np << "] func = [" << npp << "]\n";
-
     }
     debug(FNARG) << "whitelist is " << whitelist.size() << " entries\n";
 }
-
-
 
 
 
