@@ -35,7 +35,6 @@ def parse_fundecl(fd):
 def check_start_end(x):
     start = x['start']
     end = x['end']
-    print(start)
     f1 = start.split(":")[0]
     f2 = end.split(":")[0]
     assert (f1 == f2)
