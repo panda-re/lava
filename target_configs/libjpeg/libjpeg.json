@@ -4,7 +4,7 @@
     "preprocessed": true,
     "dataflow": true,
 
-    "tarfile": "libjpeg-pre.tgz",
+    "tarfile": "libjpeg-pre.tar.gz",
 
     "qcow": "wheezy_panda2.qcow2",
     "snapshot": "root",
