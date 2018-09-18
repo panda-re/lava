@@ -847,7 +847,7 @@ def get_trigger_line(lp, bug):
         return min(distances)[1]
 
 def check_competition_bug(lp, project, bug, fuzzed_input):
-    (rv, outp) = run_modified_program(project, lp.bugs_install, fuzzed_input, 100)
+    (rv, outp) = run_modified_program(project, lp.bugs_install, fuzzed_input, 20)
     assert(len(outp) == 2)
     (out, err) = outp
     for line in out.splitlines(): print(line)
