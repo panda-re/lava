@@ -539,7 +539,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
         run(['git', 'config', 'user.email', 'nobody@nowhere'])
         run(['git', 'add', '-f', '-A', '.'])
         run(['git', 'commit', '-m', 'Unmodified source.'])
-    if not os.path.exists(join(lp.bugs_build, 'config.log')):
+    if not os.path.exists(join(lp.bugs_build, 'config.log')) and 'configure' in project.keys():
         print('Re-configuring...')
         run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
     if not os.path.exists(join(lp.bugs_build, 'btrace.log')):

@@ -966,8 +966,8 @@ int main (int argc, char **argv) {
         try {
             ple = pandalog_read_entry();
         }catch(...) {
-            std::cerr << "Failed to read pandalog entry, skipping\n";
-            continue;
+            std::cerr << "FATAL ERROR: Failed to read pandalog entry, aborting FBI early, hopefully you have enough DUAs\n";
+            break;
         }
         if (ple == NULL)  break;
         num_entries_read++;
