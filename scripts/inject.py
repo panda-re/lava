@@ -167,7 +167,7 @@ if __name__ == "__main__":
     # add all those bugs to the source code and check that it compiles
         # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
     (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json,
-                                       project, args, update_db, dataflow=dataflow, competition=args.competition)
+                                       project, args, update_db, dataflow=dataflow, competition=args.competition, stage=args.stage)
     if build is None:
         raise RuntimeError("LavaTool failed to bulid target binary")
 

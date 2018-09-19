@@ -515,7 +515,7 @@ class LavaPaths(object):
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
 def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=False, competition=False,
-                validated=False):
+                validated=False, stage='all'):
     # TODO: don't pass args, just pass the data we need to run
     # TODO: split into multiple functions, this is huge
 
@@ -691,7 +691,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
 
     bug_solutions =  {} # Returned by lavaTool
     for filename in all_files:
-        if args.stage == "multi":
+        if stage == "multi":
             run_lavatool(bugs_to_inject, lp, project_file, project, args,
                         llvm_src, filename, True, 1)
             clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
@@ -715,7 +715,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
     # TODO: Use our ThreadPool for modifying source and update bug_solutions with results instead of single-thread
     #if pool:
         #pool.map(modify_source, all_files)
-    if args.stage != "multi":
+    if stage != "multi":
         clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
 
         src_dirs = set()
