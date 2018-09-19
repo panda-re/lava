@@ -24,20 +24,25 @@ finishes, you should have `panda` and `lava` directories (LAVA uses
 [PANDA](https://github.com/panda-re/panda) to perform dynamic taint
 analysis).
 
-Next, run `init-project.py` to configure a new project to inject bugs
-into. This creates an example JSON configuration file used by LAVA; by
-default it creates a configuration for putting bugs into the `file`
-program, but you can customize it for your own software.
+Next, run `init-host.py` to generate a host.json file.
+This creates a `host.json` file used by LAVA that describes settings specific
+to your host machine. You can edit these settings as necessary, but the default
+values should work.
+
+Project configurations are located in the `target_configs` directory, where
+every configuration is located at `target_configs/projectname/projectname.json`.
+These scripts reference paths relative to values set in your `host.json` file.
 
 Finally, you can run `scripts/everything.sh` to actually inject bugs
-into the program. The simplest way to invoke it is to tell it to carry
-out all steps (`-a`) and delete old files/directores as needed (`-k`):
+into a program. The simplest way to invoke it is to tell it to carry
+out all steps (`-a`) and delete old files/directores as needed (`-k`).
+After the flags, you should specify a project name in the `target_configs` directory
 
 ```
-scripts/everything.sh -ak path/to/config.json
+scripts/everything.sh -ak toy
 ```
 
-You should now have a buggy copy of your program!
+You should now have a buggy copy of toy!
 
 Of course, it's rarely this easy. You will likely have to tweak the
 build scripts for your program to ensure everything works well with
