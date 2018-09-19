@@ -62,6 +62,11 @@ enum stage { stage_all, stage_one, stage_two, stage_three };
 uint32_t num_atp_queries = 0;
 uint32_t num_taint_queries = 0;
 
+// white list of function names (and filenames)
+// that can be instrumented
+// with dua and atp queries (which will later mean bugs)
+std::set<std::string> whitelist;
+
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
 
@@ -121,11 +126,20 @@ static cl::opt<std::string> LavaBugList("bug-list",
     cl::desc("Comma-separated list of bug ids (from the postgres db) to inject into this file"),
     cl::cat(LavaCategory),
     cl::init("XXX"));
+static cl::opt<std::string> LavaWL("lava-wl",
+    cl::desc("Path to whitelist of fns to instrument with bugs and data_flow "),
+    cl::cat(LavaCategory),
+    cl::init("XXX"));
 static cl::opt<std::string> LavaDB("lava-db",
     cl::desc("Path to LAVA database (custom binary file for source info).  "
         "Created in query mode."),
     cl::cat(LavaCategory),
     cl::init("XXX"));
+static cl::opt<std::string> DBName("db",
+    cl::desc("database name."),
+    cl::cat(LavaCategory),
+    cl::init("XXX"));
+
 static cl::opt<std::string> ProjectFile("project-file",
     cl::desc("Path to project.json file."),
     cl::cat(LavaCategory),
@@ -144,6 +158,14 @@ static cl::opt<bool> KnobTrigger("kt",
     cl::init(false));
 static cl::opt<bool> ArgDataflow("arg_dataflow",
     cl::desc("Use function args for dataflow instead of lava_[sg]et"),
+    cl::cat(LavaCategory),
+    cl::init(false));
+static cl::opt<bool> ArgDebug("debug",
+    cl::desc("DEBUG: just add dataflow"),
+    cl::cat(LavaCategory),
+    cl::init(false));
+static cl::opt<bool> ArgCompetition("competition",
+    cl::desc("Log before/after bugs when competition is #defined"),
     cl::cat(LavaCategory),
     cl::init(false));
 static cl::opt<stage> LavaStage ("stage",

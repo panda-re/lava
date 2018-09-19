@@ -298,7 +298,7 @@ if [ $inject -eq 1 ]; then
     do
         lf="$logs/inject-$i.log"
         truncate "$lf"
-        Progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
+        progress "everything" 1 "Trial $i -- injecting $many bugs logging to $lf"
         fix=""
         if [ "$injfixupsscript" != "null" ]; then
             fix="--fixupsscript='$injfixupsscript'"

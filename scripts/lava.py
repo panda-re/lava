@@ -400,7 +400,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, sol
 
 
 # run lavatool on this file to inject any parts of this list of bugs
-def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename, knobTrigger=False, dataflow=False, competition=False, stage=0):
+def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename, knobTrigger=False, dataflow=False, competition=False, multi=False, stage=0):
     print("Running lavaTool on [{}]...".format(filename))
     lt_debug=False
     if (len(bug_list)) == 0:
@@ -424,7 +424,7 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename, knobTrigg
     if knobTrigger: cmd.append('-kt')
     if project["preprocessed"]: cmd.append( '-lava-wl=' + fninstr)
     if competition: cmd.append('-competition')
-    if args.stage == 'multi':
+    if multi == True:
         print("LavaTool running stage {}".format(stage))
         if stage == 1:
             cmd.append('-stage')
@@ -691,19 +691,19 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
     for filename in all_files:
         if args.stage == "multi":
             run_lavatool(bugs_to_inject, lp, project_file, project, args,
-                        llvm_src, filename, 1)
+                        llvm_src, filename, True, 1)
             clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
             run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
                           cwd=join(lp.bugs_build, dirname(filename)))
 
             run_lavatool(bugs_to_inject, lp, project_file, project, args,
-                        llvm_src, filename, 2)
+                        llvm_src, filename, True, 2)
             clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
             run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
                           cwd=join(lp.bugs_build, dirname(filename)))
 
             run_lavatool(bugs_to_inject, lp, project_file, project, args,
-                        llvm_src, filename, 3)
+                        llvm_src, filename, True, 3)
             clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
             run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
                           cwd=join(lp.bugs_build, dirname(filename)))

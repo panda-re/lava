@@ -328,28 +328,54 @@ public:
 
         debug(INJECT) << "*** handleBeginSource for: " << Filename << "\n";
 
+        std::stringstream logging_macros;
+        logging_macros << "#ifdef LAVA_LOGGING\n" // enable logging with (LAVA_LOGGING, FULL_LAVA_LOGGING) and (DUA_LOGGING) flags. Logging requires stdio to be included
+                       << "#define LAVALOG(bugid, x, trigger)  ({(trigger && fprintf(stderr, \"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__)), (x);})\n"
+                       << "#endif\n"
+
+                    << "#ifdef FULL_LAVA_LOGGING\n"
+                        << "#define LAVALOG(bugid, x, trigger)  ({(trigger && fprintf(stderr, \"\\nLAVALOG: %d: %s:%d\\n\", bugid, __FILE__, __LINE__), (!trigger && fprintf(stderr, \"\\nLAVALOG_MISS: %d: %s:%d\\n\", bugid, __FILE__, __LINE__))) && fflush(0), (x);})\n"
+                    << "#endif\n"
+
+                    << "#ifndef LAVALOG\n"
+                        << "#define LAVALOG(y,x,z)  (x)\n"
+                    << "#endif\n"
+
+                    << "#ifdef DUA_LOGGING\n"
+                        << "#define DFLOG(idx, val)  ({fprintf(stderr, \"\\nDFLOG:%d=%d: %s:%d\\n\", idx, val, __FILE__, __LINE__) && fflush(0), data_flow[idx]=val;})\n"
+                    << "#else\n"
+                        << "#define DFLOG(idx, val) {data_flow[idx]=val;}\n"
+                    << "#endif\n";
+
         std::string insert_at_top;
         if (LavaAction == LavaQueries) {
             insert_at_top = "#include \"pirate_mark_lava.h\"\n";
-        } else if (LavaAction == LavaInjectBugs && !ArgDataflow) {
-            if (main_files.count(getAbsolutePath(Filename)) > 0) {
-                std::stringstream top;
-                top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
-                    << "void lava_set(unsigned int, unsigned int);\n"
-                    << "__attribute__((visibility(\"default\")))\n"
-                    << "void lava_set(unsigned int slot, unsigned int val) { lava_val[slot] = val; }\n"
-                    << "unsigned int lava_get(unsigned int);\n"
-                    << "__attribute__((visibility(\"default\")))\n"
-                    << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
-                insert_at_top = top.str();
-            } else {
-                insert_at_top =
-                    "void lava_set(unsigned int bn, unsigned int val);\n"
-                    "extern unsigned int lava_get(unsigned int);\n";
+        } else if (LavaAction == LavaInjectBugs) {
+            insert_at_top.append(logging_macros.str());
+            if (!ArgDataflow) {
+                if (main_files.count(getAbsolutePath(Filename)) > 0) {
+                    std::stringstream top;
+                    top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
+                        << "void lava_set(unsigned int, unsigned int);\n"
+                        << "__attribute__((visibility(\"default\")))\n"
+                        << "void lava_set(unsigned int slot, unsigned int val) {\n"
+                        << "#ifdef DUA_LOGGING\n"
+                            << "fprintf(stderr, \"\\nlava_set:%d=%d: %s:%d\\n\", slot, val, __FILE__, __LINE__);\n"
+                            << "fflush(NULL);\n"
+                        << "#endif\n"
+                        << "lava_val[slot] = val; }\n"
+                        << "unsigned int lava_get(unsigned int);\n"
+                        << "__attribute__((visibility(\"default\")))\n"
+                        << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
+                    insert_at_top.append(top.str());
+                } else {
+                    insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
+                    "extern unsigned int lava_get(unsigned int);\n");
+                }
             }
         }
 
-        debug(INJECT) << "Inserting at top of file: \n" << insert_at_top;
+        debug(INJECT) << "Inserting macros and lava_set/get or dataflow at top of file\n";
         TUReplace.Replacements.emplace_back(Filename, 0, 0, insert_at_top);
 
         for (auto it = MatchHandlers.begin();

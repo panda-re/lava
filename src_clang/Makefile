@@ -110,29 +110,19 @@ $(BUILDDIR)/%.o: src/%.cxx
 $(BUILDDIR)/%.o: src/%.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-$(BUILDDIR)/lavaTool: $(BUILDDIR)/omg.o $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaFirstStage.o $(BUILDDIR)/lavaSecondStage.o $(BUILDDIR)/lavaThirdStage.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o
-#$(BUILDDIR)/lavaTool: $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o
-	$(CXX) -o lavaTool $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
-	$(CXX) -o lavaFirstStage $(BUILDDIR)/lavaFirstStage.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
-	$(CXX) -o lavaSecondStage $(BUILDDIR)/lavaSecondStage.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
-	$(CXX) -o lavaThirdStage $(BUILDDIR)/lavaThirdStage.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
+$(BUILDDIR)/lavaTool: $(BUILDDIR)/omg.o $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o
+	$(CXX) -o $(BUILDDIR)/lavaTool $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
-$(BUILDDIR)/lavaFnTool: $(BUILDDIR)/lavaFnTool.o 
-	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) 
+$(BUILDDIR)/lavaFnTool: $(BUILDDIR)/lavaFnTool.o
+	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS)
 
 $(BUILDDIR)/omg: $(BUILDDIR)/omg.o 
-	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) 
+	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS)
 
 $(BUILDDIR)/clang-apply-replacements: $(BUILDDIR)/ClangApplyReplacementsMain.o $(BUILDDIR)/ApplyReplacements.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
 $(BUILDDIR)/lavaTool.o: include/lava-odb.hxx include/lexpr.hxx Makefile
-#$(BUILDDIR)/lavaFirstStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
-#$(BUILDDIR)/lavaSecondStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
-#$(BUILDDIR)/lavaThirdStage.o: include/lava-odb.hxx include/lexpr.hxx Makefile
-
-
-
 
 $(BUILDDIR)/%.o: Makefile
 
@@ -148,5 +138,4 @@ include/%-odb.cxx include/%-odb.hxx: ../../include/%.hxx Makefile
 .PHONY: clean
 clean:
 	rm -rf $(BUILDDIR)/* *~ *.o lava-odb.*xx lava.sql
-	rm -rf lavaTool #lavaFirstStage lavaSecondStage lavaThirdStage
 
