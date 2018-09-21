@@ -394,7 +394,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug, kt=False, knob=0, sol
 
 
 # run lavatool on this file to inject any parts of this list of bugs
-def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename, knobTrigger=False, dataflow=False, competition=False):
+def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename, knobTrigger=False, dataflow=False, competition=False, randseed=0):
     print("Running lavaTool on [{}]...".format(filename))
     lt_debug=False
     if (len(bug_list)) == 0:
@@ -418,6 +418,7 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename, knobTrigg
     if knobTrigger: cmd.append('-kt')
     if project["preprocessed"]: cmd.append( '-lava-wl=' + fninstr)
     if competition: cmd.append('-competition')
+    if randseed: cmd.append('-randseed={}'.format(randseed))
     print("lavaTool command: {}".format(' '.join(cmd)))
 
     ret = run_cmd_notimeout(cmd)
@@ -492,10 +493,66 @@ class LavaPaths(object):
         self.bugs_build = join(self.bugs_parent, self.source_root)
         self.bugs_install = join(self.bugs_build, 'lava-install')
 
+
+# Given a list of bugs, return the IDs for a subset of bugs with `max_per_line` bugs on each line of source
+def limit_atp_reuse(bugs, max_per_line=1):
+    uniq_bugs = []
+    seen = {}
+    for bug in bugs:
+        tloc = (bug.atp.loc_filename, bug.atp.loc_begin_line)
+        if tloc not in seen.keys():
+            seen[tloc] = 0
+        seen[tloc] += 1
+        if seen[tloc] <= max_per_line:
+            uniq_bugs.append(bug.id)
+    print("Limited ATP reuse: Had {} bugs, now have {} with a max of {} per source line".format(len(bugs), len(uniq_bugs), max_per_line))
+    return uniq_bugs
+
+# Build a set of src/input files that we need to modify to inject these bugs
+def collect_src_and_print(bugs_to_inject, db):
+    src_files = set()
+    input_files = set()
+
+    for bug_index, bug in enumerate(bugs_to_inject):
+        print("------------\n")
+        print("SELECTED ")
+        if bug.trigger.dua.fake_dua:
+            print("NON-BUG")
+        else:
+            print("BUG {} id={}".format(bug_index, bug.id))
+        print("    ATP file: ", bug.atp.loc_filename)
+        print("        line: ", bug.atp.loc_begin_line)
+        print("DUA:")
+        print("   ", bug.trigger.dua)
+        print("      Src_file: ", bug.trigger_lval.loc_filename)
+        print("      Filename: ", bug.trigger.dua.inputfile)
+
+        if len(bug.extra_duas):
+            print("EXTRA DUAS:")
+            for extra_id in bug.extra_duas:
+                dua_bytes = db.session.query(DuaBytes).filter(DuaBytes.id == extra_id).first()
+                if (dua_bytes is None): raise RuntimeError("Bug {} references DuaBytes {} which does not exist".format(bug.id, extra_id))
+                print("  ", extra_id, "   @   ", dua_bytes.dua)
+                print("     Src_file: ", dua_bytes.dua.lval.loc_filename)
+
+                # Add files for extra_duas into src_files and input_files
+                src_files.add(dua_bytes.dua.lval.loc_filename)
+                #input_files.add(lval.inputfile)
+
+        print("ATP:")
+        print("   ", bug.atp)
+        print("max_tcn={}  max_liveness={}".format(
+            bug.trigger.dua.max_tcn, bug.max_liveness))
+        src_files.add(bug.trigger_lval.loc_filename)
+        src_files.add(bug.atp.loc_filename)
+        input_files.add(bug.trigger.dua.inputfile)
+    sys.stdout.flush()
+    return (src_files, input_files)
+
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
 def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=False, competition=False,
-                validated=False):
+                validated=False, lavatoolseed=0):
     # TODO: don't pass args, just pass the data we need to run
     # TODO: split into multiple functions, this is huge
 
@@ -583,60 +640,9 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
 
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
 
-    if validated: # After validating bugs, reduce how many duplicate ATPs we'll actually inject at
-        uniq_bugs = []
-        seen = {}
-        max_validated_bugs_per_line = 1
-        print("Reducing bugs_to_inject to only (re)use {} ATP per line".format(max_validated_bugs_per_line))
-        for bug in bugs_to_inject:
-            tloc = (bug.atp.loc_filename, bug.atp.loc_begin_line)
-            if tloc not in seen.keys():
-                seen[tloc] = 0
-            seen[tloc] += 1
-            if seen[tloc] <= max_validated_bugs_per_line:
-                uniq_bugs.append(bug)
-
-        print("Reduced from {} to {}".format(len(bugs_to_inject), len(uniq_bugs)))
-        bugs_to_inject = uniq_bugs
-
 
     # collect set of src files into which we must inject code
-    src_files = set()
-    input_files = set()
-
-    for bug_index, bug in enumerate(bugs_to_inject):
-        print("------------\n")
-        print("SELECTED ")
-        if bug.trigger.dua.fake_dua:
-            print("NON-BUG")
-        else:
-            print("BUG {} id={}".format(bug_index, bug.id))
-        print("    ATP file: ", bug.atp.loc_filename)
-        print("        line: ", bug.atp.loc_begin_line)
-        print("DUA:")
-        print("   ", bug.trigger.dua)
-        print("      Src_file: ", bug.trigger_lval.loc_filename)
-        print("      Filename: ", bug.trigger.dua.inputfile)
-
-        if len(bug.extra_duas):
-            print("EXTRA DUAS:")
-            for extra_id in bug.extra_duas:
-                dua_bytes = db.session.query(DuaBytes).filter(DuaBytes.id == extra_id).first()
-                print("  ", extra_id, "   @   ", dua_bytes.dua)
-                print("     Src_file: ", dua_bytes.dua.lval.loc_filename)
-
-                # Add files for extra_duas into src_files and input_files
-                src_files.add(dua_bytes.dua.lval.loc_filename)
-                #input_files.add(lval.inputfile)
-
-        print("ATP:")
-        print("   ", bug.atp)
-        print("max_tcn={}  max_liveness={}".format(
-            bug.trigger.dua.max_tcn, bug.max_liveness))
-        src_files.add(bug.trigger_lval.loc_filename)
-        src_files.add(bug.atp.loc_filename)
-        input_files.add(bug.trigger.dua.inputfile)
-    sys.stdout.flush()
+    (src_files, input_files) = collect_src_and_print(bugs_to_inject, db)
 
     # cleanup
     print("------------\n")
@@ -665,9 +671,9 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
         pool = None
 
     def modify_source(dirname):
-        sleep(random.random()) # Sleep a random # of MS so our lavaTools can seed rand from time and be different
-        return run_lavatool(bugs_to_inject, lp, host_file, project, 
-                     llvm_src, dirname, knobTrigger=args.knobTrigger, dataflow=dataflow, competition=competition)
+        return run_lavatool(bugs_to_inject, lp, host_file, project, llvm_src, dirname,
+                            knobTrigger=args.knobTrigger, dataflow=dataflow, competition=competition,
+                            randseed=lavatoolseed)
 
     bug_solutions =  {} # Returned by lavaTool
     for filename in all_files:
@@ -870,7 +876,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     print(str(bug))
     print("fuzzed = [%s]" % fuzzed_input)
     mutfile_kwargs = {}
-    if args.knobTrigger != -1:
+    if args.knobTrigger:
         print("Knob size: {}".format(args.knobTrigger))
         mutfile_kwargs = { 'kt': True, 'knob': args.knobTrigger }
 
@@ -896,7 +902,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
             # this really is supposed to be a bug
             # we should see a seg fault or something
             # NB: Wrapping programs in bash transforms rv -> 128 - rv, so we do the mod
-            if (rv%256) > 128:
+            if (rv%256) > 128 and rv != -9: # Ignoring timeouts
                 print("RV indicates memory corruption")
                 # Default: not checking that bug manifests at same line as trigger point or is found by competition grading infrastructure
                 validated = True

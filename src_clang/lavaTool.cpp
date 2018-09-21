@@ -143,12 +143,18 @@ static cl::opt<bool> ArgDebug("debug",
     cl::desc("DEBUG: just add dataflow"),
     cl::cat(LavaCategory),
     cl::init(false));
+static cl::opt<unsigned int> ArgRandSeed("randseed",
+    cl::desc("Value to use as random seed when generating solutions"),
+    cl::cat(LavaCategory),
+    cl::init(0));
 
 
 std::string LavaPath;
 
 uint32_t num_taint_queries = 0;
 uint32_t num_atp_queries = 0;
+
+unsigned int RANDOM_SEED = 0;
 
 static llvm::raw_null_ostream null_ostream;
 #define debug(flag) ((DEBUG_FLAGS & (flag)) ? llvm::errs() : null_ostream)
@@ -365,12 +371,19 @@ LExpr threeDuaTest(Bug *bug, LvalBytes x, LvalBytes y) {
     // TEST of bug type 2
     //return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - (Get(bug->trigger)*LHex(2)));
 
+
+    // To deterministically generate solutions, we
+    // reset RANDOM_SEED and run bugid times
+    srand(RANDOM_SEED);
+    for (int i=0;i<bug->id; i++) rand();
+
     uint32_t a_sol = alphanum(4);
     uint32_t b_sol = alphanum(4);
     uint32_t c_sol = alphanum(4);
 
     auto oldmagic = bug->magic;
 
+    printf("Bug %llu solutions\n", bug->id);
     const int NUM_BUGTYPES=3;
     // Todo remove the pring switch or print to a debug output
     switch (oldmagic % NUM_BUGTYPES)  {
@@ -1757,7 +1770,8 @@ int main(int argc, const char **argv) {
     CommonOptionsParser op(argc, argv, LavaCategory);
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
-    srand(time(NULL));
+    RANDOM_SEED = ArgRandSeed;
+    srand(RANDOM_SEED);
 
 
     if (LavaWL != "XXX") 
