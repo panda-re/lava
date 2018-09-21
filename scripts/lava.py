@@ -507,6 +507,8 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
         cmd.append('-lava-wl=' + fninstr)
     if competition:
         cmd.append('-competition')
+    if randseed:
+        cmd.append('-randseed={}'.format(randseed))
 
     print("lavaTool command: {}".format(' '.join(cmd)))
 

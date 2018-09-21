@@ -54,15 +54,15 @@ lava_macros = ["#ifdef LAVA_LOGGING", "#ifdef FULL_LAVA_LOGGING", "#ifndef LAVAL
 for filename in sys.argv[1:]:
     scratch = "/tmp/scratch.c"
     with open(filename) as infile:
-        with open(scratch, "w") as outfile:
-            lines = infile.readlines()
-            if not (len(lines) > 1 and lines[1] == "#ifdef LAVA_LOGGING\n"):
-                print("Not a LAVALOG'd file")
-                continue # No lavalogging here
+        lines = infile.readlines()
+        if not (len(lines) > 1 and lines[0] == "#ifdef LAVA_LOGGING\n"):
+            print("{} is not a LAVALOG'd file".format(infile))
+            continue # No lavalogging here
 
+        with open(scratch, "w") as outfile:
             # Skip past our definitions
             in_lava_macro = False
-            for line in lines[1:]: # Skip first include stdio line because we added it
+            for line in lines:
                 for macro in lava_macros:
                     if macro in line:
                         in_lava_macro = True

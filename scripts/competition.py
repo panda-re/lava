@@ -78,7 +78,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
 
         return False IFF we have reached limit bugs and should stop parsing
         """
-    
+
         if not (item.type in allowed_bugtypes):
             #print("skipping type {} not in {}".format(item.type, allowed_bugtypes))
             return True
@@ -178,7 +178,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
         if afl not in afls.keys():
             afls[afl] = 0
         afls[afl] +=1
-    
+
     print("{} potential bugs were selected across {} ATPs:".format(len(bugs_and_non_bugs), len(afls)))
     for bugtype in allowed_bugtypes:
         bt_count = len([x for x in bugs_and_non_bugs if x.type == bugtype])
@@ -209,7 +209,7 @@ def main():
             help = ('Leave unvalidated bugs in the binary'))
     parser.add_argument('-t', '--bugtypes', action="store", default="rel_write",
                         help = ('bug types to inject'))
-    
+
     args = parser.parse_args()
     global project
     project = parse_vars(args.host_json, args.project)
@@ -247,7 +247,7 @@ def main():
     lavatoolseed = random.randint(0, 100000)
 
     ###############
-    ## First we get a list of bugs, either from cli options, or through competition_bugs_and_non_bugs 
+    ## First we get a list of bugs, either from cli options, or through competition_bugs_and_non_bugs
     ###############
 
     if args.buglist:
@@ -317,7 +317,7 @@ def main():
             assert build is not None # build is None if injection fails
 
     ###############
-    ## Now build our corpora directory with the buggy source dir, binaries in lava-install-public, 
+    ## Now build our corpora directory with the buggy source dir, binaries in lava-install-public,
     ## lava-install-internal, and scripts to rebuild the binaries
     ###############
 
