@@ -125,17 +125,17 @@ for i in $c_dirs; do
   fi
 done
 
-if [ "$dataflow" = "true" ]; then
-    progress "queries" 0 "Using dataflow as specified in project.json"
-
 # Run another clang tool that provides information about functions,
 # i.e., which have only prototypes, which have bodies.  
-    progress "queries" 0 "Figure out functions" 
-    for i in $c_files; do
-        $lava/src_clang/build/lavaFnTool $i
-    done
+progress "queries" 0 "Figure out functions" 
+for i in $c_files; do
+    $lava/src_clang/build/lavaFnTool $i
+done
 
-# analyze that output and figure out 
+
+if [ "$dataflow" = "true" ]; then
+    progress "queries" 0 "Using dataflow as specified in project.json"
+    # analyze that output and figure out 
     fnfiles=$(echo $c_files | sed 's/\.c/\.c\.fn/g')
     fninstr=$directory/$name/fninstr
 
@@ -164,6 +164,7 @@ else
     for i in $c_files; do
         $lava/src_clang/build/lavaTool -action=query \
         -lava-db="$directory/$name/lavadb" \
+        -lava-wl="$fninstr" \
         -p="$source/compile_commands.json" \
         -src-prefix=$(readlink -f "$source") \
         $ATP_TYPE \
