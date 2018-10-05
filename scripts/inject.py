@@ -110,7 +110,7 @@ if __name__ == "__main__":
             help = 'Inject this many bugs (chosen randomly)')
     parser.add_argument('-l', '--buglist', action="store", default=False,
             help = 'Inject this list of bugs')
-    parser.add_argument('-k', '--knobTrigger', metavar='int', type=int, action="store", default=-1,
+    parser.add_argument('-k', '--knobTrigger', metavar='int', type=int, action="store", default=0,
             help = 'specify a knob trigger style bug, eg -k [sizeof knob offset]')
     parser.add_argument('-s', '--skipInject', action="store", default=False,
             help = 'skip the inject phase and just run the bugged binary on fuzzed inputs')

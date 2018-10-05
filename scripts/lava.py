@@ -415,7 +415,7 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename, knobTrigg
         '-main-files=' + main_files, join(lp.bugs_build, filename)]
     if lt_debug: cmd.append("-debug")
     if dataflow: cmd.append('-arg_dataflow')
-    if knobTrigger: cmd.append('-kt')
+    if knobTrigger > 0 : cmd.append('-kt')
     if project["preprocessed"]: cmd.append( '-lava-wl=' + fninstr)
     if competition: cmd.append('-competition')
     if randseed: cmd.append('-randseed={}'.format(randseed))
