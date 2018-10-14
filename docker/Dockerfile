@@ -65,3 +65,10 @@ RUN echo "LLVM_DIR=/$llvm_version/Release/share/llvm/cmake" >> /etc/environment
 RUN echo "LD_LIBRARY_PATH=/$llvm_version/Release/lib" >> /etc/environment
 RUN echo "PATH=$PATH:/$llvm_version/Release/bin" >> /etc/environment
 
+RUN apt-get install -y sudo gdb gawk
+
+# Set locale to C.UTF-8 instead of us_EN.UTF-8
+RUN apt-get install -y locales
+RUN locale-gen C.UTF-8
+RUN locale -a
+RUN update-locale LANG=C.UTF-8
