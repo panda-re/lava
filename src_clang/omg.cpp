@@ -173,6 +173,8 @@ ParensInfo getParens(std::string sourceString) {
               if y+1 exists with open=F, level=1:
                   delete from x to y, inclusive
         */
+
+#if 0
         std::string ws;
 
 remove_attributes:
@@ -224,7 +226,7 @@ remove_attributes:
                 }
             }
         }
-
+#endif
 
         ParenInfo &cp = parens[l-1];
         ParenInfo &op = parens[0];
@@ -344,13 +346,30 @@ std::string getStringBetween(const SourceManager &sm, SourceLocation &l1, Source
 
 
 
+
+
 // find location of str after loc
 // sets *inv=true if something went wrong or we didnt find
 
 SourceLocation getLocAfterStr(const SourceManager &sm, SourceLocation &loc, const char *str, unsigned str_len, unsigned max_search, bool *inv) {
     const char *buf = sm.getCharacterData(loc, inv);
-    if (!(*inv)) {
-        // getCharacterData succeeded
+    if (*inv) {
+        // getchardata failed
+        return loc;
+    }
+    debug(PARENS) << "getCharacterData succeeded\n";
+    // getCharacterData succeeded
+    char *p = strstr(buf, str);
+    if (p == NULL) {
+        // didnt find the string
+        *inv = true;
+        return loc;
+    }
+    // found the string.
+    *inv = false;
+    return loc.getLocWithOffset(p - buf);
+}
+/*
         const char *p = buf;
         *inv = true;
         while (true) {
@@ -373,7 +392,7 @@ SourceLocation getLocAfterStr(const SourceManager &sm, SourceLocation &loc, cons
     }
     return loc;
 }            
-           
+ */          
         
 
 
