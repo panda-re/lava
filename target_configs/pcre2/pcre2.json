@@ -12,7 +12,11 @@
 
 
     "configure": "true",
+<<<<<<< HEAD
     "make": "make CFLAGS=-gdwarf-2",
+=======
+    "make": "make",
+>>>>>>> a35097c... pcre2 lava-able
     "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/pcre2grep -f {input_file} /etc/passwd",
