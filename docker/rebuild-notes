@@ -1,0 +1,2 @@
+cd docker
+docker build . -t lava32
