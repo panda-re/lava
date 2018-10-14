@@ -54,7 +54,7 @@ extern "C" {
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
 #define PRI (1 << 3)
-#define DEBUG_FLAGS 0 // ( MATCHER | INJECT | FNARG | PRI)
+#define DEBUG_FLAGS ( MATCHER | INJECT | FNARG | PRI)
 #define ARG_NAME "data_flow"
 
 using namespace odb::core;
@@ -1128,10 +1128,10 @@ std::set<SourceLocation> already_added_arg;
   we dont need a comma).
 */
 void AddArgGen(Modifier &Mod, SourceLocation &startLoc, SourceLocation &endLoc,
-               bool isCall, unsigned numArgs) {
+               bool isCall, unsigned numArgs, unsigned callsite) {
 
     bool inv;
-    debug(FNARG) << "AddArgGen : [" << getStringBetween(*Mod.sm, startLoc, endLoc, &inv) << "]\n";
+    debug(FNARG) << "AddArgGen " << callsite << " : [" << getStringBetween(*Mod.sm, startLoc, endLoc, &inv) << "]\n";
     if (inv) {
         debug(FNARG) << "invalid\n";
         return;
@@ -1165,12 +1165,8 @@ void AddArgGen(Modifier &Mod, SourceLocation &startLoc, SourceLocation &endLoc,
 
     // has to be there -- see getParens 
     assert (found);
-    
+
     debug(FNARG) << "adding data flow at head of [" << getStringBetween(*Mod.sm, loc_param_start, endLoc, &inv) << "]\n";
-    if (inv) {
-        debug(FNARG) << "invalid\n";
-        return;
-    }
 
     // insert data_flow arg 
     if (already_added_arg.count(loc_param_start) == 0) {
@@ -1212,15 +1208,34 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
                     // { is past the end of the l1..l2 range
                     endOfProt = l2;
             }
-            else 
+            else { 
                 // hmm I guess there is a body but its not right here?  
-                endOfProt = getLocAfterStr(*Mod.sm, l1, ")", 1, 1000, &inv);
+                // find last ')' and use that
+                SourceLocation parenLoc, lastParenLoc;  
+                bool foundit = false;
+                while (true) {
+                    parenLoc = getLocAfterStr(*Mod.sm, l1, ")", 1, 1000, &inv);
+                    if (inv) {
+                        printf ("foundit\n");
+                        l1 = parenLoc;
+                        lastParenLoc = parenLoc;
+                        foundit = true;
+                    }
+                    else {
+                        printf ("didnt foundit\n");
+                        parenLoc = lastParenLoc;
+                        break;
+                    } 
+                }
+                assert (foundit);
+                endOfProt = parenLoc;
+            }                    
         }
         else 
             endOfProt = l2;
 
         // add the data_flow arg between l1 and endOfProt
-        AddArgGen(Mod, l1, endOfProt, false, func->getNumParams());
+        AddArgGen(Mod, l1, endOfProt, false, func->getNumParams(), 1);
     }
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
@@ -1326,7 +1341,7 @@ struct FieldDeclArgAdditionHandler : public LavaMatchHandler {
             // add the data_flow arg
             SourceLocation l1 = fd->getLocStart();
             SourceLocation l2 = fd->getLocEnd();
-            AddArgGen(Mod, l1, l2, false, prot->getNumParams());
+            AddArgGen(Mod, l1, l2, false, prot->getNumParams(), 2);
         }
     }
 };
@@ -1356,7 +1371,7 @@ struct VarDeclArgAdditionHandler : public LavaMatchHandler {
             assert(fun_type);
             const FunctionProtoType *prot = dyn_cast<FunctionProtoType>(fun_type);
             // add the data_flow arg
-            AddArgGen(Mod, l1, l2, false, prot->getNumParams());
+            AddArgGen(Mod, l1, l2, false, prot->getNumParams(), 3);
         }
     }
 };
@@ -1386,7 +1401,7 @@ struct FunctionPointerTypedefHandler : public LavaMatchHandler {
             assert(fun_type);
             const FunctionProtoType *prot = dyn_cast<FunctionProtoType>(fun_type);
             // add the data_flow arg
-            AddArgGen(Mod, l1, l2, false, prot->getNumParams());
+            AddArgGen(Mod, l1, l2, false, prot->getNumParams(), 4);
         }
     }
 };
@@ -1440,7 +1455,7 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         bool inv;
         debug(FNARG) << "call : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
         assert(!inv);
-        AddArgGen(Mod, l1, l2, true, call->getNumArgs());
+        AddArgGen(Mod, l1, l2, true, call->getNumArgs(), 5);
     }
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
