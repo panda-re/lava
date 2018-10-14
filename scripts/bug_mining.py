@@ -80,7 +80,7 @@ from run_guest import create_recording
 
 chaff = project.get('chaff', False)
 
-panda_os_string = project.get('panda_os_string', 'linux-32-lava32')
+panda_os_string = project.get('panda_os_string', 'linux-32-debian:3.2.0-4-686-pae') # linux-32-lava32')
 
 lavadir = dirname(dirname(abspath(sys.argv[0])))
 
