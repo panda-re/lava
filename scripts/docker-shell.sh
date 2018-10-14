@@ -20,7 +20,7 @@ fi
 whoami="$(whoami)"
 cmd="sudo -u $whoami bash -c -- \"$cmd\""
 if [ -z "$2" ] ; then
-    cmd="login -f $whoami LANG=en_US.UTF-8 LANGUAGE=en_US LC_ALL=en_US.UTF-8"
+    cmd="login -f $whoami LANG=C.UTF-8 LANGUAGE=en_US LC_ALL=C.UTF-8"
 fi
 
 set +x
@@ -31,9 +31,9 @@ docker run --rm -it \
     -e "HTTPS_PROXY=$HTTPS_PROXY" \
     -e "http_proxy=$http_proxy" \
     -e "https_proxy=$https_proxy" \
-    -e "LANG=en_US.UTF-8" \
-    -e "LANGUAGE=en_US:en" \
-    -e "LC_ALL=en_US.UTF-8" \
+    -e "LANG=C.UTF-8" \
+    -e "LANGUAGE=en_US" \
+    -e "LC_ALL=C.UTF-8" \
     -v /var/run/postgresql:/var/run/postgresql \
     -v /etc/passwd:/etc/passwd:ro \
     -v /etc/group:/etc/group:ro \

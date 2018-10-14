@@ -55,3 +55,9 @@ RUN pip install subprocess32 lockfile sqlalchemy
 RUN pip install pyyaml
 
 Run apt-get install -y sudo gdb gawk
+
+# Set locale to C.UTF-8 instead of us_EN.UTF-8
+RUN apt-get install -y locales
+RUN locale-gen C.UTF-8
+RUN locale -a
+RUN update-locale LANG=C.UTF-8
