@@ -233,6 +233,37 @@ class LavaDatabase(object):
     def uninjected_random(self, fake, allowed_bugtypes=None):
         return self.uninjected2(fake, allowed_bugtypes).order_by(func.random())
 
+    def uninjected_random_by_atp_bugtype(self, fake, atp_types=None, allowed_bugtypes=None, atp_lim=10):
+        # For each ATP find X possible bugs,
+        # Returns dict list of lists:
+        #   {bugtype1:[[atp0_bug0, atp0_bug1,..], [atp1_bug0, atp1_bug1,..]],
+        #    bugtype2:[[atp0_bug0, atp0_bug1,..], [atp1_bug0, atp1_bug1,..]]}
+        # Where sublists are randomly sorted
+        if atp_types:
+            _atps = self.session.query(AttackPoint.id).filter(AttackPoint.typ.in_(atp_types)).all()
+        else:
+            _atps = self.session.query(AttackPoint.id).all()
+
+        atps = [r.id for r in _atps]
+        #print(atps)
+        print("Found {} distinct ATPs".format(len(atps)))
+
+        results = {}
+        assert(len(allowed_bugtypes)), "Requires bugtypes"
+
+        for bugtype in allowed_bugtypes:
+            results[bugtype] = []
+            for atp in atps:
+                q = self.session.query(Bug).filter(Bug.atp_id==atp).filter(~Bug.builds.any()) \
+                .filter(Bug.type == bugtype) \
+                .join(Bug.atp)\
+                .join(Bug.trigger)\
+                .join(DuaBytes.dua)\
+                .filter(Dua.fake_dua == fake)
+
+                results[bugtype].append(q.order_by(func.random()).limit(atp_lim).all())
+        return results
+
     def uninjected_random_by_atp(self, fake, atp_types=None, allowed_bugtypes=None, atp_lim=10):
         # For each ATP find X possible bugs,
         # Returns list of lists: [[atp0_bug0, atp0_bug1,..], [atp1_bug0, atp1_bug1,..]]

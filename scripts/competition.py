@@ -44,6 +44,17 @@ def run_builds(scripts):
             raise RuntimeError("Could not build {}".format(script))
         print("Built with command {}".format(script))
 
+def random_choice(options, probs):
+    # Select from options with probabilities from prob
+    sum_probs = sum(probs)
+    norm_probs = [float(x)/sum_probs for x in probs]
+    r = random.uniform(0, 1)
+    for idx, prb in enumerate(norm_probs):
+        if r < prb: return options[idx]
+        r -= prb
+    raise RuntimeError("Random choice broke")
+
+
 # collect num bugs AND num non-bugs
 # with some hairy constraints
 # we need no two bugs or non-bugs to have same file/line attack point
@@ -87,7 +98,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             print "non-bug",
         else:
             print "bug    ",
-        print ' dua_fl={} atp_fl={} dua_ast={}'.format(str(dfl), str(afl), str(item.trigger_lval.ast_name))
+        print 'id={} dua_fl={} atp_fl={} dua_ast={} type={}'.format(item.id, str(dfl), str(afl), str(item.trigger_lval.ast_name), Bug.type_strings[item.type])
         dfl_fileline[dfl] += 1
         afl_fileline[afl] += 1
         bugs_and_non_bugs.append(item)
@@ -101,18 +112,38 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
         atp_types = [AttackPoint.FUNCTION_CALL, AttackPoint.POINTER_WRITE] # TODO we don't find rel_writes at function calls
 
         # Get limit bugs at each ATP
-        atp_item_lists = db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
+        #atp_item_lists = db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
         # Returns list of lists where each sublist corresponds to the same atp: [[ATP1_bug1, ATP1_bug2], [ATP2_bug1], [ATP3_bug1, ATP3_bug2]]
+
+        atp_item_lists = db.uninjected_random_by_atp_bugtype(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
+        # Returns dict of list of lists where each dict is a bugtype and within each, each sublist corresponds to the same atp: [[ATP1_bug1, ATP1_bug2], [ATP2_bug1], [ATP3_bug1, ATP3_bug2]]
         while True:
-            atp_item_lists = [x for x in atp_item_lists if len(x)] # Delete any empty lists
-            if not len(atp_item_lists):
+
+            for selected_bugtype in allowed_bugtypes:
+                atp_item_lists[selected_bugtype] = [x for x in atp_item_lists[selected_bugtype] if len(x)] # Delete any empty lists
+            if sum([len(x) for x in atp_item_lists.values()]) == 0:
                 print("Abort bug-selection because we've selected all {} potential bugs we have (Failed to find all {} requested bugs)".format(len(bugs_and_non_bugs), limit))
                 break
 
             # Randomly select a sublist from atp_item_lists (none will be empty)
-            atp_item_idx = random.randint(0, len(atp_item_lists)-1)
-            item = atp_item_lists[atp_item_idx].pop() # Pop the first bug from that bug_list (Sublist will be sorted randomly)
+            #weight by bugtype
 
+
+            #TODO make this work for any selected bugtypes and hardcode expected yields for each
+            assert(allowed_bugtypes == [Bug.PTR_ADD, Bug.REL_WRITE]), "TODO: probabilitic bug selection with variable bugtypes not yet supported"
+            this_bugtype = random_choice([Bug.REL_WRITE, Bug.PTR_ADD], [85, 15])
+            #print("Selected bugtype {}".format(Bug.type_strings[this_bugtype]))
+
+            this_bugtype_atp_item_lists = atp_item_lists[this_bugtype]
+            if len(this_bugtype_atp_item_lists) == 0:
+                # TODO: intelligently select a different bugype in this case
+                print("Warning: tried to select a bug of type {} but none available".format(Bug.type_strings[this_bugtype]))
+                continue
+
+            atp_item_idx = random.randint(0, len(this_bugtype_atp_item_lists)-1)
+            item = this_bugtype_atp_item_lists[atp_item_idx].pop() # Pop the first bug from that bug_list (Sublist will be sorted randomly)
+
+            """
             # TODO: fix this manual libjpeg hack. Blacklist bugs here by strings in their dua/extra_duas
             blacklist = [("data_ptr", None), ("quant_table", None), ("dtbl).pub", None), ("compptr", 3609), ("compptr).downsampled_width", 3557), ("htbl", None), ("compptr).downsampled_height", None), ("dtbl).valoffset", None)]
 
@@ -130,6 +161,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
                 continue
 
             # End of libjpeg hack
+            """
 
             abort |= not parse(item) # Once parse returns true, break
             if abort:
@@ -147,7 +179,11 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             afls[afl] = 0
         afls[afl] +=1
     
-    print("{} bugs were found across {} ATPs:".format(len(bugs_and_non_bugs), len(afls)))
+    print("{} potential bugs were selected across {} ATPs:".format(len(bugs_and_non_bugs), len(afls)))
+    for bugtype in allowed_bugtypes:
+        bt_count = len([x for x in bugs_and_non_bugs if x.type == bugtype])
+        print("{} potential bugs of type {}".format(bt_count, Bug.type_strings[bugtype]))
+
     for atp, count in afls.items():
         print("\t{}\t bugs at {}".format(count, atp))
 
@@ -267,6 +303,7 @@ def main():
         real_bugs = db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all()
         real_bug_list = limit_atp_reuse(real_bugs)
 
+        # TODO retry a few times if we fail this test
         if bug_list != real_bug_list: # Only reinject if our bug list has changed
             if len(real_bug_list) < int(args.minYield):
                 print("\n\nXXX Yield too low after reducing duplicates -- Require at least {} bugs for  \
