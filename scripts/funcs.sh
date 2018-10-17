@@ -80,6 +80,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
                 -v /etc/group:/etc/group:ro \
                 -v /etc/shadow:/etc/shadow:ro \
                 -v /etc/gshadow:/etc/gshadow:ro \
+                -v /home:/home:ro \
                 $docker_map_args \
                 $extradockerargs \
                 $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"$command\"" \
