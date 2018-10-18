@@ -95,8 +95,7 @@ set (LLVM_CLANG_LINK_LIBRARIES
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
-set(CMAKE_VERBOSE_MAKEFILE ON)
-set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY true)
+set(CMAKE_VERBOSE_MAKEFILE OFF)
 
 include_directories(${LLVM_INCLUDE_DIRS})
 
@@ -105,12 +104,11 @@ if(LLVM_BUILD_MAIN_SRC_DIR)
     include_directories(${LLVM_BUILD_BINARY_DIR}/tools/clang/include)
 endif()
 
-message ("LLVM library dirs ${LLVM_LIBRARY_DIRS}")
 link_directories(${LLVM_LIBRARY_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 add_subdirectory(lavaODB)
 add_subdirectory(lavaDB)
-add_subdirectory(fbi)
 add_subdirectory(lavaTool)
+add_subdirectory(fbi)
 

@@ -41,13 +41,15 @@ install (TARGETS lavaTool
          RUNTIME DESTINATION bin
          LIBRARY DESTINATION lib
          ARCHIVE DESTINATION lib/static
-         OPTIONAL)
+         OPTIONAL
+         )
 
 install (TARGETS lavaFnTool
          RUNTIME DESTINATION bin
          LIBRARY DESTINATION lib
          ARCHIVE DESTINATION lib/static
-         OPTIONAL)
+         OPTIONAL
+         )
 
 
 
