@@ -84,6 +84,9 @@ print("bug_mining.py %s %s" % (project_name, input_file))
 qemu_path = project['qemu']
 qemu_build_dir = dirname(dirname(abspath(qemu_path)))
 src_path = None
+
+print ("{}".format(join(qemu_build_dir, 'config-host.mak')))
+
 with open(join(qemu_build_dir, 'config-host.mak')) as config_host:
     for line in config_host:
         var, sep, value = line.strip().partition('=')
@@ -98,7 +101,8 @@ from run_guest import create_recording
 
 chaff = project.get('chaff', False)
 
-panda_os_string = project.get('panda_os_string', 'linux-32-debian:3.2.0-4-686-pae')
+panda_os_string = project.get('panda_os_string',
+                              'linux-32-debian:3.2.0-4-686-pae')
 
 lavadir = dirname(dirname(abspath(sys.argv[0])))
 
