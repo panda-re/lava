@@ -88,7 +88,7 @@ read -ra MAKES <<< $makecmd
 for i in ${MAKES[@]}; do
     IFS=' '
     read -ra ARGS <<< $i
-    $lava/btrace/sw-btrace ${ARGS[@]}
+    $lava/tools/btrace/sw-btrace ${ARGS[@]}
     IFS='&&'
 done
 IFS=$ORIGIN_IFS
@@ -103,7 +103,7 @@ llvm_src=$(grep LLVM_SRC_PATH $lava/tools/lavaTool/config.mak | cut -d' ' -f3)
 
 
 progress "queries" 0  "Creating compile_commands.json..."
-$lava/btrace/sw-btrace-to-compiledb $llvm_src/Release/lib/clang/3.6.2/include
+$lava/tools/btrace/sw-btrace-to-compiledb $llvm_src/Release/lib/clang/3.6.2/include
 if [ -e "$directory/$name/extra_compile_commands.json" ]; then
     sed -i '$d' compile_commands.json
     echo "," >> compile_commands.json
