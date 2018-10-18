@@ -99,7 +99,7 @@ bash -c $install
 
 
 # figure out where llvm is
-llvm_src=$(grep LLVM_SRC_PATH $lava/src_clang/config.mak | cut -d' ' -f3)
+llvm_src=$(grep LLVM_SRC_PATH $lava/tools/lavaTool/config.mak | cut -d' ' -f3)
 
 
 progress "queries" 0  "Creating compile_commands.json..."
@@ -114,14 +114,14 @@ git commit -m 'Add compile_commands.json.'
 
 cd ..
 
-c_files=$(python $lava/src_clang/get_c_files.py $source)
+c_files=$(python $lava/tools/lavaTool/get_c_files.py $source)
 c_dirs=$(for i in $c_files; do dirname $i; done | sort | uniq)
 
 progress "queries" 0  "Copying include files..."
 for i in $c_dirs; do
   echo "   $i"
   if [ -d $i ]; then
-    cp $lava/include/*.h $i/
+    cp $lava/tools/include/*.h $i/
   fi
 done
 
@@ -129,13 +129,13 @@ if [ "$dataflow" = "true" ]; then
     progress "queries" 0 "Using dataflow as specified in project.json"
 
 # Run another clang tool that provides information about functions,
-# i.e., which have only prototypes, which have bodies.  
-    progress "queries" 0 "Figure out functions" 
+# i.e., which have only prototypes, which have bodies.
+    progress "queries" 0 "Figure out functions"
     for i in $c_files; do
-        $lava/src_clang/build/lavaFnTool $i
+        $lava/tools/install/bin/lavaFnTool $i
     done
 
-# analyze that output and figure out 
+# analyze that output and figure out
     fnfiles=$(echo $c_files | sed 's/\.c/\.c\.fn/g')
     fninstr=$directory/$name/fninstr
 
@@ -148,7 +148,7 @@ if [ "$dataflow" = "true" ]; then
     # Since it's okay to pass the whitelist either way
     progress "queries" 0  "Inserting queries with dataflow"
     for i in $c_files; do
-        $lava/src_clang/build/lavaTool -action=query \
+        $lava/tools/install/bin/lavaTool -action=query \
         -lava-db="$directory/$name/lavadb" \
         -p="$source/compile_commands.json" \
         -arg_dataflow \
@@ -162,7 +162,7 @@ else
 
     progress "queries" 0  "Inserting queries..."
     for i in $c_files; do
-        $lava/src_clang/build/lavaTool -action=query \
+        $lava/tools/install/bin/lavaTool -action=query \
         -lava-db="$directory/$name/lavadb" \
         -p="$source/compile_commands.json" \
         -src-prefix=$(readlink -f "$source") \
@@ -175,7 +175,7 @@ fi
 for i in $c_dirs; do
     echo "  Applying replacements to $i"
     pushd $i
-    $lava/src_clang/build/clang-apply-replacements .
+    $llvm_src/install/bin/clang-apply-replacements .
     popd
 done
 

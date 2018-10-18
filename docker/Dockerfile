@@ -61,7 +61,7 @@ RUN pip install pyyaml
 RUN ln -s /usr/lib/libjsoncpp.so.0 /usr/lib/libjsoncpp.so.1
 RUN updatedb
 
-ENV CC=/$llvm_version/install/bin/clang
-ENV CXX=/$llvm_version/install/bin/clang++
 RUN echo "LLVM_DIR=/$llvm_version/install/share/llvm/cmake" >> /etc/environment
+RUN echo "LD_LIBRARY_PATH=/$llvm_version/install/lib" >> /etc/environment
+RUN echo "PATH=$PATH:/$llvm_version/install/bin" >> /etc/environment
 
