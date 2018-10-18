@@ -1,3 +1,5 @@
+-- Useful query to retrieve bug info from the DB when bug selection is performed by hand
+
 SELECT bug.id as bug, trigger, extra_duas, atp,
     dbt.all_labels as tr_bytes,
     dbe1.all_labels as extra1_bytes,
