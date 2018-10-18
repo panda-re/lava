@@ -2,8 +2,8 @@ cmake_minimum_required (VERSION 3.1)
 
 project (FBI VERSION 1.0.0 LANGUAGES CXX)
 
-set (PANDA_SRC_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../../../panda/)
-set (PANDA_BUILD_DIR ${PANDA_SRC_PATH}/build)
+set (PANDA_SRC_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../../panda/src)
+set (PANDA_BUILD_DIR ${PANDA_SRC_PATH}/../build)
 set (PANDA_HEADERS ${PANDA_SRC_PATH}/panda/include)
 
 add_library (fbilib

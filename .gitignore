@@ -19,6 +19,8 @@ tools/lavaODB/generated
 tools/install
 tools/build
 
+panda/build
+
 CMakeCache.txt
 CMakeFiles
 CMakeScripts
