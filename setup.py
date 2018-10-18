@@ -86,7 +86,9 @@ except Exception:
 PANDA_BUILD_DIR = join(PANDA_DIR, 'build')
 
 # panda/scripts/install_ubuntu.sh
-PANDA_UBUNTU = "https://goo.gl/GNMNmJ"
+#PANDA_UBUNTU = "https://goo.gl/GNMNmJ"
+PANDA_UBUNTU = "https://raw.githubusercontent.com/panda-re/panda" \
+                "/master/panda/scripts/install_ubuntu.sh"
 
 # libc6 needed for compiling btrace
 # libjsoncpp needed for fbi json parsing
@@ -263,6 +265,7 @@ def main():
     run_docker(['mkdir', '-p', join(LAVA_DIR, 'tools/build')])
     run_docker(['mkdir', '-p', join(LAVA_DIR, 'tools/install')])
     run_docker(['rm', '-rf', join(LAVA_DIR, 'tools/build/*')])
+
     run_docker(['cmake', '-B{}'.format(join(LAVA_DIR, 'tools/build')),
                 '-H{}'.format(join(LAVA_DIR, 'tools')),
                 '-DCMAKE_INSTALL_PREFIX={}'.format(join(LAVA_DIR,
@@ -285,10 +288,11 @@ def main():
     progress("Checking for PANDA in " + PANDA_DIR)
     if not isdir(PANDA_DIR):
         os.chdir(dirname(PANDA_DIR))
+        run("rm -f install_ubuntu.sh")
         run("wget {}".format(PANDA_UBUNTU))
         run("bash install_ubuntu.sh")
         os.chdir(LAVA_DIR)
-    elif not isfile(join(LAVA_DIR, "fbi", "panda.mak")) and \
+    elif not isfile(join(LAVA_DIR, "tools", "fbi", "panda.mak")) and \
             not isfile(join(PANDA_BUILD_DIR, 'config.log')):
         progress("Building PANDA in " + PANDA_BUILD_DIR)
         os.makedirs(PANDA_BUILD_DIR)
