@@ -27,7 +27,7 @@ if (${DEBUG})
     target_compile_options(fbi PRIVATE -fno-omit-frame-pointer -g -O0)
 else()
     target_compile_options(fbi PRIVATE -flto -O3)
-    set_target_properties(fbi PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
+    set_target_properties(fbi PROPERTIES LINK_FLAGS "-flto")
 endif()
 
 set_property(TARGET fbi PROPERTY CXX_STANDARD 14)

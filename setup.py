@@ -256,6 +256,23 @@ def main():
                        '&&', 'bash', 'compile.sh']
         run_docker(['bash', '-c', subprocess.list2cmdline(compile_cmd)])
 
+    # check for location of panda in PANDA_DIR
+    # make sure that it is PANDA2
+    progress("Checking for PANDA in " + PANDA_DIR)
+    if not isdir(PANDA_DIR):
+        os.chdir(dirname(PANDA_DIR))
+        run("rm -f install_ubuntu.sh")
+        run("wget {}".format(PANDA_UBUNTU))
+        run("bash install_ubuntu.sh")
+        os.chdir(LAVA_DIR)
+    elif not isfile(join(LAVA_DIR, "tools", "fbi", "panda.mak")) or \
+            not isfile(join(PANDA_BUILD_DIR, 'config.log')):
+        progress("Building PANDA in " + PANDA_BUILD_DIR)
+        os.makedirs(PANDA_BUILD_DIR)
+        os.chdir(PANDA_BUILD_DIR)
+        run([join(PANDA_DIR, 'build.sh')])
+        os.chdir(LAVA_DIR)
+
     # Compile lavaTool inside the docker container.
     progress("Creating $LAVA_DIR/tools/lavaTool/config.mak")
     with open("tools/lavaTool/config.mak", "w") as f:
@@ -282,23 +299,6 @@ def main():
         progress("Uncommenting {} deb-src lines in".format(len(filt_lines)) +
                  "/etc/apt/sources.list")
         run(['sudo', 'python', patch_sources])
-
-    # check for location of panda in PANDA_DIR
-    # make sure that it is PANDA2
-    progress("Checking for PANDA in " + PANDA_DIR)
-    if not isdir(PANDA_DIR):
-        os.chdir(dirname(PANDA_DIR))
-        run("rm -f install_ubuntu.sh")
-        run("wget {}".format(PANDA_UBUNTU))
-        run("bash install_ubuntu.sh")
-        os.chdir(LAVA_DIR)
-    elif not isfile(join(LAVA_DIR, "tools", "fbi", "panda.mak")) and \
-            not isfile(join(PANDA_BUILD_DIR, 'config.log')):
-        progress("Building PANDA in " + PANDA_BUILD_DIR)
-        os.makedirs(PANDA_BUILD_DIR)
-        os.chdir(PANDA_BUILD_DIR)
-        run([join(PANDA_DIR, 'build.sh')])
-        os.chdir(LAVA_DIR)
 
     progress("Checking for ODB orm libraries")
     odb_version = "2.4.0"
