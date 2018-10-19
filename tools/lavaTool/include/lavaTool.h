@@ -50,7 +50,9 @@ using clang::tooling::CommonOptionsParser;
 #define MATCHER (1 << 0)
 #define INJECT (1 << 1)
 #define FNARG (1 << 2)
-#define DEBUG_FLAGS  INJECT | FNARG
+#define PRI (1 << 3)
+
+#define DEBUG_FLAGS  MATCHER | INJECT | FNARG | PRI
 
 #define ARG_NAME "data_flow"
 
