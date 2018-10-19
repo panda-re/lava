@@ -21,6 +21,7 @@
     "max_lval_size": 100,
 
     "main_file": [ "toy.c" ],
+    "dataflow": true,
 
     "inputs": [ "inputs/testsmall.bin" ]
 }

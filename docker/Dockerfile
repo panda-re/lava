@@ -29,9 +29,9 @@ RUN mv clang-tools-extra-$release.src extra
 WORKDIR /$llvm_version
 #RUN ./configure --enable-optimized --disable-assertions --enable-targets=x86 --enable-shared --enable-pic --host=i486-linux-gnu --build=i486-linux-gnu
 RUN mkdir /$llvm_version/build
-RUN mkdir /$llvm_version/install
+RUN mkdir /$llvm_version/Release
 WORKDIR /$llvm_version/build
-RUN cmake ../ -DCMAKE_INSTALL_PREFIX=/$llvm_version/install -DLLVM_TARGETS_TO_BUILD=X86 \
+RUN cmake ../ -DCMAKE_INSTALL_PREFIX=/$llvm_version/Release -DLLVM_TARGETS_TO_BUILD=X86 \
               -DBUILD_SHARED_LIBS=true -DLLVM_ENABLE_ASSERTIONS=false -DLLVM_ENABLE_RTTI=true \
               -DLLVM_BUILD_32_BITS=true \
               -DLLVM_ENABLE_PIC=true -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGET_ARCH=i486-linux-gnu \
@@ -62,6 +62,6 @@ RUN ln -s /usr/lib/libjsoncpp.so.0 /usr/lib/libjsoncpp.so.1
 RUN updatedb
 
 RUN echo "LLVM_DIR=/$llvm_version/install/share/llvm/cmake" >> /etc/environment
-RUN echo "LD_LIBRARY_PATH=/$llvm_version/install/lib" >> /etc/environment
-RUN echo "PATH=$PATH:/$llvm_version/install/bin" >> /etc/environment
+RUN echo "LD_LIBRARY_PATH=/$llvm_version/Release/lib" >> /etc/environment
+RUN echo "PATH=$PATH:/$llvm_version/Release/bin" >> /etc/environment
 
