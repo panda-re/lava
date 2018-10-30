@@ -150,7 +150,7 @@ if [ "$dataflow" = "true" ]; then
     for i in $c_files; do
         $lava/tools/install/bin/lavaTool -action=query \
         -lava-db="$directory/$name/lavadb" \
-        -p="$source/compile_commands.json" \
+        -p="$directory/$name/$source/compile_commands.json" \
         -arg_dataflow \
         -lava-wl="$fninstr" \
         -src-prefix=$(readlink -f "$source") \
