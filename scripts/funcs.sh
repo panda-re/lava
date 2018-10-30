@@ -6,7 +6,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
     LAVA_FUNCS_INCLUDED=1
 
     progress() {
-      if [ $2 -eq 1 ]; then
+      if [[ $2 -eq 1 ]]; then
           date
       fi
       echo -e "\e[32m[$1]\e[0m \e[1m$3\e[0m"
