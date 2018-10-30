@@ -10,7 +10,7 @@
     "tarfile": "toy-pre.tar.gz",
 
     "configure": "true",
-    "make": "make CFLAGS+=-g",
+    "make": "make CFLAGS+=-gdwarf-2",
     "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/toy {input_file}",
@@ -21,7 +21,8 @@
     "max_lval_size": 100,
 
     "main_file": [ "toy.c" ],
-    "dataflow": true,
+
+    "dataflow": "true",
 
     "inputs": [ "inputs/testsmall.bin" ]
 }
