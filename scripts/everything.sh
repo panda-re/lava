@@ -161,7 +161,7 @@ project_name="$1"
 json="$(realpath $1)"
 
 # how many bugs will be injected at  time
-many=12
+many=50
 
 if [[ $demo -eq 1 ]]
 then
