@@ -9,7 +9,7 @@ die() {
 
 LAVA=$1
 pushd `pwd` > /dev/null
-cd ${LAVA}/src_clang/_tests
+cd ${LAVA}/lavaTool/tests
 
 # Go into directory X, run lavaFnTool and then lavaTool on x.c
 runtest() {
@@ -21,7 +21,7 @@ runtest() {
         rm btrace.log
     fi
 
-    ../../build/lavaFnTool ./$1.c &> lavaFnTool.log
+    ../../../install/bin/lavaFnTool ./$1.c &> lavaFnTool.log
     touch ./built
 
     echo "Ran lavaFnTool. Waiting for host_fninstr..."
@@ -31,10 +31,10 @@ runtest() {
 
     echo "host_fninstr finished!"
 
-    ../../build/lavaTool -debug -lava-wl ./$1.fnwl -arg_dataflow -src-prefix=`pwd`  -action=inject $1.c &> lavaTool.log
+    ../../../install/bin/lavaTool -debug -lava-wl ./$1.fnwl -arg_dataflow -src-prefix=`pwd`  -action=inject $1.c &> lavaTool.log
 
     cp $1.c{,.bak}
-    ../../build/clang-apply-replacements .
+    /llvm-3.6.2/Release/bin/clang-apply-replacements .
     make clean
     make &> cc.log
 
@@ -45,8 +45,8 @@ runtest() {
 }
 
 runtest attr
-#runtest evil
-#runtest torture
+runtest evil
+runtest torture
 
 
 echo

@@ -7,12 +7,12 @@ targets_c=$2
 targets=0
 rm -f */built;
 
-echo "Started, ready to fninstr on $targets_c targets"
+echo "Started, ready to fninstr on $targets_c $dir targets"
 while true; do
     for dir in ./*; do
         if [ -f "$dir/built" ]; then
             echo "Built exists, generate fnwl"
-            python ../../scripts/fninstr.py -d "./$dir/$dir.c.fn" -o "$dir/$dir.fnwl"
+            python ../../../scripts/fninstr.py -d "./$dir/$dir.c.fn" -o "$dir/$dir.fnwl"
             echo "Done!"
             rm "$dir/built"
             targets=$((targets+1))
