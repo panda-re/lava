@@ -112,7 +112,7 @@ if __name__ == "__main__":
             help = 'Inject this many bugs (chosen randomly)')
     parser.add_argument('-l', '--buglist', action="store", default=False,
             help = 'Inject this list of bugs')
-    parser.add_argument('-k', '--knobTrigger', metavar='int', type=int, action="store", default=-1,
+    parser.add_argument('-k', '--knobTrigger', metavar='int', type=int, action="store", default=0,
             help = 'specify a knob trigger style bug, eg -k [sizeof knob offset]')
     parser.add_argument('-s', '--skipInject', action="store", default=False,
             help = 'skip the inject phase and just run the bugged binary on fuzzed inputs')
@@ -132,8 +132,6 @@ if __name__ == "__main__":
 #                        help = ('White list file of functions to bug and data flow'))
     parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
                         help = ('bug types to inject'))
-    parser.add_argument('--stage', choices=['all', 'multi'], default="all",
-                        help= ('multi'))
 
 
     args = parser.parse_args()
@@ -167,7 +165,7 @@ if __name__ == "__main__":
     # add all those bugs to the source code and check that it compiles
         # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
     (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json,
-                                       project, args, update_db, dataflow=dataflow, competition=args.competition, stage=args.stage)
+                                       project, args, update_db, dataflow=dataflow, competition=args.competition)
     if build is None:
         raise RuntimeError("LavaTool failed to bulid target binary")
 
