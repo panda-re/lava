@@ -1010,7 +1010,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     print(str(bug))
     print("fuzzed = [%s]" % fuzzed_input)
     mutfile_kwargs = {}
-    if args.knobTrigger != -1:
+    if args.knobTrigger:
         print("Knob size: {}".format(args.knobTrigger))
         mutfile_kwargs = {'kt': True, 'knob': args.knobTrigger}
 
