@@ -25,7 +25,8 @@ from vars import parse_vars
 from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     run_cmd, run_cmd_notimeout, mutfile, inject_bugs, LavaPaths, \
     validate_bugs, run_modified_program, unfuzzed_input_for_bug, \
-    fuzzed_input_for_bug, get_trigger_line, AttackPoint, Bug, get_allowed_bugtype_num
+    fuzzed_input_for_bug, get_trigger_line, AttackPoint, Bug, \
+    get_allowed_bugtype_num, limit_atp_reuse
 
 # from pycparser.diversifier.diversify import diversify
 #from process_compile_commands import get_c_files
@@ -42,6 +43,17 @@ def run_builds(scripts):
         if rv != 0:
             raise RuntimeError("Could not build {}".format(script))
         print("Built with command {}".format(script))
+
+def random_choice(options, probs):
+    # Select from options with probabilities from prob
+    sum_probs = sum(probs)
+    norm_probs = [float(x)/sum_probs for x in probs]
+    r = random.uniform(0, 1)
+    for idx, prb in enumerate(norm_probs):
+        if r < prb: return options[idx]
+        r -= prb
+    raise RuntimeError("Random choice broke")
+
 
 # collect num bugs AND num non-bugs
 # with some hairy constraints
@@ -86,7 +98,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             print "non-bug",
         else:
             print "bug    ",
-        print ' dua_fl={} atp_fl={}'.format(str(dfl), str(afl))
+        print 'id={} dua_fl={} atp_fl={} dua_ast={} type={}'.format(item.id, str(dfl), str(afl), str(item.trigger_lval.ast_name), Bug.type_strings[item.type])
         dfl_fileline[dfl] += 1
         afl_fileline[afl] += 1
         bugs_and_non_bugs.append(item)
@@ -100,14 +112,57 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
         atp_types = [AttackPoint.FUNCTION_CALL, AttackPoint.POINTER_WRITE] # TODO we don't find rel_writes at function calls
 
         # Get limit bugs at each ATP
-        atp_item_lists = db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
+        #atp_item_lists = db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
+        # Returns list of lists where each sublist corresponds to the same atp: [[ATP1_bug1, ATP1_bug2], [ATP2_bug1], [ATP3_bug1, ATP3_bug2]]
+
+        atp_item_lists = db.uninjected_random_by_atp_bugtype(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
+        # Returns dict of list of lists where each dict is a bugtype and within each, each sublist corresponds to the same atp: [[ATP1_bug1, ATP1_bug2], [ATP2_bug1], [ATP3_bug1, ATP3_bug2]]
         while True:
-            potential_bugs_remaining = sum([len(x) for x in atp_item_lists])
-            if potential_bugs_remaining == 0:
+
+            for selected_bugtype in allowed_bugtypes:
+                atp_item_lists[selected_bugtype] = [x for x in atp_item_lists[selected_bugtype] if len(x)] # Delete any empty lists
+            if sum([len(x) for x in atp_item_lists.values()]) == 0:
                 print("Abort bug-selection because we've selected all {} potential bugs we have (Failed to find all {} requested bugs)".format(len(bugs_and_non_bugs), limit))
                 break
-            atp_items = random.choice([x for x in atp_item_lists if len(x)]) # Select bug_list for an ATP randomly
-            item = atp_items.pop() # Take the first bug since it was sorted randomly - This needs to modify the item in atp_items
+
+            # Randomly select a sublist from atp_item_lists (none will be empty)
+            #weight by bugtype
+
+
+            #TODO make this work for any selected bugtypes and hardcode expected yields for each
+            assert(allowed_bugtypes == [Bug.PTR_ADD, Bug.REL_WRITE]), "TODO: probabilitic bug selection with variable bugtypes not yet supported"
+            this_bugtype = random_choice([Bug.REL_WRITE, Bug.PTR_ADD], [85, 15])
+            #print("Selected bugtype {}".format(Bug.type_strings[this_bugtype]))
+
+            this_bugtype_atp_item_lists = atp_item_lists[this_bugtype]
+            if len(this_bugtype_atp_item_lists) == 0:
+                # TODO: intelligently select a different bugype in this case
+                print("Warning: tried to select a bug of type {} but none available".format(Bug.type_strings[this_bugtype]))
+                continue
+
+            atp_item_idx = random.randint(0, len(this_bugtype_atp_item_lists)-1)
+            item = this_bugtype_atp_item_lists[atp_item_idx].pop() # Pop the first bug from that bug_list (Sublist will be sorted randomly)
+
+            """
+            # TODO: fix this manual libjpeg hack. Blacklist bugs here by strings in their dua/extra_duas
+            blacklist = [("data_ptr", None), ("quant_table", None), ("dtbl).pub", None), ("compptr", 3609), ("compptr).downsampled_width", 3557), ("htbl", None), ("compptr).downsampled_height", None), ("dtbl).valoffset", None)]
+
+            cont = False
+            for (badword, minidx) in blacklist:
+
+                extra_duas = db.session.query(DuaBytes).filter(DuaBytes.id.in_(item.extra_duas)).all()
+                for dua in [item.trigger_lval] + [x.dua.lval for x in extra_duas]:
+                    if cont: break
+                    if badword in dua.ast_name and (not minidx or dua.loc_begin_line < minidx):
+                        print("Skipping dua {} since its ast {} contains a bad ast string ({}) before {}".format(dua, dua.ast_name, badword, minidx))
+                        cont = True
+                        break
+            if cont:
+                continue
+
+            # End of libjpeg hack
+            """
+
             abort |= not parse(item) # Once parse returns true, break
             if abort:
                 break
@@ -124,7 +179,11 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             afls[afl] = 0
         afls[afl] +=1
     
-    print("{} bugs were found across {} ATPs:".format(len(bugs_and_non_bugs), len(afls)))
+    print("{} potential bugs were selected across {} ATPs:".format(len(bugs_and_non_bugs), len(afls)))
+    for bugtype in allowed_bugtypes:
+        bt_count = len([x for x in bugs_and_non_bugs if x.type == bugtype])
+        print("{} potential bugs of type {}".format(bt_count, Bug.type_strings[bugtype]))
+
     for atp, count in afls.items():
         print("\t{}\t bugs at {}".format(count, atp))
 
@@ -180,10 +239,16 @@ def main():
     except:
         pass
 
-    args.knobTrigger = -1
+    args.knobTrigger = False
     args.checkStacktrace = False
     failcount = 0
 
+    # generate a random seed to pass through to lavaTool so it behaves deterministcally between runs
+    lavatoolseed = random.randint(0, 100000)
+
+    ###############
+    ## First we get a list of bugs, either from cli options, or through competition_bugs_and_non_bugs 
+    ###############
 
     if args.buglist:
         print ("bug_list incoming %s" % (str(args.buglist)))
@@ -200,35 +265,61 @@ def main():
     bug_list_str = ','.join([str(bug_id) for bug_id in bug_list])
     print(bug_list_str)
 
+    ###############
+    ## With our bug list in hand, we inject all these bugs and count how many we can trigger
+    ###############
+
     real_bug_list = []
-    while len(real_bug_list) < int(args.minYield):
-        # add either bugs to the source code and check that we can still compile
-        (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json, \
-                                          project, args, False, dataflow=dataflow, competition=True,
-                                          validated=False)
+    # add bugs to the source code and check that we can still compile
+    (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json, \
+                                      project, args, False, dataflow=dataflow, competition=True,
+                                      validated=False, lavatoolseed=lavatoolseed)
+    assert build is not None # build is None when injection fails. Could block here to allow for manual patches
 
-        assert build is not None # build is none when injection fails. Could block here to allow for manual patches
+    # Test if the injected bugs cause approperiate crashes and that our competition infrastructure parses the crashes correctly
+    real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
+                                      args, False, competition=True, bug_solutions=bug_solutions)
 
-        real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                          args, False, competition=True, bug_solutions=bug_solutions)
-
-        if len(real_bug_list) < int(args.minYield):
-            print "\n\nXXX Yield too low -- %d bugs minimum is required for competition" % int(args.minYield)
-            #print "Trying again.\n"
-            raise RuntimeError("Failure")
+    if len(real_bug_list) < int(args.minYield):
+        print("\n\nXXX Yield too low after injection -- Require at least {} bugs for  \
+                competition, only have {}".format(args.minYield, len(real_bug_list)))
+        raise RuntimeError("Failure")
 
     print "\n\n Yield acceptable: {}".format(len(real_bug_list))
 
     # TODO- the rebuild process may invalidate a previously validated bug because the trigger will change
     # Need to find a way to pass data between lavaTool and here so we can reinject *identical* bugs as before
 
+    ###############
+    ## After we have a list of validated bugs, we inject again. This time, we will only inject the bugs we have
+    ## already validated, so these should all validate again. Before we reinject these, we'll remove any bugs from
+    ## our list that use the same ATP as other bugs we're injecting.
+    ###############
+
     if not args.chaff:
         # re-build just with the real bugs. Inject in competition mode. Deduplicate bugs with the same ATP location
-        print("Reinject only validated bugs")
-        (build, input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, args.host_json, \
-                                              project, args, False, dataflow=dataflow, competition=True, validated=True)
+        print("Reinjecting only validated bugs")
 
-        assert build is not None # Injection could fail
+        real_bugs = db.session.query(Bug).filter(Bug.id.in_(real_bug_list)).all()
+        real_bug_list = limit_atp_reuse(real_bugs)
+
+        # TODO retry a few times if we fail this test
+        if bug_list != real_bug_list: # Only reinject if our bug list has changed
+            if len(real_bug_list) < int(args.minYield):
+                print("\n\nXXX Yield too low after reducing duplicates -- Require at least {} bugs for  \
+                        competition, only have {}".format(args.minYield, len(real_bug_list)))
+                raise RuntimeError("Failure")
+
+            (build, input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, args.host_json, \
+                                                  project, args, False, dataflow=dataflow, competition=True, validated=True,
+                                                  lavatoolseed=lavatoolseed)
+
+            assert build is not None # build is None if injection fails
+
+    ###############
+    ## Now build our corpora directory with the buggy source dir, binaries in lava-install-public, 
+    ## lava-install-internal, and scripts to rebuild the binaries
+    ###############
 
 
     corpus_dir = join(compdir, "corpora")
@@ -346,14 +437,14 @@ def main():
         fuzzed_input = fuzzed_input_for_bug(project, bug)
         (dc, fi) = os.path.split(fuzzed_input)
         shutil.copy(fuzzed_input, inputsdir)
-        predictions.append((prediction, fi))
+        predictions.append((prediction, fi, bug.type))
         bug_ids.append(bug.id)
 
     print "Answer key:"
     with open(join(corpdir, "ans"), "w") as ans:
-        for (prediction, fi) in predictions:
-            print "ANSWER  [%s] [%s]" % (prediction, fi)
-            ans.write("%s %s\n" % (prediction, fi))
+        for (prediction, fi, bugtype) in predictions:
+            print "ANSWER  [%s] [%s] [%s]" % (prediction, fi, Bug.type_strings[bugtype])
+            ans.write("%s %s %s\n" % (prediction, fi, Bug.type_strings[bugtype]))
 
     with open(join(corpdir, "add_bugs.sql"), "w") as f:
         f.write("/* This file will add all the generated lava_id values to the DB, you must update binary_id */\n")
@@ -368,13 +459,17 @@ def main():
         subprocess32.check_call(["make", "distclean"])
     except:
         pass
-    if os.path.isdir(join(srcdir, ".git")):
-        shutil.rmtree(join(srcdir, ".git"))
 
-    if os.path.isdir(join(srcdir, "lava-install")):
-        shutil.rmtree(join(srcdir, "lava-install"))
-    os.remove(join(srcdir, "compile_commands.json"))
-    os.remove(join(srcdir, "btrace.log"))
+    # Delete private files
+    deldirs = [join(srcdir, x) for x in [".git", "lava-instal"]]
+    delfiles = [join(srcdir, x) for x in ["compile_commands.json", "btrace.log"]]
+
+    for dirname in deldirs:
+        if os.path.isdir(dirname):
+            shutil.rmtree(dirname)
+    for fname in delfiles:
+        if os.path.exists(fname):
+            os.remove(fname)
 
     # build source tar
     #tarball = join(srcdir + ".tgz")
