@@ -154,14 +154,8 @@ shift $((OPTIND -1))
 if [ -z "$1" ]; then
     USAGE
 fi
-
 project_name="$1"
 . `dirname $0`/vars.sh
-
-json="$(realpath $1)"
-
-# how many bugs will be injected at  time
-many=50
 
 if [[ $demo -eq 1 ]]
 then
