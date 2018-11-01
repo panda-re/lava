@@ -9,7 +9,6 @@
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
 
 #include "lava.hxx"
-#include "lavaToolUtils.h"
 #include "omg.h"
 
 using namespace clang;
