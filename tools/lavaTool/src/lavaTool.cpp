@@ -33,16 +33,13 @@ void parse_whitelist(std::string whitelist_filename) {
     debug(FNARG) << "whitelist is " << whitelist.size() << " entries\n";
 }
 
-
-
-
-
 int main(int argc, const char **argv) {
     std::cout << "Starting lavaTool...\n";
     CommonOptionsParser op(argc, argv, LavaCategory);
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
-    srand(time(NULL));
+    RANDOM_SEED = ArgRandSeed;
+    srand(RANDOM_SEED);
 
 
     if (LavaWL != "XXX")
@@ -72,6 +69,7 @@ int main(int argc, const char **argv) {
         t = new odb::transaction(db->begin());
 
         main_files = parse_commas_strings(MainFileList);
+
         // get bug info for the injections we are supposed to be doing.
         debug(INJECT) << "LavaBugList: [" << LavaBugList << "]\n";
 
@@ -96,21 +94,10 @@ int main(int argc, const char **argv) {
         }
     }
 
-    std::cout << "about to call Tool.run \n";
-    if (LavaStage == stage_all) {
-        LavaMatchFinder Matcher;
-        Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
-    } else if (LavaStage == stage_one) {
-        LavaStageOneFinder Matcher;
-        Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
-    } else if (LavaStage == stage_two) {
-        LavaStageTwoFinder Matcher;
-        Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
-    } else if (LavaStage == stage_three) {
-        LavaStageThreeFinder Matcher;
-        Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
-    }
-    std::cout << "back from calling Tool.run \n";
+    debug(INJECT) << "about to call Tool.run \n";
+    LavaMatchFinder Matcher;
+    Tool.run(newFrontendActionFactory(&Matcher, &Matcher).get());
+    debug(INJECT) << "back from calling Tool.run \n";
 
     if (LavaAction == LavaQueries) {
         std::cout << "num taint queries added " << num_taint_queries << "\n";

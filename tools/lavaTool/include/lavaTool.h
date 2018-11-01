@@ -62,7 +62,6 @@ static llvm::raw_null_ostream null_ostream;
 #define debug(flag) ((DEBUG_FLAGS & (flag)) ? llvm::errs() : null_ostream)
 
 enum action { LavaQueries, LavaInjectBugs, LavaInstrumentMain };
-enum stage { stage_all, stage_one, stage_two, stage_three };
 
 uint32_t num_atp_queries = 0;
 uint32_t num_taint_queries = 0;
@@ -98,6 +97,7 @@ struct LvalBytes {
 
 // Map of bugs with siphon of a given  lval name at a given loc.
 std::map<LavaASTLoc, vector_set<LvalBytes>> siphons_at;
+std::map<LvalBytes, uint32_t> data_slots;
 
 std::string LavaPath;
 
@@ -144,7 +144,6 @@ static cl::opt<std::string> DBName("db",
     cl::desc("database name."),
     cl::cat(LavaCategory),
     cl::init("XXX"));
-
 static cl::opt<std::string> ProjectFile("project-file",
     cl::desc("Path to project.json file."),
     cl::cat(LavaCategory),
@@ -169,24 +168,16 @@ static cl::opt<bool> ArgDebug("debug",
     cl::desc("DEBUG: just add dataflow"),
     cl::cat(LavaCategory),
     cl::init(false));
+static cl::opt<unsigned int> ArgRandSeed("randseed",
+    cl::desc("Value to use as random seed when generating solutions"),
+    cl::cat(LavaCategory),
+    cl::init(0));
 static cl::opt<bool> ArgCompetition("competition",
     cl::desc("Log before/after bugs when competition is #defined"),
     cl::cat(LavaCategory),
     cl::init(false));
-static cl::opt<stage> LavaStage ("stage",
-    cl::desc("Injection Stages, first inserts arguments in function definition and calls, \
-    second replicate all the functions, third inject the bugs in all the no-origin functions"),
-    cl::values (
-        clEnumValN(stage_all, "stage_all", "All the transformation at once"),
-        clEnumValN(stage_one, "stage_one", "Injection of parameters for natural flow only"),
-        clEnumValN(stage_two, "stage_two", "Duplication of the functions"),
-        clEnumValN(stage_three, "stage_three", "Actual bug injection stage"),
-        clEnumValEnd),
-    cl::cat(LavaCategory),
-    cl::init(stage_all));
 
-
-std::map<LvalBytes, uint32_t> data_slots;
+unsigned int RANDOM_SEED = 0;
 
 template<typename K, typename V>
 const V &map_get_default(const std::map<K, V> &map, K key) {
@@ -276,18 +267,134 @@ uint32_t Slot(LvalBytes lval_bytes) {
     return data_slots.at(lval_bytes);
 }
 
+uint32_t alphanum(int len) {
+        static const char alphanum[] =
+            "0123456789"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            "abcdefghijklmnopqrstuvwxyz";
+        uint32_t ret = 0;
+        for (int i=0; i < len; i++) {
+            char c = alphanum[rand() % (sizeof(alphanum)-1)];
+            ret +=c;
+            if (i+1 != len) ret = ret << 8;
+        }
+
+        return ret;
+}
+
 LExpr Get(LvalBytes x) {
     return ArgDataflow ? DataFlowGet(Slot(x)) : LavaGet(Slot(x));
 }
-LExpr Get(const Bug *bug) { return Get(bug->trigger); }
+
+LExpr Get(const Bug *bug) {
+    return Get(bug->trigger);
+}
 
 LExpr Set(LvalBytes x) {
     return (ArgDataflow ? DataFlowSet : LavaSet)(x.lval, x.selected, Slot(x));
 }
-LExpr Set(const Bug *bug) { return Set(bug->trigger); }
+
+LExpr Set(const Bug *bug) {
+    return Set(bug->trigger);
+}
 
 LExpr Test(const Bug *bug) {
     return MagicTest<Get>(bug);
+}
+
+LExpr threeDuaTest(Bug *bug, LvalBytes x, LvalBytes y) {
+        //return (Get(bug->trigger)+Get(x)) == (LHex(bug->magic)*Get(y)); // GOOD
+        //return (Get(x)) == (Get(bug->trigger)*(Get(y)+LHex(bug->magic))); // GOOD
+        //return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - Get(bug->trigger)); // GOOD
+
+        //return (Get(bug->trigger)<<LHex(3) == (LHex(bug->magic) << LHex(5) + Get(y))); // BAD - segfault
+        //return (Get(bug->trigger)^Get(x)) == (LHex(bug->magic)*(Get(y)+LHex(7))); // Segfault
+
+    // TESTING - simple multi dua bug if ABC are all == m we pass
+    //return ((Get(x) - Get(y) + Get(bug->trigger)) == LHex(bug->magic));
+
+    // TEST of bug type 2
+    //return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - (Get(bug->trigger)*LHex(2)));
+
+
+    // To deterministically generate solutions, we
+    // reset RANDOM_SEED and run bugid times
+    srand(RANDOM_SEED);
+    for (int i=0;i<bug->id; i++) rand();
+
+    uint32_t a_sol = alphanum(4);
+    uint32_t b_sol = alphanum(4);
+    uint32_t c_sol = alphanum(4);
+
+    auto oldmagic = bug->magic;
+
+    printf("Bug %llu solutions\n", bug->id);
+    const int NUM_BUGTYPES=3;
+    // Todo remove the pring switch or print to a debug output
+    switch (oldmagic % NUM_BUGTYPES)  {
+        case 0:
+            bug->magic = (a_sol + b_sol) * c_sol;
+            printf("SOL 0x%llx == (0x%x + 0x%x) * 0x%x\n", bug->id, a_sol, b_sol, c_sol);
+            break;
+
+        case 1:
+            bug->magic = (a_sol * b_sol) - c_sol;
+            printf("SOL 0x%llx id  == (0x%x * 0x%x) - 0x%x\n", bug->id, a_sol, b_sol, c_sol);
+            break;
+
+        case 2:
+            bug->magic = (a_sol+2) * (b_sol+1) * (c_sol+3);
+            printf("SOL 0x%llx id == (0x%x+2) *( 0x%x+1) * (0x%x+3) \n", bug->id, a_sol, b_sol, c_sol);
+            break;
+
+    }
+    //bug->trigger = a_sol;
+
+    switch (oldmagic % NUM_BUGTYPES)  {
+        // bug->trigger = A
+        // get(x) = B
+        // get(y) = C
+        // bug->magic = m
+        case 0:     // (A + B)*C == M
+            return (Get(bug->trigger)+Get(x))*Get(y) == (LHex(bug->magic));
+            break;
+        case 1:     //(A*B)-C == M
+            return (Get(bug->trigger)*Get(x))-Get(y) == (LHex(bug->magic));
+            break;
+        case 2:     // (A+2)(C+3)(B+1) == M
+            return (Get(bug->trigger)+LHex(2))*(Get(y)+LHex(3))*(Get(bug->trigger)+LHex(1))  == LHex(bug->magic);
+            break;
+
+        default: // CHAFF
+            return (Get(x) == (Get(x)+ LHex(bug->magic)));
+            break;
+    }
+}
+
+LExpr twoDuaTest(const Bug *bug, LvalBytes x) {
+    return (Get(bug->trigger)^Get(x)) == LHex(bug->magic);
+}
+
+// returns true iff this fn name is in whitelist to be instrumented
+bool fninstr(std::pair<std::string, std::string> fnname) {
+    std::string filename = fnname.first;
+    std::string function_name = fnname.second;
+    if (whitelist.size()>0) {
+        if (whitelist.count(function_name) == 0)
+            return false;  // dont instrument
+        else
+            return true;  // instrument
+    }
+    return false;
+}
+
+uint32_t rand_ascii4() {
+    uint32_t ret = 0;
+    for (int i=0; i < 4; i++) {
+        ret += (rand() % (0x7F-0x20)) + 0x20;
+        if (i !=3) ret = ret<<8;
+    }
+    return ret;
 }
 
 LExpr traditionalAttack(const Bug *bug) {
@@ -308,8 +415,11 @@ LExpr knobTriggerAttack(const Bug *bug) {
 }
 
 void mark_for_siphon(const DuaBytes *dua_bytes) {
+
     LvalBytes lval_bytes(dua_bytes);
     siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
+
+    debug(INJECT) << "    Mark siphon at " << lval_bytes.lval->loc << "\n";
 
     // if insert fails do nothing. we already have a slot for this one.
     data_slots.insert(std::make_pair(lval_bytes, data_slots.size()));

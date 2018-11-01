@@ -92,6 +92,9 @@ static llvm::raw_null_ostream null_ostream;
               Seek until open=F level=2 idx=y
               if y+1 exists with open=F, level=1:
                   delete from x to y, inclusive
+
+
+
 */
 
 
@@ -170,6 +173,8 @@ ParensInfo getParens(std::string sourceString) {
               if y+1 exists with open=F, level=1:
                   delete from x to y, inclusive
         */
+
+#if 0
         std::string ws;
 
 remove_attributes:
@@ -221,7 +226,7 @@ remove_attributes:
                 }
             }
         }
-
+#endif
 
         ParenInfo &cp = parens[l-1];
         ParenInfo &op = parens[0];
@@ -283,13 +288,11 @@ std::string createNonNullTests(std::string sourceString) {
         }
 
         if (!found) break; // :nd loop after parsing last pair of parens
-
         ParenInfo oinfo = parens[i_open];
         size_t opos = std::get<0>(oinfo);
         unsigned olevel = std::get<2>(oinfo);
         unsigned i_close;
         found = false;
-
         for (i_close=i_open+1; i_close<parens.size(); i_close++) {
             bool isopen = std::get<1>(parens[i_close]);
             size_t level = std::get<2>(parens[i_close]);
@@ -300,19 +303,15 @@ std::string createNonNullTests(std::string sourceString) {
                 break;
             }
         }
-
         if (!found) break;
-
         ParenInfo cinfo = parens[i_close];
         size_t cpos = std::get<0>(cinfo);
         std::string cand = sourceString.substr(opos, cpos-opos+1);
+        // (**(pdtbl))
         unsigned num_stars=1;
-
         for (num_stars=1; num_stars<cand.size(); num_stars++)
             if (cand[num_stars] != '*') break;
-
         num_stars--;
-
         if (num_stars > 0) {
             debug(PARENS) << "cand = [" << cand << "]\n";
             debug(PARENS) << "num_stars = " << num_stars << "\n";
@@ -327,17 +326,16 @@ std::string createNonNullTests(std::string sourceString) {
                     tests = test + " && " + tests;
             }
         }
-        curr++;
+
+        curr ++;
     }
     return tests;
+
 }
 
 
 
-std::string getStringBetween(const SourceManager &sm,
-                             SourceLocation &l1,
-                             SourceLocation &l2,
-                             bool *inv) {
+std::string getStringBetween(const SourceManager &sm, SourceLocation &l1, SourceLocation &l2, bool *inv) {
     const char *buf = sm.getCharacterData(l1, inv);
     unsigned o1 = sm.getFileOffset(l1);
     unsigned o2 = sm.getFileOffset(l2);
@@ -348,18 +346,30 @@ std::string getStringBetween(const SourceManager &sm,
 
 
 
+
+
 // find location of str after loc
 // sets *inv=true if something went wrong or we didnt find
 
-SourceLocation getLocAfterStr(const SourceManager &sm,
-                              SourceLocation &loc,
-                              const char *str,
-                              unsigned str_len,
-                              unsigned max_search,
-                              bool *inv) {
+SourceLocation getLocAfterStr(const SourceManager &sm, SourceLocation &loc, const char *str, unsigned str_len, unsigned max_search, bool *inv) {
     const char *buf = sm.getCharacterData(loc, inv);
-    if (!(*inv)) {
-        // getCharacterData succeeded
+    if (*inv) {
+        // getchardata failed
+        return loc;
+    }
+    debug(PARENS) << "getCharacterData succeeded\n";
+    // getCharacterData succeeded
+    const char *p = strstr(buf, str);
+    if (p == NULL) {
+        // didnt find the string
+        *inv = true;
+        return loc;
+    }
+    // found the string.
+    *inv = false;
+    return loc.getLocWithOffset(p - buf);
+}
+/*
         const char *p = buf;
         *inv = true;
         while (true) {
@@ -382,15 +392,13 @@ SourceLocation getLocAfterStr(const SourceManager &sm,
     }
     return loc;
 }
-
+ */
 
 
 
 // comparison of source locations based on file offset
 // XXX better to make sure l1 and l2 in same file?
-int srcLocCmp(const SourceManager &sm,
-              SourceLocation &l1,
-              SourceLocation &l2) {
+int srcLocCmp(const SourceManager &sm, SourceLocation &l1, SourceLocation &l2) {
     unsigned o1 = sm.getFileOffset(l1);
     unsigned o2 = sm.getFileOffset(l2);
     if (o1<o2) return SCMP_LESS;
@@ -408,9 +416,9 @@ typedef std::vector < SLParenInfo > SLParensInfo;
   position in a string
 */
 
-SLParensInfo SLgetParens(const SourceManager &sm,
-                         SourceLocation &l1,
+SLParensInfo SLgetParens(const SourceManager &sm, SourceLocation &l1,
                          SourceLocation &l2) {
+
     SLParensInfo slparens;
     bool inv;
     std::string sourceStr = getStringBetween(sm, l1, l2, &inv);
@@ -422,7 +430,7 @@ SLParensInfo SLgetParens(const SourceManager &sm,
         ParensInfo parens = getParens(sourceStr);
         for (auto paren : parens) {
             size_t pos = std::get<0>(paren);
-            bool isopen = std::get<1>(paren);
+            unsigned isopen = std::get<1>(paren);
             unsigned level = std::get<2>(paren);
             debug(GENERAL) << "Found paren pair open=" << isopen << ", level=" << level << "\n";
             SourceLocation sl = l1.getLocWithOffset(pos);

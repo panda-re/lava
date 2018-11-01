@@ -38,9 +38,22 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const SourceManager &sm = *Result.SourceManager;
         const CallExpr *callExpr = Result.Nodes.getNodeAs<CallExpr>("call_expression");
-        const Stmt *cexpr = Result.Nodes.getNodeAs<Stmt>("call_expression");
-        //debug(INJECT) << ((findParent(cexpr, Result.Context)) ? "true" : "false") << "\n";
-        const Stmt* pre_compound = findParent(cexpr, Result.Context);
+
+        if (ArgDataflow) {
+            auto fnname = get_containing_function_name(Result, *callExpr);
+
+            // only instrument this printf with a read disclosure
+            // if it's in the body of a function that is on our whitelist
+            if (fninstr(fnname)) {
+                debug(INJECT) << "ReadDisclosureHandler: Containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
+            }
+            else {
+                debug(INJECT) << "ReadDisclosureHandler: Containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
+                return;
+            }
+
+            debug(INJECT) << "ReadDisclosureHandler handle: ok to instrument " << fnname.second << "\n";
+        }
 
         LExpr addend = LDecimal(0);
         // iterate through all the arguments in the call expression
@@ -69,5 +82,6 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
         }
     }
 };
+
 
 #endif
