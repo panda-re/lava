@@ -269,6 +269,37 @@ class LavaDatabase(object):
     def uninjected_random(self, fake, allowed_bugtypes=None):
         return self.uninjected2(fake, allowed_bugtypes).order_by(func.random())
 
+    def uninjected_random_by_atp_bugtype(self, fake, atp_types=None, allowed_bugtypes=None, atp_lim=10):
+        # For each ATP find X possible bugs,
+        # Returns dict list of lists:
+        #   {bugtype1:[[atp0_bug0, atp0_bug1,..], [atp1_bug0, atp1_bug1,..]],
+        #    bugtype2:[[atp0_bug0, atp0_bug1,..], [atp1_bug0, atp1_bug1,..]]}
+        # Where sublists are randomly sorted
+        if atp_types:
+            _atps = self.session.query(AttackPoint.id).filter(AttackPoint.typ.in_(atp_types)).all()
+        else:
+            _atps = self.session.query(AttackPoint.id).all()
+
+        atps = [r.id for r in _atps]
+        #print(atps)
+        print("Found {} distinct ATPs".format(len(atps)))
+
+        results = {}
+        assert(len(allowed_bugtypes)), "Requires bugtypes"
+
+        for bugtype in allowed_bugtypes:
+            results[bugtype] = []
+            for atp in atps:
+                q = self.session.query(Bug).filter(Bug.atp_id==atp).filter(~Bug.builds.any()) \
+                .filter(Bug.type == bugtype) \
+                .join(Bug.atp)\
+                .join(Bug.trigger)\
+                .join(DuaBytes.dua)\
+                .filter(Dua.fake_dua == fake)
+
+                results[bugtype].append(q.order_by(func.random()).limit(atp_lim).all())
+        return results
+
     def uninjected_random_by_atp(self, fake, atp_types=None,
                                  allowed_bugtypes=None, atp_lim=10):
         # For each ATP find X possible bugs,
@@ -444,8 +475,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug,
 
 # run lavatool on this file to inject any parts of this list of bugs
 def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
-                 knobTrigger=False, dataflow=False, competition=False,
-                 multi=False, stage=0):
+                 knobTrigger=False, dataflow=False, competition=False):
     print("Running lavaTool on [{}]...".format(filename))
     lt_debug = False
     if (len(bug_list)) == 0:
@@ -470,23 +500,12 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
         cmd.append("-debug")
     if dataflow:
         cmd.append('-arg_dataflow')
-    if knobTrigger:
+    if knobTrigger > 0:
         cmd.append('-kt')
     if project["preprocessed"]:
         cmd.append('-lava-wl=' + fninstr)
     if competition:
         cmd.append('-competition')
-    if multi is True:
-        print("LavaTool running stage {}".format(stage))
-        if stage == 1:
-            cmd.append('-stage')
-            cmd.append('stage_one')
-        elif stage == 2:
-            cmd.append('-stage')
-            cmd.append('stage_two')
-        elif stage == 3:
-            cmd.append('-stage')
-            cmd.append('stage_three')
 
     print("lavaTool command: {}".format(' '.join(cmd)))
 
@@ -572,7 +591,7 @@ class LavaPaths(object):
 # version of the program in bug_dir
 def inject_bugs(bug_list, db, lp, host_file, project, args,
                 update_db, dataflow=False, competition=False,
-                validated=False, stage='all'):
+                validated=False):
     # TODO: don't pass args, just pass the data we need to run
     # TODO: split into multiple functions, this is huge
 
@@ -763,70 +782,47 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
     bug_solutions = {}  # Returned by lavaTool
     for filename in all_files:
-        if stage == "multi":
-            run_lavatool(bugs_to_inject, lp, host_file, project,
-                         llvm_src, filename, multi=True, stage=1)
-            clang_apply = join(llvm_src, 'Release', 'bin',
-                               'clang-apply-replacements')
-            run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
-                              cwd=join(lp.bugs_build, dirname(filename)))
-
-            run_lavatool(bugs_to_inject, lp, host_file, project,
-                         llvm_src, filename, multi=True, stage=2)
-            clang_apply = join(llvm_src, 'Release', 'bin',
-                               'clang-apply-replacements')
-            run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
-                              cwd=join(lp.bugs_build, dirname(filename)))
-
-            run_lavatool(bugs_to_inject, lp, host_file, project,
-                         llvm_src, filename, multi=True, stage=3)
-            clang_apply = join(llvm_src, 'Release', 'bin',
-                               'clang-apply-replacements')
-            run_cmd_notimeout([clang_apply, '.', '-remove-change-desc-files'],
-                              cwd=join(lp.bugs_build, dirname(filename)))
-        else:
-            # TODO call on directories instead of each file,
-            # but still store results in bug_solutions
-            bug_solutions.update(modify_source(filename))
+        # TODO call on directories instead of each file,
+        # but still store results in bug_solutions
+        bug_solutions.update(modify_source(filename))
 
     # TODO: Use our ThreadPool for modifying source and update bug_solutions
     # with results instead of single-thread
     # if pool:
         # pool.map(modify_source, all_files)
-    if stage != "multi":
-        clang_apply = join(llvm_src, 'Release', 'bin',
-                           'clang-apply-replacements')
+    clang_apply = join(llvm_src, 'Release', 'bin',
+                        'clang-apply-replacements')
 
-        src_dirs = set()
-        for filename in all_files:
-            src_dir = dirname(filename)
-            src_dirs.add(src_dir)
+    src_dirs = set()
+    for filename in all_files:
+        src_dir = dirname(filename)
+        src_dirs.add(src_dir)
 
-        # TODO use pool here as well
-        for src_dir in src_dirs:
-            clang_cmd = [clang_apply, '.', '-remove-change-desc-files']
-            if debugging:  # Don't remove desc files
-                clang_cmd = [clang_apply, '.']
-            print("Apply replacements in {} with {}"
-                  .format(join(lp.bugs_build, src_dir), clang_cmd))
-            run_cmd_notimeout(clang_cmd, cwd=join(lp.bugs_build, src_dir))
+    # TODO use pool here as well
+    for src_dir in src_dirs:
+        clang_cmd = [clang_apply, '.', '-remove-change-desc-files']
+        if debugging:  # Don't remove desc files
+            clang_cmd = [clang_apply, '.']
+        print("Apply replacements in {} with {}"
+                .format(join(lp.bugs_build, src_dir), clang_cmd))
+        run_cmd_notimeout(clang_cmd, cwd=join(lp.bugs_build, src_dir))
 
-        # Ugh.  Lavatool very hard to get right
-        # Permit automated fixups via script after bugs inject
-        # but before make
-        if "injfixupsscript" in project.keys():
-            print("Running injfixupsscript: {}"
-                  .format(project["injfixupsscript"]
-                          .format(bug_build=lp.bugs_build), cwd=lp.bugs_build))
-            run_cmd(project["injfixupsscript"]
-                    .format(bug_build=lp.bugs_build), cwd=lp.bugs_build)
+    # Ugh.  Lavatool very hard to get right
+    # Permit automated fixups via script after bugs inject
+    # but before make
+    if "injfixupsscript" in project.keys():
+        print("Running injfixupsscript: {}"
+                .format(project["injfixupsscript"]
+                        .format(bug_build=lp.bugs_build), cwd=lp.bugs_build))
+        run_cmd(project["injfixupsscript"]
+                .format(bug_build=lp.bugs_build), cwd=lp.bugs_build)
 
-        if hasattr(args, "fixupscript"):
-            print("Running fixupscript: {}"
-                  .format(args.fixupscript.format(bug_build=lp.bugs_build),
-                          cwd=lp.bugs_build))
-            run_cmd(args.fixupsscript.format(bug_build=lp.bugs_build),
-                    cwd=lp.bugs_build)
+    if hasattr(args, "fixupscript"):
+        print("Running fixupscript: {}"
+                .format(args.fixupscript.format(bug_build=lp.bugs_build),
+                        cwd=lp.bugs_build))
+        run_cmd(args.fixupsscript.format(bug_build=lp.bugs_build),
+                cwd=lp.bugs_build)
 
     # paranoid clean -- some build systems need this
     if 'clean' in project.keys():
