@@ -334,13 +334,26 @@ std::string createNonNullTests(std::string sourceString) {
 }
 
 
+std::string getStringBetweenRange(const SourceManager &sm, SourceRange range, bool *inv) {
+    SourceLocation end = Lexer::getLocForEndOfToken(range.getEnd(), 0, sm, LangOptions());
+    *inv=false;
+    if(end == range.getBegin()) {
+        *inv=true;
+        return std::string("Invalid");
+    }
+    CharSourceRange char_range;
+    char_range.setBegin(range.getBegin());
+    char_range.setEnd(end);
+    llvm::StringRef ref = Lexer::getSourceText(char_range, sm, LangOptions());
+    return ref.str();
+}
 
 std::string getStringBetween(const SourceManager &sm, SourceLocation &l1, SourceLocation &l2, bool *inv) {
     const char *buf = sm.getCharacterData(l1, inv);
     unsigned o1 = sm.getFileOffset(l1);
     unsigned o2 = sm.getFileOffset(l2);
-    if (*inv)
-        return std::string("");
+    if (*inv or (o1 > o2))
+        return std::string("Invalid");
     return (std::string(buf, o2-o1+1));
 }
 
@@ -421,7 +434,7 @@ SLParensInfo SLgetParens(const SourceManager &sm, SourceLocation &l1,
 
     SLParensInfo slparens;
     bool inv;
-    std::string sourceStr = getStringBetween(sm, l1, l2, &inv);
+    std::string sourceStr = getStringBetweenRange(sm, SourceRange(l1, l2), &inv);
     debug(GENERAL) << "SLgetParens sourceStr = [" << sourceStr << "]\n";
     if (inv) {
         debug(GENERAL) << "Invalid\n";
