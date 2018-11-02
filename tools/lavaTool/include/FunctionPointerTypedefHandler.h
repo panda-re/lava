@@ -8,8 +8,8 @@ struct FunctionPointerTypedefHandler : public LavaMatchHandler {
         const TypedefDecl *td = Result.Nodes.getNodeAs<TypedefDecl>("typedefdecl");
         SourceLocation l1 = td->getLocStart();
         SourceLocation l2 = td->getLocEnd();
-        bool inv;
-        debug(FNARG) << "typedefdecl  : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "\n";
+        bool inv=false;
+        debug(FNARG) << "typedefdecl  : [" << getStringBetweenRange(*Mod.sm, td->getSourceRange(), &inv) << "\n";
         if (inv) {
             debug(FNARG) << "... is invalid\n";
             return;

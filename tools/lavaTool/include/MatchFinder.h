@@ -138,6 +138,7 @@ public:
                 typedefDecl().bind("typedefdecl"),
                 makeHandler<FunctionPointerTypedefHandler>());
         }
+
         /* addMatcher(
                 callExpr(
                     callee(functionDecl(hasName("::printf"))),
@@ -145,8 +146,6 @@ public:
                 makeHandler<ReadDisclosureHandler>()
                 ); */
     }
-
-
     virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
         Insert.clear();
         Mod.Reset(&CI.getLangOpts(), &CI.getSourceManager());

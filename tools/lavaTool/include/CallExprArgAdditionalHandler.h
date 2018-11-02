@@ -10,8 +10,8 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         SourceLocation l2 = call->getLocEnd();
         debug(FNARG) << "call->getLocStart = " << Mod.sm->getFileOffset(l1) << "\n";
         debug(FNARG) << "call->getLocEnd = " << Mod.sm->getFileOffset(l2) << "\n";
-        bool inv;
-        debug(FNARG) << "call : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
+        bool inv=false;
+        debug(FNARG) << "call : [" << getStringBetweenRange(*Mod.sm, call->getSourceRange(), &inv) << "]\n";
         assert(!inv);
         AddArgGen(Mod, l1, l2, true, call->getNumArgs(), 5);
     }
@@ -23,7 +23,7 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         bool inv;
         SourceLocation l1 = call->getLocStart();
         SourceLocation l2 = call->getLocEnd();
-        std::string cestr = getStringBetween(*Mod.sm, l1, l2, &inv);
+        std::string cestr = getStringBetweenRange(*Mod.sm, call->getSourceRange(), &inv);
         assert (!inv);
         debug(FNARG) << "callexpr: [" << cestr << "\n";
 

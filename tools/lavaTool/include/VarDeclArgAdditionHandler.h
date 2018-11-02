@@ -7,12 +7,11 @@ struct VarDeclArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
-        const VarDecl *vd =
-            Result.Nodes.getNodeAs<VarDecl>("vardecl");
+        const VarDecl *vd = Result.Nodes.getNodeAs<VarDecl>("vardecl");
         SourceLocation l1 = vd->getLocStart();
         SourceLocation l2 = vd->getLocEnd();
-        bool inv;
-        debug(FNARG) << "vardecl  : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
+        bool inv = false;
+        debug(FNARG) << "vardecl  : [" << getStringBetweenRange(*Mod.sm, vd->getSourceRange(), &inv) << "]\n";
         if (inv) {
             debug(FNARG) << "... is invalid\n";
             return;

@@ -10,7 +10,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         debug(FNARG) << "func->getLocStart = " << Mod.sm->getFileOffset(l1) << "\n";
         debug(FNARG) << "func->getLocEnd = " << Mod.sm->getFileOffset(l2) << "\n";
         bool inv;
-        debug(FNARG) << "func : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
+        debug(FNARG) << "func : [" << getStringBetweenRange(*Mod.sm, func->getSourceRange(), &inv) << "]\n";
 
         // We need the end of just the type signature part.
         // If this decl has a body, then that is the first '{' right?

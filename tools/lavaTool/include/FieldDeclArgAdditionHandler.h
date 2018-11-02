@@ -20,8 +20,8 @@ struct FieldDeclArgAdditionHandler : public LavaMatchHandler {
             Result.Nodes.getNodeAs<FieldDecl>("fielddecl");
         SourceLocation l1 = fd->getLocStart();
         SourceLocation l2 = fd->getLocEnd();
-        bool inv;
-        debug(FNARG) << "fielddecl  : [" << getStringBetween(*Mod.sm, l1, l2, &inv) << "]\n";
+        bool inv = false;
+        debug(FNARG) << "fielddecl  : [" << getStringBetweenRange(*Mod.sm, fd->getSourceRange(), &inv) << "]\n";
         if (inv) {
             debug(FNARG) << "... is invalid\n";
             return;

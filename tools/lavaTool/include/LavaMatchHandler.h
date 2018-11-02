@@ -40,7 +40,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                    bool isCall, unsigned numArgs, unsigned callsite) {
 
         bool inv;
-        debug(FNARG) << "AddArgGen " << callsite << " : [" << getStringBetween(*Mod.sm, startLoc, endLoc, &inv) << "]\n";
+        debug(FNARG) << "AddArgGen " << callsite << " : [" << getStringBetweenRange(*Mod.sm, SourceRange(startLoc, endLoc), &inv) << "]\n";
         if (inv) {
             debug(FNARG) << "invalid\n";
             return;
@@ -75,7 +75,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         // has to be there -- see getParens
         assert (found);
 
-        debug(FNARG) << "adding data flow at head of [" << getStringBetween(*Mod.sm, loc_param_start, endLoc, &inv) << "]\n";
+        debug(FNARG) << "adding data flow at head of [" << getStringBetweenRange(*Mod.sm, SourceRange(loc_param_start, endLoc), &inv) << "]\n";
 
         // insert data_flow arg
         if (already_added_arg.count(loc_param_start) == 0) {
