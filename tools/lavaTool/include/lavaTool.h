@@ -1,18 +1,27 @@
 #ifndef LAVATOOL_H
 #define LAVATOOL_H
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#ifndef __USE_GNU
+#define __USE_GNU
+#endif
+
+#include <map>
+#include <set>
+#include <vector>
+#include <string>
+#include <memory>
+#include <cstdint>
 #include <cassert>
 #include <cstdlib>
+#include <sstream>
 #include <fstream>
 #include <iostream>
-#include <sstream>
-#include <string>
-#include <vector>
-#include <map>
-#include <cstdint>
-#include <set>
-#include <memory>
 #include <iterator>
+#include <execinfo.h>
 
 extern "C" {
 #include <unistd.h>
@@ -73,6 +82,8 @@ std::set<std::string> whitelist;
 
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
+
+void my_terminate(void);
 
 struct LvalBytes {
     const SourceLval *lval;
@@ -178,6 +189,47 @@ static cl::opt<bool> ArgCompetition("competition",
     cl::init(false));
 
 unsigned int RANDOM_SEED = 0;
+
+namespace {
+    // invoke set_terminate as part of global constant initialization
+    static const bool SET_TERMINATE = std::set_terminate(my_terminate);
+}
+
+void my_terminate(void) {
+    static bool tried_throw = false;
+
+    std::cerr << "TEST\n";
+
+    try {
+        // try once to re-throw currently active exception
+        if (!tried_throw++) throw;
+    }
+    catch (const std::exception &e) {
+        std::cerr << __FUNCTION__ << " caught unhandled exception. what(): "
+                  << e.what() << std::endl;
+    }
+    catch (...) {
+        std::cerr << __FUNCTION__ << " caught unknown/unhandled exception."
+                  << std::endl;
+    }
+
+    void * array[50];
+    int size = backtrace(array, 50);
+
+    std::cerr << __FUNCTION__ << " backtrace returned "
+              << size << " frames\n\n";
+
+    char ** messages = backtrace_symbols(array, size);
+
+    for (int i = 0; i < size && messages != NULL; ++i) {
+        std::cerr << "[bt]: (" << i << ") " << messages[i] << std::endl;
+    }
+    std::cerr << std::endl;
+
+    free(messages);
+
+    abort();
+}
 
 template<typename K, typename V>
 const V &map_get_default(const std::map<K, V> &map, K key) {
