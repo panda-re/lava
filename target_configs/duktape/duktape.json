@@ -11,7 +11,7 @@
     "expect_prompt": "root@debian-i386:~#",
 
 
-    "make": "make",
+    "make": "make CFLAGS=-gdwarf-2",
     "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/duk {input_file}",
