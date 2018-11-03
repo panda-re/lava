@@ -19,7 +19,7 @@
 
     "max_liveness": 100000,
     "max_cardinality": 100,
-    "max_tcn": 10,
+    "max_tcn": 10000,
     "max_lval_size": 100,
 
     "main_file": [ "duktape-pre.c" ],

@@ -6,6 +6,7 @@
     "name": "toy",
     "db": "toy",
     "preprocessed": true,
+    "dataflow": "true",
 
     "tarfile": "toy-pre.tar.gz",
 
@@ -21,8 +22,6 @@
     "max_lval_size": 100,
 
     "main_file": [ "toy.c" ],
-
-    "dataflow": "true",
 
     "inputs": [ "inputs/testsmall.bin" ]
 }
