@@ -11,7 +11,7 @@ if sys.version_info.major >= 3:
     xrange = range
 
 kDrivers = [
-    "cc", "c++",
+    "cc", "c++", "cc1",
     "gcc", "g++",
     "clang", "clang++",
 ]
@@ -115,6 +115,7 @@ def extractSourceFile(command, include_path):
     # of a compiler driver invocation.
 
     # TODO: this misses gcc foo.c -o foo; it only catches gcc -c foo.c -o foo. Can't we default to assuming it's -c?
+
     if not command.isCompilerDriver or isChildOfCompilerDriver(command) or \
             compileMode(command.argv) != "-c":
         return None
@@ -145,14 +146,9 @@ def extractSourceFile(command, include_path):
             (command.line, absoluteInputFile))
         return None
 
-    cmd = json.dumps(joinCommandLine(command.argv) + " -I" + include_path)
-    cmd = cmd.replace('\\"', '\\\\\\"')
+    cmd = joinCommandLine(command.argv) + " -I" + include_path
 
-    output =  '{\n'
-    output += '  "directory" : %s,\n' % json.dumps(command.cwd)
-    output += '  "command" : %s,\n' % cmd
-    output += '  "file" : %s\n' % json.dumps(inputFile)
-    output += '}'
+    output = {"directory": command.cwd, "command": cmd, "file": inputFile}
 
     return output
 
@@ -165,23 +161,19 @@ def main():
         return
     include_path = sys.argv[1]
 
-    firstFile = True
     commands = readFile("btrace.log")
-    import os
-    os.remove("btrace.log")
-    f = open("compile_commands.json", "w")
-    f.write("[")
+
+    results = []
     for x in commands:
         sourceFile = extractSourceFile(x, include_path)
         if sourceFile is not None:
-            if not firstFile:
-                f.write(",")
-            firstFile = False
-            f.write("\n")
-            f.write(sourceFile)
-    f.write("\n]")
-    f.close()
+            results.append(sourceFile)
 
+    if not len(results):
+        raise RuntimeError("No source files found by sw-btrace-to-compilerdb")
+
+    with open("compile_commands.json", "w") as f:
+        json.dump(results, f)
 
 if __name__ == "__main__":
     main()
