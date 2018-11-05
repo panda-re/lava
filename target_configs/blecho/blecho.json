@@ -1,0 +1,27 @@
+{
+  "name": "blecho",
+  "db": "blecho",
+  "preprocessed" : true,
+  "dataflow": true,
+
+  "tarfile": "blecho.tar.gz",
+
+  "qcow": "wheezy_panda2.qcow2",
+  "snapshot": "root",
+  "expect_prompt": "root@debian-i386:~#",
+
+  "configure": "/bin/true",
+  "make": "make CFLAGS=-gdwarf-2",
+  "clean": "make clean",
+  "install": "make install",
+  "command": "{install_dir}/bin/blecho 5 123456789 12 /tmp/blecho_memory < {input_file}",
+
+  "max_liveness": 100000,
+  "max_cardinality": 100,
+  "max_tcn": 100,
+  "max_lval_size": 100,
+
+  "main_file": [ "blecho.c" ],
+
+  "inputs": [ "inputs/tests" ]
+}
