@@ -12,7 +12,7 @@
 
 
     "configure": "true",
-    "make": "make",
+    "make": "make CFLAGS=-gdwarf-2",
     "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/pcre2grep -f {input_file} /etc/passwd",
