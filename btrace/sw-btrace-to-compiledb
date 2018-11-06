@@ -173,7 +173,7 @@ def main():
         raise RuntimeError("No source files found by sw-btrace-to-compilerdb")
 
     with open("compile_commands.json", "w") as f:
-        json.dump(results, f)
+        json.dump(results, f, indent=4)
 
 if __name__ == "__main__":
     main()
