@@ -85,7 +85,10 @@ set (LLVM_LIBS
     LLVMCore
     LLVMSupport
 )
-find_package(LLVM CONFIG)
+
+if(DEFINED ENV{LLVM_DIR})
+    find_package(LLVM CONFIG)
+endif()
 
 set (LLVM_CLANG_LINK_LIBRARIES
     ${CLANG_LIBS}

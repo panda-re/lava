@@ -51,17 +51,14 @@ def get_bug_list(args, db, allowed_bugtypes):
 
         if args.balancebugtype:
             bugs_to_inject = db.uninjected_random_balance(False, num_bugs_to_inject, allowed_bugtypes)
-            print "bugs_to_inject mbr {}".format(bugs_to_inject)
         else:
             bugs_to_inject = db.uninjected_random_limit(allowed_bugtypes=allowed_bugtypes, count=num_bugs_to_inject)
-            print "bugs_to_inject mbr {}".format(bugs_to_inject)
 
         bug_list = [b.id for b in bugs_to_inject]
         print "%d is size of bug_list" % (len(bug_list))
         update_db = True
     else:
         assert False
-    print "Bug_list_mbr {}".format(bug_list)
     return update_db, bug_list
 
 
@@ -156,7 +153,7 @@ if __name__ == "__main__":
     bugs_parent = get_bugs_parent(lp)
 
     # Remove all old YAML files
-    run_cmd(["rm {}/*.yaml".format(lp.bugs_build)], None, 10, cwd="/", shell=True)
+    run_cmd(["rm -f {}/*.yaml".format(lp.bugs_build)], None, 10, cwd="/", shell=True)
 
 
     # obtain list of bugs to inject based on cmd-line args and consulting db
