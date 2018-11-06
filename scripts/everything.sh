@@ -14,7 +14,7 @@
 #                and knobSize changes how origFile is mutated
 # -b [bugType] : use this to specify attact point type: [mem_write|mem_read|fn_arg]
 #
-# everything -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
+# everything -a -d -r -q -m -t -n [num_bugs_to_inject] -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
 #
 # Here is what everything consists of.
 #
@@ -75,7 +75,7 @@ many=50
 
 echo
 progress "everything" 0 "Parsing args"
-while getopts  "farcqmtb:i:z:y:kd" flag
+while getopts  "farcqmtb:i:z:y:n:kd" flag
 do
   if [ "$flag" = "a" ]; then
       reset=1
@@ -122,6 +122,10 @@ do
   if [ "$flag" = "y" ]; then
       bugtypes=$OPTARG
       progress "everything" 0 "Injecting bugs of type(s): $bugtypes"
+  fi
+  if [ "$flag" = "n" ]; then
+      many=$OPTARG
+      progress "everything" 0 "Number of injected bug at the same time: $many"
   fi
   if [ "$flag" = "z" ]; then
       knob=$OPTARG
