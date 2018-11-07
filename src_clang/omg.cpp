@@ -174,7 +174,7 @@ ParensInfo getParens(std::string sourceString) {
                   delete from x to y, inclusive
         */
 
-#if 0
+//#if 0
         std::string ws;
 
 remove_attributes:
@@ -226,7 +226,7 @@ remove_attributes:
                 }
             }
         }
-#endif
+//#endif
 
         ParenInfo &cp = parens[l-1];
         ParenInfo &op = parens[0];

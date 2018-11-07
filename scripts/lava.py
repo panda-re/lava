@@ -727,7 +727,10 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
         if debugging: # Don't remove desc files
             clang_cmd =  [clang_apply, '.']
         print("Apply replacements in {} with {}".format(join(lp.bugs_build, src_dir), clang_cmd))
-        run_cmd_notimeout(clang_cmd, cwd=join(lp.bugs_build, src_dir))
+        (rv, outp) = run_cmd_notimeout(clang_cmd, cwd=join(lp.bugs_build, src_dir))
+        print(outp)
+        assert(rv == 0)
+
         
     # Ugh.  Lavatool very hard to get right
     # Permit automated fixups via script after bugs inject
