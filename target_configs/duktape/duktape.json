@@ -12,7 +12,6 @@
 
 
     "make": "make",
-    "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/duk {input_file}",
     "injfixupsscript": "duktape_fixup.sh {bug_build}",

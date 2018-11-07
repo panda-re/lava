@@ -1,0 +1,59 @@
+var1+var2+var3
+var1+(((2+(1))))
+var1-(1)
+var1*(1,2),3
+var1%(3*2)*4
+(3*2*4)
+(3*2/4)
+(3+2)+4
+(3/2*4)
+(3/2/4)
+(asin sin (-0.5))
+-(1,(2,3))
+--(1e2^(+(-(-(-.5e0))))+1e0)
+1
+1+var2
+1+1,2+2,2+1
+1,(2,3)
+100 ^.5+1
+100^---+-++---++-+-+-.5+1
+100^---.5+1
+100^--.5+1
+100^-.5+1
+100^.5+1
+10^5*5e-5
+1e2^+---.5e0+1e0
+2+1
+3-(2-4)
+asin sin (-0.5)
+asin sin -0.5
+asin sin .5
+asin sin-.5
+asin sin-0.5
+atan2(3+3,4*2)
+atan2(3,4)
+e*var3
+foo*zoo*moo+wat
+evar1p ln .5
+fdef TE_NAT_LOG
+ln (e^10)
+ln evar1p .5
+log (e^10)
+log 1000
+log 1000
+log e
+log10 1.0e3
+log10 1000
+log10 1000
+log10 1e3
+log10 1e3
+log10(1000)
+log10(1e3)
+lse
+ndif
+pi
+pow(2,2)
+sin asin .5
+sqrt (100 * 100)
+sqrt 100 * 7
+sqrt var1 + 7

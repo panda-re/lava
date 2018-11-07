@@ -175,57 +175,63 @@ ParensInfo getParens(std::string sourceString) {
         */
 
 //#if 0
+// This is a bad hack that will NOT WORK for all inputs and it never will. We need a better solution for data-flow
+// injections into function arguments
+// We often see lines with "__attribute__((foo)) fn_def(arg1, arg2)" or "fn_def(arg1, arg2) __attribute__((foo))"
+// If the line we have contains "((" and "))" then ignore those when matching
         std::string ws;
 
+    if (sourceString.find("__attribute__") != std::string::npos) {
 remove_attributes:
-        for (auto p : parens) {
-            ws = "";
-            for (int i=0;i<std::get<0>(p); i++) ws+=" ";
-            debug(PARENS) << ws << "| paren " << std::get<0>(p)
-                      << " " << std::get<1>(p)
-                      << " " << std::get<2>(p) << "\n";
-        }
+            for (auto p : parens) {
+                ws = "";
+                for (int i=0;i<std::get<0>(p); i++) ws+=" ";
+                debug(PARENS) << ws << "| paren " << std::get<0>(p)
+                          << " " << std::get<1>(p)
+                          << " " << std::get<2>(p) << "\n";
+            }
 
-        // TODO something like __attribute__ ( (foo)) is probably valid too, need to ignore whitespace
-        for (auto oparen=parens.begin(); oparen != parens.end(); ++oparen) {
-            unsigned int o_idx   = std::get<0>(*oparen);
-            bool         o_open  = std::get<1>(*oparen);
-            unsigned int o_level = std::get<2>(*oparen);
+            // TODO something like __attribute__ ( (foo)) is probably valid too, need to ignore whitespace
+            for (auto oparen=parens.begin(); oparen != parens.end(); ++oparen) {
+                unsigned int o_idx   = std::get<0>(*oparen);
+                bool         o_open  = std::get<1>(*oparen);
+                unsigned int o_level = std::get<2>(*oparen);
 
-            if (o_level != 1 || o_open!=true) continue; // We only want level 1 opens
-            if ((oparen+1) == parens.end()) continue;
+                if (o_level != 1 || o_open!=true) continue; // We only want level 1 opens
+                if ((oparen+1) == parens.end()) continue;
 
-            // If there's another ( next, get it
-            auto oparen2 = oparen+1;
-            if (std::get<0>(*oparen2)==o_idx+1 &&   // Found adjacent open
-                            std::get<1>(*oparen2)) {
-                debug(PARENS) << "\tFound set of adjacent open parens at " << o_idx << "\n";
+                // If there's another ( next, get it
+                auto oparen2 = oparen+1;
+                if (std::get<0>(*oparen2)==o_idx+1 &&   // Found adjacent open
+                                std::get<1>(*oparen2)) {
+                    debug(PARENS) << "\tFound set of adjacent open parens at " << o_idx << "\n";
 
-                // Find next close paren that matches to inner open paren
-                for (auto cparen=oparen2; cparen != parens.end(); ++cparen) {
-                    unsigned int c_idx   = std::get<0>(*cparen);
-                    bool         c_open  = std::get<1>(*cparen);
-                    unsigned int c_level = std::get<2>(*cparen);
-                    if (!c_open && c_level == 2) {
-                        // Found match
-                        debug(PARENS) << "\tFound first close paren at " << c_idx << "\n";
-                        if ((cparen+1) == parens.end()) continue;
+                    // Find next close paren that matches to inner open paren
+                    for (auto cparen=oparen2; cparen != parens.end(); ++cparen) {
+                        unsigned int c_idx   = std::get<0>(*cparen);
+                        bool         c_open  = std::get<1>(*cparen);
+                        unsigned int c_level = std::get<2>(*cparen);
+                        if (!c_open && c_level == 2) {
+                            // Found match
+                            debug(PARENS) << "\tFound first close paren at " << c_idx << "\n";
+                            if ((cparen+1) == parens.end()) continue;
 
-                        // If there's another ) next, get it
-                        auto cparen2=cparen+1;
-                        if (std::get<0>(*cparen2)==c_idx+1 && !std::get<1>(*cparen2)) { // idx is +1 from close idx, and is close
-                            debug(PARENS) << ("\tFOUND ((...)) pair, removing\n");
-                            // Delete all elements with idx between (o_idx, c_idx), inclusive
-                            parens.erase(oparen, cparen2+1); // Include cparen2 in the delete
-                            goto remove_attributes;
+                            // If there's another ) next, get it
+                            auto cparen2=cparen+1;
+                            if (std::get<0>(*cparen2)==c_idx+1 && !std::get<1>(*cparen2)) { // idx is +1 from close idx, and is close
+                                debug(PARENS) << ("\tFOUND ((...)) pair, removing\n");
+                                // Delete all elements with idx between (o_idx, c_idx), inclusive
+                                parens.erase(oparen, cparen2+1); // Include cparen2 in the delete
+                                goto remove_attributes;
+                            }
+                            // We only want to examine the first matching close paren, break after
+                            // XXX this may be a bad assumption that this list is ordered
+                            break;
                         }
-                        // We only want to examine the first matching close paren, break after
-                        // XXX this may be a bad assumption that this list is ordered
-                        break;
                     }
                 }
             }
-        }
+    }
 //#endif
 
         ParenInfo &cp = parens[l-1];
