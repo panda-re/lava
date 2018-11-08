@@ -290,9 +290,9 @@ def main():
         LLVM_DOCKER_DIR = '/llvm-{}'.format(LLVM_VERSION)
         f.write(LLVM_MAK.format(LLVM_BUILD_PATH=LLVM_DOCKER_DIR,
                                 LLVM_SRC_PATH=LLVM_DOCKER_DIR))
+    run_docker(['rm', '-rf', join(LAVA_DIR, 'tools/build')])
     run_docker(['mkdir', '-p', join(LAVA_DIR, 'tools/build')])
     run_docker(['mkdir', '-p', join(LAVA_DIR, 'tools/install')])
-    run_docker(['rm', '-rf', join(LAVA_DIR, 'tools/build/*')])
 
     run_docker(['cmake', '-B{}'.format(join(LAVA_DIR, 'tools/build')),
                 '-H{}'.format(join(LAVA_DIR, 'tools')),
