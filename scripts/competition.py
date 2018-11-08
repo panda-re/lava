@@ -369,7 +369,7 @@ def main():
         """.format(
             bugs_build=bd,
             make_clean = project["clean"] if "clean" in project.keys() else "",
-            configure=project['configure'],
+            configure=project['configure'] if "configure" in project.keys() else "",
             log_make = log_make,
             internal_builddir = internal_builddir,
             install = project['install'].format(install_dir=lava_installdir),
@@ -509,7 +509,7 @@ def main():
         """.format(
             bugs_build=bd,
             make_clean = project["clean"] if "clean" in project.keys() else "",
-            configure=project['configure'],
+            configure=project['configure'] if "configure" in project.keys() else "",
             make = project['make'],
             public_builddir = public_builddir,
             install = project['install'].format(install_dir=lava_installdir),
@@ -561,8 +561,15 @@ done""".format(command = project['command'].format(**{"install_dir": "./lava-ins
     os.chmod(trigger_all_crashes, (stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IROTH | stat.S_IXOTH))
     # Build a version to ship in src
     run_builds([log_build_sh, public_build_sh])
-    print("Success! Competition build in {}".format(corpdir))
     print("Injected {} bugs".format(len(real_bug_list)))
+
+    print("Counting how many crashes competition infrastructure identifies:...")
+    run_cmd(trigger_all_crashes) # Prints about segfaults
+    (rv, outp) = run_cmd("wc -l {}".format(join(corpdir, "validated_bugs.txt")))
+
+    print("Competition infrastructure found: {} of injected {} bugs".format(outp[0]+outp[1],
+                                                                     len(real_bug_list)))
+    print("Success! Competition build in {}".format(corpdir))
 
 
 if __name__ == "__main__":
