@@ -39,6 +39,9 @@ extradockerargs="$(jq -r .extra_docker_args $json)"
 exitCode="$(jq -r .expected_exit_code $json)"
 dataflow="$(jq -r '.dataflow // "false"' $json)" # TODO use everywhere, stop passing as argument
 
+# List of function names to blacklist for data_flow injection, merged as fn1\|fn2\|fn3 so we can use sed
+df_fn_blacklist=`jq -r '.df_fn_blacklist // "" | join ("\\\\|")' $json`
+
 tarfiledir="$tar_dir"
 tarfile="$tarfiledir/$(jq -r '.tarfile' $json)"
 directory=$output_dir

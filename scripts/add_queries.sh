@@ -143,6 +143,12 @@ if [ "$dataflow" = "true" ]; then
     echo -e "\twith command: \"python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles\""
     python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles
 
+    if [[ ! -z "$df_fn_blacklist" ]]; then
+        cmd=$(echo "sed -i /${df_fn_blacklist}/d $fninstr")
+        echo "Removing blacklisted functions with regex: $df_fn_blacklist"
+        $cmd
+    fi
+
     # Insert queries with DF - could merge this with the else if logic below instead of duplicating
     # TODO: Just make lavaTool load dataflow from project.json instead of passing as CLI arg.
     # Since it's okay to pass the whitelist either way
