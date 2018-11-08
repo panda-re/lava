@@ -129,9 +129,16 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             #weight by bugtype
 
 
-            #TODO make this work for any selected bugtypes and hardcode expected yields for each
-            assert(allowed_bugtypes == [Bug.PTR_ADD, Bug.REL_WRITE]), "TODO: probabilitic bug selection with variable bugtypes not yet supported"
-            this_bugtype = random_choice([Bug.REL_WRITE, Bug.PTR_ADD], [85, 15])
+            # Of the allowed bugtypes, the ratio will be normalized. 
+            # As this is now, we'll pick REL_WRITES (multiduas) more often than others because they work less frequently
+            # Ratios for RET_BUFFER and PRINTF_LEAK are just guesses
+            bug_ratios = {Bug.REL_WRITE: 85, Bug.PTR_ADD: 15, Bug.RET_BUFFER: 15, Bug.PRINTF_LEAK: 15}
+            for x in allowed_bugtypes:
+                if x not in bug_ratios:
+                    assert("Bug type {} not in bug_ratios. Fix me!".format(Bug.type_strings[this_bugtype]))
+            allowed_bug_ratios = [bug_ratios[x] for x in allowed_bugtypes]
+
+            this_bugtype = random_choice(allowed_bugtypes, allowed_bug_ratios)
             #print("Selected bugtype {}".format(Bug.type_strings[this_bugtype]))
 
             this_bugtype_atp_item_lists = atp_item_lists[this_bugtype]
