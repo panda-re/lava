@@ -44,6 +44,7 @@ extern "C" {
 #include "lava.hxx"
 #include "lava-odb.hxx"
 #include "spit.hxx"
+#include "lava_version.h"
 #include <odb/pgsql/database.hxx>
 #include <odb/session.hxx>
 
@@ -900,6 +901,7 @@ void record_ret(Panda__LogEntry *ple) { }
 
 int main (int argc, char **argv) {
     if (argc != 5) {
+        printf("Find Bug Inject (FBI) -- Version %s\n", LAVA_VER);
         printf("usage: fbi host.json ProjectName pandalog inputfile\n");
         printf("    Project JSON file should have properties:\n");
         printf("        max_liveness: Maximum liveness for DUAs\n");

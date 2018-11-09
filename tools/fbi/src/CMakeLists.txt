@@ -1,4 +1,4 @@
-project (Fbi VERSION 2.0.0 LANGUAGES CXX)
+project (FBI LANGUAGES CXX)
 
 # Panda src, headers and build locations
 set (PANDA_SRC_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../../panda/src)
@@ -35,6 +35,7 @@ target_include_directories(fbi BEFORE
         ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaDB/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/generated
         ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../include
         ${PANDA_SRC_PATH}/panda/include
         ${PANDA_BUILD_DIR}/i386-softmmu
         /usr/lib/odb/x86_64-linux-gnu/include

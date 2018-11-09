@@ -34,8 +34,10 @@ void parse_whitelist(std::string whitelist_filename) {
 }
 
 int main(int argc, const char **argv) {
-    std::cout << "Starting lavaTool...\n";
+    cl::SetVersionPrinter(printVersion);
     CommonOptionsParser op(argc, argv, LavaCategory);
+
+    std::cout << "Starting lavaTool...\n";
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
     ClangTool Tool(op.getCompilations(), op.getSourcePathList());
     RANDOM_SEED = ArgRandSeed;
