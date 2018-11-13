@@ -3,6 +3,7 @@
 RUN echo deb http://httpredir.debian.org/debian wheezy-backports main >> /etc/apt/sources.list
 RUN apt-get update
 RUN apt-get install -y build-essential python
+RUN apt-get install -y emacs
 
 ENV release 3.6.2
 ENV llvm_version llvm-${release}
