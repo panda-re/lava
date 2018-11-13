@@ -59,7 +59,7 @@ extern "C" {
 #define FNARG   (1 << 2)
 #define PRI     (1 << 3)
 #define INI     (1 << 4)
-#define DEBUG_FLAGS ( INI | MATCHER | INJECT | FNARG | PRI)
+#define DEBUG_FLAGS INI // ( INI | MATCHER | INJECT | FNARG | PRI)
 #define ARG_NAME "data_flow"
 
 using namespace odb::core;
@@ -156,6 +156,13 @@ static cl::opt<unsigned int> ArgRandSeed("randseed",
     cl::cat(LavaCategory),
     cl::init(0));
 
+
+// Normally we inject everywhere unless dataflow is specified
+// and when it is, we only inject in our whitelist.
+// If this is set to true, we will use the whitelist always,
+// even when dataflow is not set. May help with some issues
+// where we inject into bad places
+bool USE_QUERY_WHITELIST=true;
 
 std::string LavaPath;
 
@@ -926,7 +933,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         const Stmt *toSiphon = Result.Nodes.getNodeAs<Stmt>("stmt");
         const SourceManager &sm = *Result.SourceManager;
 
-        if (ArgDataflow) {
+        if (ArgDataflow || USE_QUERY_WHITELIST) {
             auto fnname = get_containing_function_name(Result, *toSiphon);
 
             // only instrument this stmt
@@ -1879,7 +1886,7 @@ int main(int argc, const char **argv) {
     RANDOM_SEED = ArgRandSeed;
     srand(RANDOM_SEED);
 
-    if (ArgDataflow || ArgDebug) {
+    if (ArgDataflow || ArgDebug || USE_QUERY_WHITELIST) {
         if (LavaWL != "XXX") {
             parse_whitelist(LavaWL);
         } else {
