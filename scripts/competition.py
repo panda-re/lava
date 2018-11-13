@@ -109,7 +109,10 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
 
     if buglist is None:
         abort = False
-        atp_types = [AttackPoint.FUNCTION_CALL, AttackPoint.POINTER_WRITE] # TODO we don't find rel_writes at function calls
+        # Note atp_types are different from bugtypes, there are places we can attack, not how we do so
+        # but the names overlap and are kind of related
+        # TODO we don't find rel_writes at function calls
+        atp_types = [AttackPoint.FUNCTION_CALL, AttackPoint.POINTER_WRITE]
 
         # Get limit bugs at each ATP
         #atp_item_lists = db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
@@ -132,7 +135,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             # Of the allowed bugtypes, the ratio will be normalized. 
             # As this is now, we'll pick REL_WRITES (multiduas) more often than others because they work less frequently
             # Ratios for RET_BUFFER and PRINTF_LEAK are just guesses
-            bug_ratios = {Bug.REL_WRITE: 85, Bug.PTR_ADD: 15, Bug.RET_BUFFER: 15, Bug.PRINTF_LEAK: 15}
+            bug_ratios = {Bug.REL_WRITE: 200, Bug.PTR_ADD: 15, Bug.RET_BUFFER: 15, Bug.PRINTF_LEAK: 15}
             for x in allowed_bugtypes:
                 if x not in bug_ratios:
                     assert("Bug type {} not in bug_ratios. Fix me!".format(Bug.type_strings[this_bugtype]))
@@ -564,11 +567,12 @@ done""".format(command = project['command'].format(**{"install_dir": "./lava-ins
     print("Injected {} bugs".format(len(real_bug_list)))
 
     print("Counting how many crashes competition infrastructure identifies:...")
-    run_cmd(trigger_all_crashes) # Prints about segfaults
-    (rv, outp) = run_cmd("wc -l {}".format(join(corpdir, "validated_bugs.txt")))
+    run_cmd(trigger_all_crashes, cwd=corpdir) # Prints about segfaults
+    (rv, outp) = run_cmd("wc -l validated_bugs.txt", cwd=corpdir)
 
-    print("Competition infrastructure found: {} of injected {} bugs".format(outp[0]+outp[1],
-                                                                     len(real_bug_list)))
+    print("Competition infrastructure found: {} of {} injected "\
+          "bugs".format((outp[0]+outp[1]).replace(".txt\n",""), len(real_bug_list)))
+
     print("Success! Competition build in {}".format(corpdir))
 
 
