@@ -566,8 +566,12 @@ def collect_src_and_print(bugs_to_inject, db):
                 print("  ", extra_id, "   @   ", dua_bytes.dua)
                 print("     Src_file: ", dua_bytes.dua.lval.loc_filename)
 
-                # Add files for extra_duas into src_files and input_files
-                src_files.add(dua_bytes.dua.lval.loc_filename)
+                # Add filesnames for extra_duas into src_files and input_files
+                # Note this is the file _name_ not the path
+                file_name = dua_bytes.dua.lval.loc_filename
+                if "/" in file_name:
+                    file_name = file_name.split("/")[1]
+                src_files.add(file_name)
                 #input_files.add(lval.inputfile)
 
         print("ATP:")
