@@ -29,7 +29,7 @@ from process_compile_commands import get_c_files, process_compile_commands
 
 Base = declarative_base()
 
-debugging = False
+debugging = True
 NUM_BUGTYPES = 3 # Make sure this matches what's in lavaTool
 
 class Loc(Composite):
@@ -618,9 +618,12 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
         print("Making with btrace...")
         # run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]) # Remove?
         for make_cmd in project['make'].split('&&'):
-            if competition: make_cmd += ' CFLAGS+=\"-DLAVA_LOGGING\"'
+            envv = {}
+            if competition:
+                envv["CFLAGS"] = "-DLAVA_LOGGING"
             print('Running make command: ', make_cmd)
-            run([join(lp.lava_dir, 'btrace', 'sw-btrace')] + shlex.split(make_cmd))
+            path = join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace')
+            run_cmd(shelex.split(make_cmd), envv, 30, cwd=path)
     sys.stdout.flush()
     sys.stderr.flush()
     dataflow = dataflow
@@ -710,7 +713,32 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
                             knobTrigger=args.knobTrigger, dataflow=dataflow, competition=competition,
                             randseed=lavatoolseed)
 
+    clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
     bug_solutions =  {} # Returned by lavaTool
+
+    src_dirs = set()
+    for filename in all_files:
+        src_dir = dirname(filename)
+        src_dirs.add(src_dir)
+
+    # TODO: This is a hack, we should initialize variables in the pre-processed source code instead
+    # First run lavatool with -init flag
+    if False:
+        for filename in all_files:
+            initcmd = [lp.lava_tool, '-action=init',
+                         '-src-prefix=' + lp.bugs_build, join(lp.bugs_build, filename)]
+            print("lavaTool init command: {}".format(' '.join(initcmd)))
+            run_cmd_notimeout(initcmd)
+
+        # Now apply replacements
+        for src_dir in src_dirs:
+            clang_cmd = [clang_apply, '.', '-remove-change-desc-files']
+            print("Apply replacements in {} with {}".format(join(lp.bugs_build, src_dir), clang_cmd))
+            (rv, outp) = run_cmd_notimeout(clang_cmd, cwd=join(lp.bugs_build, src_dir))
+            print(outp)
+            assert(rv == 0)
+    # End init hack
+
     for filename in all_files:
         bug_solutions.update(modify_source(filename)) #TODO call on directories instead of each file, but still store results in bug_solutions
 
@@ -718,12 +746,6 @@ def inject_bugs(bug_list, db, lp, host_file, project, args, update_db, dataflow=
     #if pool:
         #pool.map(modify_source, all_files)
 
-    clang_apply = join(lp.lava_dir, 'src_clang', 'build', 'clang-apply-replacements')
-
-    src_dirs = set()
-    for filename in all_files:
-        src_dir = dirname(filename)
-        src_dirs.add(src_dir)
 
     # TODO use pool here as well
     for src_dir in src_dirs:
@@ -1048,6 +1070,7 @@ def get_bugs(db, bug_id_list):
 def get_allowed_bugtype_num(args):    
     allowed_bugtype_nums = []
     for bugtype_name in args.bugtypes.split(","):
+        if not len(bugtype_name): continue
         btnl = bugtype_name.lower()
         bugtype_num = None
         for i in range(len(Bug.type_strings)):
