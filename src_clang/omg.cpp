@@ -137,7 +137,7 @@ ParensInfo getParens(std::string sourceString) {
         // no valid next open or close -- exit loop
         if (nt == NtInvalid) break;
         size_t nextLoc;
-        debug(PARENS) << "NT is " << nt << "\n";
+        debug(PARENS) << "NT is " << ((nt==NtOpen)?"(":")") << "\n";
         switch (nt) {
         case NtOpen:
             // '(' is next thing
@@ -280,6 +280,7 @@ remove_attributes:
 
 std::string createNonNullTests(std::string sourceString) {
     ParensInfo parens = getParens(sourceString);
+    debug(PARENS) << "nntest [" << sourceString << "]\n";
     size_t curr = 0;
     size_t len = parens.size();
     std::string tests = "";
@@ -293,7 +294,7 @@ std::string createNonNullTests(std::string sourceString) {
                 break;
         }
 
-        if (!found) break; // :nd loop after parsing last pair of parens
+        if (!found) break; // end loop after parsing last pair of parens
         ParenInfo oinfo = parens[i_open];
         size_t opos = std::get<0>(oinfo);
         unsigned olevel = std::get<2>(oinfo);
