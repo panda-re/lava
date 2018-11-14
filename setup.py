@@ -298,7 +298,7 @@ def main():
                 '-H{}'.format(join(LAVA_DIR, 'tools')),
                 '-DCMAKE_INSTALL_PREFIX={}'.format(join(LAVA_DIR,
                                                         'tools/install'))])
-    run_docker(['make', 'install', '-C',
+    run_docker(['make','--no-print-directory','-j4', 'install', '-C',
                 join(LAVA_DIR, 'tools/build/lavaTool')])
 
     # ensure /etc/apt/sources.list has all of the deb-src lines uncommented
@@ -370,8 +370,7 @@ def main():
     progress("Compiling fbi")
 
     os.chdir(join(LAVA_DIR, "tools/build"))
-    # run("make fbi")
-    run("make -C fbi install")
+    run("make --no-print-directory -j4 -C fbi install")
     os.chdir(LAVA_DIR)
 
     return 0

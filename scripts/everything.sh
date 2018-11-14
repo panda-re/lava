@@ -39,10 +39,12 @@
 # fixupscript: script to run after add_query to fix up src before make
 #
 
+version="2.0.0"
 trap '' PIPE
 set -e # Exit on error
 
 USAGE() {
+  echo "everything.sh version $version"
   echo "USAGE: $0 -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] ProjectName"
   echo "       . . . or just $0 -ak ProjectName"
   exit 1

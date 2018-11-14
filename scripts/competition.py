@@ -31,6 +31,7 @@ from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
 # from pycparser.diversifier.diversify import diversify
 #from process_compile_commands import get_c_files
 
+version="2.0.0"
 
 RETRY_COUNT = 0
 
@@ -191,7 +192,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
     return [b.id for b in bugs_and_non_bugs]
 
 def main():
-    parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
+    parser = argparse.ArgumentParser(prog="competition.py", description='Inject and test LAVA bugs.')
     parser.add_argument('host_json', help = 'Host JSON file')
     parser.add_argument('project', help = 'Project name')
 
@@ -209,6 +210,7 @@ def main():
             help = ('Leave unvalidated bugs in the binary'))
     parser.add_argument('-t', '--bugtypes', action="store", default="rel_write",
                         help = ('bug types to inject'))
+    parser.add_argument('--version', action="version", version="%(prog)s {}".format(version))
 
     args = parser.parse_args()
     global project

@@ -30,12 +30,18 @@
 . `dirname $0`/funcs.sh
 
 tick
+version="2.0.0"
+
+USAGE() {
+    echo "$1 version $version"
+    echo "Usage: $1 [ATP_Type] JSONfile"
+}
 
 set -e # Exit on error
 #set -x # Debug mode
 
 if [ $# -lt 1 ]; then
-  echo "Usage: $0 [ATP_Type] JSONfile"
+    USAGE $0
 elif [ $# -lt 2 ]; then
   echo "No ATP_Type specified.  Defaulting to all."
   ATP_TYPE=""
@@ -44,7 +50,7 @@ elif [ $# -eq 2 ]; then
   ATP_TYPE="-$1"
   json="$(readlink -f $2)"
 else
-  echo "Usage: $0 [ATP_Type] JSONfile"
+    USAGE $0
   exit 1
 fi
 

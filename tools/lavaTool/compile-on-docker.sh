@@ -18,4 +18,4 @@ docker run --rm -it \
     -v /etc/gshadow:/etc/gshadow:ro \
     -v $HOME:$HOME \
     -v "$lava":"$lava" \
-    lava32 sh -c "trap '' PIPE; su -l $(whoami) -c 'cmake -B$lava/build -H$lava -DCMAKE_INSTALL_PREFIX=$lava/install' && su -l $(whoami) -c 'make -j$(nproc) -C \"$lava\"/build/lavaTool install'"
+    lava32 sh -c "trap '' PIPE; su -l $(whoami) -c 'cmake -B$lava/build -H$lava -DCMAKE_INSTALL_PREFIX=$lava/install' && su -l $(whoami) -c 'make --no-print-directory -j$(nproc) -C \"$lava\"/build/lavaTool install'"

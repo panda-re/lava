@@ -11,8 +11,10 @@ set -e # Exit on error
 
 # Load lava-functions
 . `dirname $0`/funcs.sh
+version="2.0.0"
 
 USAGE() {
+  echo "$0 version $version"
   echo "USAGE: $0 -a -k -m [Num bugs] -n [Minimum real bugs] -l [List of bug IDs to use] -e [Expected exit code of original program] JSONfile"
   echo "       . . . or just $0 JSONfile"
   exit 1

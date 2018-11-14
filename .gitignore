@@ -19,6 +19,7 @@ host.json
 tools/lavaODB/generated
 tools/install
 tools/build
+tools/include/lava_version.h
 
 panda/build
 

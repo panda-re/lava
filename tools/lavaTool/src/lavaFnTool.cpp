@@ -10,6 +10,7 @@
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchersInternal.h"
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
+#include "lava_version.h"
 
 #include <iostream>
 
@@ -34,6 +35,9 @@ static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp(
     "\nIdentify all fn defs, prototypes, calls for later use by LAVA.\n");
 
+static void printVersion() {
+    errs() << "LavaFnTool Version -- " << LAVA_VER << "\n";
+}
 
 ofstream outfile;
 
@@ -44,30 +48,30 @@ void spit_type(const char *label, QualType qt) {
 
 void spit_fun_decl(const FunctionDecl *fundecl) {
     outfile << "   fundecl: \n";
-    if (fundecl->getStorageClass() == SC_Extern) 
+    if (fundecl->getStorageClass() == SC_Extern)
         outfile << "      extern: True\n";
     else
         outfile << "      extern: False\n";
     spit_type( "      ret_type: ", fundecl->getReturnType());
     outfile << "      params: \n";
-    for (auto p : fundecl->parameters()) { 
+    for (auto p : fundecl->parameters()) {
         QualType ot = p->getOriginalType();
         const Type *otp = ot.getTypePtr();
         if (otp->isFunctionType() || otp->isFunctionPointerType()) {
-            spit_type("         - param: fnptr ", ot); 
+            spit_type("         - param: fnptr ", ot);
         }
         else {
-            spit_type("         - param: ", ot); 
+            spit_type("         - param: ", ot);
         }
-    }    
+    }
 }
 
 
 void spit_source_locs(const char *spaces, const Expr *expr, const SourceManager &sm) {
     auto sl1 = expr->getLocStart();
     auto sl2 = expr->getLocEnd();
-    outfile << (string(spaces) + "start: ") << sl1.printToString(sm) << "\n"; 
-    outfile << (string(spaces) + "end: ") << sl2.printToString(sm) << "\n"; 
+    outfile << (string(spaces) + "start: ") << sl1.printToString(sm) << "\n";
+    outfile << (string(spaces) + "end: ") << sl2.printToString(sm) << "\n";
 }
 
 
@@ -88,7 +92,7 @@ std::string get_containing_function_name(const MatchFinder::MatchResult &Result,
 
     const Stmt *pstmt = &stmt;
 
-//    std::pair<std::string,std::string> fail = std::make_pair(std::string("Notinafunction"), std::string("Notinafunction"));        
+//    std::pair<std::string,std::string> fail = std::make_pair(std::string("Notinafunction"), std::string("Notinafunction"));
     while (true) {
         const auto &parents = Result.Context->getParents(*pstmt);
         debug(LOG) << "get_containing_function_name: " << parents.size() << " parents\n";
@@ -98,21 +102,21 @@ std::string get_containing_function_name(const MatchFinder::MatchResult &Result,
         if (parents.empty()) {
             debug(LOG) << "get_containing_function_name: no parents for stmt? ";
             pstmt->dumpPretty(*Result.Context);
-            debug(LOG) << "\n";            
+            debug(LOG) << "\n";
             assert (1==0);
-//            return fail;       
-        }     
+//            return fail;
+        }
         if (parents[0].get<TranslationUnitDecl>()) {
             debug(LOG) << "get_containing_function_name: parents[0].get<TranslationUnitDecl? ";
             pstmt->dumpPretty(*Result.Context);
-            debug(LOG) << "\n";                        
+            debug(LOG) << "\n";
             assert(1==0);
 //            return fail;
         }
         const FunctionDecl *fd = parents[0].get<FunctionDecl>();
-        if (fd) 
+        if (fd)
             return fundecl_fun_name(Result, fd);
-        pstmt = parents[0].get<Stmt>();        
+        pstmt = parents[0].get<Stmt>();
         if (!pstmt) {
             debug(LOG) << "get_containing_function_name: !pstmt \n";
             const VarDecl *pvd = parents[0].get<VarDecl>();
@@ -124,10 +128,10 @@ std::string get_containing_function_name(const MatchFinder::MatchResult &Result,
                 assert (1==0);
 //              return fail;
             }
-        }    
+        }
     }
-    
-}        
+
+}
 
 
 class CallPrinter : public MatchFinder::MatchCallback {
@@ -138,16 +142,16 @@ class CallPrinter : public MatchFinder::MatchCallback {
             outfile << "- call: \n";
             spit_source_locs("   ", call, *Result.SourceManager);
 
-            const FunctionDecl *func = call->getDirectCallee();            
+            const FunctionDecl *func = call->getDirectCallee();
             if (func == nullptr || func->getLocation().isInvalid()) {
                 // its a call via fn pointer
-                outfile << "   fnptr: true\n"; 
+                outfile << "   fnptr: true\n";
                 outfile << "   name: None\n";
             }
             else {
                 outfile << "   fnptr: false\n";
                 outfile << "   name: " << func->getNameInfo().getAsString() << "\n";
-            }                        
+            }
             std::string fun_name = get_containing_function_name(Result, *call);
             outfile << "   containing_function: " << fun_name << "\n";
 
@@ -173,9 +177,9 @@ class CallPrinter : public MatchFinder::MatchCallback {
                 }
                 else if (atp->isFunctionPointerType()) {
                     const DeclRefExpr *dre = dyn_cast<DeclRefExpr>(arg);
-                    if (dre) 
+                    if (dre)
                         outfile << "         name: " << dre->getNameInfo().getName().getAsString() << "\n";
-                    else 
+                    else
                         outfile << "         name: None\n";
                     outfile << "         type: " << at.getAsString() << "\n";
                     outfile << "         info: functionpointer\n";
@@ -187,7 +191,7 @@ class CallPrinter : public MatchFinder::MatchCallback {
                 }
             }
         }
-        
+
     }
 };
 
@@ -206,7 +210,7 @@ class FnPtrAssignmentPrinter : public MatchFinder::MatchCallback {
             const ValueDecl *vd = dre->getDecl();
             const FunctionDecl *fndecl = llvm::dyn_cast<FunctionDecl>(vd);
             spit_fun_decl(fndecl);
-        }                
+        }
     }
 };
 
@@ -239,37 +243,37 @@ class VarDeclPrinter : public MatchFinder::MatchCallback {
 class FunctionPrinter : public MatchFinder::MatchCallback {
     public:
     virtual void run(const MatchFinder::MatchResult &Result) {
-        const FunctionDecl *func = 
+        const FunctionDecl *func =
             Result.Nodes.getNodeAs<FunctionDecl>("funcDecl");
 //        if (func->isExternC()) return;
         if (func) {
             outfile << "- fun: \n";
             auto sl1 = func->getLocStart();
             auto sl2 = func->getLocEnd();
-            outfile << "   start: " << sl1.printToString(*Result.SourceManager) << "\n";    
-            outfile << "   end: " << sl2.printToString(*Result.SourceManager) << "\n";    
+            outfile << "   start: " << sl1.printToString(*Result.SourceManager) << "\n";
+            outfile << "   end: " << sl2.printToString(*Result.SourceManager) << "\n";
             outfile << "   name: " << (func->getNameInfo().getAsString()) << "\n";
-            if (func->doesThisDeclarationHaveABody())  
+            if (func->doesThisDeclarationHaveABody())
                 outfile << "   hasbody: true\n";
             else
                 outfile << "   hasbody: false\n";
             spit_fun_decl(func);
-      }        
+      }
     }
 };
 
 
 
 int main(int argc, const char **argv) {
-
+    cl::SetVersionPrinter(printVersion);
+    CommonOptionsParser OptionsParser(argc, argv, LavaFnCategory);
     string outfilename = string(argv[argc-1]) + ".fn";
 
     if (outfilename == "--.fn")
         outfilename = "foo.fn";
     cout << "outfilename = [" << outfilename << "]\n";
     outfile.open (outfilename);
-    
-    CommonOptionsParser OptionsParser(argc, argv, LavaFnCategory);
+
     ClangTool Tool(OptionsParser.getCompilations(),
                    OptionsParser.getSourcePathList());
     MatchFinder Finder;
@@ -293,7 +297,7 @@ int main(int argc, const char **argv) {
     Finder.addMatcher(
         varDecl().bind("vd"),
         &VDPrinter);
-        
+
     int rv = Tool.run(newFrontendActionFactory(&Finder).get());
 
     outfile.close();
