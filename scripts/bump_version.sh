@@ -42,7 +42,7 @@ cmake_file_bump () {
 bash_file_bump() {
     ver_line=`grep -E 'version=' $1`
     cprint $R "Bumping $ver_line in $1"
-    sed -i -E "s/[0-9]+\.[0-9]+\.[0-9]+/$2/g" $1
+    sed -i -E "s/version=\"[0-9]+\.[0-9]+\.[0-9]+\"$/version=\"$2\"/g" $1
     ver_line=`grep -E 'version=' $1`
     cprint $G "To $ver_line"
 }
