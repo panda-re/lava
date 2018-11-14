@@ -70,7 +70,7 @@ uint64_t num_bugs_of_type[Bug::TYPE_END] = {0};
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
 
-bool debug = false;
+bool debug = true;
 #define dprintf(...) if (debug) { printf(__VA_ARGS__); fflush(stdout); }
 
 uint64_t max_liveness = 0;
@@ -341,6 +341,13 @@ inline Range get_dua_dead_range(const Dua *dua, const std::vector<uint32_t> &to_
     const auto &viable_bytes = dua->viable_bytes;
     dprintf("checking viability of dua: currently %u viable bytes\n",
             count_nonzero(viable_bytes));
+    if (dua->lval->ast_name.find("nodua") != std::string::npos) {
+        dprintf("Found nodua symbol, skipping");
+        dprintf(dua->lval->ast_name.c_str());
+        dprintf("\n");
+        Range empty{0, 0};
+        return empty;
+    }
     Range result = get_dead_range(dua->viable_bytes, to_avoid);
     dprintf("%s\ndua has %u viable bytes\n", std::string(*dua).c_str(),
             result.size());
@@ -974,11 +981,6 @@ int main (int argc, char **argv) {
                 << recent_dead_duas.size() << " current duas "
                 << num_real_duas << " real duas "
                 << num_fake_duas << " fake duas\n";
-        }
-
-        if (debug && num_potential_bugs > 1000) {
-            std::cout << "Found 1000 bugs- ending FBI early\n";
-            break;
         }
 
         if (ple->taint_query_pri) {

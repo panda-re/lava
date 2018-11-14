@@ -64,15 +64,15 @@ void hypercall(void *buf, unsigned long len, long label, unsigned long off,
   return;
 }
 
-static 
+static
 void hypercall2(volatile PandaHypercallStruct *phs) {
 #if defined(__PIC__)
-    volatile int save = 0;
+    volatile int __attribute__ ((visibility ("hidden"))) lava_save_nodua = 0;
     __asm__ volatile ("xchgl %%ebx, %1\n\t"      \
                       "cpuid\n\t"                \
                       "xchgl %%ebx, %1"          \
-        : "=a" (phs), "=r" (save)                \
-        : "0" (phs), "1" (save)                  \
+        : "=a" (phs), "=r" (lava_save_nodua)                \
+        : "0" (phs), "1" (lava_save_nodua)                  \
         : "ecx", "edx", "memory");
 #else
     __asm__ volatile ("cpuid"                    \
@@ -103,7 +103,7 @@ void hypercall(void *buf, unsigned long len, long label, unsigned long off, int 
         mov %%r4, %4 \t\n\
         mcr p7, 0, r0, c0, c0, 0 \t\n\
         pop {%%r0-%%r4} \t\n"
-      
+
       : /* no output registers */
       : "r" (r0), "r" (r1), "r" (r2), "r" (r3), "r" (r4) /* input operands */
       : "r0", "r1", "r2", "r3", "r4" /* clobbered registers */
@@ -144,7 +144,7 @@ void vm_query_buffer(void *buf, unsigned long len, int offset,
 }
 
 static inline
-void vm_lava_query_buffer(const void *buf, unsigned long len, 
+void vm_lava_query_buffer(const void *buf, unsigned long len,
                           lavaint src_filename, lavaint src_ast_node_name,
                           unsigned long linenum, lavaint ins) {
   volatile PandaHypercallStruct phs = {0};
@@ -183,12 +183,12 @@ void vm_lava_pri_query_point(lavaint ast_node){
     phs.info = ast_node;
     phs.insertion_point = 0;  // this signals that there isnt an insertion point
 #if defined(__PIC__)
-    volatile int save = 0;
+    volatile int lava_save_nodua = 0;
     __asm__ volatile ("xchgl %%ebx, %1\n\t"      \
                       "cpuid\n\t"                \
                       "xchgl %%ebx, %1"          \
-        : "=a" (phs_addr), "=r" (save)           \
-        : "0" (phs_addr), "1" (save)             \
+        : "=a" (phs_addr), "=r" (lava_save_nodua)           \
+        : "0" (phs_addr), "1" (lava_save_nodua)             \
         : "ecx", "edx", "memory");
 #else
     __asm__ volatile ("cpuid"                    \
@@ -212,7 +212,7 @@ void vm_lava_attack_point2(lavaint ast_loc_id, unsigned long linenum, lavaint in
 }
 
 static inline
-void vm_lava_pri_query_point2(lavaint src_filename, unsigned long linenum, 
+void vm_lava_pri_query_point2(lavaint src_filename, unsigned long linenum,
         lavaint src_ast_node_name) {
   volatile PandaHypercallStruct phs = {0};
   phs.magic = 0xabcd;
@@ -229,8 +229,8 @@ void vm_lava_pri_query_point2(lavaint src_filename, unsigned long linenum,
 #define ASM_PART __asm__ volatile ("xchgl %%ebx, %1\n\t"   \
                                    "cpuid\n\t"             \
                                    "xchgl %%ebx, %1"       \
-        : "=a" (phs_addr), "=r" (save)                     \
-        : "0" (phs_addr), "1" (save)                       \
+        : "=a" (phs_addr), "=r" (lava_save_nodua)                     \
+        : "0" (phs_addr), "1" (lava_save_nodua)                       \
         : "ecx", "edx", "memory");
 #else
 #define ASM_PART __asm__ volatile ("cpuid"                 \
@@ -249,12 +249,12 @@ void vm_lava_pri_query_point2(lavaint src_filename, unsigned long linenum,
     phs.src_filename = ast_loc_id;                         \
     phs.src_linenum = lineno;                              \
     phs.insertion_point = 0;                               \
-    volatile int save = 0;                                 \
+    volatile int __attribute__ ((visibility ("hidden"))) lava_save_nodua = 0;                                 \
     __asm__ volatile ("xchgl %%ebx, %1\n\t"                \
                       "cpuid\n\t"                          \
                       "xchgl %%ebx, %1"                    \
-        : "=a" (phs_addr), "=r" (save)                     \
-        : "0" (phs_addr), "1" (save)                       \
+        : "=a" (phs_addr), "=r" (lava_save_nodua)                     \
+        : "0" (phs_addr), "1" (lava_save_nodua)                       \
         : "ecx", "edx", "memory");                         \
     } while(0)
 
@@ -289,12 +289,12 @@ void vm_lava_attack_point2(lavaint src_filename, unsigned long linenum, lavaint 
     phs.info = info;
     phs.insertion_point = 0;  // this signals that there isnt an insertion point
 #if defined(__PIC__)
-    volatile int save = 0;
+    volatile int lava_save_nodua = 0;
     __asm__ volatile ("xchgl %%ebx, %1\n\t"      \
                       "cpuid\n\t"                \
                       "xchgl %%ebx, %1"          \
-        : "=a" (phs_addr), "=r" (save)           \
-        : "0" (phs_addr), "1" (save)             \
+        : "=a" (phs_addr), "=r" (lava_save_nodua)           \
+        : "0" (phs_addr), "1" (lava_save_nodua)             \
         : "ecx", "edx", "memory");
 #else
     __asm__ volatile ("cpuid"                    \
