@@ -18,8 +18,9 @@ declare -a FILE_LIST=("$LAVA_HOME/tools/CMakeLists.txt"
 "$LAVA_HOME/scripts/everything.sh"
 "$LAVA_HOME/scripts/verify.sh"
 "$LAVA_HOME/scripts/bump_version.sh"
-"$LAVA_HOME/scripts/bug_mining.py"
-"$LAVA_HOME/scripts/inject.sh")
+"$LAVA_HOME/scripts/inject.sh"
+"$LAVA_HOME/scripts/competition.py"
+"$LAVA_HOME/scripts/bug_mining.py")
 
 # Error color printer
 error() {
