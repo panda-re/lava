@@ -18,6 +18,7 @@ declare -a FILE_LIST=("$LAVA_HOME/tools/CMakeLists.txt"
 "$LAVA_HOME/scripts/everything.sh"
 "$LAVA_HOME/scripts/verify.sh"
 "$LAVA_HOME/scripts/bump_version.sh"
+"$LAVA_HOME/scripts/bug_mining.py"
 "$LAVA_HOME/scripts/inject.sh")
 
 # Error color printer
@@ -40,6 +41,15 @@ cmake_file_bump () {
 
 # Bumper for shell scripts
 bash_file_bump() {
+    ver_line=`grep -E 'version=' $1`
+    cprint $R "Bumping $ver_line in $1"
+    sed -i -E "s/version=\"[0-9]+\.[0-9]+\.[0-9]+\"$/version=\"$2\"/g" $1
+    ver_line=`grep -E 'version=' $1`
+    cprint $G "To $ver_line"
+}
+
+# Bumper for python scripts
+python_file_bump() {
     ver_line=`grep -E 'version=' $1`
     cprint $R "Bumping $ver_line in $1"
     sed -i -E "s/version=\"[0-9]+\.[0-9]+\.[0-9]+\"$/version=\"$2\"/g" $1
@@ -70,6 +80,11 @@ do
     if [[ $filename == *\.sh ]]; then
         bash_file_bump $i $1
     fi
+
+    if [[ $filename == *\.py ]]; then
+        python_file_bump $i $1
+    fi
+
 done
 
 
