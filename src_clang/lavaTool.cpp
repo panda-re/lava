@@ -1,6 +1,6 @@
-// This makes sure assertions actually occur.
 #ifdef NDEBUG
 #undef NDEBUG
+// This makes sure assertions actually occur.
 #endif
 
 #include <fstream>
@@ -58,8 +58,7 @@ extern "C" {
 #define INJECT  (1 << 1)
 #define FNARG   (1 << 2)
 #define PRI     (1 << 3)
-#define INI     (1 << 4)
-#define DEBUG_FLAGS INI // ( INI | MATCHER | INJECT | FNARG | PRI)
+#define DEBUG_FLAGS 0 // ( MATCHER | INJECT | FNARG | PRI)
 #define ARG_NAME "data_flow"
 
 using namespace odb::core;
@@ -93,7 +92,6 @@ static cl::opt<action> LavaAction("action", cl::desc("LAVA Action"),
     cl::values(
         clEnumValN(LavaQueries, "query", "Add taint queries"),
         clEnumValN(LavaInjectBugs, "inject", "Inject bugs"),
-        clEnumValN(LavaInitializeVars, "init", "Initialize bugs"), // TODO: make part of other options
         clEnumValEnd),
     cl::cat(LavaCategory),
     cl::Required);
@@ -1054,35 +1052,6 @@ struct FunctionArgHandler : public LavaMatchHandler {
 };
 
 
-// Matcher for uninitialized vars, going to set all to = {0}
-struct VarInitializerHandler : public LavaMatchHandler {
-    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
-    virtual void handle(const MatchFinder::MatchResult &Result) {
-        const SourceManager &sm = *Result.SourceManager;
-
-        /* We don't actually need this
-        // Get varDecl and make sure it isn't alrady initailized
-        const VarDecl *varDecl = Result.Nodes.getNodeAs<VarDecl>("var_decl");
-        if (varDecl == NULL) return;
-        assert(varDecl != NULL && varDecl->getInit() == NULL); // Must not be initialized already
-        */
-
-        // get our DeclStmt containing the varDecl
-        const DeclStmt *declS = Result.Nodes.getNodeAs<DeclStmt>("decl");
-        if (declS == NULL) return;
-
-        // Cast the DeclStmt to a general-purpose Stmt
-        const Stmt *s = dyn_cast<Stmt>(declS);
-        if (s == NULL) return;
-
-        // Get the ASTLoc of our stmt
-        LavaASTLoc ast_loc = GetASTLoc(sm, s);
-        debug(INI) << "Have to initialize variable @ " << ast_loc << "!\n";
-
-        Mod.Change(s).InsertAfterRel(1, "={0}");
-    }
-};
-
 struct ReadDisclosureHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
@@ -1735,14 +1704,6 @@ public:
                     unless(argumentCountIs(1))).bind("call_expression"),
                 makeHandler<ReadDisclosureHandler>()
                 ); */
-
-        if (LavaAction == LavaInitializeVars) {
-            addMatcher(
-                    declStmt(
-                        hasDescendant(varDecl(unless(hasInitializer(anything()))).bind("var_decl"))).bind("decl"),
-                        makeHandler<VarInitializerHandler>()
-                    );
-            }
         }
     virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
         Insert.clear();
