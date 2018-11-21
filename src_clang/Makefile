@@ -74,8 +74,13 @@ CLANG_LIBS := -Wl,--start-group \
 
 BUILDDIR := build
 
-.PHONY: all lavatool lavaFnTool omg
-all: lavatool lavaFnTool omg build/clang-apply-replacements
+.PHONY: all lavatool lavaFnTool lavaInitTool omg
+all: lavatool lavaFnTool lavaInitTool omg build/clang-apply-replacements
+
+nntest: make_builddir \
+	emit_build_config \
+	$(BUILDDIR)/nntest
+	true # TODO why does this make it work?
 
 lavatool: make_builddir \
 	emit_build_config \
@@ -84,6 +89,10 @@ lavatool: make_builddir \
 lavaFnTool: make_builddir \
 	emit_build_config \
 	$(BUILDDIR)/lavaFnTool
+
+lavaInitTool: make_builddir \
+	emit_build_config \
+	$(BUILDDIR)/lavaInitTool
 
 omg: make_builddir \
 	emit_build_config \
@@ -110,20 +119,23 @@ $(BUILDDIR)/%.o: %.c
 $(BUILDDIR)/lavaTool: $(BUILDDIR)/omg.o $(BUILDDIR)/lavaTool.o $(BUILDDIR)/lavaDB.o $(BUILDDIR)/lava-odb.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
-$(BUILDDIR)/lavaFnTool: $(BUILDDIR)/lavaFnTool.o 
-	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) 
+$(BUILDDIR)/lavaFnTool: $(BUILDDIR)/lavaFnTool.o
+	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS)
 
-$(BUILDDIR)/omg: $(BUILDDIR)/omg.o 
-	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) 
+$(BUILDDIR)/lavaInitTool: $(BUILDDIR)/lavaInitTool.o
+	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS)
 
+$(BUILDDIR)/omg: $(BUILDDIR)/omg.o
+	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS)
+
+$(BUILDDIR)/nntest: $(BUILDDIR)/nntest.o $(BUILDDIR)/omg.o
+	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS)
 
 
 $(BUILDDIR)/clang-apply-replacements: $(BUILDDIR)/ClangApplyReplacementsMain.o $(BUILDDIR)/ApplyReplacements.o
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) $(OTHER_LIBS)
 
 $(BUILDDIR)/lavaTool.o: lava-odb.hxx lexpr.hxx Makefile
-
-
 
 
 $(BUILDDIR)/%.o: Makefile

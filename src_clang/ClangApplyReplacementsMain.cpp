@@ -225,6 +225,9 @@ int main(int argc, char **argv) {
   std::error_code ErrorCode =
       collectReplacementsFromDirectory(Directory, TUs, TURFiles, Diagnostics);
 
+  // TODO: debug only
+  errs() << "In directory " << Directory << "\n";
+
   if (ErrorCode) {
     errs() << "Trouble iterating over directory '" << Directory
            << "': " << ErrorCode.message() << "\n";
@@ -257,6 +260,7 @@ int main(int argc, char **argv) {
 
     std::string NewFileData;
     const char *FileName = FileAndReplacements.first->getName();
+    errs() << "Found file " << FileName << "\n";
     if (!applyReplacements(FileAndReplacements.second, NewFileData,
                            Diagnostics)) {
       errs() << "Failed to apply replacements to " << FileName << "\n";

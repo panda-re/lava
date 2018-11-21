@@ -1,6 +1,26 @@
 #ifndef LAVA_OMG_CLANG_H_
 #define LAVA_OMG_CLANG_H_
 
+#include "clang/AST/AST.h"
+#include "clang/Driver/Options.h"
+#include "clang/Frontend/CompilerInstance.h"
+#include "clang/Lex/Lexer.h"
+#include "clang/Tooling/CommonOptionsParser.h"
+#include "clang/Tooling/Refactoring.h"
+#include "clang/Tooling/ReplacementsYaml.h"
+#include "clang/Tooling/Tooling.h"
+#include "llvm/Option/OptTable.h"
+#include "llvm/Support/raw_ostream.h"
+#include "clang/ASTMatchers/ASTMatchers.h"
+#include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/ASTMatchers/ASTMatchersInternal.h"
+#include "clang/ASTMatchers/ASTMatchersMacros.h"
+#include "clang/Lex/Lexer.h"
+
+using namespace clang;
+using namespace clang::ast_matchers;
+using namespace clang::driver;
+using namespace llvm;
 
 // This tuple is
 // position in string (unsigned)
