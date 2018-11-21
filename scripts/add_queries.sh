@@ -135,7 +135,7 @@ done
 # i.e., which have only prototypes, which have bodies.  
 progress "queries" 0 "Figure out functions" 
 for i in $c_files; do
-    $lava/src_clang/build/lavaFnTool $i
+    $lava/tools/install/bin/lavaFnTool $i
 done
 
 #progress "queries" 0  "Initialize variables..."

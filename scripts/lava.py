@@ -688,9 +688,10 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
             envv = {}
             if competition:
                 envv["CFLAGS"] = "-DLAVA_LOGGING"
-            print('Running make command: ', make_cmd, "with env: ", envv)
-            path = join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace')
-            run_cmd(shelex.split(make_cmd), envv, 30, cwd=path)
+            btrace = join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace')
+            print("Running btrace make command: {} {} with env: {} in {}".format(btrace, make_cmd, envv, lp.bugs_build))
+            run_cmd([btrace] + shlex.split(make_cmd), envv, 30, cwd=lp.bugs_build)
+
     sys.stdout.flush()
     sys.stderr.flush()
     dataflow = dataflow
@@ -802,6 +803,10 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     clang_apply = join(llvm_src, 'Release', 'bin',
                         'clang-apply-replacements')
 
+    src_dirs = set()
+    for filename in all_files:
+        src_dir = dirname(filename)
+        src_dirs.add(src_dir)
 
     # TODO use pool here as well
     for src_dir in src_dirs:
