@@ -174,11 +174,16 @@ ParensInfo getParens(std::string sourceString) {
                   delete from x to y, inclusive
         */
 
+<<<<<<< HEAD:tools/lavaTool/src/omg.cpp
+#if 0
+=======
+//#if 0
 // This is a bad hack that will NOT WORK for all inputs and it never will. We need a better solution for data-flow
 // injections into function arguments
 // We often see lines with "__attribute__((foo)) fn_def(arg1, arg2)" or "fn_def(arg1, arg2) __attribute__((foo))"
 // If the line we have contains "((" and "))" then ignore those when matching
-    std::string ws;
+>>>>>>> master:src_clang/omg.cpp
+        std::string ws;
 
     if (sourceString.find("__attribute__") != std::string::npos) {
 remove_attributes:
@@ -230,7 +235,13 @@ remove_attributes:
                     }
                 }
             }
+<<<<<<< HEAD:tools/lavaTool/src/omg.cpp
+        }
+#endif
+=======
     }
+//#endif
+>>>>>>> master:src_clang/omg.cpp
 
         ParenInfo &cp = parens[l-1];
         ParenInfo &op = parens[0];
@@ -357,7 +368,7 @@ std::string getStringBetween(const SourceManager &sm, SourceLocation &l1, Source
     const char *buf = sm.getCharacterData(l1, inv);
     unsigned o1 = sm.getFileOffset(l1);
     unsigned o2 = sm.getFileOffset(l2);
-    if (*inv || (o1 > o2))
+    if (*inv or (o1 > o2))
         return std::string("Invalid");
     return (std::string(buf, o2-o1+1));
 }
@@ -377,7 +388,11 @@ SourceLocation getLocAfterStr(const SourceManager &sm, SourceLocation &loc, cons
     }
     debug(PARENS) << "getCharacterData succeeded\n";
     // getCharacterData succeeded
+<<<<<<< HEAD:tools/lavaTool/src/omg.cpp
     const char *p = strstr(buf, str);
+=======
+    char *p = strstr(buf, str);
+>>>>>>> master:src_clang/omg.cpp
     if (p == NULL) {
         // didnt find the string
         *inv = true;
@@ -409,8 +424,15 @@ SourceLocation getLocAfterStr(const SourceManager &sm, SourceLocation &loc, cons
         }
     }
     return loc;
+<<<<<<< HEAD:tools/lavaTool/src/omg.cpp
 }
-*/
+ */
+
+=======
+}            
+ */          
+        
+>>>>>>> master:src_clang/omg.cpp
 
 
 // comparison of source locations based on file offset

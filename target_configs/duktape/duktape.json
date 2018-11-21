@@ -2,7 +2,7 @@
     "name": "duktape",
     "db": "duktape",
     "preprocessed": true,
-    "dataflow": true,
+    "dataflow": false,
 
     "tarfile": "duktape-2.3.0-pre.tar.gz",
 
@@ -22,7 +22,6 @@
     "max_tcn": 10,
     "max_lval_size": 100,
 
-    "main_file": [ "duktape-pre.c" ],
-
+    "main_file": [ "src/duktape-pre.c" ],
     "inputs": ["inputs/hello.js"]
 }

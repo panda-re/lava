@@ -48,8 +48,7 @@ from process_compile_commands import process_compile_commands
 Base = declarative_base()
 
 debugging = False
-NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
-
+NUM_BUGTYPES = 3 # Make sure this matches what's in lavaTool
 
 class Loc(Composite):
     column = Integer
@@ -509,7 +508,6 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
         cmd.append('-competition')
     if randseed:
         cmd.append('-randseed={}'.format(randseed))
-
     print("lavaTool command: {}".format(' '.join(cmd)))
 
     ret = run_cmd_notimeout(cmd)
@@ -631,8 +629,12 @@ def collect_src_and_print(bugs_to_inject, db):
                 print("  ", extra_id, "   @   ", dua_bytes.dua)
                 print("     Src_file: ", dua_bytes.dua.lval.loc_filename)
 
-                # Add files for extra_duas into src_files and input_files
-                src_files.add(dua_bytes.dua.lval.loc_filename)
+                # Add filesnames for extra_duas into src_files and input_files
+                # Note this is the file _name_ not the path
+                file_name = dua_bytes.dua.lval.loc_filename
+                if "/" in file_name:
+                    file_name = file_name.split("/")[1]
+                src_files.add(file_name)
                 #input_files.add(lval.inputfile)
 
         print("ATP:")
@@ -683,11 +685,12 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         # run(shlex.split(project['configure']) +
         # ['--prefix=' + lp.bugs_install]) # Remove?
         for make_cmd in project['make'].split('&&'):
+            envv = {}
             if competition:
-                make_cmd += ' CFLAGS+=\"-DLAVA_LOGGING\"'
-            print('Running make command: ', make_cmd)
-            run([join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace')] +
-                shlex.split(make_cmd))
+                envv["CFLAGS"] = "-DLAVA_LOGGING"
+            print('Running make command: ', make_cmd, "with env: ", envv)
+            path = join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace')
+            run_cmd(shelex.split(make_cmd), envv, 30, cwd=path)
     sys.stdout.flush()
     sys.stderr.flush()
     dataflow = dataflow
@@ -744,7 +747,11 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
             pass
 
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
-
+   
+    #TODO: We used to have code that would reduce duplicate ATPs at this point
+    # see b6627fc05f4a78c7b14d03ade45c344c7747cd4b for the last time it was here
+    if validated:
+        pass
 
     # collect set of src files into which we must inject code
     (src_files, input_files) = collect_src_and_print(bugs_to_inject, db)
@@ -782,6 +789,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
                             dataflow=dataflow, competition=competition, randseed=lavatoolseed)
 
     bug_solutions = {}  # Returned by lavaTool
+
     for filename in all_files:
         # TODO call on directories instead of each file,
         # but still store results in bug_solutions
@@ -794,10 +802,6 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     clang_apply = join(llvm_src, 'Release', 'bin',
                         'clang-apply-replacements')
 
-    src_dirs = set()
-    for filename in all_files:
-        src_dir = dirname(filename)
-        src_dirs.add(src_dir)
 
     # TODO use pool here as well
     for src_dir in src_dirs:
@@ -806,11 +810,13 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
             clang_cmd = [clang_apply, '.']
         print("Apply replacements in {} with {}"
                 .format(join(lp.bugs_build, src_dir), clang_cmd))
-        run_cmd_notimeout(clang_cmd, cwd=join(lp.bugs_build, src_dir))
+        (rv, outp) = run_cmd_notimeout(clang_cmd, cwd=join(lp.bugs_build, src_dir))
+        print(outp)
+        assert(rv == 0)
 
     # Ugh.  Lavatool very hard to get right
     # Permit automated fixups via script after bugs inject
-    # but before make
+    # but before make. TODO: consolidate these arguments into project.keys
     if "injfixupsscript" in project.keys():
         print("Running injfixupsscript: {}"
                 .format(project["injfixupsscript"]
@@ -865,8 +871,6 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
     # build success
     print("build succeeded")
-    # run(shlex.split(project['configure']) +
-    # ['--prefix=' + lp.bugs_install]) #TODO can we delete this?
     check_call(project['install'].format(install_dir="lava-install"),
                cwd=lp.bugs_build, shell=True)
     if 'post_install' in project.keys():
@@ -916,9 +920,7 @@ def run_modified_program(project, install_dir, input_file,
           .format(join(install_dir, lib_path), cmd))
     return run_cmd(cmd, envv, timeout, cwd=install_dir)
 
-# find actual line number of attack point for this bug in source
-
-
+# Find actual line number of attack point for this bug in source
 def get_trigger_line(lp, bug):
     # TODO the triggers aren't a simple mapping from trigger of 0xlava - bug_id
     # But are the lava_get's still corelated to triggers?
@@ -1039,7 +1041,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
             # we should see a seg fault or something
             # NB: Wrapping programs in bash transforms rv -> 128 - rv,
             # so we do the mod
-            if (rv % 256) > 128 and rv != -9: # Ignoring timeouts
+            if (rv % 256) > 128 and rv != -9: # check and ignoring timeouts
                 print("RV indicates memory corruption")
                 # Default: not checking that bug manifests at same line as
                 # trigger point or is found by competition grading
@@ -1167,6 +1169,8 @@ def get_bugs(db, bug_id_list):
 def get_allowed_bugtype_num(args):
     allowed_bugtype_nums = []
     for bugtype_name in args.bugtypes.split(","):
+        if not len(bugtype_name):
+            continue
         btnl = bugtype_name.lower()
         bugtype_num = None
         for i in range(len(Bug.type_strings)):

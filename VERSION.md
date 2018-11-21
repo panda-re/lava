@@ -13,7 +13,7 @@
 * Updated docker container with a newer debian image
 * Added panda as submodule under panda/src
 * Some bug fixes
+* New Clang-tool to rewrite source so variables are initialized (preventing unitialized variable DUAs)
 
 # LAVA 1.0.0
-
 * Initial GitHub release

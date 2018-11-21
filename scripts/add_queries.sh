@@ -135,24 +135,40 @@ done
 # i.e., which have only prototypes, which have bodies.  
 progress "queries" 0 "Figure out functions" 
 for i in $c_files; do
-    $lava/tools/install/bin/lavaFnTool $i
+    $lava/src_clang/build/lavaFnTool $i
 done
 
+#progress "queries" 0  "Initialize variables..."
+#for i in $c_files; do
+#    $lava/src_clang/build/lavaTool -action=init \
+#    -p="$source/compile_commands.json" \
+#    -src-prefix=$(readlink -f "$source") \
+#    $i
+#done
+
+# TODO: This should probably be just for dataflow
+# but we still need it for non-dataflow targets, otherwise we inject into
+# va_args functions and everything breask
+
+# Analyze that output and figure out
+fnfiles=$(echo $c_files | sed 's/\.c/\.c\.fn/g')
+fninstr=$directory/$name/fninstr
+
+echo "Creating fninstr [$fninstr]"
+echo -e "\twith command: \"python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles\""
+python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles
+
+if [[ ! -z "$df_fn_blacklist" ]]; then
+    cmd=$(echo "sed -i /${df_fn_blacklist}/d $fninstr")
+    echo "Removing blacklisted functions with regex: $df_fn_blacklist"
+    $cmd
+fi
 
 if [ "$dataflow" = "true" ]; then
-    progress "queries" 0 "Using dataflow as specified in project.json"
-    # analyze that output and figure out 
-    fnfiles=$(echo $c_files | sed 's/\.c/\.c\.fn/g')
-    fninstr=$directory/$name/fninstr
-
-    echo "Creating fninstr [$fninstr]"
-    echo -e "\twith command: \"python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles\""
-    python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles
-
     # Insert queries with DF - could merge this with the else if logic below instead of duplicating
     # TODO: Just make lavaTool load dataflow from project.json instead of passing as CLI arg.
     # Since it's okay to pass the whitelist either way
-    progress "queries" 0  "Inserting queries with dataflow"
+    progress "queries" 0  "Inserting queries for dataflow"
     for i in $c_files; do
         $lava/tools/install/bin/lavaTool -action=query \
         -lava-db="$directory/$name/lavadb" \
@@ -165,13 +181,14 @@ if [ "$dataflow" = "true" ]; then
         $i
     done
 else
-
     progress "queries" 0  "Inserting queries..."
+    # TODO: remove lava-wl here, unless we're using it to limit where we inject
     for i in $c_files; do
         $lava/tools/install/bin/lavaTool -action=query \
         -lava-db="$directory/$name/lavadb" \
         -lava-wl="$fninstr" \
         -p="$source/compile_commands.json" \
+        -lava-wl="$fninstr" \
         -src-prefix=$(readlink -f "$source") \
         $ATP_TYPE \
         -db="$db" \

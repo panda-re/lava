@@ -6,6 +6,7 @@
     "name": "toy",
     "db": "toy",
     "preprocessed": true,
+    "dataflow": "true",
 
     "tarfile": "toy-pre.tar.gz",
 

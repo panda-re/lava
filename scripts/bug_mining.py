@@ -1,10 +1,9 @@
 '''
 This script assumes you have already done src-to-src transformation with
 lavaTool to add taint and attack point queries to a program, AND managed to
-json project file.  The set of asserts below
-indicate the required json fields and their meaning.
+json project file.
 
-Second is input file you want to run, under panda, to get taint info.
+Second arg is input file you want to run, under panda, to get taint info.
 '''
 
 from __future__ import print_function
@@ -128,8 +127,6 @@ shutil.copy(input_file, installdir)
 create_recording(qemu_path, project['qcow'], project['snapshot'],
                  command_args, installdir, isoname,
                  project["expect_prompt"], rr=qemu_use_rr)
-# command_args, installdir, isoname, isoname, rr=qemu_use_rr)
-# for non-standard panda versions
 
 try:
     os.mkdir('inputs')
@@ -153,8 +150,9 @@ if command_args[0].startswith('LD_PRELOAD'):
 else:
     proc_name = basename(command_args[0])
 
-pandalog = "%s/queries-%s.plog" % \
-    (project['output_dir'], os.path.basename(isoname))
+pandalog = "{}/queries-{}.plog".format(project['output_dir'],
+                                       os.path.basename(isoname))
+
 print("pandalog = [%s] " % pandalog)
 
 panda_args = {
