@@ -79,13 +79,15 @@ try:
     def_lines = (line.split(":=") for line in def_lines)
     def_lines = ((line[0].strip(), line[1].strip()) for line in def_lines)
     LAVA_CONFS = dict(def_lines)
-    PANDA_DIR = LAVA_CONFS["PANDA_SRC_PATH"]
-    PANDA_DIR = expandvars(PANDA_DIR)
+    #PANDA_DIR = LAVA_CONFS["PANDA_SRC_PATH"]
+    #PANDA_DIR = expandvars(PANDA_DIR)
     LLVM_DIR = LAVA_CONFS["LLVM_SRC_PATH"]
     LLVM_DIR = expandvars(LLVM_DIR)
 except Exception:
-    PANDA_DIR = abspath(join(LAVA_DIR, "panda/src"))
     LLVM_DIR = join(BUILD_DIR, "llvm-" + LLVM_VERSION)
+
+# Panda must the submodule
+PANDA_DIR = abspath(join(LAVA_DIR, "panda/src"))
 PANDA_BUILD_DIR = join(PANDA_DIR, '../build')
 
 # panda/scripts/install_ubuntu.sh
