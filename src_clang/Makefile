@@ -77,6 +77,11 @@ BUILDDIR := build
 .PHONY: all lavatool lavaFnTool omg
 all: lavatool lavaFnTool omg build/clang-apply-replacements
 
+nntest: make_builddir \
+	emit_build_config \
+	$(BUILDDIR)/nntest
+	true # TODO why does this make it work?
+
 lavatool: make_builddir \
 	emit_build_config \
 	$(BUILDDIR)/lavaTool
@@ -115,6 +120,9 @@ $(BUILDDIR)/lavaFnTool: $(BUILDDIR)/lavaFnTool.o
 
 $(BUILDDIR)/omg: $(BUILDDIR)/omg.o 
 	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS) 
+
+$(BUILDDIR)/nntest: $(BUILDDIR)/nntest.o $(BUILDDIR)/omg.o
+	$(CXX) -o $@ $^ $(CLANG_LIBS) $(LLVM_LDFLAGS)
 
 
 
