@@ -1,7 +1,7 @@
 {
   "name": "blecho",
   "db": "blecho",
-  "preprocessed" : true,
+  "preprocessed" : false,
   "dataflow": true,
 
   "tarfile": "blecho.tar.gz",

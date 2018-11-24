@@ -489,21 +489,23 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
     main_files = ','.join([join(lp.bugs_build, f)
                            for f in project['main_file']])
 
-    # Todo either paramaterize here or hardcode everywhere else
-    fninstr = join(join(project['directory'], project['name']), "fninstr")
 
     cmd = [
         lp.lava_tool, '-action=inject', '-bug-list=' + bug_list_str,
         '-src-prefix=' + lp.bugs_build, '-db=' + db_name,
         '-main-files=' + main_files, join(lp.bugs_build, filename)]
+
+    # Todo either paramaterize here or hardcode everywhere else
+    # For now, lavaTool will only work if it has a whitelist, so we always pass this
+    fninstr = join(join(project['directory'], project['name']), "fninstr")
+    cmd.append('-lava-wl=' + fninstr)
+
     if lt_debug:
         cmd.append("-debug")
     if dataflow:
         cmd.append('-arg_dataflow')
     if knobTrigger > 0:
         cmd.append('-kt')
-    if project["preprocessed"]:
-        cmd.append('-lava-wl=' + fninstr)
     if competition:
         cmd.append('-competition')
     if randseed:
