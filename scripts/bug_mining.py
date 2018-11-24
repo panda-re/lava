@@ -248,6 +248,12 @@ sys.stdout.flush()
 
 db = LavaDatabase(project)
 
+print("Count\tBug Type Num\tName")
+for i in range(len(Bug.type_strings)):
+    n = db.session.query(Bug).filter(Bug.type == i).count()
+    print("%d\t%d\t%s" % (n, i, Bug.type_strings[i]))
+
+
 print("total dua:", db.session.query(Dua).count())
 print("total atp:", db.session.query(AttackPoint).count())
 print("total bug:", db.session.query(Bug).count())
