@@ -690,7 +690,9 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
                 envv["CFLAGS"] = "-DLAVA_LOGGING"
             btrace = join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace')
             print("Running btrace make command: {} {} with env: {} in {}".format(btrace, make_cmd, envv, lp.bugs_build))
-            run_cmd([btrace] + shlex.split(make_cmd), envv, 30, cwd=lp.bugs_build)
+            #(rv, outp) = run_cmd([btrace] + shlex.split(make_cmd), envv, 30, cwd=lp.bugs_build)
+            #assert(rv == 0), "Make with btrace failed"
+            run([btrace] + shlex.split(make_cmd)) #TODO: testing without envv
 
     sys.stdout.flush()
     sys.stderr.flush()
@@ -804,11 +806,24 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
                         'clang-apply-replacements')
 
     src_dirs = set()
+    src_dirs.add("") # Empty path for root
     for filename in all_files:
         src_dir = dirname(filename)
-        src_dirs.add(src_dir)
+        if len(src_dir):
+            src_dirs.add(src_dir.encode("ascii", "ignore"))
 
     # TODO use pool here as well
+
+    # Here we need to apply replacements. Unfortunately it can be a little complicated
+    # compile_commands.json will be in lp.bugs_build. But then it contains data like:
+        # directory: "[lp.bugs_build]/" file: src/foo.c" OR
+        # directory: "[lp.bugs_build]/src" file: foo.c"
+    # depending on how the makefile works
+
+    # In theory, we should be able to run clang-apply-replacements
+    # from the lp.bugs_build directory and it should _just work_ but that doesn't
+    # always happen. Instead, we'll run it inside each unique src directory
+
     for src_dir in src_dirs:
         clang_cmd = [clang_apply, '.', '-remove-change-desc-files']
         if debugging:  # Don't remove desc files
@@ -816,8 +831,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         print("Apply replacements in {} with {}"
                 .format(join(lp.bugs_build, src_dir), clang_cmd))
         (rv, outp) = run_cmd_notimeout(clang_cmd, cwd=join(lp.bugs_build, src_dir))
-        print(outp)
-        assert(rv == 0)
+        assert(rv == 0), "clang-apply-replacements failure"
 
     # Ugh.  Lavatool very hard to get right
     # Permit automated fixups via script after bugs inject
@@ -915,15 +929,23 @@ def run_modified_program(project, install_dir, input_file,
                          timeout, shell=False):
     cmd = project['command'].format(install_dir=install_dir,
                                     input_file=input_file)
-    cmd = "{}".format(cmd)
-    # cmd = '/bin/bash -c '+ pipes.quote(cmd)
+    #cmd = "{}".format(cmd) # ... this is a nop?
+    #cmd = '/bin/bash -c '+ pipes.quote(cmd)
     envv = {}
-    lib_path = project.get('library_path', '{install_dir}/lib')
-    lib_path = lib_path.format(install_dir=install_dir)
-    envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
-    print("Run modified program: LD_LIBRARY_PATH={} {}"
-          .format(join(install_dir, lib_path), cmd))
-    return run_cmd(cmd, envv, timeout, cwd=install_dir)
+
+    # If library path specified, set env var
+    lib_path = project.get('library_path', '')
+    if len(lib_path):
+        lib_path = lib_path.format(install_dir=install_dir)
+        envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
+
+        print("Run modified program: LD_LIBRARY_PATH={} {}"
+              .format(join(install_dir, lib_path), cmd))
+    else:
+        print("Run modified program: {}".format(cmd))
+
+    # Command might be redirecting input file in so we need shell=True
+    return run_cmd(cmd, envv, timeout, cwd=install_dir, shell=True)
 
 # Find actual line number of attack point for this bug in source
 def get_trigger_line(lp, bug):
