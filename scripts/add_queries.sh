@@ -188,7 +188,6 @@ else
         -lava-db="$directory/$name/lavadb" \
         -lava-wl="$fninstr" \
         -p="$source/compile_commands.json" \
-        -lava-wl="$fninstr" \
         -src-prefix=$(readlink -f "$source") \
         $ATP_TYPE \
         -db="$db" \
