@@ -938,16 +938,50 @@ int main (int argc, char **argv) {
     ind2str = LoadIDB(lavadb);
     printf("%d strings in lavadb\n", (int)ind2str.size());
 
+    if (!project["max_liveness"].isUInt()) {
+        printf("Fatal error, could not parse max_liveness\n");
+        return -1;
+    }
     max_liveness = project["max_liveness"].asUInt();
     printf("maximum liveness score of %lu\n", max_liveness);
+
+    // Throw exception if we can't process any required argument
+    if (!project["max_cardinality"].isUInt()) {
+        throw "Could not parse max_cardinality";
+    }
     max_card = project["max_cardinality"].asUInt();
     printf("max card of taint set returned by query = %d\n", max_card);
+
+    if (!project["max_tcn"].isUInt()) {
+        throw "Could not parse max_tcn";
+    }
     max_tcn = project["max_tcn"].asUInt();
     printf("max tcn for addr = %d\n", max_tcn);
+
+    if (!project["max_lval_size"].isUInt()) {
+        throw "Could not parse max_lval_size";
+    }
     max_lval = project["max_lval_size"].asUInt();
     printf("max lval size = %d\n", max_lval);
-    chaff_bugs = project.get("chaff", false).asBool();
-    curtail = project["curtail_fbi"].asUInt();
+
+    /* Unsupported for now (why?)
+    // Chaff has default value of false
+    if (!project["chaff"].isBool()) {
+        chaff_bugs = false;
+    }else{
+        // null should never happen, if it does we'll violate an assert in the asBool
+        chaff_bugs = project.get("chaff", Json::Value::null).asBool();
+    }
+    printf("Chaff_bugs is %d\n", chaff_bugs);
+    */
+
+    if (!project["curtail_fbi"].isUInt()) {
+        curtail = 0;
+    }else{
+        // null should never happen, if it does we'll violate an assert in the asUInt
+        curtail = project.get("curtail_fbi", Json::Value::null).asUInt();
+    }
+    printf("Curtail is %d\n", curtail);
 
     inputfile = std::string(argv[4]);
 
