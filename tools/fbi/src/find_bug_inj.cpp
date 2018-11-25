@@ -947,19 +947,19 @@ int main (int argc, char **argv) {
 
     // Throw exception if we can't process any required argument
     if (!project["max_cardinality"].isUInt()) {
-        throw "Could not parse max_cardinality";
+        throw std::runtime_error("Could not parse max_cardinality");
     }
     max_card = project["max_cardinality"].asUInt();
     printf("max card of taint set returned by query = %d\n", max_card);
 
     if (!project["max_tcn"].isUInt()) {
-        throw "Could not parse max_tcn";
+        throw std::runtime_error("Could not parse max_tcn");
     }
     max_tcn = project["max_tcn"].asUInt();
     printf("max tcn for addr = %d\n", max_tcn);
 
     if (!project["max_lval_size"].isUInt()) {
-        throw "Could not parse max_lval_size";
+        throw std::runtime_error("Could not parse max_lval_size");
     }
     max_lval = project["max_lval_size"].asUInt();
     printf("max lval size = %d\n", max_lval);
@@ -1035,8 +1035,12 @@ int main (int argc, char **argv) {
     std::cout << num_potential_nonbugs << " potential non bugs\n";
 
     if (num_potential_bugs == 0) {
-        printf("Fatal error: no bugs found by FBI\n");
-        return 1;
+        // Typically caused by no duas being identified because
+        // something has gone wrong with taint analysis
+        std::cerr << "No bugs found\n";
+        throw std::runtime_error("No bugs found by FBI");
+        // This error message is only printed when we also
+        // print to cerr but I'm not sure why
     }
 
 }
