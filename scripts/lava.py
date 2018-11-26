@@ -687,9 +687,11 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         # run(shlex.split(project['configure']) +
         # ['--prefix=' + lp.bugs_install]) # Remove?
         for make_cmd in project['make'].split('&&'):
-            envv = {}
+            # Silence warnings related to adding integers to pointers since we already
+            # know that it's unsafe.
+            envv = {"CFLAGS": "-Wno-int-conversion"}
             if competition:
-                envv["CFLAGS"] = "-DLAVA_LOGGING"
+                envv["CFLAGS"] += " -DLAVA_LOGGING"
             btrace = join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace')
             print("Running btrace make command: {} {} with env: {} in {}".format(btrace, make_cmd, envv, lp.bugs_build))
             #(rv, outp) = run_cmd([btrace] + shlex.split(make_cmd), envv, 30, cwd=lp.bugs_build)
@@ -826,6 +828,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     # from the lp.bugs_build directory and it should _just work_ but that doesn't
     # always happen. Instead, we'll run it inside each unique src directory
 
+    one_replacement_success = False
     for src_dir in src_dirs:
         clang_cmd = [clang_apply, '.', '-remove-change-desc-files']
         if debugging:  # Don't remove desc files
@@ -833,7 +836,12 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         print("Apply replacements in {} with {}"
                 .format(join(lp.bugs_build, src_dir), clang_cmd))
         (rv, outp) = run_cmd_notimeout(clang_cmd, cwd=join(lp.bugs_build, src_dir))
-        assert(rv == 0), "clang-apply-replacements failure"
+
+        if rv == 0:
+            print("Success in {}".format(src_dir))
+            one_replacement_success = True
+
+    assert (one_replacement_success), "clang-apply-replacements failed in all possible directories"
 
     # Ugh.  Lavatool very hard to get right
     # Permit automated fixups via script after bugs inject

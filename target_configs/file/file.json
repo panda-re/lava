@@ -10,7 +10,6 @@
     "snapshot": "root",
     "expect_prompt": "root@debian-i386:~#",
 
-
     "make": "make CFLAGS+=-fvisibility=default -j 16",
     "clean": "make clean",
     "install": "make install",
@@ -22,7 +21,7 @@
     "max_tcn": 10,
     "max_lval_size": 100,
 
-    "main_file": [ "file.c" ],
+    "main_file": [ "src/file.c" ],
 
     "inputs": ["inputs/constitution_36_garfield.doc"]
 }
