@@ -148,6 +148,7 @@ pandalog = "%s/%s/queries-%s.plog" % (project['directory'], project['name'], os.
 print("pandalog = [%s] " % pandalog)
 
 panda_args = {
+    'syscalls2': { 'load-info': True },
     'pri': {},
     'pri_dwarf': {
         'proc': proc_name,
