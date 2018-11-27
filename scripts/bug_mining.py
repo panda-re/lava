@@ -237,7 +237,16 @@ fbi_args = [join(lavadir, 'tools', 'install', 'bin', 'fbi'), host_json,
             project_name, pandalog, input_file_base]
 dprint("fbi invocation: [%s]" % (subprocess32.list2cmdline(fbi_args)))
 sys.stdout.flush()
-subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
+try:
+    subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
+except subprocess32.CalledProcessError as e:
+    print("FBI Failed. Possible causes: \n"+
+        "\tNo DUAs found because taint analysis failed: "+
+        "\t\t Ensure PANDA 'saw open of file we want to taint'" +
+        "\t\t Make sure target has debug symbols (version2): No 'failed DWARF loading' messages" +
+        "\tFBI crashed (bad arguments, config, or other untested code)")
+    raise e
+
 
 print()
 progress("Found Bugs, Injectable!!")

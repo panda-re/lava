@@ -94,6 +94,7 @@ read -ra MAKES <<< $makecmd
 for i in ${MAKES[@]}; do
     IFS=' '
     read -ra ARGS <<< $i
+    echo "$lava/tools/btrace/sw-btrace ${ARGS[@]}"
     $lava/tools/btrace/sw-btrace ${ARGS[@]}
     IFS='&&'
 done
@@ -131,11 +132,12 @@ for i in $c_dirs; do
   fi
 done
 
+
 # Run another clang tool that provides information about functions,
 # i.e., which have only prototypes, which have bodies.  
 progress "queries" 0 "Figure out functions" 
-for i in $c_files; do
-    $lava/tools/install/bin/lavaFnTool $i
+for this_c_file in $c_files; do
+    $lava/tools/install/bin/lavaFnTool $this_c_file
 done
 
 #progress "queries" 0  "Initialize variables..."
@@ -195,11 +197,26 @@ else
     done
 fi
 
+# Do we need to explicitly apply replacements in the root source directory
+# This causes clang-apply-replacements to segfault when run a 2nd time
+#pushd "$directory/$name/$source"
+#$llvm_src/Release/bin/clang-apply-replacements .
+#popd
+
 for i in $c_dirs; do
-    echo "  Applying replacements to $i"
+    echo "Applying replacements to $i"
     pushd $i
     $llvm_src/Release/bin/clang-apply-replacements .
     popd
+done
+
+# Ensure every c file was modified
+# Alternatively, we could just check that at least one file was modified
+for this_c_file in $c_files; do
+    if ! grep -q "pirate_mark_lava.h" $this_c_file; then
+        echo "FATAL ERROR: LAVA queries missing from source files!"
+        exit 1
+    fi
 done
 
 progress "queries" 0  "Done inserting queries. Time to make and run actuate.py on a 64-BIT machine!"
