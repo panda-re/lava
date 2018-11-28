@@ -304,7 +304,7 @@ if [ $inject -eq 1 ]; then
             fix="--fixupsscript='$injfixupsscript'"
         fi
         run_remote "$testinghost" "$python $scripts/inject.py -t $bugtypes -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
-    grep yield "$lf"
+    grep yield "$lf"  | grep " real bugs "
     done
 fi
 
