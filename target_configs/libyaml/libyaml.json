@@ -1,0 +1,24 @@
+{
+    "_________TODO___________": "this taret/config file is broken",
+
+    "name": "libyaml",
+    "db": "libyaml",
+    "preprocessed": "false",
+    "dataflow": "true",
+
+    "tarfile": "libyaml2.tar.gz",
+
+    "configure": "./configure --prefix=`pwd`/lava-install --disable-rpath",
+    "make": "make CFLAGS=-fvisibility=default CFLAGS+=-g -j 16 test",
+    "clean": "make clean; make -C tests clean",
+    "install": "make install",
+    "post_install": "mkdir ./lava-install/bin; cp tests/.libs/example-deconstructor ./lava-install/bin/deconstruct",
+    "command": "{install_dir}/bin/deconstruct {input_file}",
+    "expect_prompt": "root@debian-i386:~#",
+
+    "db": "libyaml",
+
+    "main_file": [ "src/parser.c" ],
+
+    "inputs": [ "inputs/spec.yaml", "inputs/bin.yaml", "inputs/test_yaml2.yaml"]
+}

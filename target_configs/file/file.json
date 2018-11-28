@@ -16,10 +16,7 @@
     "command": "{install_dir}/bin/file -m {install_dir}/share/misc/magic.mgc {input_file}",
     "injfixupsscript": "file_fixup.sh {bug_build}",
 
-    "max_liveness": 100000,
-    "max_cardinality": 100,
     "max_tcn": 10,
-    "max_lval_size": 100,
 
     "main_file": [ "src/file.c" ],
 

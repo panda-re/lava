@@ -938,26 +938,42 @@ int main (int argc, char **argv) {
     ind2str = LoadIDB(lavadb);
     printf("%d strings in lavadb\n", (int)ind2str.size());
 
+    if (!project.isMember("max_liveness")) {
+        printf("max_liveness not set, using default 100000\n");
+        project["max_liveness"] = 100000;
+    }
+
+    // Throw exception if we can't process any required argument
     if (!project["max_liveness"].isUInt()) {
-        printf("Fatal error, could not parse max_liveness\n");
-        return -1;
+        throw std::runtime_error("Could not parse max_liveness");
     }
     max_liveness = project["max_liveness"].asUInt();
     printf("maximum liveness score of %lu\n", max_liveness);
 
-    // Throw exception if we can't process any required argument
+    if (!project.isMember("max_cardinality")) {
+        printf("max_cardinality not set, using default 100\n");
+        project["max_cardinality"] = 100;
+    }
     if (!project["max_cardinality"].isUInt()) {
         throw std::runtime_error("Could not parse max_cardinality");
     }
     max_card = project["max_cardinality"].asUInt();
     printf("max card of taint set returned by query = %d\n", max_card);
 
+    if (!project.isMember("max_tcn")) {
+        printf("max_tcn not set, using default 100\n");
+        project["max_tcn"] = 100;
+    }
     if (!project["max_tcn"].isUInt()) {
         throw std::runtime_error("Could not parse max_tcn");
     }
     max_tcn = project["max_tcn"].asUInt();
     printf("max tcn for addr = %d\n", max_tcn);
 
+    if (!project.isMember("max_lval_size")) {
+        printf("max_lval_size not set, using default 100\n");
+        project["max_lval_size"] = 100;
+    }
     if (!project["max_lval_size"].isUInt()) {
         throw std::runtime_error("Could not parse max_lval_size");
     }

@@ -10,19 +10,12 @@
     "snapshot": "root",
     "expect_prompt": "root@debian-i386:~#",
 
-
-    "configure": "true",
-    "make": "make CFLAGS=-gdwarf-2",
+    "make": "make",
     "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/pcre2grep -f {input_file} /etc/passwd",
 
-    "max_liveness": 100000,
-    "max_cardinality": 100,
-    "max_tcn": 100000,
-    "max_lval_size": 100,
-
-    "main_file": [ "pcre2grep-pre.c" ], 
+    "main_file": [ "src/pcre2grep-pre.c" ],
 
     "inputs": [ "inputs/patterns" ]
 }
