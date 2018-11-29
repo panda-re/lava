@@ -900,10 +900,10 @@ void record_call(Panda__LogEntry *ple) { }
 void record_ret(Panda__LogEntry *ple) { }
 
 int main (int argc, char **argv) {
-    if (argc != 5) {
+    if (argc != 5 && argc !=6 ) {
         printf("Find Bug Inject (FBI) -- Version %s\n", LAVA_VER);
-        printf("usage: fbi host.json ProjectName pandalog inputfile\n");
-        printf("    Project JSON file should have properties:\n");
+        printf("usage: fbi host.json ProjectName pandalog inputfile [curtail count]\n");
+        printf("    Project JSON file may specify properties:\n");
         printf("        max_liveness: Maximum liveness for DUAs\n");
         printf("        max_cardinality: Maximum cardinality for labelsets on DUAs\n");
         printf("        max_tcn: Maximum taint compute number for DUAs\n");
@@ -911,6 +911,10 @@ int main (int argc, char **argv) {
         printf("    pandalog: Pandalog. Should be like queries-file-5.22-bash.iso.plog\n");
         printf("    inputfile: Input file basename, like malware.pcap\n");
         exit (1);
+    }
+
+    if (argc == 6) {
+        curtail = atoi(argv[5]);
     }
 
     // We want decimation to be deterministic, so srand w/ magic value.
@@ -991,11 +995,13 @@ int main (int argc, char **argv) {
     printf("Chaff_bugs is %d\n", chaff_bugs);
     */
 
-    if (!project["curtail_fbi"].isUInt()) {
-        curtail = 0;
-    }else{
-        // null should never happen, if it does we'll violate an assert in the asUInt
-        curtail = project.get("curtail_fbi", Json::Value::null).asUInt();
+    if (curtail == 0) { // Will be 0 unless specified on command line
+        if (!project["curtail_fbi"].isUInt()) {
+            curtail = 0;
+        }else{
+            // null should never happen, if it does we'll violate an assert in the asUInt
+            curtail = project.get("curtail_fbi", Json::Value::null).asUInt();
+        }
     }
     printf("Curtail is %d\n", curtail);
 
