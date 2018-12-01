@@ -103,4 +103,10 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
     truncate() {
         echo -n > "$1"
     }
+
+    die() {
+         printf '%s\n' "$1" >&2
+         exit 1
+    }
+
 fi
