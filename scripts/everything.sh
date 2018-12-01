@@ -9,13 +9,6 @@
 # Step T: Use panda & fbi to populate db with prospective bugs
 # Step I: Try injecting bugs.
 #
-# -q, -m, -t and -i: use these to turn on each of the three steps
-# -z [knobSize]: use this to make inject step use knob trigger bugs
-#                and knobSize changes how origFile is mutated
-# -b [bugType] : use this to specify attact point type: [mem_write|mem_read|fn_arg]
-#
-# everything -a -d -r -q -m -t -n [num_bugs_to_inject] -i [numSims] -b [bug_type] -z [knobSize] JSONfile"
-#
 # Here is what everything consists of.
 #
 # Erases postgres db for this target.
@@ -44,13 +37,37 @@ trap '' PIPE
 set -e # Exit on error
 
 USAGE() {
-  echo "everything.sh version $version"
-  echo "USAGE: $0 -a -d -r -q -m -t -i [numSims] -b [bug_type] -z [knobSize] ProjectName"
-  echo "       . . . or just $0 -ak ProjectName"
+  echo "$0 version $version"
+  echo "USAGE: $0 [options] [ProjectConfig]"
+  echo "ProjectConfig should be a path to a json file or simply the target name if the config exists in target_configs/name/name.json"
+
+  echo 
+  echo "== Common Options =="
+  echo "   -a | --all     Run all lava steps and inject $many bugs over 3 trials"
+  echo "   -k | --force   Delete old data without confirmation"
+  echo "   -n [num__bugs] | --count [num_bugs]   Specify number of bugs to be injected at once"
+  #echo "   -y [bug_types] | --bug-types [bug_types]   Specify a comma seperated list of bug types: " # TODO never used?
+  echo "   -b [atp_type] | --atp-type [atp_type]   Specify a single ATP type. One of mem_read, fn_arg, or mem_write"
+
+  echo
+  echo "== Specify Steps to Run =="
+  echo "   -r | --reset         Run reset step"
+  echo "   -c | --clean         Run clean step"
+  echo "   -q | --add-queries   Run add queries step"
+  echo "   -m | --make          Run make step"
+  echo "   -t | --taint         Run taint step"
+  echo "   -i [num_trials] | --inject [num_trials]         Run inject step with specified number of trials"
+
+  echo
+  echo "== Expert only options =="
+  echo "  --demo                        Run lava demo"
+  echo "  --test-data-flow              Only inject data-flow argument, no bugs"
+  echo "  --enable-knob-trigger [knob]  Enable knob trigger with specified knob" # TODO: what does that mean? Maybe disable this entirely
+  echo
   exit 1
 }
 
-if [ $# -lt 2 ]; then
+if [ $# -eq 0 ]; then
     USAGE
 fi
 
@@ -75,92 +92,13 @@ bugtypes="ptr_add,rel_write"
 # default # of bugs to be injected at a time
 many=50
 
-echo
-progress "everything" 0 "Parsing args"
-while getopts  "farcqmtb:i:z:y:n:kd" flag
-do
-  if [ "$flag" = "a" ]; then
-      reset=1
-      reset_db=1
-      add_queries=1
-      make=1
-      taint=1
-      inject=1
-      num_trials=3
-      progress "everything" 0 "All steps will be executed"
-  fi
-  if [ "$flag" = "r" ]; then
-      reset=1
-      progress "everything" 0 "Reset step will be executed"
-  fi
-  if [ "$flag" = "c" ]; then
-      # note, this step, or option is not executed with -a flag
-      reset_db=1
-      progress "everything" 0 "Reset (clean) just databse step will be executed"
-  fi
-  if [ "$flag" = "q" ]; then
-      add_queries=1
-      progress "everything" 0 "Add queries step will be executed"
-  fi
-  if [ "$flag" = "m" ]; then
-      make=1
-      progress "everything" 0 "Make step will be executed"
-  fi
-  if [ "$flag" = "t" ]; then
-      taint=1
-      progress "everything" 0 "Taint step will be executed"
-  fi
-  if [ "$flag" = "i" ]; then
-      inject=1
-      num_trials=$OPTARG
-      progress "everything" 0 "Inject step will be executed: num_trials = $num_trials"
-  fi
-  if [ "$flag" = "f" ]; then
-      inject=1
-      many=0
-      num_trials=1
-      progress "everything" 0 "[TESTING] Inject data_flow only, 0 bugs"
-  fi
-  if [ "$flag" = "y" ]; then
-      bugtypes=$OPTARG
-      progress "everything" 0 "Injecting bugs of type(s): $bugtypes"
-  fi
-  if [ "$flag" = "n" ]; then
-      many=$OPTARG
-      progress "everything" 0 "Number of injected bug at the same time: $many"
-  fi
-  if [ "$flag" = "z" ]; then
-      knob=$OPTARG
-      kt="--knobTrigger $knob"
-      progress "everything" 0 "Inject step will be executed with knob trigger: knob = $knob"
-  fi
-  if [ "$flag" = "b" ]; then
-      # -b [bugType] : use this to specify attact point type: [mem_write|mem_read|fn_arg]
-      ATP_TYPE="$OPTARG"
-      if [ "$ATP_TYPE" != "mem_read" -a "$ATP_TYPE" != "fn_arg" -a "$ATP_TYPE" != "mem_write" ]; then
-          echo "ATP Type ($ATP_TYPE) is not valid must specify:"
-          echo "    -b [mem_write|mem_read|fn_arg]"
-          echo "Exiting . . ."
-          exit 1
-      fi
-      progress "everything" 0 "Query step will be executed with bug type: atp = $ATP_TYPE"
-  fi
-  if [ "$flag" = "k" ]; then
-      ok=1
-      progress "everything" 0 "-k: Okaying through deletes"
-  fi
-  if [ "$flag" = "d" ]; then
-      demo=1
-      progress "everything" 0 "-d: demo mode"
-  fi
-done
-shift $((OPTIND -1))
+source `dirname $0`/arg_parse.sh
+parse_args $@
 
-# if $1 is the empty string then json file was not declared and we exit
-if [ -z "$1" ]; then
+# Parse args initialzes all our variables and project_name
+if [ -z "$project_name" ]; then
     USAGE
 fi
-project_name="$1"
 . `dirname $0`/vars.sh
 
 if [[ $demo -eq 1 ]]
