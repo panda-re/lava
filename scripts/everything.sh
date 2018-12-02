@@ -62,6 +62,7 @@ USAGE() {
   echo "== Expert only options =="
   echo "  --demo                        Run lava demo"
   echo "  --test-data-flow              Only inject data-flow argument, no bugs"
+  echo "  --curtail [count]             Curtail bug-finding after count bugs"
   echo "  --enable-knob-trigger [knob]  Enable knob trigger with specified knob" # TODO: what does that mean? Maybe disable this entirely
   echo
   exit 1
@@ -86,6 +87,7 @@ inject=0
 num_trials=0
 kt=""
 demo=0
+curtail=0
 ATP_TYPE=""
 # default bugtypes
 bugtypes="ptr_add,rel_write"
@@ -212,7 +214,7 @@ if [ $taint -eq 1 ]; then
         lf="$logs/bug_mining-$i.log"
         truncate "$lf"
         progress "everything" 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
-        run_remote "$pandahost" "$python $scripts/bug_mining.py $hostjson $project_name $input" "$lf"
+        run_remote "$pandahost" "$python $scripts/bug_mining.py $hostjson $project_name $input $curtail" "$lf"
         echo -n "Num Bugs in db: "
         bug_count=$(run_remote "$pandahost" "psql -At $db -U postgres -c 'select count(*) from bug'")
         if [ "$bug_count" = "0" ]; then

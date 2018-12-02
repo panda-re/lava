@@ -39,6 +39,7 @@ qemu_use_rr = False
 
 start_time = 0
 version="2.0.0"
+curtail=0
 
 def tick():
     global start_time
@@ -80,6 +81,10 @@ project = parse_vars(host_json, project_name)
 input_file = abspath(project["config_dir"] + "/" + sys.argv[3])
 input_file_base = os.path.basename(input_file)
 print("bug_mining.py %s %s" % (project_name, input_file))
+
+if len(sys.argv) > 4:
+    global curtail
+    curtail = int(sys.argv[4])
 
 qemu_path = project['qemu']
 qemu_build_dir = dirname(dirname(abspath(qemu_path)))
@@ -235,6 +240,14 @@ progress("Calling the FBI on queries.plog...")
 # project_file, pandalog, input_file_base]
 fbi_args = [join(lavadir, 'tools', 'install', 'bin', 'fbi'), host_json,
             project_name, pandalog, input_file_base]
+
+# Command line curtial argument takes priority, otherwise use project specific one
+global curtail
+if curtail !=0 :
+    fbi_args.append(str(curtail))
+elif "curtail" in project:
+    fbi_args.append(str(project.get("curtail", 0)))
+
 dprint("fbi invocation: [%s]" % (subprocess32.list2cmdline(fbi_args)))
 sys.stdout.flush()
 try:

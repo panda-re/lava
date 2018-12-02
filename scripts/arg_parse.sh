@@ -115,7 +115,7 @@ function parse_args {
 
             --enable-knob-trigger)
                 if [ "$2" ]; then
-                    knob=$OPTARG
+                    knob=$2
                     kt="--knobTrigger $knob"
                     progress "everything" 0 "Inject step will be executed with knob trigger: knob = $knob"
                     shift
@@ -123,7 +123,16 @@ function parse_args {
                     die "--knobTrigger requires knob argument"
                 fi
                 ;;
-
+            --curtail)
+                if [ "$2" ] && [[ $2 =~ ^[0-9]+$ ]]; then
+                    curtail="$2"
+                    shift
+                else
+                    # default curtail=1000
+                    curtail=1000
+                fi
+                progress "everything" 0 "Curtailing FBI after $curtail"
+               ;;
             -y|--bug-types)
                 if [ "$2" ]; then
                     bug_types="$2" # TODO: single arguments must be passed as 'arg1,'
@@ -157,7 +166,10 @@ function parse_args {
             #    ;;
             --)              # End of all options.
                 shift
-                break
+                # Keep parsing options while the next one contains a dash
+                if ! [[ $1 == *"-"* ]]; then
+                    break
+                fi
                 ;;
             -?*)
                 printf 'ERROR: Unknown option: %s\n' "$1" >&2
