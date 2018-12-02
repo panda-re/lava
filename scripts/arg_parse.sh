@@ -5,7 +5,6 @@ digit_re='^[0-9]+$'
 function parse_args {
     echo
     progress "everything" 0 "Parsing args"
-
     if [ "$#" -eq 1 ]; then # With no arguments run everything, else try matching args
         # If the single argument is a  flag, e.g., --help, handle that instead
         if ! [[ $1 == *"-"* ]]; then
@@ -166,10 +165,7 @@ function parse_args {
             #    ;;
             --)              # End of all options.
                 shift
-                # Keep parsing options while the next one contains a dash
-                if ! [[ $1 == *"-"* ]]; then
-                    break
-                fi
+                break
                 ;;
             -?*)
                 printf 'ERROR: Unknown option: %s\n' "$1" >&2
