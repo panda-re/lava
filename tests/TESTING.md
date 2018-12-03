@@ -1,7 +1,8 @@
 # TESTING
 
-Running `./test.sh` will run each step of Lava for each project in `../target_configs`
-Results will be saved into `./results.txt`
+Run `./test.sh toy` to test LAVA on your `toy` target configured in `../target_configs/toy/toy.json`. Results will be printed to stdout.
+
+Run `./test_all.sh` to run each step of LAVA for each project in `../target_configs`. Results will be saved into `./results.txt`
 
 
 # Current issues:
