@@ -10,7 +10,7 @@
   "snapshot": "root",
   "expect_prompt": "root@debian-i386:~#",
 
-  "make": "make CFLAGS=-gdwarf-2",
+  "make": "make",
   "clean": "make clean",
   "install": "make install",
   "command": "{install_dir}/bin/blecho 5 123456789 12 /tmp/blecho_memory < {input_file}",
