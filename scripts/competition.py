@@ -293,8 +293,8 @@ def main():
                                       args, False, competition=True, bug_solutions=bug_solutions)
 
     if len(real_bug_list) < int(args.minYield):
-        print("\n\nXXX Yield too low after injection -- Require at least {} bugs for  \
-                competition, only have {}".format(args.minYield, len(real_bug_list)))
+        print("\n\nXXX Yield too low after injection -- Require at least {} bugs for"
+                " competition, only have {}".format(args.minYield, len(real_bug_list)))
         raise RuntimeError("Failure")
 
     print "\n\n Yield acceptable: {}".format(len(real_bug_list))
@@ -350,9 +350,11 @@ def main():
 
     # build internal version
     log_build_sh = join(corpdir, "log_build.sh")
-    makes = project['make'].split('&&')
-    makes = [make_cmd + ' CFLAGS+=\"-DLAVA_LOGGING\"' for make_cmd in makes]
-    log_make = " && ".join(makes)
+
+    # This is gross, maybe we shouldn't support multiple targets
+    # We need to set the environmnet for each make command
+    log_make = " && ".join(["CFLAGS=-DLAVA_LOGGING " + make_cmd  for make_cmd in project["make"].split("&&")])
+
     internal_builddir = join(corpdir, "lava-install-internal")
     lava_installdir = join(bd, "lava-install")
     with open(log_build_sh, "w") as build:
@@ -570,6 +572,9 @@ done""".format(command = project['command'].format(**{"install_dir": "./lava-ins
     print("Counting how many crashes competition infrastructure identifies:...")
     run_cmd(trigger_all_crashes, cwd=corpdir) # Prints about segfaults
     (rv, outp) = run_cmd("wc -l {}".format(join(corpdir, "validated_bugs.txt")))
+    if rv != 0:
+        raise RuntimeError("Validated bugs file does not exist. Something went wrong")
+
     (a,b) = outp[0].split()
     n = int(a)
     print("Competition infrastructure found: %d of %d injected bugs" % (n, len(real_bug_list)))

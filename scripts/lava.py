@@ -383,8 +383,12 @@ def run_cmd(cmd, envv=None, timeout=30, cwd=None, rr=False, shell=False):
                                for k, v in envv.iteritems()])
 
     if debugging:
-        print("run_cmd(" + env_string + " " +
-              subprocess32.list2cmdline(cmd) + ")")
+        if type(cmd) == list:
+            print("run_cmd(" + env_string + " " +
+                  subprocess32.list2cmdline(cmd) + ")")
+        else:
+            print("run_cmd(" + env_string + " " +
+                    cmd + ")")
     p = subprocess32.Popen(cmd, cwd=cwd, env=envv, stdout=PIPE,
                            stderr=PIPE, shell=shell)
     try:
@@ -955,7 +959,7 @@ def run_modified_program(project, install_dir, input_file,
         print("Run modified program: {}".format(cmd))
 
     # Command might be redirecting input file in so we need shell=True
-    return run_cmd(cmd, envv, timeout, cwd=install_dir, shell=True)
+    return run_cmd(cmd, envv, timeout, cwd=install_dir, shell=shell)
 
 # Find actual line number of attack point for this bug in source
 def get_trigger_line(lp, bug):
@@ -980,7 +984,7 @@ def get_trigger_line(lp, bug):
 
 def check_competition_bug(lp, project, bug, fuzzed_input):
     (rv, outp) = run_modified_program(project, lp.bugs_install,
-                                      fuzzed_input, 20)
+                                      fuzzed_input, 20, shell=True)
     assert(len(outp) == 2)
     (out, err) = outp
     for line in out.splitlines():
@@ -1064,7 +1068,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
             solution=solution, **mutfile_kwargs)
     timeout = project.get('timeout', 5)
     (rv, outp) = run_modified_program(project, lp.bugs_install,
-                                      fuzzed_input, timeout)
+                                      fuzzed_input, timeout, shell=True)
     print("retval = %d" % rv)
     validated = False
     if bug.trigger.dua.fake_dua is False:
@@ -1085,15 +1089,14 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
                 # infrastructure
                 validated = True
                 if competition:
-                    if set(check_competition_bug(lp, project, bug,
-                                                 fuzzed_input)) == \
-                            set([bug.id]):
+                    found_bugs = check_competition_bug(lp, project, bug, fuzzed_input)
+                    if set(found_bugs) == set([bug.id]):
                         print("... and competition infrastructure agrees")
                         validated &= True
                     else:
                         validated &= False
-                        print("... but competition infrastructure \
-                              misidentified it")
+                        print("... but competition infrastructure"
+                              " misidentified it ({} vs {})".format(found_bugs, bug.id))
                 if args.checkStacktrace:
                     if check_stacktrace_bug(lp, project, bug, fuzzed_input):
                         print("... and stacktrace agrees with trigger line")
