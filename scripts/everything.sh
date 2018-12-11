@@ -110,6 +110,11 @@ fi
 
 progress "everything" 1 "JSON file is $json"
 
+if [ ! -f "$tarfile" ]; then
+    echo -e "\nFATAL ERROR: Specified tarfile ($tarfile) does not exit\n";
+    exit 1;
+fi
+
 source=$(tar tf "$tarfile" | head -n 1 | cut -d / -f 1 2>/dev/null)
 
 if [ -z "$source" ]; then
