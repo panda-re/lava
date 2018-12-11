@@ -20,7 +20,7 @@
 
 #define LOG (1 << 0)
 #define INI (1 << 1)
-#define DEBUG_FLAGS INI // ( INI | LOG )
+#define DEBUG_FLAGS 0 // ( INI | LOG )
 
 using namespace clang::tooling;
 using namespace llvm;using namespace clang;

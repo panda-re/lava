@@ -24,7 +24,7 @@ using namespace llvm;
 #define PARENS (1 << 0)
 #define GENERAL (1 << 1)
 
-#define DEBUG_FLAGS (PARENS | GENERAL)  // (PARENS | GENERAL)
+#define DEBUG_FLAGS 0 // (PARENS | GENERAL)
 
 static llvm::raw_null_ostream null_ostream;
 #define debug(flag) ((DEBUG_FLAGS & (flag)) ? llvm::errs() : null_ostream)
