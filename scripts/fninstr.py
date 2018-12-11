@@ -6,10 +6,12 @@ import argparse
 
 debug = True
 
-# When set, we don't inject dataflow as an argument when a function pointer is called
-# This needs to behave the same as lavaTool's function pointer matcher; when that is enabled
-# this must be False. TODO: parameterize this
-IGNORE_FN_PTRS = True
+# When IGNORE_FN_PTRS is set, we don't inject dataflow as an argument when a
+# function pointer is called. This needs to match with the same variable
+# in lavaTool/include/MatchFinder.h
+# Note, no tests pass if this is true
+# TODO: parameterize this
+IGNORE_FN_PTRS = False
 
 
 parser = argparse.ArgumentParser(description='Use output of LavaFnTool to figure out which parts of preproc code to instrument')

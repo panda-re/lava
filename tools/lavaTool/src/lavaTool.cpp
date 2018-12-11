@@ -107,7 +107,8 @@ int main(int argc, const char **argv) {
 
         if (LavaDB != "XXX") SaveDB(StringIDs, LavaDB);
     } else if (LavaAction == LavaInjectBugs) {
-        // TODO this logic is flawed, bugs can be injected across files/directories and this is specific to one single run of lavaTool
+        // TODO this logic is flawed, bugs can be injected across files/directories
+        // and this is specific to one single run of lavaTool
         if (!bugs_with_atp_at.empty()) {
             std::cout << "Warning: Failed to inject attacks for bugs:\n";
             for (const auto &keyvalue : bugs_with_atp_at) {
@@ -129,7 +130,8 @@ int main(int argc, const char **argv) {
             std::cout << "Warning: Failed to inject siphons:\n";
             for (const auto &keyvalue : siphons_at) {
                 std::cout << "    At " << keyvalue.first << "\n";
-                for (const LvalBytes &lval_bytes : keyvalue.second) { // TODO print failed bugs for siphons as well
+                // TODO print failed bugs for siphons as well
+                for (const LvalBytes &lval_bytes : keyvalue.second) {
                     std::cout << "        " << lval_bytes << "\n";
                 }
             }

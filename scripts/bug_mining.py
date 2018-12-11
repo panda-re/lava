@@ -254,9 +254,9 @@ try:
     subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
 except subprocess32.CalledProcessError as e:
     print("FBI Failed. Possible causes: \n"+
-        "\tNo DUAs found because taint analysis failed: "+
-        "\t\t Ensure PANDA 'saw open of file we want to taint'" +
-        "\t\t Make sure target has debug symbols (version2): No 'failed DWARF loading' messages" +
+        "\tNo DUAs found because taint analysis failed: \n"
+        "\t\t Ensure PANDA 'saw open of file we want to taint'\n"
+        "\t\t Make sure target has debug symbols (version2): No 'failed DWARF loading' messages\n"
         "\tFBI crashed (bad arguments, config, or other untested code)")
     raise e
 

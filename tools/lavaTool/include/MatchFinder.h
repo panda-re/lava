@@ -14,6 +14,9 @@
 #include "CallExprArgAdditionalHandler.h"
 #include "FunctionPointerTypedefHandler.h"
 
+// Must match value in scripts/fninstr.py
+//#define IGNORE_FN_PTRS
+
 using clang::tooling::ClangTool;
 using clang::tooling::Replacement;
 using clang::tooling::getAbsolutePath;
@@ -129,6 +132,7 @@ public:
                 makeHandler<VarDeclArgAdditionHandler>());
 
             // function calls (direct or via fn pointer)
+#ifndef IGNORE_FN_PTRS
             addMatcher(
                     callExpr().bind("callExpr"),
                     makeHandler<CallExprArgAdditionHandler>());
@@ -137,14 +141,16 @@ public:
             addMatcher(
                 typedefDecl().bind("typedefdecl"),
                 makeHandler<FunctionPointerTypedefHandler>());
-        }
+#endif
 
+        // printf read disclosures - currently disabled
         /* addMatcher(
                 callExpr(
                     callee(functionDecl(hasName("::printf"))),
                     unless(argumentCountIs(1))).bind("call_expression"),
                 makeHandler<ReadDisclosureHandler>()
                 ); */
+        }
     }
     virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
         Insert.clear();
