@@ -377,24 +377,31 @@ class LavaDatabase(object):
 def run_cmd(cmd, envv=None, timeout=30, cwd=None, rr=False, shell=False):
     if type(cmd) in [str, unicode] and not shell:
         cmd = shlex.split(cmd)
-    env_string = ""
-    if envv:
-        env_string = " ".join(["{}='{}'".format(k, v)
-                               for k, v in envv.iteritems()])
 
     if debugging:
+        env_string = ""
+        if envv:
+            env_string = " ".join(["{}='{}'".format(k, v)
+                                   for k, v in envv.iteritems()])
         if type(cmd) == list:
             print("run_cmd(" + env_string + " " +
                   subprocess32.list2cmdline(cmd) + ")")
         else:
             print("run_cmd(" + env_string + " " +
                     cmd + ")")
-    p = subprocess32.Popen(cmd, cwd=cwd, env=envv, stdout=PIPE,
+    # Merge current environ with passed envv
+    merged_env = os.environ.copy()
+    if envv:
+        for k, v in envv.items():
+            merged_env[k] = v
+
+    p = subprocess32.Popen(cmd, cwd=cwd, env=merged_env, stdout=PIPE,
                            stderr=PIPE, shell=shell)
     try:
         # returns tuple (stdout, stderr)
         output = p.communicate(timeout=timeout)
-        print(output[1])
+        if debugging:
+            print("Run_cmd output: {}".format(repr(output[1])))
     except subprocess32.TimeoutExpired:
         print("Killing process due to timeout expiration.")
         p.terminate()
@@ -594,7 +601,8 @@ class LavaPaths(object):
         self.bugs_install = join(self.bugs_build, 'lava-install')
 
 
-# Given a list of bugs, return the IDs for a subset of bugs with `max_per_line` bugs on each line of source
+# Given a list of bugs, return the IDs for a subset of bugs with
+# `max_per_line` bugs on each line of source
 def limit_atp_reuse(bugs, max_per_line=1):
     uniq_bugs = []
     seen = {}
@@ -605,7 +613,8 @@ def limit_atp_reuse(bugs, max_per_line=1):
         seen[tloc] += 1
         if seen[tloc] <= max_per_line:
             uniq_bugs.append(bug.id)
-    print("Limited ATP reuse: Had {} bugs, now have {} with a max of {} per source line".format(len(bugs), len(uniq_bugs), max_per_line))
+    print("Limited ATP reuse: Had {} bugs, now have {} with a "
+          "max of {} per source line".format(len(bugs), len(uniq_bugs), max_per_line))
     return uniq_bugs
 
 # Build a set of src/input files that we need to modify to inject these bugs
@@ -631,7 +640,9 @@ def collect_src_and_print(bugs_to_inject, db):
             print("EXTRA DUAS:")
             for extra_id in bug.extra_duas:
                 dua_bytes = db.session.query(DuaBytes).filter(DuaBytes.id == extra_id).first()
-                if (dua_bytes is None): raise RuntimeError("Bug {} references DuaBytes {} which does not exist".format(bug.id, extra_id))
+                if (dua_bytes is None):
+                    raise RuntimeError("Bug {} references DuaBytes {} which does not exist"\
+                    .format(bug.id, extra_id))
                 print("  ", extra_id, "   @   ", dua_bytes.dua)
                 print("     Src_file: ", dua_bytes.dua.lval.loc_filename)
 
@@ -688,19 +699,23 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
     if not os.path.exists(join(lp.bugs_build, 'btrace.log')):
         print("Making with btrace...")
+
+        # Do we need to configure here? I don't think so...
         # run(shlex.split(project['configure']) +
-        # ['--prefix=' + lp.bugs_install]) # Remove?
-        for make_cmd in project['make'].split('&&'):
-            # Silence warnings related to adding integers to pointers since we already
-            # know that it's unsafe.
-            envv = {"CFLAGS": "-Wno-int-conversion"}
-            if competition:
-                envv["CFLAGS"] += " -DLAVA_LOGGING"
-            btrace = join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace')
-            print("Running btrace make command: {} {} with env: {} in {}".format(btrace, make_cmd, envv, lp.bugs_build))
-            #(rv, outp) = run_cmd([btrace] + shlex.split(make_cmd), envv, 30, cwd=lp.bugs_build)
-            #assert(rv == 0), "Make with btrace failed"
-            run([btrace] + shlex.split(make_cmd)) #TODO: testing without envv
+        # ['--prefix=' + lp.bugs_install])
+
+        # Silence warnings related to adding integers to pointers since we already
+        # know that it's unsafe.
+        envv = {"CFLAGS": "-Wno-int-conversion"}
+        if competition:
+            envv["CFLAGS"] += " -DLAVA_LOGGING"
+        btrace = join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace')
+        print("Running btrace make command: {} {} with env: {} in {}"
+                .format(btrace, project['make'], envv, lp.bugs_build))
+
+        (rv, outp) = run_cmd(btrace + " " + project['make'], envv, 30,
+                             cwd=lp.bugs_build, shell=True)
+        assert(rv == 0), "Make with btrace failed"
 
     sys.stdout.flush()
     sys.stderr.flush()
@@ -734,8 +749,9 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
         run(['git', 'add', '-f', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json.'])
-        for make_cmd in project['make'].split('&&'):
-            run(shlex.split(make_cmd))
+        #for make_cmd in project['make'].split('&&'):
+        #    run(shlex.split(make_cmd))
+        run(shlex.split(project['make']))
         try:
             run(['find', '.', '-name', '*.[ch]', '-exec',
                  'git', 'add', '-f', '{}', ';'])
@@ -748,8 +764,9 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
             check_call(project['install'].format(install_dir="lava-install"),
                        cwd=lp.bugs_build, shell=True)
 
-        for make_cmd in project['make'].split('&&'):
-            run(shlex.split(make_cmd))
+        #for make_cmd in project['make'].split('&&'):
+        #    run(shlex.split(make_cmd))
+        run(shlex.split(project['make']))
         run(['find', '.', '-name', '*.[ch]', '-exec', 'git', 'add', '{}', ';'])
         try:
             run(['git', 'commit', '-m',
@@ -873,19 +890,12 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
 
-    rv = 0
-    outp = ["", ""]
-    for make_cmd in project['make'].split('&&'):
-        if competition:
-            make_cmd += " CFLAGS+=\"-DLAVA_LOGGING\""
-        print("Running make cmd: {}".format(make_cmd))
-        (this_rv, this_outp) = run_cmd_notimeout(make_cmd, cwd=lp.bugs_build)
-
-        outp[0] += this_outp[0]
-        outp[1] += this_outp[1]
-        if this_rv != 0:
-            rv = this_rv
-            break
+    #for make_cmd in project['make'].split('&&'):
+    make_cmd = project['make']
+    if competition:
+        make_cmd += " CFLAGS+=\"-DLAVA_LOGGING\""
+    #print("Running make cmd: {}".format(make_cmd))
+    (rv, outp) = run_cmd_notimeout(make_cmd, cwd=lp.bugs_build)
 
     if rv != 0:
         print("Lava tool returned {}! Error log below:".format(rv))
@@ -982,21 +992,16 @@ def get_trigger_line(lp, bug):
         return min(distances)[1]
 
 
-def check_competition_bug(lp, project, bug, fuzzed_input):
-    (rv, outp) = run_modified_program(project, lp.bugs_install,
-                                      fuzzed_input, 20, shell=True)
+def check_competition_bug(rv, outp):
     assert(len(outp) == 2)
     (out, err) = outp
-    for line in out.splitlines():
-        print(line)
-    for line in err.splitlines():
-        print(line)
 
     if (rv % 256) <= 128:
         print("Clean exit (code {})".format(rv))
         return []  # No bugs unless you crash it
 
-    return process_crash(err)  # We now use stderr since it flushes better
+    # LAVALOG writes out to stderr
+    return process_crash(err)
 
 
 # use gdb to get a stacktrace for this bug
@@ -1089,7 +1094,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
                 # infrastructure
                 validated = True
                 if competition:
-                    found_bugs = check_competition_bug(lp, project, bug, fuzzed_input)
+                    found_bugs = check_competition_bug(rv, outp)
                     if set(found_bugs) == set([bug.id]):
                         print("... and competition infrastructure agrees")
                         validated &= True
@@ -1150,8 +1155,8 @@ def validate_bugs(bug_list, db, lp, project, input_files, build,
             print(outp[1])
             assert False  # Fails on original input
         else:
-            print("buggy program succeeds on original input {} \
-                  with exit code {}".format(input_file, rv))
+            print("buggy program succeeds on original input {}"
+                  "with exit code {}".format(input_file, rv))
         print("output:")
         lines = outp[0] + " ; " + outp[1]
         if update_db:

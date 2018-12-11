@@ -569,7 +569,7 @@ done""".format(command = project['command'].format(**{"install_dir": "./lava-ins
     run_builds([log_build_sh, public_build_sh])
     print("Injected {} bugs".format(len(real_bug_list)))
 
-    print("Counting how many crashes competition infrastructure identifies:...")
+    print("Counting how many crashes competition infrastructure identifies...")
     run_cmd(trigger_all_crashes, cwd=corpdir) # Prints about segfaults
     (rv, outp) = run_cmd("wc -l {}".format(join(corpdir, "validated_bugs.txt")))
     if rv != 0:
@@ -577,7 +577,7 @@ done""".format(command = project['command'].format(**{"install_dir": "./lava-ins
 
     (a,b) = outp[0].split()
     n = int(a)
-    print("Competition infrastructure found: %d of %d injected bugs" % (n, len(real_bug_list)))
+    print("\tCompetition infrastructure found: %d of %d injected bugs" % (n, len(real_bug_list)))
 
 
 if __name__ == "__main__":
