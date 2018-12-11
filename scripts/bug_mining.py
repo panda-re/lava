@@ -126,7 +126,7 @@ shutil.copy(input_file, installdir)
 cdrom = "ide1-cd0" # Note: x86-specific
 
 create_recording(qemu_path, project['qcow'], project['snapshot'],
-                 command_args, installdir, cdrom, isoname, project["expect_prompt"], rr=qemu_use_rr)
+                 command_args, installdir, isoname, project["expect_prompt"], cdrom, isoname=isoname, rr=qemu_use_rr)
                  #command_args, installdir, isoname, isoname, rr=qemu_use_rr) # for non-standard panda versions
 
 try: os.mkdir('inputs')
