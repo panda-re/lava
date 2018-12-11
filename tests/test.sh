@@ -1,5 +1,5 @@
 #!/bin/bash
 
 . test_fns.sh
-# 15 chars for proj, then 8 for each field
+echo "Project       RESET    CLEAN    ADD      MAKE     TAINT    INJECT   COMP"
 run_tests $1

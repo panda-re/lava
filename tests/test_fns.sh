@@ -48,8 +48,6 @@ fail() {
 }
 
 run_tests() {
-    # 15 chars for proj, then 8 for each field
-    echo "Project       RESET    CLEAN    ADD      MAKE     TAINT    INJECT   COMP"
     # Arg: project name
     project="$1"
     mkdir -p logs/$project
