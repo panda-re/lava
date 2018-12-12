@@ -1,7 +1,15 @@
-// TODO splitting this into its own tool doesn't work prior to the mbr-merge
-// It needs to include Insertions and Mod classes which the mbr-branch has refactored
-// out of lavatool. On the current branch, these are part of lavaTool and it's not
-// worth fixing it since we're about to merge into MBR
+// Clang rewriter to initialize all unitialized variables
+// to '={0}' (AKA null for any type)
+
+// It's a bit messy because it duplicates some classes
+// from LavaMatchHandler.h that we can't use directly
+// because that file does too many other things
+
+#include "lava.hxx"
+#include "lexpr.hxx"
+
+#include "Insertions.h"
+#include "Modifier.h"
 
 #include <stdio.h>
 #include <iostream>
@@ -11,51 +19,60 @@
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/Tooling.h"
+
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchersInternal.h"
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
 
-#include "llvm/Support/CommandLine.h"
+#include "clang/Frontend/CompilerInstance.h"
 
-#include "Insertions.h"
-#include "Modifier.h"
+#include "llvm/Support/CommandLine.h"
 
 #define LOG (1 << 0)
 #define INI (1 << 1)
-#define DEBUG_FLAGS INI // ( INI | LOG )
+#define DEBUG_FLAGS ( INI | LOG )
 
 using namespace clang::tooling;
-using namespace llvm;using namespace clang;
+using namespace llvm;
 using namespace clang;
 using namespace clang::ast_matchers;
-
 using namespace std;
-
 
 static llvm::raw_null_ostream null_ostream;
 #define debug(flag) ((DEBUG_FLAGS & (flag)) ? llvm::errs() : null_ostream)
-
-// globals to track our changes
-Insertions Insert;
-Modifier Mod;
 
 static cl::OptionCategory LavaInitCategory("LAVA Init Tool");
 static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp(
     "\nRewrite source to explicitly initialize all variables to 0.\n");
 
-class Initializer : public MatchFinder::MatchCallback {
-    public:
+// TODO: replace MyMatchHandler with LavaMatchHandler from LavaMatchHandler.h
+struct MyMatchHandler : public MatchFinder::MatchCallback {
+    MyMatchHandler(Modifier &Mod) : Mod(Mod) {}
+
+    virtual void handle(const MatchFinder::MatchResult &Result) = 0;
+
     virtual void run(const MatchFinder::MatchResult &Result) {
         const SourceManager &sm = *Result.SourceManager;
+        auto nodesMap = Result.Nodes.getMap();
 
-        /* We don't actually need this
-        // Get varDecl and make sure it isn't alrady initailized
-        const VarDecl *varDecl = Result.Nodes.getNodeAs<VarDecl>("var_decl");
-        if (varDecl == NULL) return;
-        assert(varDecl != NULL && varDecl->getInit() == NULL); // Must not be initialized already
-        */
+        debug(LOG) << "====== Found Match =====\n";
+        assert(Mod.sm != nullptr);
+        handle(Result); // If we don't crash, do we hit the HandleBeginSource?
+    }
+
+    const LangOptions *LangOpts = nullptr;
+protected:
+    Modifier &Mod;
+};
+
+// Here we initialize all the uninitialized variables
+struct InitHandler : public MyMatchHandler {
+    using MyMatchHandler::MyMatchHandler; // Inherit constructor.
+
+    virtual void handle(const MatchFinder::MatchResult &Result) {
+        const SourceManager &sm = *Result.SourceManager;
 
         // get our DeclStmt containing the varDecl
         const DeclStmt *declS = Result.Nodes.getNodeAs<DeclStmt>("decl");
@@ -65,16 +82,65 @@ class Initializer : public MatchFinder::MatchCallback {
         const Stmt *s = dyn_cast<Stmt>(declS);
         if (s == NULL) return;
 
-        // TODO, can we log the real location here?
-        // Get the ASTLoc of our stmt
-        //LavaASTLoc ast_loc = GetASTLoc(sm, s);
-        //debug(INI) << "Have to initialize variable @ " << ast_loc << "!\n";
-        debug(INI) << "Initialize something \n";
-
+        debug(INI) << "Adding new initialization\n";
         Mod.Change(s).InsertAfterRel(1, "={0}");
     }
 };
 
+// This is a modified version of LavaMatchFinder in MatchFinder.h
+// It just has different callbacks.
+// TODO: make a parent class that they can both use
+class Initializer : public MatchFinder, public SourceFileCallbacks {
+public:
+    Initializer() : Mod(Insert) {
+        addMatcher(
+            declStmt(has(varDecl(unless(hasInitializer(anything()))).bind("var_decl")))
+                .bind("decl"),
+            makeHandler<InitHandler>()
+        );
+    }
+
+    virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
+        Insert.clear();
+        Mod.Reset(&CI.getLangOpts(), &CI.getSourceManager());
+        TUReplace.Replacements.clear();
+        TUReplace.MainSourceFile = Filename;
+        CurrentCI = &CI;
+
+        debug(LOG) << "*** handleBeginSource for: " << Filename << "\n";
+
+        for (auto it = MatchHandlers.begin();
+                it != MatchHandlers.end(); it++) {
+            (*it)->LangOpts = &CI.getLangOpts();
+        }
+        return true;
+    }
+
+    virtual void handleEndSource() override {
+        debug(LOG) << "*** handleEndSource\n";
+
+        // Now 'render' our changes into the produced .yaml file
+        Insert.render(CurrentCI->getSourceManager(), TUReplace.Replacements);
+        std::error_code EC;
+        llvm::raw_fd_ostream YamlFile(TUReplace.MainSourceFile + ".yaml",
+                EC, llvm::sys::fs::F_RW);
+        yaml::Output Yaml(YamlFile);
+        Yaml << TUReplace;
+    }
+
+    template<class Handler>
+    MyMatchHandler *makeHandler() {
+        MatchHandlers.emplace_back(new Handler(Mod));
+        return MatchHandlers.back().get();
+    }
+
+private:
+    Insertions Insert;
+    Modifier Mod;
+    TranslationUnitReplacements TUReplace;
+    std::vector<std::unique_ptr<MyMatchHandler>> MatchHandlers;
+    CompilerInstance *CurrentCI = nullptr;
+};
 
 
 int main(int argc, const char **argv) {
@@ -82,18 +148,8 @@ int main(int argc, const char **argv) {
     ClangTool Tool(OptionsParser.getCompilations(),
                    OptionsParser.getSourcePathList());
 
-    MatchFinder Finder;
-    Initializer init;
+    Initializer Init;
+    int rv = Tool.run(newFrontendActionFactory(&Init, &Init).get());
 
-    Finder.addMatcher(
-        declStmt(hasDescendant(varDecl(unless(hasInitializer(anything()))).bind("var_decl")))
-            .bind("decl"),
-        &init
-    );
-
-    int rv = Tool.run(newFrontendActionFactory(&Finder).get());
-
-    //TODO  apply modifications and rewrite file
     return rv;
 }
-
