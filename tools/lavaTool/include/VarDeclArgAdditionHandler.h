@@ -23,7 +23,8 @@ struct VarDeclArgAdditionHandler : public LavaMatchHandler {
             const Type *pt = ft->getPointeeType().IgnoreParens().getTypePtr();
             assert(pt);
             const FunctionType *fun_type = dyn_cast<FunctionType>(pt);
-            assert(fun_type);
+            //assert(fun_type);
+            if (!fun_type) return;
             const FunctionProtoType *prot = dyn_cast<FunctionProtoType>(fun_type);
             // add the data_flow arg
             AddArgGen(Mod, l1, l2, false, prot->getNumParams(), 3);

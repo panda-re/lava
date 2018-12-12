@@ -15,15 +15,20 @@ struct FunctionPointerTypedefHandler : public LavaMatchHandler {
             return;
         }
         const Type *ft = td->getUnderlyingType().getTypePtr();
-        assert(ft);
+        //assert(ft);
+        if (!ft) return;
         if (ft->isFunctionPointerType()) {
             // field is a fn pointer
             const Type *pt = ft->getPointeeType().IgnoreParens().getTypePtr();
-            assert(pt);
+            //assert(pt);
+            if (!pt) return;
             const FunctionType *fun_type = dyn_cast<FunctionType>(pt);
-            assert(fun_type);
+            //assert(fun_type);
+            if (!fun_type) return;
             const FunctionProtoType *prot = dyn_cast<FunctionProtoType>(fun_type);
             // add the data_flow arg
+            //assert(prot);
+            if (!prot) return;
             AddArgGen(Mod, l1, l2, false, prot->getNumParams(), 4);
         }
     }
