@@ -97,7 +97,7 @@ everything except inject.py.  That is, if you were doing this for
 file, you would now be able to run the following
 
 cd scripts
-./everything.sh -krcamt file
+./everything.sh -ak file
 
 which will use lavaTool to add pri queries, then run panda's taint
 analysis to collect a pandalog, then read that pandalog containing the
@@ -114,7 +114,7 @@ psql file_tleek -U postgres -c 'select count(*), type from bug group by type ord
   111673 |    2
 (3 rows)
 
-THis indicates that bug_mining.py actually found a number of potential
+This indicates that bug_mining.py actually found a number of potential
 bugs for injection.
 
 What might have gone wrong?  If you got NO bugs at this point, this is
