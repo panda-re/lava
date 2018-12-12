@@ -180,7 +180,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         std::vector<LExpr> triggers;
         std::vector<Bug*> bugs;
 
-        //debug(INJECT) << "Inserting expression attack (AttackExpression).\n";
+        debug(INJECT) << "Inserting expression attack (AttackExpression).\n";
         const Bug *this_bug = NULL;
 
         if (LavaAction == LavaInjectBugs) {
@@ -188,7 +188,10 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                 map_get_default(bugs_with_atp_at,
                         std::make_pair(ast_loc, atpType));
 
-            if (injectable_bugs.size() == 0 && ArgCompetition) return;
+            if (injectable_bugs.size() == 0 && ArgCompetition) {
+                debug(INJECT) << "Abort, no injectable bugs and it's a competition\n";
+                return;
+            }
 
             // this should be a function bug -> LExpr to add.
             auto pointerAttack = KnobTrigger ? knobTriggerAttack : traditionalAttack;

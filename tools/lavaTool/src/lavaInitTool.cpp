@@ -6,17 +6,20 @@
 #include <stdio.h>
 #include <iostream>
 #include <fstream>
+#include <iostream>
 
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/Tooling.h"
-#include "llvm/Support/CommandLine.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchersInternal.h"
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
 
-#include <iostream>
+#include "llvm/Support/CommandLine.h"
+
+#include "Insertions.h"
+#include "Modifier.h"
 
 #define LOG (1 << 0)
 #define INI (1 << 1)
