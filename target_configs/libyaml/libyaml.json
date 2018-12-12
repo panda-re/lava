@@ -15,7 +15,10 @@
     "install": "make install",
     "command": "{install_dir}/bin/libyaml {input_file}",
 
+    "injfixupsscript": "fixup.sh {bug_build}",
+
     "main_file": [ "src/parser.c" ],
 
-    "inputs": [ "inputs/spec.yaml", "inputs/bin.yaml", "inputs/test_yaml2.yaml"]
+    "inputs": [ "inputs/spec.yaml"],
+    "all_inputs": [ "inputs/spec.yaml", "inputs/bin.yaml", "inputs/test_yaml2.yaml"]
 }
