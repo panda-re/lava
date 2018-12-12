@@ -45,8 +45,8 @@ USAGE() {
   echo "== Common Options =="
   echo "   -a | --all     Run all lava steps and inject $many bugs over 3 trials"
   echo "   -k | --force   Delete old data without confirmation"
-  echo "   -n [num__bugs] | --count [num_bugs]   Specify number of bugs to be injected at once"
-  #echo "   -y [bug_types] | --bug-types [bug_types]   Specify a comma seperated list of bug types: " # TODO never used?
+  echo "   -n [num_bugs] | --count [num_bugs]   Specify number of bugs to be injected at once"
+  echo "   -y [bug_types] | --bug-types [bug_types]   Specify a comma seperated list of bug types: " # TODO never used?
   echo "   -b [atp_type] | --atp-type [atp_type]   Specify a single ATP type. One of mem_read, fn_arg, or mem_write"
 
   echo

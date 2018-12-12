@@ -134,7 +134,7 @@ function parse_args {
                ;;
             -y|--bug-types)
                 if [ "$2" ]; then
-                    bug_types="$2" # TODO: single arguments must be passed as 'arg1,'
+                    bugtypes="$2" # TODO: a single arguments must be passed as 'arg1,'
                     progress "everything" 0 "Injecting bugs of type(s): $bugtypes"
                     shift
                 else
