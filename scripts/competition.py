@@ -148,7 +148,9 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             this_bugtype_atp_item_lists = atp_item_lists[this_bugtype]
             if len(this_bugtype_atp_item_lists) == 0:
                 # TODO: intelligently select a different bugype in this case
+                allowed_bugtypes.remove(this_bugtype)
                 print("Warning: tried to select a bug of type {} but none available".format(Bug.type_strings[this_bugtype]))
+                assert(len(allowed_bugtypes) >0), "No bugs available"
                 continue
 
             atp_item_idx = random.randint(0, len(this_bugtype_atp_item_lists)-1)
@@ -351,9 +353,8 @@ def main():
     # build internal version
     log_build_sh = join(corpdir, "log_build.sh")
 
-    # This is gross, maybe we shouldn't support multiple targets
-    # We need to set the environmnet for each make command
-    log_make = " && ".join(["CFLAGS=-DLAVA_LOGGING " + make_cmd  for make_cmd in project["make"].split("&&")])
+    # We need to set the environmnet for the make command
+    log_make = "CFLAGS=-DLAVA_LOGGING {}".format(project["make"])
 
     internal_builddir = join(corpdir, "lava-install-internal")
     lava_installdir = join(bd, "lava-install")

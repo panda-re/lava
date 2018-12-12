@@ -421,6 +421,8 @@ def run_cmd_notimeout(cmd, **kwargs):
 
 def mutfile(filename, fuzz_labels_list, new_filename, bug,
             kt=False, knob=0, solution=None):
+    # Open filename, mutate it and store in new_filename such that
+    # it hopefully triggers the passed bug
     if kt:
         assert (knob < 2**16-1)
         bug_trigger = bug.magic & 0xffff
@@ -890,12 +892,13 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
 
-    #for make_cmd in project['make'].split('&&'):
-    make_cmd = project['make']
+    # Silence warnings related to adding integers to pointers since we already
+    # know that it's unsafe.
+    make_cmd = project["make"]
+    envv = {"CFLAGS": "-Wno-int-conversion"}
     if competition:
-        make_cmd += " CFLAGS+=\"-DLAVA_LOGGING\""
-    #print("Running make cmd: {}".format(make_cmd))
-    (rv, outp) = run_cmd_notimeout(make_cmd, cwd=lp.bugs_build)
+        envv["CFLAGS"] += " -DLAVA_LOGGING"
+    (rv, outp) = run_cmd(make_cmd, envv, None, cwd=lp.bugs_build)
 
     if rv != 0:
         print("Lava tool returned {}! Error log below:".format(rv))
