@@ -1,25 +1,7 @@
 [
   {
-    "_id": "5c103f29bc935eaeebcd1311",
-    "index": 0,
-    "guid": "f5e2f99b-6390-493c-b90b-1f3836a0cbda",
-    "isActive": true,
-    "balance": "$2,182.68",
-    "picture": "http://placehold.it/32x32",
-    "age": 32,
-    "eyeColor": "blue",
-    "name": "Claudette Pope",
-    "gender": "female",
-    "company": "ARCTIQ",
-    "email": "claudettepope@arctiq.com",
-    "phone": "+1 (807) 539-2828",
-    "address": "541 Stewart Street, Chumuckla, Minnesota, 5241",
-    "about": "Ex dolore dolore qui ullamco fugiat reprehenderit. Id nostrud ad dolore ex esse elit irure. Esse commodo dolor labore anim aute. Cillum eu consectetur amet laborum reprehenderit. Laboris voluptate cillum in reprehenderit ad aute est consequat in labore aliquip laborum laborum dolore. In mollit amet ut ipsum aute.\r\n",
-    "registered": "2017-10-26T04:59:59 +04:00",
-    "latitude": 20.214341,
-    "longitude": -12.674988,
+    "hello": "world",
     "tags": [
-      "do",
       "dolor",
       "officia",
       "aliqua",
@@ -29,244 +11,40 @@
     ],
     "friends": [
       {
-        "id": 0,
         "name": "Leach Anderson"
       },
       {
-        "id": 1,
         "name": "Kayla Rodriquez"
       },
       {
-        "id": 2,
         "name": "Castro Mccoy"
       }
     ],
-    "greeting": "Hello, Claudette Pope! You have 5 unread messages.",
     "favoriteFruit": "apple"
   },
   {
-    "_id": "5c103f2972e13c5742057046",
-    "index": 1,
-    "guid": "efe18dc3-b536-4504-bc47-c771c5223fe2",
-    "isActive": true,
-    "balance": "$1,300.31",
-    "picture": "http://placehold.it/32x32",
-    "age": 40,
-    "eyeColor": "brown",
-    "name": "Gabriela Mcdaniel",
-    "gender": "female",
-    "company": "QUILK",
-    "email": "gabrielamcdaniel@quilk.com",
-    "phone": "+1 (906) 401-3376",
-    "address": "735 Nova Court, Hegins, Marshall Islands, 2614",
-    "about": "Aute laboris sit sint veniam ut elit esse sunt pariatur enim. Exercitation exercitation velit minim commodo quis et ullamco est ad ullamco est. Tempor veniam officia dolor consectetur laboris culpa consequat. Esse pariatur consectetur qui sunt reprehenderit aliqua laboris. Consectetur consequat quis nulla laborum minim in officia est fugiat aute. Elit duis deserunt exercitation et irure ex voluptate ex minim elit minim duis. Mollit ea eu ut nisi ad incididunt esse excepteur culpa.\r\n",
-    "registered": "2015-10-18T01:29:52 +04:00",
-    "latitude": -0.785181,
-    "longitude": 94.896957,
+    "null", null,
+    "int", 1234,
+    "hello": "there",
     "tags": [
-      "aliqua",
-      "proident",
-      "cillum",
-      "exercitation",
-      "in",
-      "minim",
-      "laborum"
-    ],
-    "friends": [
-      {
-        "id": 0,
-        "name": "Avery Copeland"
-      },
-      {
-        "id": 1,
-        "name": "Tiffany Navarro"
-      },
-      {
-        "id": 2,
-        "name": "Sheila Spencer"
-      }
-    ],
-    "greeting": "Hello, Gabriela Mcdaniel! You have 8 unread messages.",
-    "favoriteFruit": "strawberry"
-  },
-  {
-    "_id": "5c103f2998aa5509641e13f8",
-    "index": 2,
-    "guid": "43b27837-833b-4936-aaa7-9d1a7c095892",
-    "isActive": false,
-    "balance": "$2,655.54",
-    "picture": "http://placehold.it/32x32",
-    "age": 36,
-    "eyeColor": "green",
-    "name": "Kinney Hammond",
-    "gender": "male",
-    "company": "ORBAXTER",
-    "email": "kinneyhammond@orbaxter.com",
-    "phone": "+1 (945) 540-3393",
-    "address": "351 Ridgecrest Terrace, Ruffin, Texas, 6285",
-    "about": "Nulla do ad cillum sint labore amet nostrud proident consectetur reprehenderit irure cupidatat ea. In Lorem aliqua sunt mollit in mollit ad cillum dolor deserunt minim. Mollit irure elit sit qui id nostrud ex nostrud excepteur quis consequat.\r\n",
-    "registered": "2014-12-24T05:34:07 +05:00",
-    "latitude": -38.40601,
-    "longitude": -18.496187,
-    "tags": [
-      "exercitation",
-      "laborum",
-      "ullamco",
+      "dolor",
       "officia",
-      "ipsum",
-      "eiusmod",
-      "in"
+      "aliqua",
+      "aliqua",
+      "duis",
+      "consectetur"
     ],
     "friends": [
       {
-        "id": 0,
-        "name": "Blackburn Buck"
+        "name": "Leach Anderson"
       },
       {
-        "id": 1,
-        "name": "Tamika Cunningham"
+        "name": "Kayla Rodriquez"
       },
       {
-        "id": 2,
-        "name": "Erica Hubbard"
+        "name": "Castro Mccoy"
       }
     ],
-    "greeting": "Hello, Kinney Hammond! You have 4 unread messages.",
-    "favoriteFruit": "strawberry"
-  },
-  {
-    "_id": "5c103f299b064276869b139a",
-    "index": 3,
-    "guid": "b1a6dd24-bc5b-4d6f-9c9e-0bfee5f5ee0d",
-    "isActive": true,
-    "balance": "$1,308.24",
-    "picture": "http://placehold.it/32x32",
-    "age": 20,
-    "eyeColor": "green",
-    "name": "Faye Hughes",
-    "gender": "female",
-    "company": "VERTIDE",
-    "email": "fayehughes@vertide.com",
-    "phone": "+1 (819) 419-3377",
-    "address": "293 Friel Place, Jardine, Wisconsin, 3146",
-    "about": "Velit aliqua voluptate Lorem elit proident commodo magna ut ea. Esse tempor eu sunt tempor adipisicing officia eiusmod quis minim. Incididunt dolor et nulla nulla.\r\n",
-    "registered": "2016-02-26T05:54:59 +05:00",
-    "latitude": 59.624779,
-    "longitude": 69.541969,
-    "tags": [
-      "eiusmod",
-      "adipisicing",
-      "sit",
-      "nostrud",
-      "ea",
-      "tempor",
-      "ullamco"
-    ],
-    "friends": [
-      {
-        "id": 0,
-        "name": "Olson Conway"
-      },
-      {
-        "id": 1,
-        "name": "Oliver Velez"
-      },
-      {
-        "id": 2,
-        "name": "Williams Taylor"
-      }
-    ],
-    "greeting": "Hello, Faye Hughes! You have 1 unread messages.",
-    "favoriteFruit": "banana"
-  },
-  {
-    "_id": "5c103f297f03a6baaba07ed1",
-    "index": 4,
-    "guid": "924bc18a-d47f-4236-bc70-50b7e23d357b",
-    "isActive": true,
-    "balance": "$3,914.30",
-    "picture": "http://placehold.it/32x32",
-    "age": 39,
-    "eyeColor": "blue",
-    "name": "Millie Hicks",
-    "gender": "female",
-    "company": "KEENGEN",
-    "email": "milliehicks@keengen.com",
-    "phone": "+1 (927) 456-3679",
-    "address": "808 Willoughby Street, Fingerville, Wyoming, 2425",
-    "about": "Excepteur mollit proident culpa commodo qui officia cupidatat. Duis quis elit amet commodo commodo non magna. Sunt nulla exercitation amet cupidatat minim ex pariatur amet. Anim magna sit do aute ex. Consectetur eu velit est aute in mollit ex consectetur enim cupidatat dolor excepteur incididunt.\r\n",
-    "registered": "2016-10-01T05:30:06 +04:00",
-    "latitude": 4.565945,
-    "longitude": -108.023546,
-    "tags": [
-      "laboris",
-      "tempor",
-      "dolore",
-      "mollit",
-      "culpa",
-      "dolore",
-      "veniam"
-    ],
-    "friends": [
-      {
-        "id": 0,
-        "name": "Maryann Harrington"
-      },
-      {
-        "id": 1,
-        "name": "Victoria Gardner"
-      },
-      {
-        "id": 2,
-        "name": "Angela Jones"
-      }
-    ],
-    "greeting": "Hello, Millie Hicks! You have 5 unread messages.",
-    "favoriteFruit": "banana"
-  },
-  {
-    "_id": "5c103f29118e84d06a19a274",
-    "index": 5,
-    "guid": "3715a09c-1da1-4f60-9869-ae267e5c72ab",
-    "isActive": true,
-    "balance": "$2,310.76",
-    "picture": "http://placehold.it/32x32",
-    "age": 21,
-    "eyeColor": "brown",
-    "name": "Brewer Valencia",
-    "gender": "male",
-    "company": "EXERTA",
-    "email": "brewervalencia@exerta.com",
-    "phone": "+1 (954) 434-3144",
-    "address": "975 Miami Court, Stagecoach, Virgin Islands, 6475",
-    "about": "Sit officia officia incididunt laborum. Consequat occaecat esse anim velit pariatur do magna. Occaecat eiusmod eiusmod tempor Lorem enim minim cillum.\r\n",
-    "registered": "2017-06-15T10:30:38 +04:00",
-    "latitude": -78.470342,
-    "longitude": 115.574049,
-    "tags": [
-      "qui",
-      "irure",
-      "voluptate",
-      "pariatur",
-      "sint",
-      "nisi",
-      "nulla"
-    ],
-    "friends": [
-      {
-        "id": 0,
-        "name": "Garrison Garza"
-      },
-      {
-        "id": 1,
-        "name": "Judith Schroeder"
-      },
-      {
-        "id": 2,
-        "name": "Laurel Ball"
-      }
-    ],
-    "greeting": "Hello, Brewer Valencia! You have 7 unread messages.",
-    "favoriteFruit": "banana"
+    "favoriteFruit": "apple"
   }
 ]
