@@ -44,6 +44,25 @@ preprocessed source files.  This script starts off as the transformed
 versions of those lines from make.out, and common flags are placed in
 variables etc.  
 
+2.5 Now you need to initialize all variables in your target. Otherwise we may identify
+an unitialized variable as being attacker controlled when that happens probabilisitcally.
+Fortunately, we've created a tool to help with this process- lavaInitTool.
+
+2.5.1 Start a shell in the docker container, and cd into your project
+
+2.5.2 run `path-to-lava/tools/btrace/sw-btrace make` to build btrace.log
+
+2.5.3 run `path-to-lava/tools/btrace/sw-btrace-to-compiledb .` to build `compile_commands.json`
+
+2.5.4 run `path-to-lava/tools/install/bin/lavaInitTool src/*-pre.c` where the arguments are all
+the preprocessed c files.
+
+2.5.5 In each directory with your source code, run
+`/llvm-3.6.2/Release/bin/clang-apply-replacements .`
+
+2.5.6 If you search through your code for `={0};` you should see variables that were previously
+unitialized now being initialized to null.
+
 3. Once I have all the -pre.c files needed to create the executable we
 want, I write a super simple makefile that will compile all the -pre.c
 files into -pre.o objects and link them.  Often, if the project
