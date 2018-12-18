@@ -25,19 +25,26 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
     std::set<SourceLocation> already_added_arg;
 
+    typedef enum {CALL, NAMEDARG, UNNAMEDARG} ArgType;
+    // ArgType specifies how we inject the dataflow argument
+    // CALL => data_flow, 
+    // NAMEDARG => int* data_flow, 
+    // UNNAMEDARG => int *,
+
     /*
       The code between startLoc and endLoc contains, and, importantly,
       ends with an arg list. We want to insert data_flow at the head of it.
       We assume the *last* matching pair of open-close parens is an arg
       list. Note that this should work for calls, for fn prototypes, for
       struct/union field decls.  All end with an arg list.
-      We use the isCall arg to AddArgGen to choose between adding an arg
-      "data_flow" and adding a type "int *data_flow".
+      We use the argType to AddArgGen to choose between adding an arg
+      "data_flow", adding a type "int *data_flow", or just adding  "int *"
       And the arg numArgs tells us if there is zero args (in which case
       we dont need a comma).
     */
+    // XXX: what is callsite, can we get rid of it?
     void AddArgGen(Modifier &Mod, SourceLocation &startLoc, SourceLocation &endLoc,
-                   bool isCall, unsigned numArgs, unsigned callsite) {
+                   ArgType argType, unsigned numArgs, unsigned callsite) {
 
         bool inv;
         debug(FNARG) << "AddArgGen " << callsite << " : [" << getStringBetweenRange(*Mod.sm, SourceRange(startLoc, endLoc), &inv) << "]\n";
@@ -80,8 +87,17 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         // insert data_flow arg
         if (already_added_arg.count(loc_param_start) == 0) {
             already_added_arg.insert(loc_param_start);
-            std::string dfa = ARG_NAME;
-            if (!isCall) dfa = "int *" ARG_NAME;
+
+            // TODO: we need to not just add (int* data_flow/data_flow)  but also just int*
+            // for vardecls
+            std::string dfa;
+            switch (argType) {
+                case NAMEDARG:   dfa = "int *" ARG_NAME; break;
+                case CALL:       dfa = ARG_NAME; break;
+                case UNNAMEDARG: dfa = "int *"; break;
+                default: assert(0); // must be CALL, NAMEDARG or UNNAMEDARG
+            }
+
             if (numArgs == 0) {
                 Mod.InsertAt(loc_param_start, dfa );
             } else {

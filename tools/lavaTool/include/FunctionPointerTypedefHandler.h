@@ -29,7 +29,8 @@ struct FunctionPointerTypedefHandler : public LavaMatchHandler {
             // add the data_flow arg
             //assert(prot);
             if (!prot) return;
-            AddArgGen(Mod, l1, l2, false, prot->getNumParams(), 4);
+            AddArgGen(Mod, l1, l2, /*argType=*/NAMEDARG, /*numArgs=*/prot->getNumParams(),
+                      /*callsite=*/4);
         }
     }
 };

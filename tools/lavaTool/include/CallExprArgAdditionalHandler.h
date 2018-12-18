@@ -13,7 +13,8 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         bool inv=false;
         debug(FNARG) << "call : [" << getStringBetweenRange(*Mod.sm, call->getSourceRange(), &inv) << "]\n";
         assert(!inv);
-        AddArgGen(Mod, l1, l2, true, call->getNumArgs(), 5);
+        AddArgGen(Mod, l1, l2, /*argType=*/CALL, /*numArgs=*/call->getNumArgs(),
+                  /*callsite=*/5);
     }
 
     virtual void handle(const MatchFinder::MatchResult &Result) {

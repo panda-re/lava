@@ -45,7 +45,8 @@ struct FieldDeclArgAdditionHandler : public LavaMatchHandler {
             // add the data_flow arg
             SourceLocation l1 = fd->getLocStart();
             SourceLocation l2 = fd->getLocEnd();
-            AddArgGen(Mod, l1, l2, false, prot->getNumParams(), 2);
+            AddArgGen(Mod, l1, l2, /*argType=*/NAMEDARG, /*numArgs=*/prot->getNumParams(),
+                      /*callsite=*/2);
         }
     }
 };

@@ -53,7 +53,8 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
             endOfProt = l2;
 
         // add the data_flow arg between l1 and endOfProt
-        AddArgGen(Mod, l1, endOfProt, false, func->getNumParams(), 1);
+        AddArgGen(Mod, l1, endOfProt, /*argType=*/NAMEDARG, /*numArgs=*/func->getNumParams(),
+                  /*callsite=*/1);
     }
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
