@@ -2,8 +2,12 @@
 #include <signal.h>
 
 int foo(int x, float y);
-int main(void);
+int v(void);
 
+
+int v(void) {
+    return 0;
+}
 
 int bar(int (*fp)(int, float), int a, float b) {
     return fp(a, a+b);
@@ -14,10 +18,17 @@ int foo(int x, float y) {
     return foo(x-1, x+y);
 }
 
-int main() { 
+int foo2(int x, float y) {
+    if (x < 12) return foo(x*x, y/x);
+    return foo(x-1, x+y);
+}
+
+int main(int argc, char**argv) { 
 
     sig_t foobar;
-    int (*fun_ptr)(int, float) = foo;
+    
+    // Conditional function pointer init + assign
+    int (*fun_ptr)(int, float) = (argc>2) ? (foo) : (foo2);
     int (*fp)(int, float);
     fp = foo;
 
