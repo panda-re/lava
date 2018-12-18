@@ -46,6 +46,9 @@ std::string getStringBetweenRange(const SourceManager &sm,
 std::string getStringBetween(const SourceManager &sm,
                              SourceLocation &l1, SourceLocation &l2, bool *inv);
 
+// Returns true if src locs point to start and end of 'void' string
+bool isVoid(const SourceManager &sm, SourceLocation &l1, SourceLocation &l2);
+
 // this is what I wanted Lexer::findLocationAfterToken to do.  Well,
 // this is actually a little better.  We search the code, starting at
 // loc, to find the first location at which the string 'str' exists.

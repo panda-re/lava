@@ -84,6 +84,10 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
         debug(FNARG) << "adding data flow at head of [" << getStringBetweenRange(*Mod.sm, SourceRange(loc_param_start, endLoc), &inv) << "]\n";
 
+        if (isVoid(*Mod.sm, loc_param_start, endLoc)) {
+            debug(FNARG) << "WARNING: Has a void argument\n";
+
+        }
         // insert data_flow arg
         if (already_added_arg.count(loc_param_start) == 0) {
             already_added_arg.insert(loc_param_start);
@@ -99,7 +103,8 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             }
 
             if (numArgs == 0) {
-                Mod.InsertAt(loc_param_start, dfa );
+                Mod.InsertAt(loc_param_start, dfa);
+                // TODO if the old arguments were (void), we can't do (data_flow, void)
             } else {
                 Mod.InsertAt(loc_param_start, dfa + ", ");
             }

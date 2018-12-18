@@ -362,6 +362,16 @@ std::string getStringBetween(const SourceManager &sm, SourceLocation &l1, Source
     return (std::string(buf, o2-o1+1));
 }
 
+bool isVoid(const SourceManager &sm, SourceLocation &l1, SourceLocation &l2) {
+    bool *inv;
+    const char *buf = sm.getCharacterData(l1, inv);
+    unsigned o1 = sm.getFileOffset(l1);
+    unsigned o2 = sm.getFileOffset(l2);
+    if (*inv || (o1 > o2))
+        return false;
+    return strcmp(buf, "void")==0;
+}
+
 
 
 
