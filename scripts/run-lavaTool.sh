@@ -3,7 +3,7 @@
 USAGE() {
   echo "USAGE: $0 /path/to/json"
   echo "Example to run lavaTool on file"
-  echo "Before using this you must have run everything.sh -ak on your file.json"
+  echo "Before using this you must have run lava.sh -ak on your file.json"
   exit 1
 }
 

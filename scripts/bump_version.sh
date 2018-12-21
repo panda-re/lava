@@ -15,7 +15,7 @@ version="2.0.0"
 # List of files to be bumped
 declare -a FILE_LIST=("$LAVA_HOME/tools/CMakeLists.txt"
 "$LAVA_HOME/scripts/add_queries.sh"
-"$LAVA_HOME/scripts/everything.sh"
+"$LAVA_HOME/scripts/lava.sh"
 "$LAVA_HOME/scripts/verify.sh"
 "$LAVA_HOME/scripts/bump_version.sh"
 "$LAVA_HOME/scripts/inject.sh"

@@ -116,7 +116,7 @@ everything except inject.py.  That is, if you were doing this for
 file, you would now be able to run the following
 
 cd scripts
-./everything.sh -ak file
+./lava.sh -ak file
 
 which will use lavaTool to add pri queries, then run panda's taint
 analysis to collect a pandalog, then read that pandalog containing the
@@ -160,7 +160,7 @@ really want PRI to have worked for, you have a problem.
 6. The next step is to get injection to work.  That means running, e.g.
 
 cd scripts
-./everything.sh -i 1 file
+./lava.sh -i 1 file
 
 This probably won't work.  Sadly, even though everything through
 bug_mining (panda pri taint analysis and postprocess with

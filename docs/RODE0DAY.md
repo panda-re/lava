@@ -1,3 +1,5 @@
+Docs for rode0day development
+
 Conventions for rode0days:
 * Lava databases will be stored on pompeii named `target_rode0day[date]`, for instance `libjpeg_rode0day1809`
 * Backups of lava databases will be stored on the NAS in `/nas/rode0day/[rode0day-name]/[target-name]-db` (`/nas/rode0day/rode0day1809/libjpeg-db`)
@@ -5,7 +7,7 @@ Conventions for rode0days:
 
 
 Instructions for generating competition:
-1. Identify targets, build configs, run everything.sh
+1. Identify targets, build configs, run lava.sh
 2. Create directory ~/rode0day/[date] and touch info.yaml
 3. Run competition.sh with at least 100-200 bugs (-m 200)
 4. Examine generated corpus, if you're unhappy with it, rerun competition

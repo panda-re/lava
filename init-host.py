@@ -124,7 +124,7 @@ def main():
     # os.chdir(join(LAVA_DIR, "tools", "build", "lavaTool"))
     # run(["./compile-on-docker.sh"])
 
-    progress("Sucessful!  Now run:\n  $ scripts/everything.sh -ak file")
+    progress("Sucessful!  Now run:\n  $ scripts/lava.sh -ak file")
     return 0
 
 

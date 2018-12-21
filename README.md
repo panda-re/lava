@@ -20,9 +20,9 @@ NYU, and Northeastern University.
 On a system running Ubuntu 16.04, you should be able to just do `python
 setup.py`. Note that this install script is fairly invasive (i.e., it
 will install lots of packages and make changes to your system). Once it
-finishes, you should have `panda` and `lava` directories (LAVA uses
-[PANDA](https://github.com/panda-re/panda) to perform dynamic taint
-analysis).
+finishes, you should have a `panda/build/` directory (LAVA uses
+[PANDA](https://github.com/panda-re/panda) with a PANDA install to perform
+dynamic taint analysis).
 
 Next, run `init-host.py` to generate a host.json file.
 This creates a `host.json` file used by LAVA that describes settings specific
@@ -33,13 +33,13 @@ Project configurations are located in the `target_configs` directory, where
 every configuration is located at `target_configs/projectname/projectname.json`.
 These scripts reference paths relative to values set in your `host.json` file.
 
-Finally, you can run `scripts/everything.sh` to actually inject bugs
+Finally, you can run `scripts/lava.sh` to actually inject bugs
 into a program. The simplest way to invoke it is to tell it to carry
 out all steps (`-a`) and delete old files/directores as needed (`-k`).
 After the flags, you should specify a project name in the `target_configs` directory
 
 ```
-scripts/everything.sh -ak toy
+scripts/lava.sh -ak toy
 ```
 
 You should now have a buggy copy of toy!
@@ -50,10 +50,7 @@ LAVA.
 
 # Documentation
 
-At the moment, this README is about all there is. We hope to add
-tutorials soon, and developer documentation a bit further off in the
-future. If you'd like to contribute documentation, of course, we would
-be thrilled to accept pull requests.
+Check out the [docs](docs/) folder to get started.
 
 # Authors
 

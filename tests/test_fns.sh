@@ -8,7 +8,7 @@ run_test() {
     # args: project, log_name, everything's flags
     # returns 0 on success
     log="logs/$1/$2.txt"
-    ../scripts/everything.sh $3 $1 &> "$log"
+    ../scripts/lava.sh $3 $1 &> "$log"
     if ! grep -q "Everything finished" $log; then
         return 1
     fi
