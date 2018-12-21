@@ -19,3 +19,5 @@ docker run --rm -it \
     -v $HOME:$HOME \
     -v "$lava":"$lava" \
     lava32 sh -c "trap '' PIPE; su -l $(whoami) -c 'cmake -B$lava/build -H$lava -DCMAKE_INSTALL_PREFIX=$lava/install' && su -l $(whoami) -c 'make --no-print-directory -j$(nproc) -C \"$lava\"/build/lavaTool install'"
+
+#For debug builds- add -DCMAKE_BUILD_TYPE=RelWithDebInfo  to the above command

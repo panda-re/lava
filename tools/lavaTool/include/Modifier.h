@@ -1,6 +1,9 @@
 #ifndef MODIFIER_H
 #define MODIFIER_H
 
+#include "clang/AST/AST.h"
+#include "clang/Lex/Lexer.h"
+
 #include "Insertions.h"
 using namespace clang;
 
@@ -41,17 +44,50 @@ public:
         // so to get character range for replacement, we need to add start of
         // last token.
         SourceLocation end = range().second;
+        assert(sm != NULL);
         unsigned lastTokenSize = Lexer::MeasureTokenLength(end, *sm, *LangOpts);
         return end.getLocWithOffset(lastTokenSize);
+    }
+
+
+    // Return a source location-offset from end
+    SourceLocation endRel(unsigned int offset) const {
+        // Offset is signed, no checking on its bounds
+        SourceLocation end = range().second;
+        assert(sm != NULL);
+        unsigned lastTokenSize = Lexer::MeasureTokenLength(end, *sm, *LangOpts);
+        return end.getLocWithOffset(lastTokenSize-offset);
+    }
+
+    // Return a sourceLocation+offset from start
+    SourceLocation startRel(unsigned int offset) const {
+        // Offset is signed, no checking on its bounds
+        SourceLocation end = range().second;
+        assert(sm != NULL);
+        unsigned lastTokenSize = Lexer::MeasureTokenLength(end, *sm, *LangOpts);
+        return end.getLocWithOffset(lastTokenSize+offset);
+
+        SourceLocation begin = range().first;
+        return begin.getLocWithOffset(offset);
     }
 
     const Modifier &InsertBefore(std::string str) const {
         Insert.InsertBefore(before(), str);
         return *this;
     }
+    // Insert after relative offset from end
+    const Modifier &InsertAfterRel(int offset, std::string str) const {
+        Insert.InsertAfter(endRel(offset), str);
+        return *this;
+    }
 
     const Modifier &InsertAfter(std::string str) const {
         Insert.InsertAfter(after(), str);
+        return *this;
+    }
+
+    const Modifier &InsertAt(SourceLocation loc, std::string str) const {
+        Insert.InsertBefore(loc, str);
         return *this;
     }
 

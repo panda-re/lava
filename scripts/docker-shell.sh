@@ -1,29 +1,43 @@
 #!/bin/bash
 
-project_name=$1
+# Single argument of project name will get container name
+# from project config. Then 2nd optional argument is command to run
+# With no arguments, just give us a shell
+
 lava="$(dirname $(dirname $(readlink -f $0)))"
-cmd="${@:2}"
+
+if [ "$#" -eq 0 ]; then
+    container="lava32"
+else
+    project_name=$1
+    cmd="${@:2}"
 #Container name (lava32 or lava32debug) comes from config
-. `dirname $0`/vars.sh
+    . `dirname $0`/vars.sh
 
-docker_map_args="-v $tarfiledir:$tarfiledir"
-if [[ "$directory" = "$tarfiledir"* ]]; then true; else
-  docker_map_args="$docker_map_args -v $directory:$directory"
+    docker_map_args="-v $tarfiledir:$tarfiledir"
+    if [[ "$directory" = "$tarfiledir"* ]]; then true; else
+      docker_map_args="$docker_map_args -v $directory:$directory"
+    fi
+
+    if ! ( docker images ${container} | grep -q ${container} ); then
+        docker build -t ${container} "$(dirname $(dirname $(readlink -f $0)))/docker/debug"
+    fi
+
+    [ "$extradockerargs" = "null" ] && extradockerargs="";
 fi
-
-if ! ( docker images ${container} | grep -q ${container} ); then
-    docker build -t ${container} "$(dirname $(dirname $(readlink -f $0)))/docker/debug"
-fi
-
-[ "$extradockerargs" = "null" ] && extradockerargs="";
 
 whoami="$(whoami)"
+path=""
 cmd="sudo -u $whoami bash -c -- \"$cmd\""
+
+# If no 2nd argument specified, start interactive shell instead
 if [ -z "$2" ] ; then
     cmd="login -f $whoami LANG=C.UTF-8 LANGUAGE=en_US LC_ALL=C.UTF-8"
+    # path="$PWD"
+    # TODO start shell at current path
 fi
 
-set +x
+set -x
 # to run debugger you need --privileged here
 docker run --rm -it \
     --privileged \

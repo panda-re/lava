@@ -167,7 +167,7 @@ if __name__ == "__main__":
     (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json,
                                        project, args, update_db, dataflow=dataflow, competition=args.competition)
     if build is None:
-        raise RuntimeError("LavaTool failed to bulid target binary")
+        raise RuntimeError("LavaTool failed to build target binary")
 
     try:
         # determine which of those bugs actually cause a seg fault

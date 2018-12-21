@@ -78,8 +78,22 @@ target_include_directories(lavaFnTool BEFORE
 
 add_dependencies(lavaTool lavaFnTool)
 
+# lavaInitTool target compiled against llvm
+# TODO: this shouldn't depend on ODB but it needs it for lava.hxx?
+add_executable(lavaInitTool lavaInitTool.cpp)
+target_compile_options(lavaInitTool PRIVATE -fno-omit-frame-pointer -O3 -fexceptions -frtti)
+set_target_properties(lavaInitTool PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
+set_property(TARGET lavaInitTool PROPERTY CXX_STANDARD 14)
+target_include_directories(lavaInitTool BEFORE
+        PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    )
+
 target_link_libraries(lavaTool lavaDB_x32 omg odb odb-pgsql lava-odb_x32 ${LLVM_CLANG_LINK_LIBRARIES})
 target_link_libraries(lavaFnTool lavaDB_x32 omg odb odb-pgsql lava-odb_x32 ${LLVM_CLANG_LINK_LIBRARIES})
+target_link_libraries(lavaInitTool ${LLVM_CLANG_LINK_LIBRARIES})
 
 install (TARGETS lavaTool
          RUNTIME DESTINATION bin
@@ -89,6 +103,13 @@ install (TARGETS lavaTool
          )
 
 install (TARGETS lavaFnTool
+         RUNTIME DESTINATION bin
+         LIBRARY DESTINATION lib
+         ARCHIVE DESTINATION lib/static
+         OPTIONAL
+         )
+
+install (TARGETS lavaInitTool
          RUNTIME DESTINATION bin
          LIBRARY DESTINATION lib
          ARCHIVE DESTINATION lib/static

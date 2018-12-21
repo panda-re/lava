@@ -907,10 +907,10 @@ void record_call(Panda__LogEntry *ple) { }
 void record_ret(Panda__LogEntry *ple) { }
 
 int main (int argc, char **argv) {
-    if (argc != 5) {
+    if (argc != 5 && argc !=6 ) {
         printf("Find Bug Inject (FBI) -- Version %s\n", LAVA_VER);
-        printf("usage: fbi host.json ProjectName pandalog inputfile\n");
-        printf("    Project JSON file should have properties:\n");
+        printf("usage: fbi host.json ProjectName pandalog inputfile [curtail count]\n");
+        printf("    Project JSON file may specify properties:\n");
         printf("        max_liveness: Maximum liveness for DUAs\n");
         printf("        max_cardinality: Maximum cardinality for labelsets on DUAs\n");
         printf("        max_tcn: Maximum taint compute number for DUAs\n");
@@ -918,6 +918,10 @@ int main (int argc, char **argv) {
         printf("    pandalog: Pandalog. Should be like queries-file-5.22-bash.iso.plog\n");
         printf("    inputfile: Input file basename, like malware.pcap\n");
         exit (1);
+    }
+
+    if (argc == 6) {
+        curtail = atoi(argv[5]);
     }
 
     // We want decimation to be deterministic, so srand w/ magic value.
@@ -945,16 +949,68 @@ int main (int argc, char **argv) {
     ind2str = LoadIDB(lavadb);
     printf("%d strings in lavadb\n", (int)ind2str.size());
 
+    if (!project.isMember("max_liveness")) {
+        printf("max_liveness not set, using default 100000\n");
+        project["max_liveness"] = 100000;
+    }
+
+    // Throw exception if we can't process any required argument
+    if (!project["max_liveness"].isUInt()) {
+        throw std::runtime_error("Could not parse max_liveness");
+    }
     max_liveness = project["max_liveness"].asUInt();
     printf("maximum liveness score of %lu\n", max_liveness);
+
+    if (!project.isMember("max_cardinality")) {
+        printf("max_cardinality not set, using default 100\n");
+        project["max_cardinality"] = 100;
+    }
+    if (!project["max_cardinality"].isUInt()) {
+        throw std::runtime_error("Could not parse max_cardinality");
+    }
     max_card = project["max_cardinality"].asUInt();
     printf("max card of taint set returned by query = %d\n", max_card);
+
+    if (!project.isMember("max_tcn")) {
+        printf("max_tcn not set, using default 100\n");
+        project["max_tcn"] = 100;
+    }
+    if (!project["max_tcn"].isUInt()) {
+        throw std::runtime_error("Could not parse max_tcn");
+    }
     max_tcn = project["max_tcn"].asUInt();
     printf("max tcn for addr = %d\n", max_tcn);
+
+    if (!project.isMember("max_lval_size")) {
+        printf("max_lval_size not set, using default 100\n");
+        project["max_lval_size"] = 100;
+    }
+    if (!project["max_lval_size"].isUInt()) {
+        throw std::runtime_error("Could not parse max_lval_size");
+    }
     max_lval = project["max_lval_size"].asUInt();
     printf("max lval size = %d\n", max_lval);
-    chaff_bugs = project.get("chaff", false).asBool();
-    curtail = project["curtail_fbi"].asUInt();
+
+    /* Unsupported for now (why?)
+    // Chaff has default value of false
+    if (!project["chaff"].isBool()) {
+        chaff_bugs = false;
+    }else{
+        // null should never happen, if it does we'll violate an assert in the asBool
+        chaff_bugs = project.get("chaff", Json::Value::null).asBool();
+    }
+    printf("Chaff_bugs is %d\n", chaff_bugs);
+    */
+
+    if (curtail == 0) { // Will be 0 unless specified on command line
+        if (!project["curtail_fbi"].isUInt()) {
+            curtail = 0;
+        }else{
+            // null should never happen, if it does we'll violate an assert in the asUInt
+            curtail = project.get("curtail_fbi", Json::Value::null).asUInt();
+        }
+    }
+    printf("Curtail is %d\n", curtail);
 
     inputfile = std::string(argv[4]);
 
@@ -1008,8 +1064,12 @@ int main (int argc, char **argv) {
     std::cout << num_potential_nonbugs << " potential non bugs\n";
 
     if (num_potential_bugs == 0) {
-        printf("Fatal error: no bugs found by FBI\n");
-        return 1;
+        // Typically caused by no duas being identified because
+        // something has gone wrong with taint analysis
+        std::cerr << "No bugs found\n";
+        throw std::runtime_error("No bugs found by FBI");
+        // This error message is only printed when we also
+        // print to cerr but I'm not sure why
     }
 
 }

@@ -6,6 +6,13 @@ import argparse
 
 debug = True
 
+# When IGNORE_FN_PTRS is set, we don't inject dataflow as an argument when a
+# function pointer is called. This needs to match with the same variable
+# in lavaTool/include/MatchFinder.h
+# Note, no tests pass if this is true
+# TODO: parameterize this
+IGNORE_FN_PTRS = False
+
 
 parser = argparse.ArgumentParser(description='Use output of LavaFnTool to figure out which parts of preproc code to instrument')
 
@@ -233,7 +240,6 @@ for name in instr_judgement.keys():
     if instr_judgement[name] == 0:
         instr.add(name)
 
-
 """
 Make another pass to see if there are any fns passed as args to
 other fns that are, themselves, not instrumentable.  Which means
@@ -250,6 +256,16 @@ for name in instr:
         # fn is not ok to instrument
         if not (disposition is OKI):
             instr_judgement[name] = disposition
+
+
+"""
+Make another pass to see if there are any fns assigned to fnptrs
+If so, (for now) we won't inject in them since we can't control the
+type of the function pointer
+"""
+if IGNORE_FN_PTRS:
+    for name in fpas:
+        instr_judgement[name] |=  DADFA | DIB
 
 # Ok we have a list of instrumentable functions.
 # Now, we need to transitively close.

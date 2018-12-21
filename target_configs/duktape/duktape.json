@@ -2,7 +2,7 @@
     "name": "duktape",
     "db": "duktape",
     "preprocessed": true,
-    "dataflow": true,
+    "dataflow": false,
 
     "tarfile": "duktape-2.3.0-pre.tar.gz",
 
@@ -11,18 +11,14 @@
     "expect_prompt": "root@debian-i386:~#",
 
 
-    "make": "make CFLAGS=-gdwarf-2",
+    "make": "make",
     "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/duk {input_file}",
     "injfixupsscript": "duktape_fixup.sh {bug_build}",
 
-    "max_liveness": 100000,
-    "max_cardinality": 100,
     "max_tcn": 10,
-    "max_lval_size": 100,
 
-    "main_file": [ "duktape-pre.c" ],
-
+    "main_file": [ "src/duktape-pre.c" ],
     "inputs": ["inputs/hello.js"]
 }

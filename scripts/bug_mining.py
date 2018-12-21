@@ -1,10 +1,9 @@
 '''
 This script assumes you have already done src-to-src transformation with
 lavaTool to add taint and attack point queries to a program, AND managed to
-json project file.  The set of asserts below
-indicate the required json fields and their meaning.
+json project file.
 
-Second is input file you want to run, under panda, to get taint info.
+Second arg is input file you want to run, under panda, to get taint info.
 '''
 
 from __future__ import print_function
@@ -40,6 +39,7 @@ qemu_use_rr = False
 
 start_time = 0
 version="2.0.0"
+curtail=0
 
 def tick():
     global start_time
@@ -81,6 +81,10 @@ project = parse_vars(host_json, project_name)
 input_file = abspath(project["config_dir"] + "/" + sys.argv[3])
 input_file_base = os.path.basename(input_file)
 print("bug_mining.py %s %s" % (project_name, input_file))
+
+if len(sys.argv) > 4:
+    global curtail
+    curtail = int(sys.argv[4])
 
 qemu_path = project['qemu']
 qemu_build_dir = dirname(dirname(abspath(qemu_path)))
@@ -128,8 +132,6 @@ shutil.copy(input_file, installdir)
 create_recording(qemu_path, project['qcow'], project['snapshot'],
                  command_args, installdir, isoname,
                  project["expect_prompt"], rr=qemu_use_rr)
-# command_args, installdir, isoname, isoname, rr=qemu_use_rr)
-# for non-standard panda versions
 
 try:
     os.mkdir('inputs')
@@ -153,8 +155,9 @@ if command_args[0].startswith('LD_PRELOAD'):
 else:
     proc_name = basename(command_args[0])
 
-pandalog = "%s/queries-%s.plog" % \
-    (project['output_dir'], os.path.basename(isoname))
+pandalog = "{}/queries-{}.plog".format(project['output_dir'],
+                                       os.path.basename(isoname))
+
 print("pandalog = [%s] " % pandalog)
 
 panda_args = {
@@ -237,9 +240,26 @@ progress("Calling the FBI on queries.plog...")
 # project_file, pandalog, input_file_base]
 fbi_args = [join(lavadir, 'tools', 'install', 'bin', 'fbi'), host_json,
             project_name, pandalog, input_file_base]
+
+# Command line curtial argument takes priority, otherwise use project specific one
+global curtail
+if curtail !=0 :
+    fbi_args.append(str(curtail))
+elif "curtail" in project:
+    fbi_args.append(str(project.get("curtail", 0)))
+
 dprint("fbi invocation: [%s]" % (subprocess32.list2cmdline(fbi_args)))
 sys.stdout.flush()
-subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
+try:
+    subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
+except subprocess32.CalledProcessError as e:
+    print("FBI Failed. Possible causes: \n"+
+        "\tNo DUAs found because taint analysis failed: \n"
+        "\t\t Ensure PANDA 'saw open of file we want to taint'\n"
+        "\t\t Make sure target has debug symbols (version2): No 'failed DWARF loading' messages\n"
+        "\tFBI crashed (bad arguments, config, or other untested code)")
+    raise e
+
 
 print()
 progress("Found Bugs, Injectable!!")
@@ -249,6 +269,12 @@ print("fib complete %.2f seconds" % fib_time)
 sys.stdout.flush()
 
 db = LavaDatabase(project)
+
+print("Count\tBug Type Num\tName")
+for i in range(len(Bug.type_strings)):
+    n = db.session.query(Bug).filter(Bug.type == i).count()
+    print("%d\t%d\t%s" % (n, i, Bug.type_strings[i]))
+
 
 print("total dua:", db.session.query(Dua).count())
 print("total atp:", db.session.query(AttackPoint).count())

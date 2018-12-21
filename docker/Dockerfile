@@ -66,7 +66,7 @@ RUN echo "LD_LIBRARY_PATH=/$llvm_version/Release/lib" >> /etc/environment
 RUN echo "LIBRARY_PATH=/usr/local/lib" >> /etc/environment
 RUN echo "PATH=$PATH:/$llvm_version/Release/bin" >> /etc/environment
 
-RUN apt-get install -y sudo gdb gawk
+RUN apt-get install -y sudo gdb gawk zlib1g-dev
 
 # Set locale to C.UTF-8 instead of us_EN.UTF-8
 RUN apt-get install -y locales

@@ -106,4 +106,4 @@ truncate "$lf"
 run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject --bugtypes=$bugtypes $usechaff $hostjson $project_name" "$lf"
 progress "competition" 1 "Everything finished."
 
-tail -n2 $lf
+tail -n3 $lf

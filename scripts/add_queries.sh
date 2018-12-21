@@ -94,6 +94,7 @@ read -ra MAKES <<< $makecmd
 for i in ${MAKES[@]}; do
     IFS=' '
     read -ra ARGS <<< $i
+    echo "$lava/tools/btrace/sw-btrace ${ARGS[@]}"
     $lava/tools/btrace/sw-btrace ${ARGS[@]}
     IFS='&&'
 done
@@ -131,28 +132,45 @@ for i in $c_dirs; do
   fi
 done
 
+
 # Run another clang tool that provides information about functions,
 # i.e., which have only prototypes, which have bodies.  
 progress "queries" 0 "Figure out functions" 
-for i in $c_files; do
-    $lava/tools/install/bin/lavaFnTool $i
+for this_c_file in $c_files; do
+    $lava/tools/install/bin/lavaFnTool $this_c_file
 done
 
+#progress "queries" 0  "Initialize variables..."
+#for i in $c_files; do
+#    $lava/src_clang/build/lavaTool -action=init \
+#    -p="$source/compile_commands.json" \
+#    -src-prefix=$(readlink -f "$source") \
+#    $i
+#done
+
+# TODO: This should probably be just for dataflow
+# but we still need it for non-dataflow targets, otherwise we inject into
+# va_args functions and everything breask
+
+# Analyze that output and figure out
+fnfiles=$(echo $c_files | sed 's/\.c/\.c\.fn/g')
+fninstr=$directory/$name/fninstr
+
+echo "Creating fninstr [$fninstr]"
+echo -e "\twith command: \"python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles\""
+python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles
+
+if [[ ! -z "$df_fn_blacklist" ]]; then
+    cmd=$(echo "sed -i /${df_fn_blacklist}/d $fninstr")
+    echo "Removing blacklisted functions with regex: $df_fn_blacklist"
+    $cmd
+fi
 
 if [ "$dataflow" = "true" ]; then
-    progress "queries" 0 "Using dataflow as specified in project.json"
-    # analyze that output and figure out 
-    fnfiles=$(echo $c_files | sed 's/\.c/\.c\.fn/g')
-    fninstr=$directory/$name/fninstr
-
-    echo "Creating fninstr [$fninstr]"
-    echo -e "\twith command: \"python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles\""
-    python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles
-
     # Insert queries with DF - could merge this with the else if logic below instead of duplicating
     # TODO: Just make lavaTool load dataflow from project.json instead of passing as CLI arg.
     # Since it's okay to pass the whitelist either way
-    progress "queries" 0  "Inserting queries with dataflow"
+    progress "queries" 0  "Inserting queries for dataflow"
     for i in $c_files; do
         $lava/tools/install/bin/lavaTool -action=query \
         -lava-db="$directory/$name/lavadb" \
@@ -165,8 +183,8 @@ if [ "$dataflow" = "true" ]; then
         $i
     done
 else
-
     progress "queries" 0  "Inserting queries..."
+    # TODO: remove lava-wl here, unless we're using it to limit where we inject
     for i in $c_files; do
         $lava/tools/install/bin/lavaTool -action=query \
         -lava-db="$directory/$name/lavadb" \
@@ -179,11 +197,26 @@ else
     done
 fi
 
+# Do we need to explicitly apply replacements in the root source directory
+# This causes clang-apply-replacements to segfault when run a 2nd time
+#pushd "$directory/$name/$source"
+#$llvm_src/Release/bin/clang-apply-replacements .
+#popd
+
 for i in $c_dirs; do
-    echo "  Applying replacements to $i"
+    echo "Applying replacements to $i"
     pushd $i
     $llvm_src/Release/bin/clang-apply-replacements .
     popd
+done
+
+# Ensure every c file was modified
+# Alternatively, we could just check that at least one file was modified
+for this_c_file in $c_files; do
+    if ! grep -q "pirate_mark_lava.h" $this_c_file; then
+        echo "FATAL ERROR: LAVA queries missing from source files!"
+        exit 1
+    fi
 done
 
 progress "queries" 0  "Done inserting queries. Time to make and run actuate.py on a 64-BIT machine!"

@@ -110,7 +110,10 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
 
     if buglist is None:
         abort = False
-        atp_types = [AttackPoint.FUNCTION_CALL, AttackPoint.POINTER_WRITE] # TODO we don't find rel_writes at function calls
+        # Note atp_types are different from bugtypes, there are places we can attack, not how we do so
+        # but the names overlap and are kind of related
+        # TODO we don't find rel_writes at function calls
+        atp_types = [AttackPoint.FUNCTION_CALL, AttackPoint.POINTER_WRITE]
 
         # Get limit bugs at each ATP
         #atp_item_lists = db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
@@ -130,15 +133,24 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             #weight by bugtype
 
 
-            #TODO make this work for any selected bugtypes and hardcode expected yields for each
-            assert(allowed_bugtypes == [Bug.PTR_ADD, Bug.REL_WRITE]), "TODO: probabilitic bug selection with variable bugtypes not yet supported"
-            this_bugtype = random_choice([Bug.REL_WRITE, Bug.PTR_ADD], [85, 15])
+            # Of the allowed bugtypes, the ratio will be normalized. 
+            # As this is now, we'll pick REL_WRITES (multiduas) more often than others because they work less frequently
+            # Ratios for RET_BUFFER and PRINTF_LEAK are just guesses
+            bug_ratios = {Bug.REL_WRITE: 200, Bug.PTR_ADD: 15, Bug.RET_BUFFER: 15, Bug.PRINTF_LEAK: 15}
+            for x in allowed_bugtypes:
+                if x not in bug_ratios:
+                    assert("Bug type {} not in bug_ratios. Fix me!".format(Bug.type_strings[this_bugtype]))
+            allowed_bug_ratios = [bug_ratios[x] for x in allowed_bugtypes]
+
+            this_bugtype = random_choice(allowed_bugtypes, allowed_bug_ratios)
             #print("Selected bugtype {}".format(Bug.type_strings[this_bugtype]))
 
             this_bugtype_atp_item_lists = atp_item_lists[this_bugtype]
             if len(this_bugtype_atp_item_lists) == 0:
                 # TODO: intelligently select a different bugype in this case
+                allowed_bugtypes.remove(this_bugtype)
                 print("Warning: tried to select a bug of type {} but none available".format(Bug.type_strings[this_bugtype]))
+                assert(len(allowed_bugtypes) >0), "No bugs available"
                 continue
 
             atp_item_idx = random.randint(0, len(this_bugtype_atp_item_lists)-1)
@@ -283,8 +295,8 @@ def main():
                                       args, False, competition=True, bug_solutions=bug_solutions)
 
     if len(real_bug_list) < int(args.minYield):
-        print("\n\nXXX Yield too low after injection -- Require at least {} bugs for  \
-                competition, only have {}".format(args.minYield, len(real_bug_list)))
+        print("\n\nXXX Yield too low after injection -- Require at least {} bugs for"
+                " competition, only have {}".format(args.minYield, len(real_bug_list)))
         raise RuntimeError("Failure")
 
     print "\n\n Yield acceptable: {}".format(len(real_bug_list))
@@ -311,7 +323,6 @@ def main():
                 print("\n\nXXX Yield too low after reducing duplicates -- Require at least {} bugs for  \
                         competition, only have {}".format(args.minYield, len(real_bug_list)))
                 raise RuntimeError("Failure")
-
             (build, input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, args.host_json, \
                                                   project, args, False, dataflow=dataflow, competition=True, validated=True,
                                                   lavatoolseed=lavatoolseed)
@@ -341,9 +352,10 @@ def main():
 
     # build internal version
     log_build_sh = join(corpdir, "log_build.sh")
-    makes = project['make'].split('&&')
-    makes = [make_cmd + ' CFLAGS+=\"-DLAVA_LOGGING\"' for make_cmd in makes]
-    log_make = " && ".join(makes)
+
+    # We need to set the environmnet for the make command
+    log_make = "CFLAGS=-DLAVA_LOGGING {}".format(project["make"])
+
     internal_builddir = join(corpdir, "lava-install-internal")
     lava_installdir = join(bd, "lava-install")
     with open(log_build_sh, "w") as build:
@@ -364,7 +376,7 @@ def main():
         """.format(
             bugs_build=bd,
             make_clean = project["clean"] if "clean" in project.keys() else "",
-            configure=project['configure'],
+            configure=project['configure'] if "configure" in project.keys() else "",
             log_make = log_make,
             internal_builddir = internal_builddir,
             install = project['install'].format(install_dir=lava_installdir),
@@ -504,7 +516,7 @@ def main():
         """.format(
             bugs_build=bd,
             make_clean = project["clean"] if "clean" in project.keys() else "",
-            configure=project['configure'],
+            configure=project['configure'] if "configure" in project.keys() else "",
             make = project['make'],
             public_builddir = public_builddir,
             install = project['install'].format(install_dir=lava_installdir),
@@ -556,8 +568,17 @@ done""".format(command = project['command'].format(**{"install_dir": "./lava-ins
     os.chmod(trigger_all_crashes, (stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IROTH | stat.S_IXOTH))
     # Build a version to ship in src
     run_builds([log_build_sh, public_build_sh])
-    print("Success! Competition build in {}".format(corpdir))
     print("Injected {} bugs".format(len(real_bug_list)))
+
+    print("Counting how many crashes competition infrastructure identifies...")
+    run_cmd(trigger_all_crashes, cwd=corpdir) # Prints about segfaults
+    (rv, outp) = run_cmd("wc -l {}".format(join(corpdir, "validated_bugs.txt")))
+    if rv != 0:
+        raise RuntimeError("Validated bugs file does not exist. Something went wrong")
+
+    (a,b) = outp[0].split()
+    n = int(a)
+    print("\tCompetition infrastructure found: %d of %d injected bugs" % (n, len(real_bug_list)))
 
 
 if __name__ == "__main__":

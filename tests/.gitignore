@@ -1,0 +1,3 @@
+results.txt
+logs/*
+!logs/.gitkeep

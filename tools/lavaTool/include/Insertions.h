@@ -1,6 +1,12 @@
 #ifndef INSERTIONS_H
 #define INSERTIONS_H
 
+#include "clang/AST/AST.h"
+#include "clang/Lex/Lexer.h"
+
+#include "clang/Tooling/Tooling.h"
+#include "clang/Tooling/ReplacementsYaml.h"
+
 using namespace clang;
 using namespace clang::tooling;
 /*
