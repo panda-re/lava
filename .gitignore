@@ -7,6 +7,7 @@ tags
 host.json
 
 *.o
+*.a
 *.pyc
 *.qcow*
 *.qcow2
@@ -15,21 +16,25 @@ host.json
 ~*
 .*.sw*
 
+tools/lavaODB/generated
+tools/install
+tools/build
+tools/include/lava_version.h
 
-/fbi/fbi
-/fbi/lava-odb.*xx
-/fbi/lava.sql
-/fbi/panda.mak
+panda/build
 
-/include/lava-odb.*xx
-/include/lava-odb.*xx
-/include/lava.sql
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+Testing
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
 
 /scripts/getfns.pickle
 
-/src_clang/build
-/src_clang/lava-odb.*xx
-/src_clang/lava.sql
 
 /target_bins/*
 /target_injections/*

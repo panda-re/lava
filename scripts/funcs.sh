@@ -6,7 +6,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
     LAVA_FUNCS_INCLUDED=1
 
     progress() {
-      if [ $2 -eq 1 ]; then
+      if [[ $2 -eq 1 ]]; then
           date
       fi
       echo -e "\e[32m[$1]\e[0m \e[1m$3\e[0m"
@@ -80,6 +80,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
                 -v /etc/group:/etc/group:ro \
                 -v /etc/shadow:/etc/shadow:ro \
                 -v /etc/gshadow:/etc/gshadow:ro \
+                -v /home:/home:ro \
                 $docker_map_args \
                 $extradockerargs \
                 $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"$command\"" \
@@ -102,4 +103,10 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
     truncate() {
         echo -n > "$1"
     }
+
+    die() {
+         printf '%s\n' "$1" >&2
+         exit 1
+    }
+
 fi

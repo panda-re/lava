@@ -31,6 +31,7 @@ from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
 # from pycparser.diversifier.diversify import diversify
 #from process_compile_commands import get_c_files
 
+version="2.0.0"
 
 RETRY_COUNT = 0
 
@@ -78,7 +79,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
 
         return False IFF we have reached limit bugs and should stop parsing
         """
-    
+
         if not (item.type in allowed_bugtypes):
             #print("skipping type {} not in {}".format(item.type, allowed_bugtypes))
             return True
@@ -147,7 +148,9 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             this_bugtype_atp_item_lists = atp_item_lists[this_bugtype]
             if len(this_bugtype_atp_item_lists) == 0:
                 # TODO: intelligently select a different bugype in this case
+                allowed_bugtypes.remove(this_bugtype)
                 print("Warning: tried to select a bug of type {} but none available".format(Bug.type_strings[this_bugtype]))
+                assert(len(allowed_bugtypes) >0), "No bugs available"
                 continue
 
             atp_item_idx = random.randint(0, len(this_bugtype_atp_item_lists)-1)
@@ -188,7 +191,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
         if afl not in afls.keys():
             afls[afl] = 0
         afls[afl] +=1
-    
+
     print("{} potential bugs were selected across {} ATPs:".format(len(bugs_and_non_bugs), len(afls)))
     for bugtype in allowed_bugtypes:
         bt_count = len([x for x in bugs_and_non_bugs if x.type == bugtype])
@@ -201,7 +204,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
     return [b.id for b in bugs_and_non_bugs]
 
 def main():
-    parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
+    parser = argparse.ArgumentParser(prog="competition.py", description='Inject and test LAVA bugs.')
     parser.add_argument('host_json', help = 'Host JSON file')
     parser.add_argument('project', help = 'Project name')
 
@@ -219,7 +222,8 @@ def main():
             help = ('Leave unvalidated bugs in the binary'))
     parser.add_argument('-t', '--bugtypes', action="store", default="rel_write",
                         help = ('bug types to inject'))
-    
+    parser.add_argument('--version', action="version", version="%(prog)s {}".format(version))
+
     args = parser.parse_args()
     global project
     project = parse_vars(args.host_json, args.project)
@@ -257,7 +261,7 @@ def main():
     lavatoolseed = random.randint(0, 100000)
 
     ###############
-    ## First we get a list of bugs, either from cli options, or through competition_bugs_and_non_bugs 
+    ## First we get a list of bugs, either from cli options, or through competition_bugs_and_non_bugs
     ###############
 
     if args.buglist:
@@ -291,8 +295,8 @@ def main():
                                       args, False, competition=True, bug_solutions=bug_solutions)
 
     if len(real_bug_list) < int(args.minYield):
-        print("\n\nXXX Yield too low after injection -- Require at least {} bugs for  \
-                competition, only have {}".format(args.minYield, len(real_bug_list)))
+        print("\n\nXXX Yield too low after injection -- Require at least {} bugs for"
+                " competition, only have {}".format(args.minYield, len(real_bug_list)))
         raise RuntimeError("Failure")
 
     print "\n\n Yield acceptable: {}".format(len(real_bug_list))
@@ -319,7 +323,6 @@ def main():
                 print("\n\nXXX Yield too low after reducing duplicates -- Require at least {} bugs for  \
                         competition, only have {}".format(args.minYield, len(real_bug_list)))
                 raise RuntimeError("Failure")
-
             (build, input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, args.host_json, \
                                                   project, args, False, dataflow=dataflow, competition=True, validated=True,
                                                   lavatoolseed=lavatoolseed)
@@ -327,7 +330,7 @@ def main():
             assert build is not None # build is None if injection fails
 
     ###############
-    ## Now build our corpora directory with the buggy source dir, binaries in lava-install-public, 
+    ## Now build our corpora directory with the buggy source dir, binaries in lava-install-public,
     ## lava-install-internal, and scripts to rebuild the binaries
     ###############
 
@@ -349,9 +352,10 @@ def main():
 
     # build internal version
     log_build_sh = join(corpdir, "log_build.sh")
-    makes = project['make'].split('&&')
-    makes = [make_cmd + ' CFLAGS+=\"-DLAVA_LOGGING\"' for make_cmd in makes]
-    log_make = " && ".join(makes)
+
+    # We need to set the environmnet for the make command
+    log_make = "CFLAGS=-DLAVA_LOGGING {}".format(project["make"])
+
     internal_builddir = join(corpdir, "lava-install-internal")
     lava_installdir = join(bd, "lava-install")
     with open(log_build_sh, "w") as build:
@@ -566,12 +570,15 @@ done""".format(command = project['command'].format(**{"install_dir": "./lava-ins
     run_builds([log_build_sh, public_build_sh])
     print("Injected {} bugs".format(len(real_bug_list)))
 
-    print("Counting how many crashes competition infrastructure identifies:...")
+    print("Counting how many crashes competition infrastructure identifies...")
     run_cmd(trigger_all_crashes, cwd=corpdir) # Prints about segfaults
     (rv, outp) = run_cmd("wc -l {}".format(join(corpdir, "validated_bugs.txt")))
+    if rv != 0:
+        raise RuntimeError("Validated bugs file does not exist. Something went wrong")
+
     (a,b) = outp[0].split()
     n = int(a)
-    print("Competition infrastructure found: %d of %d injected bugs" % (n, len(real_bug_list)))
+    print("\tCompetition infrastructure found: %d of %d injected bugs" % (n, len(real_bug_list)))
 
 
 if __name__ == "__main__":

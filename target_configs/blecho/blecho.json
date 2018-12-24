@@ -1,0 +1,21 @@
+{
+  "name": "blecho",
+  "db": "blecho",
+  "preprocessed" : false,
+  "dataflow": true,
+
+  "tarfile": "blecho.tar.gz",
+
+  "qcow": "wheezy_panda2.qcow2",
+  "snapshot": "root",
+  "expect_prompt": "root@debian-i386:~#",
+
+  "make": "make",
+  "clean": "make clean",
+  "install": "make install",
+  "command": "{install_dir}/bin/blecho 5 123456789 12 /tmp/blecho_memory < {input_file}",
+
+  "main_file": [ "blecho.c" ],
+
+  "inputs": [ "inputs/tests" ]
+}

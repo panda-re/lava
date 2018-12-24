@@ -30,12 +30,18 @@
 . `dirname $0`/funcs.sh
 
 tick
+version="2.0.0"
+
+USAGE() {
+    echo "$1 version $version"
+    echo "Usage: $1 [ATP_Type] JSONfile"
+}
 
 set -e # Exit on error
 #set -x # Debug mode
 
 if [ $# -lt 1 ]; then
-  echo "Usage: $0 [ATP_Type] JSONfile"
+    USAGE $0
 elif [ $# -lt 2 ]; then
   echo "No ATP_Type specified.  Defaulting to all."
   ATP_TYPE=""
@@ -44,7 +50,7 @@ elif [ $# -eq 2 ]; then
   ATP_TYPE="-$1"
   json="$(readlink -f $2)"
 else
-  echo "Usage: $0 [ATP_Type] JSONfile"
+    USAGE $0
   exit 1
 fi
 
@@ -88,7 +94,8 @@ read -ra MAKES <<< $makecmd
 for i in ${MAKES[@]}; do
     IFS=' '
     read -ra ARGS <<< $i
-    $lava/btrace/sw-btrace ${ARGS[@]}
+    echo "$lava/tools/btrace/sw-btrace ${ARGS[@]}"
+    $lava/tools/btrace/sw-btrace ${ARGS[@]}
     IFS='&&'
 done
 IFS=$ORIGIN_IFS
@@ -99,11 +106,11 @@ bash -c $install
 
 
 # figure out where llvm is
-llvm_src=$(grep LLVM_SRC_PATH $lava/src_clang/config.mak | cut -d' ' -f3)
+llvm_src=$(grep LLVM_SRC_PATH $lava/tools/lavaTool/config.mak | cut -d' ' -f3)
 
 
 progress "queries" 0  "Creating compile_commands.json..."
-$lava/btrace/sw-btrace-to-compiledb $llvm_src/Release/lib/clang/3.6.2/include
+$lava/tools/btrace/sw-btrace-to-compiledb $llvm_src/Release/lib/clang/3.6.2/include
 if [ -e "$directory/$name/extra_compile_commands.json" ]; then
     sed -i '$d' compile_commands.json
     echo "," >> compile_commands.json
@@ -114,22 +121,23 @@ git commit -m 'Add compile_commands.json.'
 
 cd ..
 
-c_files=$(python $lava/src_clang/get_c_files.py $source)
+c_files=$(python $lava/tools/lavaTool/get_c_files.py $source)
 c_dirs=$(for i in $c_files; do dirname $i; done | sort | uniq)
 
 progress "queries" 0  "Copying include files..."
 for i in $c_dirs; do
   echo "   $i"
   if [ -d $i ]; then
-    cp $lava/include/*.h $i/
+    cp $lava/tools/include/*.h $i/
   fi
 done
+
 
 # Run another clang tool that provides information about functions,
 # i.e., which have only prototypes, which have bodies.  
 progress "queries" 0 "Figure out functions" 
-for i in $c_files; do
-    $lava/src_clang/build/lavaFnTool $i
+for this_c_file in $c_files; do
+    $lava/tools/install/bin/lavaFnTool $this_c_file
 done
 
 #progress "queries" 0  "Initialize variables..."
@@ -164,9 +172,9 @@ if [ "$dataflow" = "true" ]; then
     # Since it's okay to pass the whitelist either way
     progress "queries" 0  "Inserting queries for dataflow"
     for i in $c_files; do
-        $lava/src_clang/build/lavaTool -action=query \
+        $lava/tools/install/bin/lavaTool -action=query \
         -lava-db="$directory/$name/lavadb" \
-        -p="$source/compile_commands.json" \
+        -p="$directory/$name/$source/compile_commands.json" \
         -arg_dataflow \
         -lava-wl="$fninstr" \
         -src-prefix=$(readlink -f "$source") \
@@ -178,10 +186,10 @@ else
     progress "queries" 0  "Inserting queries..."
     # TODO: remove lava-wl here, unless we're using it to limit where we inject
     for i in $c_files; do
-        $lava/src_clang/build/lavaTool -action=query \
+        $lava/tools/install/bin/lavaTool -action=query \
         -lava-db="$directory/$name/lavadb" \
-        -p="$source/compile_commands.json" \
         -lava-wl="$fninstr" \
+        -p="$source/compile_commands.json" \
         -src-prefix=$(readlink -f "$source") \
         $ATP_TYPE \
         -db="$db" \
@@ -189,11 +197,26 @@ else
     done
 fi
 
+# Do we need to explicitly apply replacements in the root source directory
+# This causes clang-apply-replacements to segfault when run a 2nd time
+#pushd "$directory/$name/$source"
+#$llvm_src/Release/bin/clang-apply-replacements .
+#popd
+
 for i in $c_dirs; do
-    echo "  Applying replacements to $i"
+    echo "Applying replacements to $i"
     pushd $i
-    $lava/src_clang/build/clang-apply-replacements .
+    $llvm_src/Release/bin/clang-apply-replacements .
     popd
+done
+
+# Ensure every c file was modified
+# Alternatively, we could just check that at least one file was modified
+for this_c_file in $c_files; do
+    if ! grep -q "pirate_mark_lava.h" $this_c_file; then
+        echo "FATAL ERROR: LAVA queries missing from source files!"
+        exit 1
+    fi
 done
 
 progress "queries" 0  "Done inserting queries. Time to make and run actuate.py on a 64-BIT machine!"

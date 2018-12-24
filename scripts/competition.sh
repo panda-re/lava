@@ -13,7 +13,10 @@ set -e # Exit on error
 . `dirname $0`/funcs.sh
 lava=$(dirname $(dirname $(readlink -f "$0")))
 
+version="1.0.0"
+
 USAGE() {
+  echo "$0 version $version"
   echo "USAGE: $0 -a -k -m [Num bugs] -n [Minimum real bugs] -l [List of bug IDs to use] -e [Expected exit code of original program] ProjectName"
   echo "       . . . or just $0 ProjectName"
   exit 1
@@ -103,4 +106,4 @@ truncate "$lf"
 run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject --bugtypes=$bugtypes $usechaff $hostjson $project_name" "$lf"
 progress "competition" 1 "Everything finished."
 
-tail -n4 $lf
+tail -n3 $lf

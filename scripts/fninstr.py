@@ -6,10 +6,12 @@ import argparse
 
 debug = True
 
-# When set, we don't inject dataflow as an argument when a function pointer is called
-# This needs to behave the same as lavaTool's function pointer matcher; when that is enabled
-# this must be False. TODO: parameterize this
-IGNORE_FN_PTRS = True
+# When IGNORE_FN_PTRS is set, we don't inject dataflow as an argument when a
+# function pointer is called. This needs to match with the same variable
+# in lavaTool/include/MatchFinder.h
+# Note, no tests pass if this is true
+# TODO: parameterize this
+IGNORE_FN_PTRS = False
 
 
 parser = argparse.ArgumentParser(description='Use output of LavaFnTool to figure out which parts of preproc code to instrument')
@@ -58,14 +60,14 @@ class Function:
 
 
 class FnPtrAssign:
-    
+
     def __init__(self, fpa):
         (self.filename, self.start, self.end, see) = check_start_end(fpa)
         (self.extern, self.ret_type, self.params) = parse_fundecl(fpa['fundecl'])
         # this is the value being assigned to the fn ptr, i.e. the RHS
         self.name = fpa['name']
         assert (not see)
-        
+
 
 class Call:
 
@@ -79,7 +81,7 @@ class Call:
         self.args = call['args']
         self.ret_tyep = call['ret_type']
         assert (not see)
-    
+
 
 fundefs = {}
 prots = {}
@@ -91,7 +93,7 @@ def addtohl(h,k,v):
         h[k] = []
     h[k].append(v)
 
-    
+
 def merge(v, vors):
     if v is None:
         assert (vors is None)
@@ -100,7 +102,7 @@ def merge(v, vors):
         assert (v is None)
     return vors + v
 
-if True: 
+if True:
     for filename in rest:
         print "FILE [%s] " % filename
         y = yaml.load(open(filename))
@@ -134,19 +136,19 @@ else:
     calls = pickle.load(f)
     fpas = pickle.load(f)
     f.close()
-    
+
 
 """
 
-First analysis.  
+First analysis.
 Determine complete set of named function we have seen.
-Four sources of information for this.  
+Four sources of information for this.
 
 1. Function definitions. We know it's a definition if it contains an implementation (body)
 2. Function declarations (prototype, with return type, and param types)
 3. Function calls.  No fn should be called unless we have a prototype for it?  If we are looking at preprocessed code.
 
-""" 
+"""
 
 all_fns = set()
 fns_passed_as_args = {}
@@ -171,36 +173,36 @@ for name in calls.keys():
                     all_fns.add(arg['name'])
                     addtohl(fns_passed_as_args, arg['name'], call.name)
 
-print "%d fn names in prots+fundefs+calls+callargs" % (len(all_fns))                             
+print "%d fn names in prots+fundefs+calls+callargs" % (len(all_fns))
 
 
 """
 
-Second analysis.  
+Second analysis.
 
-Determine which functions we will instrument. This is a little more 
-complicated than determining which are internal functions for which 
-we have bodies and which are not. When we say we will instrument a 
+Determine which functions we will instrument. This is a little more
+complicated than determining which are internal functions for which
+we have bodies and which are not. When we say we will instrument a
 function we mean both of the following.
 
-  * Adding lava queries to body (that could later find DUAs or ATPs 
-    under taint analysis). 
-  * If we are using data flow, then it also means adding data_flow 
+  * Adding lava queries to body (that could later find DUAs or ATPs
+    under taint analysis).
+  * If we are using data flow, then it also means adding data_flow
     first arg to defn, prototype, and all calls
 
 When do we instrument a function 'foo'?
 
-1. Obviously, only if 'foo' has an implmentation (body) can it be 
+1. Obviously, only if 'foo' has an implmentation (body) can it be
    a candidate to be instrumented in the first place.
 
-2. Say a function 'foo' is a candidate for instrumentation. But 
-   'foo' is passed, as a paramenter, to another function, 'bar'.  
-   If 'bar' is not a candidate for instrumention then neither can 
+2. Say a function 'foo' is a candidate for instrumentation. But
+   'foo' is passed, as a paramenter, to another function, 'bar'.
+   If 'bar' is not a candidate for instrumention then neither can
    'foo' be since calls to 'foo' from bar can't be instrumented.
    Note that resolving this sort of relation requires recursing.
 
-3. If a function's body isnt instrumented then calls to that function 
-   cannot be instrumnted with data_flow arg.  
+3. If a function's body isnt instrumented then calls to that function
+   cannot be instrumnted with data_flow arg.
 
 4. Probably we can safely ignore 'extern' since it is often, oddly,
    applied to functions for which we observe a body.
@@ -226,11 +228,11 @@ for name in all_fns:
                 print  "Instr candidate %s has body" % name
             break
     else:
-        # we have no fundec for this fn, thus definitely no body. 
+        # we have no fundec for this fn, thus definitely no body.
         # so don't instrument
         instr_judgement[name] = DIB | DADFA
         if debug:
-            print "Won't instrument %s (data_flow) since we don't have body" % name        
+            print "Won't instrument %s (data_flow) since we don't have body" % name
 
 
 instr = set()
@@ -240,7 +242,7 @@ for name in instr_judgement.keys():
 
 """
 Make another pass to see if there are any fns passed as args to
-other fns that are, themselves, not instrumentable.  Which means 
+other fns that are, themselves, not instrumentable.  Which means
 they, too, cannot tolerate a change in prototypes (data_flow arg).
 """
 for name in instr:
@@ -303,8 +305,8 @@ for i in range(4):
 for name in instr_judgement.keys():
     if instr_judgement[name] == OKI:
         print "Intrumenting fun [%s]" % name
-    
-    
+
+
 
 
 f = open(args.output, "w")

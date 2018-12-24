@@ -44,6 +44,25 @@ preprocessed source files.  This script starts off as the transformed
 versions of those lines from make.out, and common flags are placed in
 variables etc.  
 
+2.5 Now you need to initialize all variables in your target. Otherwise we may identify
+an unitialized variable as being attacker controlled when that happens probabilisitcally.
+Fortunately, we've created a tool to help with this process- lavaInitTool.
+
+2.5.1 Start a shell in the docker container, and cd into your project
+
+2.5.2 run `path-to-lava/tools/btrace/sw-btrace make` to build btrace.log
+
+2.5.3 run `path-to-lava/tools/btrace/sw-btrace-to-compiledb .` to build `compile_commands.json`
+
+2.5.4 run `path-to-lava/tools/install/bin/lavaInitTool src/*-pre.c` where the arguments are all
+the preprocessed c files.
+
+2.5.5 In each directory with your source code, run
+`/llvm-3.6.2/Release/bin/clang-apply-replacements .`
+
+2.5.6 If you search through your code for `={0};` you should see variables that were previously
+unitialized now being initialized to null.
+
 3. Once I have all the -pre.c files needed to create the executable we
 want, I write a super simple makefile that will compile all the -pre.c
 files into -pre.o objects and link them.  Often, if the project
@@ -97,7 +116,7 @@ everything except inject.py.  That is, if you were doing this for
 file, you would now be able to run the following
 
 cd scripts
-./everything.sh -krcamt file
+./lava.sh -ak file
 
 which will use lavaTool to add pri queries, then run panda's taint
 analysis to collect a pandalog, then read that pandalog containing the
@@ -114,7 +133,7 @@ psql file_tleek -U postgres -c 'select count(*), type from bug group by type ord
   111673 |    2
 (3 rows)
 
-THis indicates that bug_mining.py actually found a number of potential
+This indicates that bug_mining.py actually found a number of potential
 bugs for injection.
 
 What might have gone wrong?  If you got NO bugs at this point, this is
@@ -141,7 +160,7 @@ really want PRI to have worked for, you have a problem.
 6. The next step is to get injection to work.  That means running, e.g.
 
 cd scripts
-./everything.sh -i 1 file
+./lava.sh -i 1 file
 
 This probably won't work.  Sadly, even though everything through
 bug_mining (panda pri taint analysis and postprocess with

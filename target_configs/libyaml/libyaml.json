@@ -1,0 +1,24 @@
+{
+    "name": "libyaml",
+    "db": "libyaml",
+    "preprocessed": "true",
+    "dataflow": "true",
+
+    "tarfile": "libyaml-pre.tar.gz",
+
+    "qcow": "wheezy_panda2.qcow2",
+    "snapshot": "root",
+    "expect_prompt": "root@debian-i386:~#",
+
+    "make": "make",
+    "clean": "make clean",
+    "install": "make install",
+    "command": "{install_dir}/bin/libyaml {input_file}",
+
+    "injfixupsscript": "fixup.sh {bug_build}",
+
+    "main_file": [ "src/parser.c" ],
+
+    "inputs": [ "inputs/spec.yaml"],
+    "_comment_other_inputs_are_broken": [ "inputs/spec.yaml", "inputs/bin.yaml", "inputs/test_yaml2.yaml"]
+}

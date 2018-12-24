@@ -1,27 +1,24 @@
 {
-    "qcow": "wheezy_panda2.qcow2",
-    "snapshot": "root",
-    "expect_prompt": "root@debian-i386:~#",
-
     "name": "toy",
     "db": "toy",
     "preprocessed": true,
     "dataflow": "true",
 
+    "qcow": "wheezy_panda2.qcow2",
+    "snapshot": "root",
+    "expect_prompt": "root@debian-i386:~#",
+
     "tarfile": "toy-pre.tar.gz",
 
     "configure": "true",
-    "make": "make CFLAGS+=-g",
+    "make": "make CFLAGS+=-gdwarf-2",
     "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/toy {input_file}",
 
-    "max_liveness": 100000,
-    "max_cardinality": 100,
-    "max_tcn": 100000,
-    "max_lval_size": 100,
-
     "main_file": [ "toy.c" ],
+
+    "dataflow": "true",
 
     "inputs": [ "inputs/testsmall.bin" ]
 }

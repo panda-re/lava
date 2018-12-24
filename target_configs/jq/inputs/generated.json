@@ -1,0 +1,50 @@
+[
+  {
+    "hello": "world",
+    "tags": [
+      "dolor",
+      "officia",
+      "aliqua",
+      "aliqua",
+      "duis",
+      "consectetur"
+    ],
+    "friends": [
+      {
+        "name": "Leach Anderson"
+      },
+      {
+        "name": "Kayla Rodriquez"
+      },
+      {
+        "name": "Castro Mccoy"
+      }
+    ],
+    "favoriteFruit": "apple"
+  },
+  {
+    "null", null,
+    "int", 1234,
+    "hello": "there",
+    "tags": [
+      "dolor",
+      "officia",
+      "aliqua",
+      "aliqua",
+      "duis",
+      "consectetur"
+    ],
+    "friends": [
+      {
+        "name": "Leach Anderson"
+      },
+      {
+        "name": "Kayla Rodriquez"
+      },
+      {
+        "name": "Castro Mccoy"
+      }
+    ],
+    "favoriteFruit": "apple"
+  }
+]
