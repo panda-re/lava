@@ -18,11 +18,10 @@ NYU, and Northeastern University.
 # Quick Start
 
 On a system running Ubuntu 16.04, you should be able to just do `python
-setup.py`. Note that this install script is fairly invasive (i.e., it
-will install lots of packages and make changes to your system). Once it
-finishes, you should have a `panda/build/` directory (LAVA uses
-[PANDA](https://github.com/panda-re/panda) with a PANDA install to perform
-dynamic taint analysis).
+setup.py`. Note that this install script will install packages and make
+changes to your system). Once it finishes, you should have
+[PANDA](https://github.com/panda-re/panda) installed into
+`panda/build/` (PANDA is used to perfor dynamic taint analysis).
 
 Next, run `init-host.py` to generate a host.json file.
 This creates a `host.json` file used by LAVA that describes settings specific
@@ -34,23 +33,41 @@ every configuration is located at `target_configs/projectname/projectname.json`.
 These scripts reference paths relative to values set in your `host.json` file.
 
 Finally, you can run `scripts/lava.sh` to actually inject bugs
-into a program. The simplest way to invoke it is to tell it to carry
-out all steps (`-a`) and delete old files/directores as needed (`-k`).
-After the flags, you should specify a project name in the `target_configs` directory
+into a program. Just provide the name of a project that is in the
+`target_configs` directory
 
 ```
-scripts/lava.sh -ak toy
+scripts/lava.sh toy
 ```
 
 You should now have a buggy copy of toy!
 
-Of course, it's rarely this easy. You will likely have to tweak the
-build scripts for your program to ensure everything works well with
-LAVA.
+If you want to inject bugs into a new target, you will likely need to make some
+modifications. Check out [How-to-Lava](docs/how-to-lava.md) for guidance.
 
 # Documentation
-
 Check out the [docs](docs/) folder to get started.
+
+
+# Current Status
+## Version 2.0.0
+
+Expected results from test suite:
+```
+Project       RESET    CLEAN    ADD      MAKE     TAINT    INJECT   COMP
+blecho        PASS     PASS     PASS     PASS     PASS     PASS     PASS
+libyaml       PASS     PASS     PASS     PASS     PASS     PASS     PASS
+file          PASS     PASS     PASS     PASS     PASS     PASS     PASS
+toy           PASS     PASS     PASS     PASS     PASS     PASS     PASS
+pcre2         PASS     PASS     PASS     PASS     PASS     PASS     PASS
+jq            PASS     PASS     PASS     PASS     PASS     PASS     PASS
+grep          PASS     PASS     PASS     PASS     PASS     FAIL
+libjpeg       PASS     PASS     PASS     PASS     FAIL
+tinyexpr      PASS     PASS     PASS     PASS     FAIL
+duktape       PASS     PASS     PASS     FAIL
+tweetNaCl     PASS     PASS     FAIL
+gzip          FAIL
+```
 
 # Authors
 
