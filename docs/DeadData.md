@@ -1,3 +1,6 @@
+# Note: this is not currently enabled in Lava
+
+
 LAVA and Dead Available Uncomplicated Data
 ==========================================
 
