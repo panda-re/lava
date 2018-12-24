@@ -15,5 +15,8 @@
 * Some bug fixes
 * New Clang-tool to rewrite source so variables are initialized (preventing unitialized variable DUAs)
 
+# LAVA 1.0.1
+* Minor bugfixes and patches
+
 # LAVA 1.0.0
 * Initial GitHub release
