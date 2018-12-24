@@ -17,7 +17,7 @@ NYU, and Northeastern University.
 
 # Quick Start
 
-On a system running Ubuntu 16.04, you should be able to just do `python
+On a system running Ubuntu 16.04, you should be able to just do `python2
 setup.py`. Note that this install script will install packages and make
 changes to your system). Once it finishes, you should have
 [PANDA](https://github.com/panda-re/panda) installed into
