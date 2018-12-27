@@ -17,27 +17,28 @@ NYU, and Northeastern University.
 
 # Quick Start
 
-On a system running Ubuntu 16.04, you should be able to just do `python2
+On a system running Ubuntu 16.04, you should be able to just run `python2
 setup.py`. Note that this install script will install packages and make
-changes to your system). Once it finishes, you should have
+changes to your system. Once it finishes, you should have
 [PANDA](https://github.com/panda-re/panda) installed into
-`panda/build/` (PANDA is used to perfor dynamic taint analysis).
+`panda/build/` (PANDA is used to perform dynamic taint analysis).
 
-Next, run `init-host.py` to generate a host.json file.
-This creates a `host.json` file used by LAVA that describes settings specific
-to your host machine. You can edit these settings as necessary, but the default
+Next, run `init-host.py` to generate a `host.json`.
+This file is used by LAVA to store settings specific
+to your machine. You can edit these settings as necessary, but the default
 values should work.
 
 Project configurations are located in the `target_configs` directory, where
 every configuration is located at `target_configs/projectname/projectname.json`.
-These scripts reference paths relative to values set in your `host.json` file.
+Paths specified within these configuration files are relative to values set
+in your `host.json` file.
 
-Finally, you can run `scripts/lava.sh` to actually inject bugs
+Finally, you can run `./scripts/lava.sh` to actually inject bugs
 into a program. Just provide the name of a project that is in the
-`target_configs` directory
+`target_configs` directory, for example:
 
 ```
-scripts/lava.sh toy
+./scripts/lava.sh toy
 ```
 
 You should now have a buggy copy of toy!
