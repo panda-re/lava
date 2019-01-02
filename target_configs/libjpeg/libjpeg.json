@@ -13,11 +13,11 @@
     "make": "make",
     "clean": "make clean",
     "install": "make install",
-    "command": "{install_dir}/bin/memdjpeg {input_file}",
+    "command": "{install_dir}/bin/jpeg {input_file}",
 
-    "main_file": [ "memdjpeg-pre.c" ], 
+    "main_file": [ "src/example-pre.c" ],
 
-    "injfixupsscript": "tim_fixup.py",
+    "injfixupsscript": "fixup.sh",
 
     "inputs": [ "inputs/testorig.jpg" ]
 }
