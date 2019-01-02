@@ -11,22 +11,63 @@ struct VarDeclArgAdditionHandler : public LavaMatchHandler {
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const VarDecl *vd = Result.Nodes.getNodeAs<VarDecl>("vardecl");
+
+        auto fnname = vardecl_fun_name(Result, vd);
+
+        // Determine if this is a function pointer within a function pointer
+        // if so, get root FP (eventually)
+        /*
+        const ParmVarDecl *pvd = Result.Nodes.getNodeAs<ParmVarDecl>("paramvardecl");
+        if (pvd!=NULL){
+            debug(FNARG) << "HAVE A PVD: " << fnname.second << " : " << fnname.first << "\n";
+        }else{
+            debug(FNARG) << "NOT A PVD: " << fnname.second << " : " << fnname.first << "\n";
+        }
+        */
+
+
+        // DeclContext *d = vd->getParent();
+        //const VarDecl *par_vd = d.getNodeAs<ParmVarDecl>("paramvardecl");
+
+        // Now with the root FP, make sure its whitelisted for modification
+
+        // only instrument if function being decl / def is in whitelist
+        // TODO this doesn't make sense for a vardecl!
+        /*
+        if (fninstr(fnname)) {
+            debug(FNARG) << "VarDeclArgAdditionHandler: Function def/decl is in whitelist     " << fnname.second << " : " << fnname.first << "\n";
+        }
+        else {
+           debug(FNARG) << "VarDeclArgAdditionHandler: Function def/decl is NOT in whitelist - Ignore" << fnname.second << " : " << fnname.first << "\n";
+            //return;
+        }*/
+
+        /*
+        if (vd->isExternC()) {
+            debug(FNARG) << "VarDeclArgAdditionHandler: VarDecl is extern- ignore " << fnname.second << " : " << fnname.first << "\n";
+            return;
+        }else{
+            debug(FNARG) << "VarDeclArgAdditionHandler: VarDecl is not extern- rewrite " << fnname.second << " : " << fnname.first << "\n";
+        }
+
+        */
         SourceLocation l1 = vd->getLocStart();
         SourceLocation l2 = vd->getLocEnd();
 
         // Since the var declaration needs fixups, don't deal with the body,
         // just the declaration itself, so ignore everything after the =
         SourceLocation endOfDecl;
-        debug(FNARG) << "vardecl -- looking for =\n";
+        debug(FNARG) << "vardecl -- looking for =...";
         bool inv;
         endOfDecl = getLocAfterStr(*Mod.sm, l1, "=", 1, 1000, &inv);
         if (!inv) {
             // this means we found "="
-            debug(FNARG) << " FOUND =\n";
+            debug(FNARG) << " found it\n";
             if (srcLocCmp(*Mod.sm, l2, endOfDecl) == SCMP_LESS)
                 // In case the ( is past the end of the l1..l2 range
                 endOfDecl = l2;
         }else{
+            debug(FNARG) << " not found\n";
             endOfDecl=l2;
         }
 
@@ -45,6 +86,9 @@ struct VarDeclArgAdditionHandler : public LavaMatchHandler {
             //assert(fun_type);
             if (!fun_type) return;
             const FunctionProtoType *prot = dyn_cast<FunctionProtoType>(fun_type);
+            // Now make sure its in our whitelist!
+
+
             // add the data_flow arg
             AddArgGen(Mod, l1, endOfDecl, /*argType=*/UNNAMEDARG, /*numArgs=*/prot->getNumParams(),
                       /*callsite=*/3);

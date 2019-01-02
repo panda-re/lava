@@ -122,6 +122,17 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         return std::make_pair(std::string("Meh"),std::string("Unknown"));
     }
 
+    std::pair<std::string,std::string> vardecl_fun_name(const MatchFinder::MatchResult &Result, const VarDecl *vd) {
+        IdentifierInfo *II = vd->getIdentifier();
+        if (II) {
+            StringRef Name = II->getName();
+            std::string funname = Name.str();
+            std::string filename = Result.SourceManager->getFilename(vd->getLocation()).str();
+            return std::make_pair(filename, funname);
+        }
+        return std::make_pair(std::string("Meh"),std::string("Unknown"));
+    }
+
     std::pair<std::string,std::string> get_containing_function_name(const MatchFinder::MatchResult &Result, const Stmt &stmt) {
 
         const Stmt *pstmt = &stmt;

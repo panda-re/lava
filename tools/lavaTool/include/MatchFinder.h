@@ -128,7 +128,11 @@ public:
 
 
             addMatcher(
-                varDecl().bind("vardecl"),
+                // TODO: this doesn't work - maybe change to just vardecl
+                // or split into two matchers.
+                // We need to still rewrite inline function pointers which aren't
+                // part of declStmts :(
+                varDecl(hasParent(declStmt())).bind("vardecl"),
                 makeHandler<VarDeclArgAdditionHandler>());
 
             // function calls (direct or via fn pointer)
