@@ -16,3 +16,8 @@ sed -i -e 's/int \*data_flow, (sizeof &dummy/data_flow, (sizeof \&dummy/g' $1/li
 sed -i -e 's/suppressible_error ((\*/suppressible_error (data_flow, (\*/g' $1/src/grep-pre.c
 sed -i -e 's/open_symlink_nofollow_error ((\*/open_symlink_nofollow_error (data_flow, (\*/g' $1/src/grep-pre.c
 sed -i -e 's/__gnu_printf__, 1, 2/__gnu_printf__, 2, 3/g' $1/src/grep-pre.c
+
+sed -i -e 's/if (pred->func (data_flow, c2))/if (pred->func (c2))/g' $1/src/dfa-pre.c
+
+sed -i -e 's/(\*addfnptr) (data_flow, ex, pattern, options)/(\*addfnptr) (ex, pattern, options)/g' $1/src/exclude-pre.c
+

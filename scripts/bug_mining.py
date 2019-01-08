@@ -85,6 +85,7 @@ print("bug_mining.py %s %s" % (project_name, input_file))
 if len(sys.argv) > 4:
     global curtail
     curtail = int(sys.argv[4])
+    progress("Curtail fbi to %d" % curtail)
 
 qemu_path = project['qemu']
 qemu_build_dir = dirname(dirname(abspath(qemu_path)))

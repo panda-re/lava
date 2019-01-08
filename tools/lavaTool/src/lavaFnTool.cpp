@@ -11,6 +11,8 @@
 #include "clang/ASTMatchers/ASTMatchersInternal.h"
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
 #include "lava_version.h"
+#include "clang/Lex/Lexer.h"
+#include "omg.h"
 
 #include <iostream>
 
@@ -166,11 +168,7 @@ class CallPrinter : public MatchFinder::MatchCallback {
                 string expstr, type, info;
                 outfile << "      - arg: \n";
                 if (atp->isFunctionType()) {
-                    const DeclRefExpr *dre = dyn_cast<DeclRefExpr>(arg);
-                    if (dre == NULL) {
-                        printf("Warning: DeclRefExpr is null- SKIP\n");
-                        continue;
-                    }
+                    const DeclRefExpr *dre = dyn_cast<DeclRefExpr>(arg->IgnoreParens());
                     outfile << "         name: " << dre->getNameInfo().getName().getAsString() << "\n";
                     outfile << "         type: " << at.getAsString() << "\n";
                     outfile << "         info: function\n";
