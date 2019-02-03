@@ -88,6 +88,8 @@ $configure_cmd --prefix=$(pwd)/lava-install
 
 
 progress "queries" 0  "Making with btrace..."
+# Delete any pre-existing btrace.log (could be in archive by mistake)
+rm -f btrace.log
 ORIGIN_IFS=$IFS
 IFS='&&'
 read -ra MAKES <<< $makecmd
@@ -110,6 +112,8 @@ llvm_src=$(grep LLVM_SRC_PATH $lava/tools/lavaTool/config.mak | cut -d' ' -f3)
 
 
 progress "queries" 0  "Creating compile_commands.json..."
+# Delete any pre-existing compile commands.json (could be in archive by mistake)
+rm -f compile_commands.json
 $lava/tools/btrace/sw-btrace-to-compiledb $llvm_src/Release/lib/clang/3.6.2/include
 if [ -e "$directory/$name/extra_compile_commands.json" ]; then
     sed -i '$d' compile_commands.json

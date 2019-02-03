@@ -308,6 +308,7 @@ if True:
     for filename in rest:
         print "FILE [%s] " % filename
         y = yaml.load(open(filename))
+        assert(y is not None), "Missing output file from fninstr"
         for x in y:
     #        print x
             if 'fun' in x:
