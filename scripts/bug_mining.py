@@ -240,6 +240,7 @@ progress("Calling the FBI on queries.plog...")
 # project_file, pandalog, input_file_base]
 fbi_args = [join(lavadir, 'tools', 'install', 'bin', 'fbi'), host_json,
             project_name, pandalog, input_file_base]
+envv = {'LD_LIBRARY_PATH': '/usr/local/lib:$LD_LIBRARY_PATH'}
 
 # Command line curtial argument takes priority, otherwise use project specific one
 global curtail
@@ -251,7 +252,7 @@ elif "curtail" in project:
 dprint("fbi invocation: [%s]" % (subprocess32.list2cmdline(fbi_args)))
 sys.stdout.flush()
 try:
-    subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
+    subprocess32.check_call(fbi_args, env=envv, stdout=sys.stdout, stderr=sys.stderr)
 except subprocess32.CalledProcessError as e:
     print("FBI Failed. Possible causes: \n"+
         "\tNo DUAs found because taint analysis failed: \n"

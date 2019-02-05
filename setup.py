@@ -59,7 +59,7 @@ if not is_package_installed("python-colorama"):
 # this is set to denote user is already in docker group
 ALREADY_IN_DOCKER_GROUP = False
 LLVM_VERSION = "3.6.2"
-DOCKER_NAME = "lava32"
+DOCKER_NAME = "lava32chaff"
 
 LAVA_DIR = dirname(abspath(sys.argv[0]))
 os.chdir(LAVA_DIR)
@@ -217,8 +217,8 @@ def main():
               Run as user!\nUSAGE: {}".format(sys.argv[0]))
 
     progress("Installing LAVA apt-get dependencies")
-    if not all(map(is_package_installed, LAVA_DEPS)):
-        run(['sudo', 'apt-get', '-y', 'install'] + LAVA_DEPS)
+    #if not all(map(is_package_installed, LAVA_DEPS)):
+    #    run(['sudo', 'apt-get', '-y', 'install'] + LAVA_DEPS)
 
     # set up postgres authentication.
     if not isfile(join(os.environ['HOME'], '.pgpass')):

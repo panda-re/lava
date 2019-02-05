@@ -132,7 +132,7 @@ RESET_DB() {
     lf="$logs/dbwipe.log"
     truncate "$lf"
     progress "everything" 1  "Resetting lava db -- logging to $lf"
-    run_remote "$pandahost" "dropdb --if-exists -U postgres $db" "$lf"
+    run_remote "$pandahost" "dropdb -U postgres $db || true" "$lf"
     run_remote "$pandahost" "createdb -U postgres $db || true" "$lf"
     run_remote "$pandahost" "psql -d $db -f $lava/tools/lavaODB/generated/lava.sql -U postgres" "$lf"
     run_remote "$pandahost" "echo dbwipe complete" "$lf"

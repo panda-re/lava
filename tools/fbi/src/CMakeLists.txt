@@ -23,6 +23,7 @@ set_property(TARGET fbilib PROPERTY CXX_STANDARD 14)
 add_executable(fbi find_bug_inj.cpp)
 set_property(TARGET fbi PROPERTY CXX_STANDARD 14)
 
+target_compile_options(fbi PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
 if (${DEBUG})
     target_compile_options(fbi PRIVATE -fno-omit-frame-pointer -g -O0)
 else()
@@ -41,6 +42,7 @@ target_include_directories(fbi BEFORE
         /usr/lib/odb/x86_64-linux-gnu/include
     )
 add_dependencies(fbi lava-odb_x64)
+set_target_properties(fbi PROPERTIES LINK_FLAGS "-L/usr/local/lib")
 target_link_libraries(fbi
     fbilib
     lavaDB_x64

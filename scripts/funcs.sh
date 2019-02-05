@@ -83,7 +83,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
                 -v /home:/home:ro \
                 $docker_map_args \
                 $extradockerargs \
-                $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"$command\"" \
+                $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/llvm-3.6.2/Release/lib; $command\"" \
                 >> "$logfile" 2>&1
         else
             echo "ssh $remote_machine $command"
