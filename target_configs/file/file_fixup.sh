@@ -4,7 +4,12 @@ cd "$1/src"
 
 
 sed -i -e 's/file_printf(ms/file_printf(data_flow,ms/g' compress-pre.c
-sed -i -e 's/zm = (((int (\*)/zm = (((int (\*)(int \*,/g' compress-pre.c
+sed -i -e 's/zm = (((int (\*)(/zm = (((int (\*)(int \*,/g' compress-pre.c
+
+sed -i -e 's/defprint(int \*data_flow,/defprint(/g' file-pre.c
+sed -i -e 's/defprint(data_flow,/defprint(/g' file-pre.c
+
+
 
 sed -i -e 's/file_magwarn(ms/file_magwarn(data_flow, ms/g' apprentice-pre.c
 
