@@ -2,7 +2,11 @@
 
 cd "$1/src"
 
+
 sed -i -e 's/file_printf(ms/file_printf(data_flow,ms/g' compress-pre.c
+sed -i -e 's/zm = (((int (\*)/zm = (((int (\*)(int \*,/g' compress-pre.c
+
+sed -i -e 's/file_magwarn(ms/file_magwarn(data_flow, ms/g' apprentice-pre.c
 
 sed -i -e 's/\(\([a-z]\)(\)/\1int * data_flow, /g' magic.h.in
 sed -i -e 's/data_flow, void/data_flow/g' magic.h.in
@@ -27,6 +31,3 @@ sed -i -e 's/docprint(.*data_flow, /docprint(/g' file-pre.c
 sed -i -e 's/data_flowvoid/data_flow/g' apprentice-pre.c
 
 sed -i -e 's/data_flowvoid/data_flow/g' magic-pre.c
-
-cp ~/lava/file/magic.mgc ../magic
-touch -d 0 ../magic/magic.mgc
