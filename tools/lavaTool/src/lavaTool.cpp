@@ -21,6 +21,7 @@ void parse_whitelist(std::string whitelist_filename) {
     while ((read = getline(&line, &len, fp)) != -1) {
         char *p = line;
         char *np = strtok(p, " ");
+        char *tag = strtok(NULL, " ");
         char *npp = strtok(NULL, "\n");
 
         if (npp == NULL) {
@@ -30,7 +31,15 @@ void parse_whitelist(std::string whitelist_filename) {
 
         debug(FNARG) << "\t np= " << np << " npp=" << npp << "\n";
         auto wlp = std::make_pair(std::string(np), std::string(npp));
-        whitelist.insert(std::string(npp));
+        // Extra tagging to indicate the root function of dataflow
+        if (!tag) {
+            whitelist.insert(std::string(npp));
+        } else if (!strcmp(tag, "root")) {
+            dataflowroot.insert(std::string(npp));
+        } else if (!strcmp(tag, "arg")) {
+            whitelist.insert(std::string(npp));
+            addvarlist.insert(std::string(npp));
+        }
         debug(FNARG) << "white list entry: file = [" << np << "] func = [" << npp << "]\n";
 
     }
