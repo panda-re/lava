@@ -221,8 +221,17 @@ LExpr LavaGet(uint32_t slot) {
     return LFunc("lava_get", { LDecimal(slot) });
 }
 
+LExpr LavaGetExtra(uint32_t slot) {
+    return LFunc("lava_get_extra", { LDecimal(slot) });
+}
+
 LExpr DataFlowGet(uint32_t slot) {
     return LIndex(LStr("data_flow"), slot);
+}
+
+LExpr LRandomBytes(std::string base, uint32_t len) {
+    std::string randstr = base.substr(rand() % (base.length() - len), len);
+    return LStr("\"" + randstr + "\"");
 }
 
 LExpr UCharCast(LExpr arg) { return LCast("const unsigned char *", arg); }

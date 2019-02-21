@@ -181,9 +181,14 @@ class Bug(Base):
     RET_BUFFER = 1
     REL_WRITE = 2
     PRINTF_LEAK = 3
+    CHAFF_STACK_UNUSED = 4
+    CHAFF_STACK_CONST = 5
+    CHAFF_HEAP_CONST = 6
     # };
     type_strings = ['BUG_PTR_ADD', 'BUG_RET_BUFFER',
-                    'BUG_REL_WRITE', 'BUG_PRINTF_LEAK']
+                    'BUG_REL_WRITE', 'BUG_PRINTF_LEAK',
+                    'CHAFF_BUG_STACK_UNUSED', 'CHAFF_BUG_STACK_CONST',
+                    'CHAFF_BUG_HEAP_CONST']
 
     id = Column(BigInteger, primary_key=True)
     type = Column(Integer)

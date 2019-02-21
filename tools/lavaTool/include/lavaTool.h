@@ -65,7 +65,7 @@ using clang::tooling::CommonOptionsParser;
 //#define DEBUG_FLAGS 0 // (MATCHER | INJECT | FNARG | PRI)
 #define DEBUG_FLAGS (INJECT | FNARG | PRI)
 
-#define ARG_NAME "data_flow"
+#define ARG_NAME "lava_data_flow"
 
 #define MAX_STRNLEN 64
 
@@ -81,6 +81,10 @@ uint32_t num_taint_queries = 0;
 // that can be instrumented
 // with dua and atp queries (which will later mean bugs)
 std::set<std::string> whitelist;
+std::set<std::string> dataflowroot;
+std::set<std::string> addvarlist;
+
+#define UNUSED_RANDOM_BYTES "Once upon a midnight dreary, while I pondered, weak and weary, Over many a quaint and curious volume of forgotten lore- While I nodded, nearly napping, suddenly there came a tapping, As of some one gently rapping, rapping at my chamber door. Tis some visitor, I muttered, tapping at my chamber door- Only this and nothing more."
 
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;

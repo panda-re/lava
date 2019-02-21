@@ -9,6 +9,7 @@
 #include "FuncDuplicationHandler.h"
 #include "VarDeclArgAdditionHandler.h"
 #include "FuncDeclArgAdditionHandler.h"
+#include "ChaffFuncDeclArgAdditionHandler.h"
 #include "FieldDeclArgAdditionHandler.h"
 #include "FunctionPointerFieldHandler.h"
 #include "CallExprArgAdditionalHandler.h"
@@ -116,6 +117,16 @@ public:
 
         // fortenforge's matchers (for data_flow argument addition)
         if (ArgDataflow && LavaAction == LavaInjectBugs) {
+// Skip Handling Function Pointers In Chaff Bugs
+#ifndef LEGACY_CHAFF_BUGS
+            addMatcher(
+                    functionDecl().bind("funcDecl"),
+                    makeHandler<ChaffFuncDeclArgAdditionHandler>());
+            addMatcher(
+                    callExpr().bind("callExpr"),
+                    makeHandler<CallExprArgAdditionHandler>());
+
+#else
             // function declarations & definition.  Decl without body is prototype
             addMatcher(
                     functionDecl().bind("funcDecl"),
@@ -141,6 +152,7 @@ public:
             addMatcher(
                 typedefDecl().bind("typedefdecl"),
                 makeHandler<FunctionPointerTypedefHandler>());
+#endif
 #endif
 
         // printf read disclosures - currently disabled
@@ -185,10 +197,15 @@ public:
             insert_at_top = "#include \"pirate_mark_lava.h\"\n";
         } else if (LavaAction == LavaInjectBugs) {
             insert_at_top.append(logging_macros.str());
-            if (!ArgDataflow) {
+#ifdef LEGACY_CHAFF_BUGS
+            if (!ArgDataflow)
+#endif
+            {
                 if (main_files.count(getAbsolutePath(Filename)) > 0) {
                     std::stringstream top;
                     top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
+                        << "static unsigned int lava_extra[" << data_slots.size() << "] = {0};\n"
+                        << "void *lava_chaff_pointer = (void*)0;\n"
                         << "void lava_set(unsigned int, unsigned int);\n"
                         << "__attribute__((visibility(\"default\")))\n"
                         << "void lava_set(unsigned int slot, unsigned int val) {\n"
@@ -199,7 +216,14 @@ public:
                         << "lava_val[slot] = val; }\n"
                         << "unsigned int lava_get(unsigned int);\n"
                         << "__attribute__((visibility(\"default\")))\n"
-                        << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
+                        << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n"
+                        << "void lava_set_extra(unsigned int, unsigned int);\n"
+                        << "__attribute__((visibility(\"default\")))\n"
+                        << "void lava_set_extra(unsigned int slot, unsigned int val) {\n"
+                        << "lava_extra[slot] = val; }\n"
+                        << "unsigned int lava_get_extra(unsigned int);\n"
+                        << "__attribute__((visibility(\"default\")))\n"
+                        << "unsigned int lava_get_extra(unsigned int slot) { return lava_extra[slot]; }\n";
                     insert_at_top.append(top.str());
                 } else {
                     insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
