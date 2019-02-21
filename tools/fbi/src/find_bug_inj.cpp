@@ -69,6 +69,8 @@ std::unique_ptr<odb::pgsql::database> db;
 bool debug = false;
 #define dprintf(...) if (debug) { printf(__VA_ARGS__); fflush(stdout); }
 
+#define RANDOM_DUA_TRIES 2
+
 uint64_t max_liveness = 0;
 uint32_t max_card = 0;
 uint32_t max_tcn = 0;
@@ -508,6 +510,7 @@ void taint_query_pri(Json::Value& ple) {
         }
     }
 
+#ifdef LEGACY_CHAFF_BUGS
     // create a fake dua if we can
     if (chaff_bugs && !is_dua
             && std::strtoul(tqh["len"].asString().c_str(), 0, 0) - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
@@ -543,9 +546,20 @@ void taint_query_pri(Json::Value& ple) {
         assert(count >= LAVA_MAGIC_VALUE_SIZE);
         is_fake_dua = true;
     }
+#endif
 
     dprintf("is_dua=%d is_fake_dua=%d\n", is_dua, is_fake_dua);
     assert(!(is_dua && is_fake_dua));
+
+    assert(si->has_ast_loc_id);
+    LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
+    assert(ast_loc.filename.size() > 0);
+
+    const AttackPoint *pad_atp;
+    bool is_new_atp;
+    std::tie(pad_atp, is_new_atp) = create_full(
+            AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT});
+
     if (is_dua || is_fake_dua) {
         // looks like we can subvert this for either real or fake bug.
         // NB: we don't know liveness info yet. defer byte selection until later.
@@ -567,10 +581,6 @@ void taint_query_pri(Json::Value& ple) {
             }
         }
 
-        const AttackPoint *pad_atp;
-        bool is_new_atp;
-        std::tie(pad_atp, is_new_atp) = create_full(
-                AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT});
         if (len >= 20 && decimate_by_type(Bug::RET_BUFFER)) {
             Range range = get_dua_exploit_pad(dua);
             const DuaBytes *dua_bytes = create(DuaBytes(dua, range));
@@ -629,6 +639,19 @@ void taint_query_pri(Json::Value& ple) {
                 std::strtoul(si["linenum"].asString().c_str(), 0, 0),
                 si["astnodename"].asString().c_str());
     }
+
+    record_injectable_bugs_at<Bug::CHAFF_STACK_UNUSED>(
+            pad_atp, is_new_atp, {});
+    for (const auto &exploit_dua : recent_dead_duas) {
+        Range r = get_dua_dead_range(exploit_dua.second, {});
+        if (r.empty())  continue;
+        const DuaBytes *k = create(DuaBytes{exploit_dua.second, r});
+        record_injectable_bugs_at<Bug::CHAFF_STACK_CONST>(
+                pad_atp, is_new_atp, { k });
+        record_injectable_bugs_at<Bug::CHAFF_HEAP_CONST>(
+                pad_atp, is_new_atp, { k });
+    }
+
     t.commit();
 }
 
@@ -812,7 +835,7 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
                 unsigned tries;
                 // Try two times to find an extra dua that is disjoint from
                 // trigger.
-                for (tries = 0; tries < 2; tries++) {
+                for (tries = 0; tries < RANDOM_DUA_TRIES; tries++) {
                     auto it = begin_it;
                     std::advance(it, rand() % distance);
                     const Dua *extra_dua = *it;
@@ -821,7 +844,7 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
                     extra = create(DuaBytes(extra_dua, selected));
                     if (disjoint(labels_so_far, extra->all_labels)) break;
                 }
-                if (tries == 2) break;
+                if (tries == RANDOM_DUA_TRIES) break;
                 extra_duas.push_back(extra);
 
                 size_t new_size = extra->all_labels.size() + labels_so_far.size();

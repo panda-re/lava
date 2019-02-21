@@ -466,7 +466,9 @@ struct Bug {
         RET_BUFFER,
         REL_WRITE,
         PRINTF_LEAK,
-        MALLOC_OFF_BY_ONE,
+        CHAFF_STACK_UNUSED,
+        CHAFF_STACK_CONST,
+        CHAFF_HEAP_CONST,
         TYPE_END
     } type;
 
@@ -474,8 +476,10 @@ struct Bug {
         [PTR_ADD] = 0,
         [RET_BUFFER] = 1,
         [REL_WRITE] = 2,
-	[PRINTF_LEAK] = 0,
-        [MALLOC_OFF_BY_ONE] = 0,
+        [PRINTF_LEAK] = 0,
+        [CHAFF_STACK_UNUSED] = 0,
+        [CHAFF_STACK_CONST] = 1,
+        [CHAFF_HEAP_CONST] = 1,
     };
 
 #pragma db not_null

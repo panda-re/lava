@@ -111,7 +111,40 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         return result;
     }
 
+<<<<<<< HEAD
     std::string AttackRetBuffer(ASTLoc ast_loc) {
+=======
+    std::string AttackChaffBugs(LavaASTLoc ast_loc) {
+        std::stringstream result_ss;
+        auto key = std::make_pair(ast_loc, AttackPoint::QUERY_POINT);
+        for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
+            if (bug->type == Bug::CHAFF_STACK_UNUSED) {
+                result_ss << LIf(Test(bug).render(), {
+                        LFunc("memcpy", {LStr("lava_chaff_var_1"),
+                                LRandomBytes(UNUSED_RANDOM_BYTES, 8), LDecimal(8)}),
+                        LAssign(LDeref(LStr(ARG_NAME)), LStr("lava_chaff_var_0"))});
+#ifdef TRIG_UNUSED
+                "__asm__ __volatile__(\"xorl %ebx, %ebx;divl %ebx;\");\n";
+#endif
+            } else if (bug->type == Bug::CHAFF_STACK_CONST) {
+                // TODO: 4 => stack_depth
+                result_ss << LIf(Test(bug).render(), {
+                        LAssign(LStr("*((int*)(((char*)&lava_chaff_var_0)+4))"),
+                                LavaGetExtra(Slot(bug->trigger)))});
+            } else if (bug->type == Bug::CHAFF_HEAP_CONST) {
+                result_ss << LIf(Test(bug).render(), {
+                        LAssign(LStr("lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
+                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x18))"), LDecimal(16)),
+                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(12)),
+                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x24))"), LavaGetExtra(Slot(bug->trigger)))});
+            }
+        }
+        bugs_with_atp_at.erase(key); // Only inject once.
+        return result_ss.str();
+    }
+
+    std::string AttackRetBuffer(LavaASTLoc ast_loc) {
+>>>>>>> 3fa3984 (WIP Chaff Bugs: bug generation)
         std::stringstream result_ss;
         auto key = std::make_pair(ast_loc, AttackPoint::QUERY_POINT);
         for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
@@ -166,6 +199,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         const Stmt *toSiphon = Result.Nodes.getNodeAs<Stmt>("stmt");
         const SourceManager &sm = *Result.SourceManager;
 
+#ifdef LEGACY_CHAFF_BUGS
         if (ArgDataflow) {
             auto fnname = get_containing_function_name(Result, *toSiphon);
 
@@ -181,6 +215,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
 
             debug(PRI) << "PriQueryPointHandler handle: ok to instrument " << fnname.second << "\n";
         }
+#endif
 
         ASTLoc ast_loc = GetASTLoc(sm, toSiphon);
         debug(PRI) << "Have a query point @ " << ast_loc << "!\n";
@@ -201,7 +236,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             // Well, not quite.  We are also considering all such code / trace
             // locations as potential inject points for attack point that is
             // stack-pivot-then-return.  Ugh.
-            before = SiphonsForLocation(ast_loc) + AttackRetBuffer(ast_loc);
+            before = SiphonsForLocation(ast_loc) + AttackRetBuffer(ast_loc) + AttackChaffBugs(ast_loc);
         }
         Mod.Change(toSiphon).InsertBefore(before);
     }
