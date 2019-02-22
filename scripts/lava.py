@@ -130,12 +130,19 @@ class DuaBytes(Base):
             self.selected.low, self.selected.high, self.all_labels)
 
 
+class CallTrace(Base):
+    __tablename__ = 'calltrace'
+    id = Column(BigInteger, primary_key=True)
+    caller = Column(Text)
+    filename = Column('file', Text)
+
 class AttackPoint(Base):
     __tablename__ = 'attackpoint'
 
     id = Column(BigInteger, primary_key=True)
     loc = ASTLoc.composite('loc')
     typ = Column('type', Integer)
+    ctrace = Column('calltrace', postgresql.ARRAY(BigInteger))
 
     # enum Type {
     FUNCTION_CALL = 0

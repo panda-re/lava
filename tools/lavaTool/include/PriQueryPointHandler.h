@@ -88,18 +88,20 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         std::stringstream result_ss;
         // We iterate over variables (lvals) that LAVA identified as "siphons" (data sources)
         for (const LvalBytes &lval_bytes : map_get_default(siphons_at, ast_loc)) {
-            // Get the string name from DWARF (e.g., "**p")
-            std::string ast_name = lval_bytes.lval->ast_name;
-
-            // Generate the safety checks using our new local helper
-            std::string nntests = GenerateNullChecks(ast_name);
-            if (!nntests.empty()) {
-                nntests += " && ";
-            }
-
-            // Generate the LAVA instrumentation code:
-            // If (Safe) { Siphon(Value); }
-            result_ss << LIf(nntests + ast_name, Set(lval_bytes));
+#ifdef SAFE_SIPHON
+            // NB: lava_bytes.lval->ast_name is a string that came from
+            // libdwarf.  So it could be something like
+            // ((*((**(pdtbl)).pub)).sent_table))
+            // We need to test pdtbl, *pdtbl and (**pdtbl).pub
+            // to make sure they are all not null to reduce risk of
+            // runtime segfault?
+            std::string nntests = (createNonNullTests(lval_bytes.lval->ast_name));
+            if (nntests.size() > 0)
+                nntests = nntests + " && ";
+            result_ss << LIf(nntests + lval_bytes.lval->ast_name, Set(lval_bytes));
+#else
+            result_ss << Set(lval_bytes);
+#endif
         }
 
         std::string result = result_ss.str();
@@ -203,7 +205,11 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         if (LavaAction == LavaQueries) {
             // this is used in first pass clang tool, adding queries
             // to be intercepted by panda to query taint on in-scope variables
+#ifdef LEGACY_CHAFF_BUGS
             before = "; " + LFunc("vm_lava_pri_query_point", {
+#else
+            before = "; " + LFunc("vm_chaff_pri_query_point", {
+#endif
                 LDecimal(GetStringID(StringIDs, ast_loc)),
                 LDecimal(ast_loc.begin.line),
                 LDecimal(0)}).render() + "; ";

@@ -298,6 +298,26 @@ struct DuaBytes {
 };
 
 #pragma db object
+struct CallTrace {
+#pragma db id auto
+    uint64_t id;
+
+#pragma db not_null
+    std::string caller;
+#pragma db not_null
+    std::string file;
+
+    bool operator<(const CallTrace &other) const {
+        return std::tie(caller, file) <
+            std::tie(other.caller, other.file);
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const CallTrace &m) {
+        return os;
+    }
+};
+
+#pragma db object
 struct AttackPoint {
 #pragma db id auto
     uint64_t id;
@@ -313,6 +333,8 @@ struct AttackPoint {
         MALLOC_OFF_BY_ONE,
         TYPE_END
     } type;
+
+    std::vector<uint64_t> calltrace;
 
 #pragma db index("AttackPointUniq") unique members(loc, type)
 

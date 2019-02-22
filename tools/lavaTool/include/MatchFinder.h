@@ -95,7 +95,9 @@ public:
                 // make sure we aren't in static local variable initializer which must be constant
                 unless(hasAncestor(varDecl(isStaticLocalDeclMatcher()))));
 
+#ifdef LEGACY_CHAFF_BUGS
         addMatcher(memoryAccessMatcher, makeHandler<MemoryAccessHandler>());
+#endif
 
         // This matches every stmt in a compound statement
         // So "stmt" in
@@ -108,11 +110,13 @@ public:
                 makeHandler<PriQueryPointHandler>()
                 );
 
+#ifdef LEGACY_CHAFF_BUGS
         addMatcher(
                 callExpr(
                     forEachArgMatcher(expr(isAttackableMatcher()).bind("arg"))).bind("call"),
                 makeHandler<FunctionArgHandler>()
                 );
+#endif
 
 
 
