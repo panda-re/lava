@@ -558,7 +558,7 @@ void taint_query_pri(Json::Value& ple) {
     const AttackPoint *pad_atp;
     bool is_new_atp;
     std::tie(pad_atp, is_new_atp) = create_full(
-            AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT});
+            AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT, ctrace});
 
     if (is_dua || is_fake_dua) {
         // looks like we can subvert this for either real or fake bug.
@@ -581,6 +581,7 @@ void taint_query_pri(Json::Value& ple) {
             }
         }
 
+#ifdef LEGACY_CHAFF_BUGS
         if (len >= 20 && decimate_by_type(Bug::RET_BUFFER)) {
             Range range = get_dua_exploit_pad(dua);
             const DuaBytes *dua_bytes = create(DuaBytes(dua, range));
@@ -589,6 +590,7 @@ void taint_query_pri(Json::Value& ple) {
                         pad_atp, is_new_atp, { dua_bytes });
             }
         }
+#endif
         dprintf("OK DUA.\n");
 
         // Update recent_dead_duas + recent_duas_by_instr:

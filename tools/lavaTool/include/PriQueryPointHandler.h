@@ -111,9 +111,6 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         return result;
     }
 
-<<<<<<< HEAD
-    std::string AttackRetBuffer(ASTLoc ast_loc) {
-=======
     std::string AttackChaffBugs(LavaASTLoc ast_loc) {
         std::stringstream result_ss;
         auto key = std::make_pair(ast_loc, AttackPoint::QUERY_POINT);
@@ -144,7 +141,6 @@ struct PriQueryPointHandler : public LavaMatchHandler {
     }
 
     std::string AttackRetBuffer(LavaASTLoc ast_loc) {
->>>>>>> 3fa3984 (WIP Chaff Bugs: bug generation)
         std::stringstream result_ss;
         auto key = std::make_pair(ast_loc, AttackPoint::QUERY_POINT);
         for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
