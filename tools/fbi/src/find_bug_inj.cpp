@@ -106,6 +106,9 @@ std::vector<const Dua *> recent_duas_by_instr;
 // So when we update liveness, we know what duas might be invalidated.
 std::map<uint32_t, std::set<const Dua *> > dua_dependencies;
 
+// Stack Trace
+std::vector<std::pair<std::string, std::string>> cur_call_stack; // (file, func)
+
 // Returns true with probability 1/ratio.
 inline bool decimate(double ratio) {
     return rand() * ratio < RAND_MAX;
@@ -547,10 +550,18 @@ void taint_query_pri(Panda__LogEntry *ple) {
     LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
     assert(ast_loc.filename.size() > 0);
 
+    // Track Callers
+    std::vector<uint64_t> calltrace;
+    for (auto stkframe : cur_call_stack)
+    {
+        const CallTrace *ct = create(CallTrace{0, stkframe.second, stkframe.first});
+        calltrace.push_back(ct->id);
+    }
+
     const AttackPoint *pad_atp;
     bool is_new_atp;
     std::tie(pad_atp, is_new_atp) = create_full(
-            AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT, ctrace});
+            AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT, calltrace});
 
     if (is_dua || is_fake_dua) {
         // looks like we can subvert this for either real or fake bug.
@@ -904,7 +915,7 @@ void attack_point_lval_usage(Panda__LogEntry *ple) {
     const AttackPoint *atp;
     bool is_new_atp;
     std::tie(atp, is_new_atp) = create_full(AttackPoint{0,
-            ast_loc, (AttackPoint::Type)pleatp->info}, {});
+            ast_loc, (AttackPoint::Type)pleatp->info, {}});
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
 
     // Don't decimate PTR_ADD bugs.
@@ -923,9 +934,36 @@ void attack_point_lval_usage(Panda__LogEntry *ple) {
     t.commit();
 }
 
-void record_call(Panda__LogEntry *ple) { }
+const char *except_list = "libc-2.13.so!";
 
-void record_ret(Panda__LogEntry *ple) { }
+void record_call(Panda__LogEntry *ple) {
+    Panda__DwarfCall *call = ple->dwarf_call;
+
+    // Skip library calls
+    if (strstr(call->function_name_callee, except_list) != NULL)
+        return;
+
+    cur_call_stack.push_back(std::make_pair(
+                std::string(call->file_callee),
+                std::string(call->function_name_callee)));
+
+    // Restrict call stack size
+    assert(cur_call_stack.size() < 100);
+}
+
+void record_ret(Panda__LogEntry *ple) {
+    Panda__DwarfCall *ret = ple->dwarf_ret;
+
+    // Skip library calls
+    if (strstr(ret->function_name_callee, except_list) != NULL)
+        return;
+
+    if (cur_call_stack.size() == 0) return;
+
+    assert (cur_call_stack.back() == std::make_pair(std::string(ret->file_callee),
+                std::string(ret->function_name_callee)));
+    cur_call_stack.pop_back();
+}
 
 int main (int argc, char **argv) {
     if (argc != 5 && argc !=6 ) {

@@ -167,10 +167,11 @@ panda_args = {
         'g_debugpath': installdir,
         'h_debugpath': installdir
     },
-    'pri_taint': {
-        'hypercall': True,
-        'chaff': chaff
-    },
+    'hypercall': {},
+    #'pri_taint': {
+    #    'hypercall': True,
+    #    'chaff': chaff
+    #},
     'taint2': {'no_tp': True},
     'tainted_branch': {},
     'file_taint': {
