@@ -52,6 +52,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
     std::string SiphonsForLocation(LavaASTLoc ast_loc) {
         std::stringstream result_ss;
         for (const LvalBytes &lval_bytes : map_get_default(siphons_at, ast_loc)) {
+#ifdef SAFE_SIPHON
             // NB: lava_bytes.lval->ast_name is a string that came from
             // libdwarf.  So it could be something like
             // ((*((**(pdtbl)).pub)).sent_table))
@@ -62,6 +63,9 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             if (nntests.size() > 0)
                 nntests = nntests + " && ";
             result_ss << LIf(nntests + lval_bytes.lval->ast_name, Set(lval_bytes));
+#else
+            result_ss << Set(lval_bytes);
+#endif
         }
 
         std::string result = result_ss.str();
@@ -165,7 +169,11 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         if (LavaAction == LavaQueries) {
             // this is used in first pass clang tool, adding queries
             // to be intercepted by panda to query taint on in-scope variables
+#ifdef LEGACY_CHAFF_BUGS
             before = "; " + LFunc("vm_lava_pri_query_point", {
+#else
+            before = "; " + LFunc("vm_chaff_pri_query_point", {
+#endif
                 LDecimal(GetStringID(StringIDs, ast_loc)),
                 LDecimal(ast_loc.begin.line),
                 LDecimal(0)}).render() + "; ";
