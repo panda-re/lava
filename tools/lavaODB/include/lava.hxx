@@ -307,6 +307,8 @@ struct CallTrace {
 #pragma db not_null
     std::string file;
 
+#pragma db index("CallTraceUniq") unique members(caller, file)
+
     bool operator<(const CallTrace &other) const {
         return std::tie(caller, file) <
             std::tie(other.caller, other.file);

@@ -171,9 +171,31 @@ pandalog_json = "{}/queries-{}.json".format(project['output_dir'], input_file_ba
 
 print("pandalog = [%s] " % pandalog)
 
+<<<<<<< HEAD
 dwarf_cmd = ["dwarfdump", "-dil", cmdpath]
 dwarfout = subprocess.check_output(dwarf_cmd)
 dwarfdump.parse_dwarfdump(dwarfout, binpath)
+=======
+panda_args = {
+    'pri': {},
+    'pri_dwarf': {
+        'proc': proc_name,
+        'g_debugpath': installdir,
+        'h_debugpath': installdir
+    },
+    'hypercall': {},
+    #'pri_taint': {
+    #    'hypercall': True,
+    #    'chaff': chaff
+    #},
+    'taint2': {'no_tp': True},
+    'tainted_branch': {},
+    'file_taint': {
+        'pos': True,
+        'cache_process_details_on_basic_block': True,
+    }
+}
+>>>>>>> ec2a7ad (WIP Chaff Bugs: Add callstack at attackpoint)
 
 panda.set_pandalog(pandalog)
 panda.load_plugin("pri")
