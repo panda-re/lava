@@ -663,6 +663,7 @@ void taint_query_pri(Json::Value& ple) {
                 pad_atp, is_new_atp, { k });
         record_injectable_bugs_at<Bug::CHAFF_HEAP_CONST>(
                 pad_atp, is_new_atp, { k });
+        break;
     }
 
     t.commit();
