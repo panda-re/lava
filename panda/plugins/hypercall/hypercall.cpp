@@ -26,7 +26,7 @@ void uninit_plugin(void *);
 const char *global_src_filename = NULL;
 uint64_t global_src_linenum;
 unsigned global_ast_loc_id;
-bool debug = false;
+static bool debug = false;
 
 #define dprintf(...) if (debug) { printf(__VA_ARGS__); fflush(stdout); }
 
@@ -282,6 +282,7 @@ int guest_hypercall_callback(CPUState *cpu) {
 
 bool init_plugin(void *self) {
     panda_arg_list *args = panda_get_args("hypercall");
+    debug = panda_parse_bool_opt(args, "debug", "enable debug output");
 
     panda_require("callstack_instr");
     assert(init_callstack_instr_api());
