@@ -83,7 +83,7 @@ input_file_base = os.path.basename(input_file)
 print("bug_mining.py %s %s" % (project_name, input_file))
 
 if len(sys.argv) > 4:
-    global curtail
+    #global curtail
     curtail = int(sys.argv[4])
 
 qemu_path = project['qemu']
@@ -131,7 +131,7 @@ shutil.copy(input_file, installdir)
 
 create_recording(qemu_path, project['qcow'], project['snapshot'],
                  command_args, installdir, isoname,
-                 project["expect_prompt"], rr=qemu_use_rr)
+                 project["expect_prompt"], "ide1-cd0", rr=qemu_use_rr)
 
 try:
     os.mkdir('inputs')
@@ -244,7 +244,7 @@ fbi_args = [join(lavadir, 'tools', 'install', 'bin', 'fbi'), host_json,
 envv = {'LD_LIBRARY_PATH': '/usr/local/lib:$LD_LIBRARY_PATH'}
 
 # Command line curtial argument takes priority, otherwise use project specific one
-global curtail
+#global curtail
 if curtail !=0 :
     fbi_args.append(str(curtail))
 elif "curtail" in project:
