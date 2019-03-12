@@ -1,4 +1,5 @@
 FROM i386/debian:stretch
+RUN echo deb http://ftp.us.debian.org/debian/ stretch main > /etc/apt/sources.list
 RUN echo deb http://httpredir.debian.org/debian wheezy-backports main >> /etc/apt/sources.list
 RUN apt-get update
 RUN apt-get install -y sudo build-essential python wget cmake gdb gawk mlocate \
