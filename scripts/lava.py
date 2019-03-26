@@ -413,7 +413,7 @@ def run_cmd(cmd, envv=None, timeout=30, cwd=None, rr=False, shell=False):
         # returns tuple (stdout, stderr)
         output = p.communicate(timeout=timeout)
         if debugging:
-            print("Run_cmd output: {}".format(repr(output[1])))
+            print("Run_cmd output: {}".format(output[1]))
     except subprocess32.TimeoutExpired:
         print("Killing process due to timeout expiration.")
         p.terminate()
