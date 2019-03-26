@@ -31,13 +31,13 @@ def genFnTraceHelper(db, bug_list, fnwhitelist, fnpickle):
             fn = ct.caller.split('!')[1]
             if fn in fundefs and fn not in fpas:
                 if likelyroot == None:
-                    fnend.append(ct.caller)
+                    fnend.append(fn)
                 else:
                     fndataflow.append(likelyroot)
-                likelyroot = ct.caller
+                likelyroot = fn
             else:
                 # Truncate the CallTrace when function pointer call is found
-                if not likelyroot:  likelyroot = ct.caller  # Set End-of-dataflow it's fnptr
+                if not likelyroot:  likelyroot = fn  # Set End-of-dataflow it's fnptr
                 break
 
         assert(likelyroot)
@@ -45,9 +45,9 @@ def genFnTraceHelper(db, bug_list, fnwhitelist, fnpickle):
 
     with open(fnwhitelist, 'w') as fd:
         for fn in fndataflow:
-            fd.write("NOFILENAME %s\n" % fn)
+            fd.write("NOFILENAME df %s\n" % fn)
         for fn in fnroot:
-            fd.write("NOFILENAME %s root\n" % fn)
+            fd.write("NOFILENAME root %s\n" % fn)
         for fn in fnend:
-            fd.write("NOFILENAME %s addvar\n" % fn)
+            fd.write("NOFILENAME addvar %s\n" % fn)
 
