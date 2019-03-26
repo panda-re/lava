@@ -1,7 +1,7 @@
 import cPickle as pickle
 
 from fninstr import Function, Call, FnPtrAssign
-from lava import LavaDatabase, CallTrace, Bug
+from lava import LavaDatabase, CallTrace, Bug, AttackPoint
 
 
 def genFnTraceHelper(db, bug_list, fnwhitelist, fnpickle):
@@ -20,12 +20,13 @@ def genFnTraceHelper(db, bug_list, fnwhitelist, fnpickle):
     fnend = []
 
     # Fake dataflow only for Unused Chaff Bugs
-    atplist = db.session.query(Bug.atp).filter(Bug.id.in_(bug_list))\
+    buglist = db.session.query(Bug).filter(Bug.id.in_(bug_list))\
             .filter(Bug.type == Bug.CHAFF_STACK_UNUSED).all()
-    for atp in atplist:
-        ctlist = self.session.query(CallTrace).filter(CallTrace.id.in_(atp.ctrace)).all()
+    for bug in buglist:
+        atp = bug.atp
+        ctlist = db.session.query(CallTrace).filter(CallTrace.id.in_(atp.ctrace)).all()
         likelyroot = None
-        for ctid in atp.ctrace.reverse():
+        for ctid in atp.ctrace[::-1]:
             ct = filter(lambda x: x.id == ctid, ctlist)[0]
             fn = ct.caller.split('!')[1]
             if fn in fundefs and fn not in fpas:
@@ -44,9 +45,9 @@ def genFnTraceHelper(db, bug_list, fnwhitelist, fnpickle):
 
     with open(fnwhitelist, 'w') as fd:
         for fn in fndataflow:
-            fd.write("NOFILENAME %s\n", fn)
+            fd.write("NOFILENAME %s\n" % fn)
         for fn in fnroot:
-            fd.write("NOFILENAME %s root\n", fn)
+            fd.write("NOFILENAME %s root\n" % fn)
         for fn in fnend:
-            fd.write("NOFILENAME %s addvar\n", fn)
+            fd.write("NOFILENAME %s addvar\n" % fn)
 
