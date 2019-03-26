@@ -36,8 +36,7 @@ void parse_whitelist(std::string whitelist_filename) {
             whitelist.insert(std::string(npp));
         } else if (!strcmp(tag, "root")) {
             dataflowroot.insert(std::string(npp));
-        } else if (!strcmp(tag, "arg")) {
-            whitelist.insert(std::string(npp));
+        } else if (!strcmp(tag, "addvar")) {    // add unused variables
             addvarlist.insert(std::string(npp));
         }
         debug(FNARG) << "white list entry: file = [" << np << "] func = [" << npp << "]\n";
