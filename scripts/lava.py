@@ -38,9 +38,8 @@ load_dotenv()
 
 Base = declarative_base()
 
-debugging = False
-NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
-
+debugging = True
+NUM_BUGTYPES = 3 # Make sure this matches what's in lavaTool
 
 class Loc(Composite):
     column = Integer
@@ -524,7 +523,7 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
 
     # Todo either parameterize here or hardcode everywhere else
     # For now, lavaTool will only work if it has a whitelist, so we always pass this
-    fninstr = join(project['directory'], project['name'], "fninstr")
+    fninstr = join(join(project['directory'], project['name']), "fnwhitelist")
     cmd.append('-lava-wl=' + fninstr)
 
     if lt_debug:

@@ -12,8 +12,9 @@ from os.path import join
 
 from vars import parse_vars
 from lava import LavaDatabase, Run, Bug, \
-    inject_bugs, LavaPaths, validate_bugs, \
-    get_bugs, run_cmd, get_allowed_bugtype_num
+                 inject_bugs, LavaPaths, validate_bugs, \
+                 get_bugs, run_cmd, get_allowed_bugtype_num
+from dataflow import genFnTraceHelper
 
 start_time = time.time()
 debugging = False
@@ -156,6 +157,11 @@ if __name__ == "__main__":
 
     # obtain list of bugs to inject based on cmd-line args and consulting db
     (update_db, bug_list) = get_bug_list(args, db, allowed_bugtypes)
+
+    # Write the fnwhitelist to indicate root && end of dataflow
+    fnwhitelist = os.path.join(project["output_dir"], "fnwhitelist")
+    fnpickle = os.path.join(project["output_dir"], "getfns.pickle")
+    genFnTraceHelper(db, bug_list, fnwhitelist, fnpickle)
 
     # add all those bugs to the source code and check that it compiles
     # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
