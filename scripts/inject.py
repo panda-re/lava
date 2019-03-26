@@ -15,7 +15,7 @@ from vars import parse_vars
 from lava import LavaDatabase, Run, Bug, \
                  inject_bugs, LavaPaths, validate_bugs, \
                  get_bugs, run_cmd, get_allowed_bugtype_num
-from dataflow import genFnTraceHelper
+from dataflow import *
 
 start_time = time.time()
 

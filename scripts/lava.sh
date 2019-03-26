@@ -90,7 +90,8 @@ demo=0
 curtail=0
 ATP_TYPE=""
 # default bugtypes
-bugtypes="ptr_add,rel_write"
+#bugtypes="ptr_add,rel_write"
+bugtypes="chaff_bug_stack_unused"
 # default # of bugs to be injected at a time
 many=50
 
