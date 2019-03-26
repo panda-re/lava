@@ -234,6 +234,12 @@ if [ $taint -eq 1 ]; then
     echo "bug_mining complete $time_diff seconds"
 fi
 
+if [ $sanitize -eq 1 ]; then
+    lf="$logs/sanitize.log"
+    truncate "$lf"
+    run_remote "$testinghost" "$scripts/sanitize.sh $project_name" "$lf"
+fi
+
 if [ $inject -eq 1 ]; then
     progress "everything" 1 "Injecting step -- $num_trials trials"
     if [ "$exitCode" = "null" ]; then

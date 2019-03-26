@@ -47,7 +47,7 @@ from process_compile_commands import process_compile_commands
 
 Base = declarative_base()
 
-debugging = False
+debugging = True
 NUM_BUGTYPES = 3 # Make sure this matches what's in lavaTool
 
 class Loc(Composite):
@@ -522,7 +522,7 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
 
     # Todo either paramaterize here or hardcode everywhere else
     # For now, lavaTool will only work if it has a whitelist, so we always pass this
-    fninstr = join(join(project['directory'], project['name']), "fninstr")
+    fninstr = join(join(project['directory'], project['name']), "fnwhitelist")
     cmd.append('-lava-wl=' + fninstr)
 
     if lt_debug:
