@@ -28,7 +28,7 @@ void parse_whitelist(std::string whitelist_filename) {
         debug(FNARG) << "\t np= " << np << " npp=" << npp << "\n";
         auto wlp = std::make_pair(std::string(np), std::string(npp));
         // Extra tagging to indicate the root function of dataflow
-        if (!tag) {
+        if (!strcmp(tag, "df")) {
             whitelist.insert(std::string(npp));
         } else if (!strcmp(tag, "root")) {
             dataflowroot.insert(std::string(npp));
