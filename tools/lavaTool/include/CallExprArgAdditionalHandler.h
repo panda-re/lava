@@ -30,22 +30,22 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         SourceLocation loc = clang::Lexer::findLocationAfterToken(
                 call->getBeginLoc(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
 
-        // No need to check for ArgDataflow, since matcher only called then
-        auto fnname = get_containing_function_name(Result, *call);
-        // only instrument call if its in the body of a function that is on our whitelist
-        if (fninstr(fnname)) {
-            debug(FNARG) << "containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
-        }
-        else {
-            debug(FNARG) << "containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
-            return;
-        }
+        //// No need to check for ArgDataflow, since matcher only called then
+        //auto fnname = get_containing_function_name(Result, *call);
+        //// only instrument call if its in the body of a function that is on our whitelist
+        //if (fninstr(fnname)) {
+        //    debug(FNARG) << "containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
+        //}
+        //else {
+        //    debug(FNARG) << "containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
+        //    return;
+        //}
 
         // and if this is a call that is in the body of a function on our whitelist,
         // only instrument calls to functions that are themselves on our whitelist.
         const FunctionDecl *func = call->getDirectCallee();
         if (func) {
-            fnname = fundecl_fun_name(Result, func);
+            auto fnname = fundecl_fun_name(Result, func);
             if (fninstr(fnname)) {
                 debug(FNARG) << "called function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
             } else {
@@ -63,7 +63,12 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
             call->getBeginLoc().print(debug(FNARG), *Mod.sm);
             debug(FNARG) << "\n";
             //debug(FNARG) << " argcount=" << call->getNumArgs() << "\n";
+<<<<<<< HEAD
             //loc = call->getArg(0)->getBeginLoc();
+=======
+            //loc = call->getArg(0)->getLocStart();
+            return;
+>>>>>>> d9eec22 (don't propagate dataflow on function pointers calls)
         } else if (Mod.sm->isInSystemHeader(func->getLocation())) {
             debug(FNARG) << "in system header\n";
             return;
