@@ -340,7 +340,11 @@ uint32_t alphanum(int len) {
 }
 
 LExpr Get(LvalBytes x) {
+#ifdef LEGACY_CHAFF_BUGS
     return ArgDataflow ? DataFlowGet(Slot(x)) : LavaGet(Slot(x));
+#else
+    return LavaGet(Slot(x));
+#endif
 }
 
 LExpr Get(const Bug *bug) {
@@ -348,7 +352,11 @@ LExpr Get(const Bug *bug) {
 }
 
 LExpr Set(LvalBytes x) {
+#ifdef LEGACY_CHAFF_BUGS
     return (ArgDataflow ? DataFlowSet : LavaSet)(x.lval, x.selected, Slot(x));
+#else
+    return LavaSet(x.lval, x.selected, Slot(x));
+#endif
 }
 
 LExpr Set(const Bug *bug) {
