@@ -10,6 +10,9 @@ struct ChaffFuncDeclArgAdditionHandler : public LavaMatchHandler {
         const FunctionDecl *func = Result.Nodes.getNodeAs<FunctionDecl>("funcDecl");
         auto fnname = fundecl_fun_name(Result, func);
 
+        // Avoid FunctionDecl matched under CallExpr
+        if (func->getSourceRange().isInvalid())     return;
+
         if (fnname.second.find("__builtin") != std::string::npos)   return;
         if (func->getLocation().isInvalid()) return;
         if (func->getNameAsString().find("lava") == 0) return;
