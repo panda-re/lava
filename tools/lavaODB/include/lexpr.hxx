@@ -88,7 +88,7 @@ struct LExpr {
             os << expr.str;
             expr.infix(os, "(", ", ", ")");
         } else if (expr.t == LExpr::BLOCK) {
-            expr.infix(os, "({", "; ", ";})");
+            expr.infix(os, "{", "; ", ";}");
         } else if (expr.t == LExpr::IF) {
             os << "if (" << expr.str << ") ";
             expr.infix(os, "{\n", ";\n", ";\n}\n");
@@ -248,7 +248,7 @@ LExpr SelectCast(const SourceLval *lval, Range selected) {
 }
 
 LExpr LavaSet(const SourceLval *lval, Range selected, uint32_t slot) {
-    return LFunc("lava_set", { LDecimal(slot), SelectCast(lval, selected) });
+    return LBlock({LFunc("lava_set", { LDecimal(slot), SelectCast(lval, selected) })});
 }
 
 LExpr DataFlowSet(const SourceLval *lval, Range selected, uint32_t slot) {
