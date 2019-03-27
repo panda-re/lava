@@ -43,6 +43,11 @@ def genFnTraceHelper(db, bug_list, fnwhitelist, fnpickle):
         assert(likelyroot)
         fnroot.append(likelyroot)
 
+    # Fixup dataflow arg list From other callers
+    for fn in fndataflow:
+        for caller in calls[fn]:
+            fnroot.append(caller.containing_function)
+
     with open(fnwhitelist, 'w') as fd:
         for fn in fndataflow:
             fd.write("NOFILENAME df %s\n" % fn)
