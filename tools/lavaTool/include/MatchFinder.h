@@ -230,7 +230,7 @@ public:
                         << "unsigned int lava_get_extra(unsigned int slot) { return lava_extra[slot]; }\n";
                     insert_at_top.append(top.str());
                 } else {
-                    insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
+                    insert_at_top.append("extern void lava_set(unsigned int bn, unsigned int val);\n"
                     "extern unsigned int lava_get(unsigned int);\n");
                 }
             }

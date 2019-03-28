@@ -14,11 +14,10 @@
     "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/file -m {install_dir}/share/misc/magic.mgc {input_file}",
-    "injfixupsscript": "file_fixup.sh {bug_build}",
 
     "max_tcn": 10,
 
-    "main_file": [ "src/file.c" ],
+    "main_file": [ "src/file-pre.c" ],
 
     "inputs": ["inputs/constitution_36_garfield.doc"]
 }
