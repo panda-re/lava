@@ -24,7 +24,8 @@ using namespace llvm;
 #define PARENS (1 << 0)
 #define GENERAL (1 << 1)
 
-#define DEBUG_FLAGS 0 // (PARENS | GENERAL)
+//#define DEBUG_FLAGS 0 // (PARENS | GENERAL)
+#define DEBUG_FLAGS (PARENS | GENERAL)
 
 static llvm::raw_null_ostream null_ostream;
 #define debug(flag) ((DEBUG_FLAGS & (flag)) ? llvm::errs() : null_ostream)
@@ -108,6 +109,15 @@ typedef std::tuple < size_t, bool, unsigned > ParenInfo ;
 
 typedef std::vector < ParenInfo > ParensInfo;
 
+// Count outstanding quotes inside a string
+bool outstandingQuote(std::string substring) {
+    bool dq = false;
+    for (const char c : substring) {
+        dq ^= (c == '"');
+    }
+    return dq;
+}
+
 // figure out paren info for this string.
 ParensInfo getParens(std::string sourceString) {
     size_t searchLoc = 0;
@@ -116,6 +126,12 @@ ParensInfo getParens(std::string sourceString) {
     while (true) {
         size_t nextOpen = sourceString.find("(", searchLoc);
         size_t nextClose = sourceString.find(")", searchLoc);
+
+        // Bugfix: file_printf(ms, ")") && file_printf(ms, "(")
+        while (nextOpen != std::string::npos && outstandingQuote(sourceString.substr(0, nextOpen)))
+            nextOpen = sourceString.find("(", nextOpen + 1);
+        while (nextClose != std::string::npos  && outstandingQuote(sourceString.substr(0, nextClose)))
+            nextClose = sourceString.find(")", nextClose + 1);
 
         NextThing nt = NtInvalid;
         if (nextOpen != std::string::npos
@@ -137,7 +153,7 @@ ParensInfo getParens(std::string sourceString) {
         // no valid next open or close -- exit loop
         if (nt == NtInvalid) break;
         size_t nextLoc;
-        debug(PARENS) << "NT is " << ((nt==NtOpen)?"(":")") << "\n";
+        debug(PARENS) << "NT is " << ((nt==NtOpen)?"(":")") << ((nt==NtOpen)?nextOpen:nextClose)<< "\n";
         switch (nt) {
         case NtOpen:
             // '(' is next thing
