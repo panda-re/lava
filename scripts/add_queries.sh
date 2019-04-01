@@ -1,7 +1,7 @@
 #!/bin/bash
 # Query insertion script.
 #
-# Takes one argument, the project name
+# Takes one required argument: the project name
 # That json file must contain all of the following
 #
 # name         name for project, usually the name of the software (binutils-2.25, openssh-2.1, etc)
@@ -24,7 +24,6 @@
 # and deal with any complaints (often src-to-src breaks the code a little). Once you have a working
 # version of the compiled exec with queries you will need to log on to a 64-bit machine
 # and run the bug_mining.py script (which uses PANDA to trace taint).
-#
 
 # Load lava-functions and vars
 . `dirname $0`/funcs.sh
@@ -34,28 +33,20 @@ version="2.0.0"
 
 USAGE() {
     echo "$1 version $version"
-    echo "Usage: $1 [ATP_Type] JSONfile"
+    echo "Usage: $1 ProjectName"
 }
 
 set -e # Exit on error
 #set -x # Debug mode
 
-if [ $# -lt 1 ]; then
-    USAGE $0
-elif [ $# -lt 2 ]; then
-  echo "No ATP_Type specified.  Defaulting to all."
-  ATP_TYPE=""
-  json="$(readlink -f $1)"
-elif [ $# -eq 2 ]; then
-  ATP_TYPE="-$1"
-  json="$(readlink -f $2)"
-else
-    USAGE $0
+if [ $# -ne 1 ]; then
+  USAGE $0
   exit 1
+else
+  project_name=$1
 fi
 
 lava="$(dirname $(dirname $(readlink -f $0)))"
-project_name="$1"
 . `dirname $0`/vars.sh
 
 progress "queries" 0  "Entering $directory/$name."
@@ -182,7 +173,6 @@ if [ "$dataflow" = "true" ]; then
         -arg_dataflow \
         -lava-wl="$fninstr" \
         -src-prefix=$(readlink -f "$source") \
-        $ATP_TYPE \
         -db="$db" \
         $i
     done
@@ -195,7 +185,6 @@ else
         -lava-wl="$fninstr" \
         -p="$source/compile_commands.json" \
         -src-prefix=$(readlink -f "$source") \
-        $ATP_TYPE \
         -db="$db" \
         $i
     done

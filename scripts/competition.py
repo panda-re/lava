@@ -112,17 +112,17 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
         abort = False
         # Note atp_types are different from bugtypes, there are places we can attack, not how we do so
         # but the names overlap and are kind of related
-        # TODO we don't find rel_writes at function calls
-        atp_types = [AttackPoint.FUNCTION_CALL, AttackPoint.POINTER_WRITE]
+        # TODO we don't find rel_writes at function calls?
+        # TODO These should be parameters
+        atp_types = [AttackPoint.FUNCTION_CALL, AttackPoint.POINTER_WRITE, AttackPoint.POINTER_READ]
 
         # Get limit bugs at each ATP
         #atp_item_lists = db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
         # Returns list of lists where each sublist corresponds to the same atp: [[ATP1_bug1, ATP1_bug2], [ATP2_bug1], [ATP3_bug1, ATP3_bug2]]
 
-        atp_item_lists = db.uninjected_random_by_atp_bugtype(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
+        atp_item_lists = db.uninjected_random_by_atp_bugtype(atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
         # Returns dict of list of lists where each dict is a bugtype and within each, each sublist corresponds to the same atp: [[ATP1_bug1, ATP1_bug2], [ATP2_bug1], [ATP3_bug1, ATP3_bug2]]
         while True:
-
             for selected_bugtype in allowed_bugtypes:
                 atp_item_lists[selected_bugtype] = [x for x in atp_item_lists[selected_bugtype] if len(x)] # Delete any empty lists
             if sum([len(x) for x in atp_item_lists.values()]) == 0:
@@ -156,13 +156,11 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             atp_item_idx = random.randint(0, len(this_bugtype_atp_item_lists)-1)
             item = this_bugtype_atp_item_lists[atp_item_idx].pop() # Pop the first bug from that bug_list (Sublist will be sorted randomly)
 
-            """
-            # TODO: fix this manual libjpeg hack. Blacklist bugs here by strings in their dua/extra_duas
-            blacklist = [("data_ptr", None), ("quant_table", None), ("dtbl).pub", None), ("compptr", 3609), ("compptr).downsampled_width", 3557), ("htbl", None), ("compptr).downsampled_height", None), ("dtbl).valoffset", None)]
+            # TODO: fix this manual target-specific hack. Blacklist bugs here by strings in their dua/extra_duas
+            blacklist = [("s0", None)]
 
             cont = False
             for (badword, minidx) in blacklist:
-
                 extra_duas = db.session.query(DuaBytes).filter(DuaBytes.id.in_(item.extra_duas)).all()
                 for dua in [item.trigger_lval] + [x.dua.lval for x in extra_duas]:
                     if cont: break
@@ -173,8 +171,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             if cont:
                 continue
 
-            # End of libjpeg hack
-            """
+            # End of target_specific hack
 
             abort |= not parse(item) # Once parse returns true, break
             if abort:
@@ -230,7 +227,7 @@ def main():
 
     dataflow = project.get("dataflow", False) # Default to false
 
-    allowed_bugtypes = get_allowed_bugtype_num(args)
+    allowed_bugtypes = get_allowed_bugtype_num(args.bugtypes)
 
     # Set various paths
     lp = LavaPaths(project)
@@ -266,8 +263,9 @@ def main():
 
     if args.buglist:
         print ("bug_list incoming %s" % (str(args.buglist)))
-        bug_list = competition_bugs_and_non_bugs(len(args.buglist), db, allowed_bugtypes, eval(args.buglist)) # XXX EVAL WHY
+        bug_list = competition_bugs_and_non_bugs(len(args.buglist), db, allowed_bugtypes, args.buglist.split(","))
     elif args.many:
+        print("MANY={}".format(args.many))
         bug_list = competition_bugs_and_non_bugs(int(args.many), db, allowed_bugtypes, None)
     else:
         print("Fatal error: no bugs specified")

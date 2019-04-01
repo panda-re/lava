@@ -13,11 +13,11 @@
     "make": "make",
     "clean": "make clean",
     "install": "make install",
-    "command": "{install_dir}/bin/afl-analyze -m10 -t200 -e -i {install_dir}/share/blob.bin -- {input_file}",
+    "command": "{install_dir}/bin/afl-analyze -m10 -t200 -e -i {input_file} -- {install_dir}/data/toy",
 
     "COMMENT_injfixupsscript": "fixup.sh {bug_build}",
 
     "main_file": [ "src/afl-analyze-pre.c" ],
 
-    "inputs": [ "inputs/toy"]
+    "inputs": [ "inputs/blob.bin"]
 }

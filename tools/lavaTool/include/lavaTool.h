@@ -169,10 +169,6 @@ static cl::opt<std::string> MainFileList("main-files",
     cl::desc("Main files"),
     cl::cat(LavaCategory),
     cl::init(""));
-static cl::opt<bool> KnobTrigger("kt",
-    cl::desc("Inject in Knob-Trigger style"),
-    cl::cat(LavaCategory),
-    cl::init(false));
 static cl::opt<bool> ArgDataflow("arg_dataflow",
     cl::desc("Use function args for dataflow instead of lava_[sg]et"),
     cl::cat(LavaCategory),

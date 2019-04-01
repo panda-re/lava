@@ -20,5 +20,5 @@
 
     "main_file": [ "src/file.c" ],
 
-    "inputs": ["inputs/example.pdf"]
+    "inputs": ["inputs/testsuite.mp3", "inputs/testsuite.fitdata"]
 }

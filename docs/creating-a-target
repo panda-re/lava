@@ -1,0 +1,80 @@
+This is supplimental to docs/how-to-lava.
+
+Goal: Given a c project with some makefile-based setup, you want to add LAVA-bugs
+
+There are two major steps here:
+1) Build minimal, preprocessing makefiles
+2) Run LAVA
+
+To begin, you want to replace the makefile with something like
+
+```
+all: libyaml
+
+CFLAGS += -O0 -m32 -DHAVE_CONFIG_H -I. -I.. -I../include -g -gdwarf-2
+
+LIBOBJ = \
+        api-pre.o \
+        reader-pre.o \
+        scanner-pre.o \
+        parser-pre.o \
+        loader-pre.o \
+        writer-pre.o \
+        emitter-pre.o \
+        dumper-pre.o
+
+.SECONDARY:
+%-pre.c :
+        gcc -include stdio.h $(CFLAGS) -E -o  $@ $(shell echo "$@" | sed -e "s/-pre//")
+        sed -i '/^#/ d' $@
+
+%.o : %.c
+        $(CC) $(CFLAGS) -c -o $@ $<
+
+libyaml : $(LIBOBJ) deconstruct-pre.c
+        $(CC) $(CFLAGS) -o libyaml $^
+
+preclean :
+        rm -f *-pre.c
+        rm -f *-pre.h
+
+clean :
+        rm -f libyaml \
+        rm -f *.o \
+        rm -f *.so \
+        rm -f *.Tpo
+```
+
+To do this, you're going to need to identify the CFLAGS and the code that's being compiled.
+
+Get your project ready to be made (e.g., run ./compile)
+
+Then, in the docker container run: 
+`~/path-to-lava/tools/btrace/sw-btrace make`, and
+`~/path-to-lava/tools/btrace/sw-btrace-to-compiledb /llvm-3.6.2`
+
+When these are finished, you should have a compile_commands.json files describing every compilation was run during make.
+
+Use vim macros, grep, or your favorite text parsing tools to reduce this to the raw list of GCC commands executed in each directory
+
+For each directory, extract the gcc arguments (these will be your CFLAGS).
+
+Now edit the above makefile. Replace libyaml with your target. and update the CFLAGS to what you found.
+Update the LIBOBJ list to contain each compiled filename you observed in your compile_commands.json, change `foo.c` into `foo-pre.o`
+
+Replace the libyaml target with the command to make the binary you're interested in.
+
+Now in the docker container, run `make` and test if it works. If things are good, run `make clean` (which will leave behind the preprocessed source). Build a tarball and make a config similar to one in `target_configs/` for your target
+
+Remove any -MT *.lo -MD MP, MF *.Tpo nonsense as well as -fPIC, -dPIC
+Replace any -OX flags with -O0
+Modify output targets to be in the same directory (e.g., not in .libs)
+Delete the -I/llvm-3.6.2
+
+Add `-gdwarf-2 -m32` because these are important
+
+Now these should look like simple gcc commands, compiling a .c file into an .o file
+
+Make your LIBOBJs these filenames
+
+Try building

@@ -972,8 +972,8 @@ int main (int argc, char **argv) {
     printf("max card of taint set returned by query = %d\n", max_card);
 
     if (!project.isMember("max_tcn")) {
-        printf("max_tcn not set, using default 100\n");
-        project["max_tcn"] = 100;
+        printf("max_tcn not set, using default 1\n");
+        project["max_tcn"] = 1;
     }
     if (!project["max_tcn"].isUInt()) {
         throw std::runtime_error("Could not parse max_tcn");

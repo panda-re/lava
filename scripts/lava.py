@@ -143,7 +143,7 @@ class AttackPoint(Base):
 
     id = Column(BigInteger, primary_key=True)
     loc = ASTLoc.composite('loc')
-    typ = Column('type', Integer)
+    typ = Column('type', Integer) # TODO: it's typ here and type on Bug. Be consistent
 
     # enum Type {
     FUNCTION_CALL = 0
@@ -152,17 +152,12 @@ class AttackPoint(Base):
     QUERY_POINT = 3
     PRINTF_LEAK = 4
     # } type;
+    type_strings = [ "ATP_FUNCTION_CALL", "ATP_POINTER_READ", "ATP_POINTER_WRITE",
+        "ATP_QUERY_POINT", "ATP_PRINTF_LEAK", ]
 
     def __str__(self):
-        type_strs = [
-            "ATP_FUNCTION_CALL",
-            "ATP_POINTER_READ",
-            "ATP_POINTER_WRITE",
-            "ATP_QUERY_POINT",
-            "ATP_PRINTF_LEAK",
-        ]
         return 'ATP[{}](loc={}:{}, type={})'.format(
-            self.id, self.loc.filename, self.loc.begin.line, type_strs[self.typ]
+            self.id, self.loc.filename, self.loc.begin.line, AttackPoint.type_strings[self.typ]
         )
 
 
@@ -268,7 +263,8 @@ class LavaDatabase(object):
     def uninjected_random(self, fake, allowed_bugtypes=None):
         return self.uninjected2(fake, allowed_bugtypes).order_by(func.random())
 
-    def uninjected_random_by_atp_bugtype(self, fake, atp_types=None, allowed_bugtypes=None, atp_lim=10):
+    def uninjected_random_by_atp_bugtype(self, fake=False, atp_types=None, allowed_bugtypes=None, atp_lim=10):
+        assert(atp_lim>0)
         # For each ATP find X possible bugs,
         # Returns dict list of lists:
         #   {bugtype1:[[atp0_bug0, atp0_bug1,..], [atp1_bug0, atp1_bug1,..]],
@@ -281,7 +277,7 @@ class LavaDatabase(object):
 
         atps = [r.id for r in _atps]
         #print(atps)
-        print("Found {} distinct ATPs".format(len(atps)))
+        print("Found {} distinct ATPs of specified type(s)".format(len(atps)))
 
         results = {}
         assert(len(allowed_bugtypes)), "Requires bugtypes"
@@ -296,7 +292,9 @@ class LavaDatabase(object):
                 .join(DuaBytes.dua)\
                 .filter(Dua.fake_dua == fake)
 
-                results[bugtype].append(q.order_by(func.random()).limit(atp_lim).all())
+                res = q.order_by(func.random()).limit(atp_lim).all()
+                #print("GOT RESULT: {}".format(res))
+                results[bugtype].append(res)
         return results
 
     def uninjected_random_by_atp(self, fake, atp_types=None,
@@ -329,13 +327,18 @@ class LavaDatabase(object):
             results.append(q.order_by(func.random()).limit(atp_lim).all())
         return results
 
-    def uninjected_random_limit(self, allowed_bugtypes=None, count=100):
+    def uninjected_random_limit(self, allowed_bugtypes=None, allowed_atptypes=None, count=100):
         # Fast, doesn't support fake bugs, only return IDs of allowed bugtypes
         ret = self.session.query(Bug)\
             .filter(~Bug.builds.any()) \
             .options(load_only("id"))
         if allowed_bugtypes:
             ret = ret.filter(Bug.type.in_(allowed_bugtypes))
+        """ TODO
+        if allowed_atptypes: # Ensure ATP is in an allowed location
+            ret = ret.filter(Bug.atp.typ.in_(allowed_atptypes))
+        """
+
         return ret.order_by(func.random()).limit(count).all()
 
     def uninjected_random_y(self, fake, allowed_bugtypes=None, yield_count=100):
@@ -487,7 +490,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug,
 
 # run lavatool on this file to inject any parts of this list of bugs
 def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
-                 knobTrigger=False, dataflow=False, competition=False,
+                 dataflow=False, competition=False,
                  randseed=0):
     print("Running lavaTool on [{}]...".format(filename))
     lt_debug = False
@@ -517,8 +520,6 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
         cmd.append("-debug")
     if dataflow:
         cmd.append('-arg_dataflow')
-    if knobTrigger > 0:
-        cmd.append('-kt')
     if competition:
         cmd.append('-competition')
     if randseed:
@@ -815,7 +816,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
     def modify_source(dirname):
         return run_lavatool(bugs_to_inject, lp, host_file, project,
-                            llvm_src, dirname, knobTrigger=args.knobTrigger,
+                            llvm_src, dirname, 
                             dataflow=dataflow, competition=competition, randseed=lavatoolseed)
 
     bug_solutions = {}  # Returned by lavaTool
@@ -1063,9 +1064,6 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     print(str(bug))
     print("fuzzed = [%s]" % fuzzed_input)
     mutfile_kwargs = {}
-    if args.knobTrigger:
-        print("Knob size: {}".format(args.knobTrigger))
-        mutfile_kwargs = {'kt': True, 'knob': args.knobTrigger}
 
     fuzz_labels_list = [bug.trigger.all_labels]
     if len(bug.extra_duas) > 0:
@@ -1105,6 +1103,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
                         validated &= False
                         print("... but competition infrastructure"
                               " misidentified it ({} vs {})".format(found_bugs, bug.id))
+                """ # Stacktrace is removed from args but if we ever wanted it back...
                 if args.checkStacktrace:
                     if check_stacktrace_bug(lp, project, bug, fuzzed_input):
                         print("... and stacktrace agrees with trigger line")
@@ -1112,6 +1111,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
                     else:
                         print("... but stacktrace disagrees with trigger line")
                         validated &= False
+                """
             else:
                 print("RV does not indicate memory corruption")
                 validated = False
@@ -1214,18 +1214,42 @@ def get_bugs(db, bug_id_list):
     return bugs
 
 
-def get_allowed_bugtype_num(args):
+def get_allowed_bugtype_num(bugtypes):
+    """
+    Given a comma seperated string of bug-types, return a list of their IDs
+    """
     allowed_bugtype_nums = []
-    for bugtype_name in args.bugtypes.split(","):
-        if not len(bugtype_name):
-            continue
-        btnl = bugtype_name.lower()
-        bugtype_num = None
+    def _parse_bugtype(typ):
         for i in range(len(Bug.type_strings)):
             btsl = Bug.type_strings[i].lower()
-            if btnl in btsl:
-                bugtype_num = i
+            if typ.lower() in btsl:
+                return i
+
+    for bugtype_name in bugtypes.split(","):
+        if not len(bugtype_name):
+            continue
+        bugtype_num = _parse_bugtype(bugtype_name)
         if bugtype_num is None:
-            raise RuntimeError("I dont have a bug type [%s]" % bugtype_name)
+            raise RuntimeError("Unknown bugtype {}. Expecting one of {}".format(bugtype_name, ", ".join(Bug.type_strings)))
         allowed_bugtype_nums.append(bugtype_num)
     return allowed_bugtype_nums
+
+def get_allowed_atptype_num(atptypes):
+    """
+    Given a comma seperated string of atp-types, return a list of their IDs
+    """
+    allowed_atptype_nums = []
+    def _parse_atptype(typ):
+        for i in range(len(AttackPoint.type_strings)):
+            btsl = AttackPoint.type_strings[i].lower()
+            if typ.lower() in btsl:
+                return i
+
+    for atptype_name in atptypes.split(","):
+        if not len(atptype_name):
+            continue
+        atptype_num = _parse_atptype(atptype_name)
+        if atptype_num is None:
+            raise RuntimeError("Unknown atptype {}. Expecting one of {}".format(atptype_name, ", ".join(AttackPoint.type_strings)))
+        allowed_atptype_nums.append(atptype_num)
+    return allowed_atptype_nums

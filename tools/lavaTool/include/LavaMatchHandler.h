@@ -194,7 +194,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             }
 
             // this should be a function bug -> LExpr to add.
-            auto pointerAttack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
+            auto pointerAttack = traditionalAttack;
             for (const Bug *bug : injectable_bugs) {
                 assert(bug->atp->type == atpType);
                 // was in if ArgCompetition, but we want to inject bugs more often
@@ -205,7 +205,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
                 if (bug->type == Bug::PTR_ADD) {
                     pointerAddends.push_back(pointerAttack(bug));
-                    triggers.push_back(Test(bug)); //  Might fail for knobTriggers?
+                    triggers.push_back(Test(bug));
                 } else if (bug->type == Bug::REL_WRITE) {
                     const DuaBytes *extra0 = db->load<DuaBytes>(bug2->extra_duas[0]);
                     const DuaBytes *extra1 = db->load<DuaBytes>(bug2->extra_duas[1]);
