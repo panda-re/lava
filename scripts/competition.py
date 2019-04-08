@@ -156,7 +156,10 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             atp_item_idx = random.randint(0, len(this_bugtype_atp_item_lists)-1)
             item = this_bugtype_atp_item_lists[atp_item_idx].pop() # Pop the first bug from that bug_list (Sublist will be sorted randomly)
 
-            # TODO: fix this manual target-specific hack. Blacklist bugs here by strings in their dua/extra_duas
+            # TODO: find a better solution for blacklist target-specific duas
+            # For now, uncomment the following and configure the blacklist here to skip bugs containing
+            # specific strings in their dua/extra_duas
+            """
             blacklist = [("s0", None)]
 
             cont = False
@@ -170,7 +173,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
                         break
             if cont:
                 continue
-
+            """
             # End of target_specific hack
 
             abort |= not parse(item) # Once parse returns true, break
