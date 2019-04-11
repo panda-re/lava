@@ -34,7 +34,7 @@ def get_bug_list(args, db, allowed_bugtypes):
         print("Using strategy: random")
         bug = db.next_bug_random(False)
         bug_list.append(bug.id)
-        update_db = True
+        #update_db = True
     elif args.buglist:
         bug_list = eval(args.buglist)  # TODO
         update_db = False
@@ -54,8 +54,13 @@ def get_bug_list(args, db, allowed_bugtypes):
             bugs_to_inject = db.uninjected_random_limit(allowed_bugtypes=allowed_bugtypes, count=num_bugs_to_inject)
 
         bug_list = [b.id for b in bugs_to_inject]
+<<<<<<< HEAD
         print("%d is size of bug_list" % (len(bug_list)))
         update_db = True
+=======
+        print "%d is size of bug_list" % (len(bug_list))
+        #update_db = True
+>>>>>>> 2233db4 (disable update_db, probably easier to debug...)
     else:
         assert False
     return update_db, bug_list
