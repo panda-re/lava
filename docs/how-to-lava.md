@@ -1,4 +1,3 @@
-
 # How to get a new target working with LAVA
 
 # Prerequsites

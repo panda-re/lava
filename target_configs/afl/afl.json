@@ -13,7 +13,7 @@
     "make": "make",
     "clean": "make clean",
     "install": "make install",
-    "command": "{install_dir}/bin/afl-analyze -m10 -t200 -e -i {input_file} -- {install_dir}/data/toy",
+    "command": "{install_dir}/bin/afl-analyze -m10 -t200 -e -i {input_file} -- {install_dir}/share/toy",
 
     "COMMENT_injfixupsscript": "fixup.sh {bug_build}",
 
