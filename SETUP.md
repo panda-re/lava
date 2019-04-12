@@ -46,4 +46,4 @@ NB: Change the distribution version name accordingly
     python setup.py
 
 ## Try LAVA out
-    python init_project.py
+    python init-host.py
