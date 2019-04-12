@@ -134,29 +134,22 @@ function parse_args {
                ;;
             -y|--bug-types)
                 if [ "$2" ]; then
-                    bugtypes="$2" # TODO: a single arguments must be passed as 'arg1,'
+                    bugtypes="$2"
                     progress "everything" 0 "Injecting bugs of type(s): $bugtypes"
                     shift
                 else
                     die 'ERROR: --bug-types requires comma-seperated list of bug types'
                 fi
                ;;
-            -b|--atp-type )
-                # -b [bugType] : use this to specify attact point type: [mem_write|mem_read|fn_arg]
-                # TODO: should allow combinations of atp types
+            -b|--atp-types )
+                # -b [bugType] : use this to specify attact point type: pointer_read,pointer_write,function_call
                 if [ "$2" ]; then
-                    ATP_TYPE="$2"
+                    atptypes="$2"
+                    progress "everything" 0 "Query step will be executed with atp types: = $atptypes"
+                    shift
                 else
-                    die 'ERROR: --atp-types requires a single atp-type'
+                    die 'ERROR: --atp-types requires comma-seperated list of atp types'
                 fi
-
-                if [ "$ATP_TYPE" != "mem_read" -a "$ATP_TYPE" != "fn_arg" -a "$ATP_TYPE" != "mem_write" ]; then
-                    echo "ATP Type ($ATP_TYPE) is not valid must specify:"
-                    echo "    --atp-type [mem_write|mem_read|fn_arg]"
-                    echo "Exiting . . ."
-                    exit 1
-                fi
-                progress "everything" 0 "Query step will be executed with bug type: atp = $ATP_TYPE"
                 ;;
 
             #TODO: enable --inject=1 instead of just --inject 1 with something like:

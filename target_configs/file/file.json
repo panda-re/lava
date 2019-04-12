@@ -4,7 +4,7 @@
     "preprocessed": true,
     "dataflow": true,
 
-    "tarfile": "file-5.22-pre.tar.gz",
+    "tarfile": "file-5.35-pre.tar.gz",
 
     "qcow": "wheezy_panda2.qcow2",
     "snapshot": "root",
@@ -20,5 +20,5 @@
 
     "main_file": [ "src/file.c" ],
 
-    "inputs": ["inputs/constitution_36_garfield.doc"]
+    "inputs": ["inputs/testsuite.mp3", "inputs/testsuite.fitdata"]
 }

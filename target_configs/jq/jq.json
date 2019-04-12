@@ -13,10 +13,10 @@
     "make": "make",
     "clean": "make clean",
     "install": "make install",
-    "command": "{install_dir}/bin/jq -r . {input_file}",
+    "command": "{install_dir}/bin/jq -eSCr . {input_file}",
     "injfixupsscript": "fixup.sh {bug_build}",
 
-    "main_file": [ "src/main.c" ],
+    "main_file": [ "src/main-pre.c" ],
 
-    "inputs": [ "jq.json" ]
+    "inputs": [ "inputs/generated.json" ]
 }

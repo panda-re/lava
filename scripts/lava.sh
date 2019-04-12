@@ -30,7 +30,22 @@
 # pandahost:   what remote host to run panda and postgres on
 # testinghost: what host to test injected bugs on
 # fixupscript: script to run after add_query to fix up src before make
-#
+
+# defaults
+ok=0
+reset=0
+reset_db=0
+add_queries=0
+make=0
+taint=0
+inject=0
+num_trials=0
+kt=""
+demo=0
+curtail=0
+bugtypes="ptr_add,rel_write" # defaults
+atptypes="pointer_write" # default - Note this does nothing for now
+many=50 
 
 version="2.0.0"
 trap '' PIPE
@@ -46,8 +61,8 @@ USAGE() {
   echo "   -a | --all     Run all lava steps and inject $many bugs over 3 trials"
   echo "   -k | --force   Delete old data without confirmation"
   echo "   -n [num_bugs] | --count [num_bugs]   Specify number of bugs to be injected at once"
-  echo "   -y [bug_types] | --bug-types [bug_types]   Specify a comma seperated list of bug types: " # TODO never used?
-  echo "   -b [atp_type] | --atp-type [atp_type]   Specify a single ATP type. One of mem_read, fn_arg, or mem_write"
+  echo "   -y [bug_types] | --bug-types [bug_types]   Specify a comma seperated list of bug types: ptr_add,rel_write"
+  echo "   -b [atp_types] | --atp-types [atp_types]   Specify a comma seperated list of ATP types. pointer_read,pointer_write,function_call"
 
   echo
   echo "== Specify Steps to Run =="
@@ -75,24 +90,6 @@ fi
 # Load lava-functions
 . `dirname $0`/funcs.sh
 lava=$(dirname $(dirname $(readlink -f "$0")))
-
-# defaults
-ok=0
-reset=0
-reset_db=0
-add_queries=0
-make=0
-taint=0
-inject=0
-num_trials=0
-kt=""
-demo=0
-curtail=0
-ATP_TYPE=""
-# default bugtypes
-bugtypes="ptr_add,rel_write"
-# default # of bugs to be injected at a time
-many=50
 
 source `dirname $0`/arg_parse.sh
 parse_args $@
@@ -164,7 +161,7 @@ if [ $add_queries -eq 1 ]; then
     lf="$logs/add_queries.log"
     truncate "$lf"
     progress "everything" 1 "Adding queries to source -- logging to $lf"
-    run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $project_name" "$lf"
+    run_remote "$buildhost" "$scripts/add_queries.sh $project_name" "$lf"
     if [ "$fixupscript" != "null" ]; then
         lf="$logs/fixups.log"
         truncate "$lf"
@@ -248,7 +245,7 @@ if [ $inject -eq 1 ]; then
         if [ "$injfixupsscript" != "null" ]; then
             fix="--fixupsscript='$injfixupsscript'"
         fi
-        run_remote "$testinghost" "$python $scripts/inject.py -t $bugtypes -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -t $bugtypes -a $atptypes -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
     grep yield "$lf"  | grep " real bugs "
     done
 fi

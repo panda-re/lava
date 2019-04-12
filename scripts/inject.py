@@ -14,7 +14,8 @@ from os.path import join
 from vars import parse_vars
 from lava import LavaDatabase, Run, Bug, \
                  inject_bugs, LavaPaths, validate_bugs, \
-                 get_bugs, run_cmd, get_allowed_bugtype_num
+                 get_bugs, run_cmd, \
+                  get_allowed_bugtype_num, get_allowed_atptype_num
 
 start_time = time.time()
 
@@ -23,7 +24,7 @@ debugging = False
 version="2.0.0"
 
 # get list of bugs either from cmd line or db
-def get_bug_list(args, db, allowed_bugtypes):
+def get_bug_list(args, db, allowed_bugtypes=None, allowed_atptypes=None):
     update_db = False
     print "Picking bugs to inject."
     sys.stdout.flush()
@@ -39,14 +40,17 @@ def get_bug_list(args, db, allowed_bugtypes):
         bug_list.append(bug.id)
         update_db = True
     elif args.buglist:
-        bug_list = eval(args.buglist) # TODO
+        bug_list = [int(x) for x in args.buglist.split(",")]
         update_db = False
-    elif args.many:
+
+    elif args.many: # Main case: number of bugs to inject is specified without a bug-list provided
         num_bugs_to_inject = int(args.many)
         huge = db.huge()
 
         available = "tons" if huge else db.uninjected().count() # Only count if not huge
         print "Selecting %d bugs for injection of %s available" % (num_bugs_to_inject, str(available))
+
+        if allowed_atptypes is not None: raise RuntimeError("TODO: Support ATP Type filter")
 
         if not huge:
             assert available >= num_bugs_to_inject
@@ -54,7 +58,8 @@ def get_bug_list(args, db, allowed_bugtypes):
         if args.balancebugtype:
             bugs_to_inject = db.uninjected_random_balance(False, num_bugs_to_inject, allowed_bugtypes)
         else:
-            bugs_to_inject = db.uninjected_random_limit(allowed_bugtypes=allowed_bugtypes, count=num_bugs_to_inject)
+            bugs_to_inject = db.uninjected_random_limit(allowed_bugtypes=allowed_bugtypes,
+                                    count=num_bugs_to_inject)
 
         bug_list = [b.id for b in bugs_to_inject]
         print "%d is size of bug_list" % (len(bug_list))
@@ -107,18 +112,14 @@ if __name__ == "__main__":
             help = 'Bug id (otherwise, highest scored will be chosen)')
     parser.add_argument('-r', '--randomize', action='store_true', default = False,
             help = 'Choose the next bug randomly rather than by score')
+
     parser.add_argument('-m', '--many', action="store", default=-1,
             help = 'Inject this many bugs (chosen randomly)')
     parser.add_argument('-l', '--buglist', action="store", default=False,
             help = 'Inject this list of bugs')
-    parser.add_argument('-k', '--knobTrigger', metavar='int', type=int, action="store", default=0,
-            help = 'specify a knob trigger style bug, eg -k [sizeof knob offset]')
-    parser.add_argument('-s', '--skipInject', action="store", default=False,
-            help = 'skip the inject phase and just run the bugged binary on fuzzed inputs')
+
     parser.add_argument('-nl', '--noLock', action="store_true", default=False,
             help = ('No need to take lock on bugs dir'))
-    parser.add_argument('-c', '--checkStacktrace', action="store_true", default=False,
-            help = ('When validating a bug, make sure it manifests at same line as lava-inserted trigger'))
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
             help = ('Expected exit code when program exits without crashing. Default 0'))
     parser.add_argument('-bb', '--balancebugtype', action="store_true", default=False,
@@ -127,10 +128,18 @@ if __name__ == "__main__":
             help = ('Inject in competition mode where logging will be added in #IFDEFs'))
     parser.add_argument("-fixups", "--fixupsscript", action="store", default=False,
                         help = ("script to run after injecting bugs into source to fixup before make"))
-#    parser.add_argument('-wl', '--whitelist', action="store", default=None,
-#                        help = ('White list file of functions to bug and data flow'))
+    # Bugtypes specifies ptr_add or rel_write. rel_write is a misnomer-
+    # ptr_add => Increment some pointer if a single dua matches some condition
+    # rel_write => Increment some pointer if 3 duas satisfy some condition
     parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
                         help = ('bug types to inject'))
+
+    # buglocs specifies where we potentially corrupt data: function_call, pointer_read or
+    # pointer_write
+    parser.add_argument('-a', '--atptypes', action="store", default="pointer_read,pointer_write",
+                        help = ('Attack point types at which to add bugs'))
+
+
     parser.add_argument('--version', action="version", version="%(prog)s {}".format(version))
 
 
@@ -139,7 +148,8 @@ if __name__ == "__main__":
     project = parse_vars(args.host_json, args.project)
     dataflow = project.get("dataflow", False)
 
-    allowed_bugtypes = get_allowed_bugtype_num(args)
+    allowed_bugtypes = get_allowed_bugtype_num(args.bugtypes)
+    allowed_atplocs = get_allowed_atptype_num(args.atptypes) # TODO: we don't actually use this to filter anything for now
 
     print "allowed bug types: " + (str(allowed_bugtypes))
 
@@ -160,7 +170,7 @@ if __name__ == "__main__":
 
 
     # obtain list of bugs to inject based on cmd-line args and consulting db
-    (update_db, bug_list) = get_bug_list(args, db, allowed_bugtypes)
+    (update_db, bug_list) = get_bug_list(args, db, allowed_bugtypes)#, allowed_atplocs)
 
     # add all those bugs to the source code and check that it compiles
         # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?

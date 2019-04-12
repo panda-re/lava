@@ -47,7 +47,9 @@ If you want to inject bugs into a new target, you will likely need to make some
 modifications. Check out [How-to-Lava](docs/how-to-lava.md) for guidance.
 
 # Documentation
-Check out the [docs](docs/) folder to get started.
+Check out the [docs](docs/) folder to get started. You may also be interested
+in [this blog post](http://moyix.blogspot.com/2016/06/how-to-add-a-million-bugs-to-a-program.html)
+for a high-level overview of LAVA.
 
 
 # Current Status

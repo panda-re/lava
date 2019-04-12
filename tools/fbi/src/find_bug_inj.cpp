@@ -70,7 +70,7 @@ uint64_t num_bugs_of_type[Bug::TYPE_END] = {0};
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
 
-bool debug = true;
+bool debug = false;
 #define dprintf(...) if (debug) { printf(__VA_ARGS__); fflush(stdout); }
 
 uint64_t max_liveness = 0;
@@ -972,8 +972,8 @@ int main (int argc, char **argv) {
     printf("max card of taint set returned by query = %d\n", max_card);
 
     if (!project.isMember("max_tcn")) {
-        printf("max_tcn not set, using default 100\n");
-        project["max_tcn"] = 100;
+        printf("max_tcn not set, using default 1\n");
+        project["max_tcn"] = 1;
     }
     if (!project["max_tcn"].isUInt()) {
         throw std::runtime_error("Could not parse max_tcn");

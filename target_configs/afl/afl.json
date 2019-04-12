@@ -1,0 +1,23 @@
+{
+    "name": "afl",
+    "db": "afl",
+    "preprocessed": "true",
+    "dataflow": "true",
+
+    "tarfile": "afl-25b-pre.tar.gz",
+
+    "qcow": "wheezy_panda2.qcow2",
+    "snapshot": "root",
+    "expect_prompt": "root@debian-i386:~#",
+
+    "make": "make",
+    "clean": "make clean",
+    "install": "make install",
+    "command": "{install_dir}/bin/afl-analyze -m10 -t200 -e -i {input_file} -- {install_dir}/data/toy",
+
+    "COMMENT_injfixupsscript": "fixup.sh {bug_build}",
+
+    "main_file": [ "src/afl-analyze-pre.c" ],
+
+    "inputs": [ "inputs/blob.bin"]
+}

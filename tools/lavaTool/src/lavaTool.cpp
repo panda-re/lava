@@ -104,8 +104,8 @@ int main(int argc, const char **argv) {
     if (LavaAction == LavaQueries) {
         std::cout << "num taint queries added " << num_taint_queries << "\n";
         std::cout << "num atp queries added " << num_atp_queries << "\n";
-
         if (LavaDB != "XXX") SaveDB(StringIDs, LavaDB);
+
     } else if (LavaAction == LavaInjectBugs) {
         // TODO this logic is flawed, bugs can be injected across files/directories
         // and this is specific to one single run of lavaTool
