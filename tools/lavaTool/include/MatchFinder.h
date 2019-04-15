@@ -108,6 +108,9 @@ public:
                 stmt(hasParent(compoundStmt())).bind("stmt"),
                 makeHandler<PriQueryPointHandler>()
                 );
+        addMatcher(
+                functionDecl().bind("funcDecl"),
+                makeHandler<ChaffFuncDeclArgAdditionHandler>());
 
 #ifdef LEGACY_CHAFF_BUGS
         addMatcher(
@@ -123,9 +126,6 @@ public:
         if (ArgDataflow && LavaAction == LavaInjectBugs) {
 // Skip Handling Function Pointers In Chaff Bugs
 #ifndef LEGACY_CHAFF_BUGS
-            addMatcher(
-                    functionDecl().bind("funcDecl"),
-                    makeHandler<ChaffFuncDeclArgAdditionHandler>());
             addMatcher(
                     callExpr().bind("callExpr"),
                     makeHandler<CallExprArgAdditionHandler>());

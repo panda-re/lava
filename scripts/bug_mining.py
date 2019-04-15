@@ -168,6 +168,7 @@ panda_args = {
         'h_debugpath': installdir
     },
     'hypercall': {},
+    'stackprob': {},
     #'pri_taint': {
     #    'hypercall': True,
     #    'chaff': chaff

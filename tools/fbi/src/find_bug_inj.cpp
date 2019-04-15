@@ -398,7 +398,7 @@ inline bool is_dua_dead(const Dua *dua) {
 }
 
 template<Bug::Type bug_type>
-void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
+void record_injectable_bugs_at(const uint32_t stackoff, const AttackPoint *atp, bool is_new_atp,
         std::initializer_list<const DuaBytes *> extra_duas);
 
 void taint_query_pri(Panda__LogEntry *ple) {
@@ -641,15 +641,15 @@ void taint_query_pri(Panda__LogEntry *ple) {
     }
 
     record_injectable_bugs_at<Bug::CHAFF_STACK_UNUSED>(
-            pad_atp, is_new_atp, {});
+            si->insertionpoint, pad_atp, is_new_atp, {});
     for (const auto &exploit_dua : recent_dead_duas) {
         Range r = get_dua_dead_range(exploit_dua.second, {});
         if (r.empty())  continue;
         const DuaBytes *k = create(DuaBytes{exploit_dua.second, r});
         record_injectable_bugs_at<Bug::CHAFF_STACK_CONST>(
-                pad_atp, is_new_atp, { k });
+                si->insertionpoint, pad_atp, is_new_atp, { k });
         record_injectable_bugs_at<Bug::CHAFF_HEAP_CONST>(
-                pad_atp, is_new_atp, { k });
+                si->insertionpoint, pad_atp, is_new_atp, { k });
         break;
     }
 
@@ -751,7 +751,7 @@ struct BugParam {
 std::map<BugParam, std::vector<uint64_t>> cached_skip_lists;
 
 template<Bug::Type bug_type>
-void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
+void record_injectable_bugs_at(const uint32_t stackoff, const AttackPoint *atp, bool is_new_atp,
         std::initializer_list<const DuaBytes *> extra_duas_prechosen) {
     std::vector<uint64_t> empty;
     std::vector<uint64_t> *skip_trigger_lvals = &empty;
@@ -877,7 +877,7 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         assert(bug_type != Bug::RET_BUFFER ||
                 atp->type == AttackPoint::QUERY_POINT);
         assert(extra_duas.size() == Bug::num_extra_duas[bug_type]);
-        Bug bug(bug_type, trigger, c_max_liveness, atp, extra_duas);
+        Bug bug(bug_type, trigger, c_max_liveness, atp, extra_duas, stackoff);
         db->persist(bug);
         num_bugs_of_type[bug_type]++;
 
@@ -922,14 +922,14 @@ void attack_point_lval_usage(Panda__LogEntry *ple) {
     // Don't decimate PTR_ADD bugs.
     switch ((AttackPoint::Type)pleatp->info) {
     case AttackPoint::POINTER_WRITE:
-        record_injectable_bugs_at<Bug::REL_WRITE>(atp, is_new_atp, { });
+        record_injectable_bugs_at<Bug::REL_WRITE>(si->insertionpoint, atp, is_new_atp, { });
         // fall through
     case AttackPoint::POINTER_READ:
     case AttackPoint::FUNCTION_ARG:
-        record_injectable_bugs_at<Bug::PTR_ADD>(atp, is_new_atp, { });
+        record_injectable_bugs_at<Bug::PTR_ADD>(si->insertionpoint, atp, is_new_atp, { });
         break;
     case AttackPoint::PRINTF_LEAK:
-        record_injectable_bugs_at<Bug::PRINTF_LEAK>(atp, is_new_atp, { });
+        record_injectable_bugs_at<Bug::PRINTF_LEAK>(si->insertionpoint, atp, is_new_atp, { });
         break;
     }
     t.commit();
