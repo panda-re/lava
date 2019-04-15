@@ -410,15 +410,17 @@ struct Bug {
 
     uint32_t magic;
 
+    uint32_t stackoff;
+
 #pragma db index("BugUniq") unique members(type, atp, trigger_lval)
 #pragma db index("BugLvalsQuery") members(atp, type)
 
     Bug() {}
     Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
-            const AttackPoint *atp, std::vector<uint64_t> extra_duas)
+            const AttackPoint *atp, std::vector<uint64_t> extra_duas, uint32_t stackoff)
         : id(0), type(type), trigger(trigger), trigger_lval(trigger->dua->lval),
             atp(atp), max_liveness(max_liveness), extra_duas(extra_duas),
-            magic(0) {
+            magic(0), stackoff(stackoff) {
         for (int i = 0; i < 4; i++) {
             magic <<= 8;
             magic |= rand() % 26 + 0x60;
@@ -427,8 +429,8 @@ struct Bug {
     }
 
     Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
-            const AttackPoint *atp, std::vector<const DuaBytes *> extra_duas_)
-        : Bug(type, trigger, max_liveness, atp, std::initializer_list<uint64_t>({})) {
+            const AttackPoint *atp, std::vector<const DuaBytes *> extra_duas_, uint32_t stackoff)
+        : Bug(type, trigger, max_liveness, atp, std::initializer_list<uint64_t>({}), stackoff) {
         for (const DuaBytes *dua_bytes : extra_duas_) {
             extra_duas.push_back(dua_bytes->id);
         }

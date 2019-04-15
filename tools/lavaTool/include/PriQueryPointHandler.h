@@ -126,9 +126,12 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                 "__asm__ __volatile__(\"xorl %ebx, %ebx;divl %ebx;\");\n";
 #endif
             } else if (bug->type == Bug::CHAFF_STACK_CONST) {
-                // TODO: 4 => stack_depth
                 result_ss << LIf(Test(bug).render(), {
-                        LAssign(LStr("*((int*)(((char*)&lava_chaff_var_0)+4))"),
+                        LAssign(LDeref(
+                                LCast("int*",
+                                    LBinop("+",
+                                        LStr("lava_chaff_var_2"),
+                                        LHex(bug->stackoff)))),
                                 LavaGetExtra(Slot(bug->trigger)))});
             } else if (bug->type == Bug::CHAFF_HEAP_CONST) {
                 result_ss << LIf(Test(bug).render(), {
@@ -212,7 +215,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
 #endif
                 LDecimal(GetStringID(StringIDs, ast_loc)),
                 LDecimal(ast_loc.begin.line),
-                LDecimal(0)}).render() + "; ";
+                LStr("&lava_chaff_var_2")}).render() + "; ";    // Pass the func addr through hypercall
 
             num_taint_queries += 1;
         } else if (LavaAction == LavaInjectBugs) {

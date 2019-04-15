@@ -202,6 +202,7 @@ class Bug(Base):
 
     max_liveness = Column(Float)
     magic = Column(Integer)
+    stackoff = Column(Integer)
 
     atp = relationship("AttackPoint")
 

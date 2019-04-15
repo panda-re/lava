@@ -56,3 +56,21 @@ def genFnTraceHelper(db, bug_list, fnwhitelist, fnpickle):
         for fn in fnend:
             fd.write("NOFILENAME addvar %s\n" % fn)
 
+
+def genStackVarHelper(db, bug_list, fnwhitelist):
+    fnlist = []
+
+    # append addvar to the functions of stack overflow
+    buglist = db.session.query(Bug).filter(Bug.id.in_(bug_list))\
+            .filter(Bug.type == Bug.CHAFF_STACK_CONST).all()
+    for bug in buglist:
+        atp = bug.atp
+        cur_ctid = atp.ctrace[-1]
+        ct = db.session.query(CallTrace).get(cur_ctid)
+        fn = ct.caller.split('!')[1]
+        fnlist.append(fn)
+
+    with open(fnwhitelist, 'a') as fd:
+        for fn in fnlist:
+            fd.write("NOFILENAME addvar %s\n" % fn)
+

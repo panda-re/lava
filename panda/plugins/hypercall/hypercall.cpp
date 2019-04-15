@@ -18,6 +18,8 @@ extern "C" {
 #include "pri_dwarf/pri_dwarf_types.h"
 #include "pri_dwarf/pri_dwarf_ext.h"
 
+#include "stackprob/stackprob_ext.h"
+
 bool init_plugin(void *);
 void uninit_plugin(void *);
 }
@@ -26,6 +28,7 @@ void uninit_plugin(void *);
 const char *global_src_filename = NULL;
 uint64_t global_src_linenum;
 unsigned global_ast_loc_id;
+uint32_t global_funcaddr;
 static bool debug = false;
 
 #define dprintf(...) if (debug) { printf(__VA_ARGS__); fflush(stdout); }
@@ -43,7 +46,10 @@ Panda__SrcInfoPri *pandalog_src_info_pri_create(const char *src_filename, uint64
 
     si->has_insertionpoint = 1;
     // insert before
-    si->insertionpoint = 1;
+    //si->insertionpoint = 1;
+    // NOTE: Somehow hackish here, use `insertionpoint` to pass stack offset
+    // TODO: Encoding the MSB to signal if it has stored EBP offset?
+    si->insertionpoint = stack_retaddr_offset(global_funcaddr);
     return si;
 }
 // should just be able to include these from taint2.h or taint_processor.cpp
@@ -195,6 +201,7 @@ struct args {
     const char *src_filename;
     uint64_t src_linenum;
     unsigned ast_loc_id;
+    uint32_t funcaddr;
 };
 
 #if defined(TARGET_I386) && !defined(TARGET_X86_64)
@@ -219,6 +226,7 @@ void pfun(void *var_ty_void, const char *var_nm, LocType loc_t, target_ulong loc
     global_src_filename = args->src_filename;
     global_src_linenum = args->src_linenum;
     global_ast_loc_id = args->ast_loc_id;
+    global_funcaddr = args->funcaddr;
     //target_ulong guest_dword;
     //std::string ty_string = std::string(var_ty);
     //size_t num_derefs = std::count(ty_string.begin(), ty_string.end(), '*');
@@ -257,12 +265,17 @@ int guest_hypercall_callback(CPUState *cpu) {
         } else if (pandalog) {
             PandaHypercallStruct phs;
             panda_virtual_memory_rw(cpu, env->regs[R_EAX], (uint8_t *) &phs, sizeof(phs), false);
+
+            target_ulong funcaddr = 0;
+            panda_virtual_memory_rw(cpu, phs.info, (uint8_t*)&funcaddr, sizeof(target_ulong), false);
+            //fprintf(stderr, "[Chaff] Pri Param Function Addr: %x\n", funcaddr);
+
             if (phs.magic == 0xdeadbeef) {
                 target_ulong pc = panda_current_pc(cpu);
                 SrcInfo info;
                 int rc = pri_get_pc_source_info(cpu, pc, &info);
                 if (!rc) {
-                    struct args args = {cpu, info.filename, info.line_number, phs.src_filename};
+                    struct args args = {cpu, info.filename, info.line_number, phs.src_filename, funcaddr};
                     dprintf("panda hypercall: [%s], "
                             "ln: %4ld, pc @ 0x" TARGET_FMT_lx "\n",
                             info.filename,
@@ -293,6 +306,9 @@ bool init_plugin(void *self) {
 
     panda_require("taint2");
     assert(init_taint2_api());
+
+    panda_require("stackprob");
+    assert(init_stackprob_api());
 
     panda_cb pcb;
     pcb.guest_hypercall = guest_hypercall_callback;

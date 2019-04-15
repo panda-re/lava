@@ -168,6 +168,9 @@ if __name__ == "__main__":
     fnpickle = os.path.join(project["output_dir"], "getfns.pickle")
     genFnTraceHelper(db, bug_list, fnwhitelist, fnpickle)
 
+    # Write the fnwhitelist to indicate where to probe extra variables for stack overflow
+    genStackVarHelper(db, bug_list, fnwhitelist)
+
     # add all those bugs to the source code and check that it compiles
     # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
     (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json,
