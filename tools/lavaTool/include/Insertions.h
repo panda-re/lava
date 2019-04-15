@@ -43,15 +43,17 @@ public:
         out.reserve(impl.size() + out.size());
         for (const auto &keyvalue : impl) {
             // Introduce Some ordering here
-            std::stringstream ss1, ss2;
+            std::stringstream ss1, ss2, ss3;
             for (const std::string &s : keyvalue.second) {
-                if (s.find("int ") == 0) {
+                if (s.find("int lava_chaff_var") == 0) {
                     ss1 << s;
-                } else {
+                } else if (s.find("int lava_chaff") == 0) {
                     ss2 << s;
+                } else {
+                    ss3 << s;
                 }
             }
-            out.emplace_back(sm, keyvalue.first, 0, ss1.str() + ss2.str());
+            out.emplace_back(sm, keyvalue.first, 0, ss1.str() + ss2.str() + ss3.str());
         }
     }
 };
