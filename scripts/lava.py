@@ -719,6 +719,10 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         if project['configure']:
             run_cmd(' '.join(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]),
                     envv, 30, cwd=lp.bugs_build, shell=True)
+        with open(os.path.join(lp.bugs_build, 'Makefile'), 'a') as fd, \
+                open(os.path.join(lp.lava_dir, 'makefile.fixup'), 'r') as fdd:
+            fd.write(fdd.read())
+        run( ['make', 'lava_preprocess'] )
     if not os.path.exists(join(lp.bugs_build, 'btrace.log')):
         print("Making with btrace...")
 

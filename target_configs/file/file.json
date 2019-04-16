@@ -4,7 +4,7 @@
     "preprocessed": true,
     "dataflow": true,
     "tarfile": "file-5.22-pre.tar.gz",
-
+    "configure": "./configure",
     "make": "make",
     "clean": "make clean",
     "install": "make install",
@@ -12,7 +12,7 @@
 
     "max_tcn": 10,
 
-    "main_file": [ "src/file-pre.c" ],
+    "main_file": [ "src/file.c" ],
 
     "inputs": ["inputs/constitution_36_garfield.doc"]
 }

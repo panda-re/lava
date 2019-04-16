@@ -92,6 +92,9 @@ if [ -e "$configure_file" ]; then
         $configure_cmd --prefix=$(pwd)/lava-install
 fi
 
+progress "queries" 0 "Preprocessing Source code..."
+cat ${lava}/makefile.fixup >> Makefile && \
+make lava_preprocess
 
 progress "queries" 0  "Making with btrace..."
 # Delete any pre-existing btrace.log (could be in archive by mistake)

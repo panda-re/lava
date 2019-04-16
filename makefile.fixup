@@ -1,0 +1,10 @@
+
+LAVA_C_FILES := $(shell find . -name '*.c')
+.PHONY: lava_preprocess
+lava_preprocess: $(LAVA_C_FILES)
+	for lavafile in $^; do \
+   		gcc -include stdio.h $(CFLAGS) -E $${lavafile} -o $${lavafile}_pre; \
+		cp $${lavafile} $${lavafile}_bak; \
+		mv $${lavafile}_pre $${lavafile}; \
+		sed -i '/^#/ d' $${lavafile}; \
+	done
