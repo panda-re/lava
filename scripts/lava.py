@@ -711,7 +711,15 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     if not os.path.exists(join(lp.bugs_build, 'config.log')) \
             and 'configure' in project.keys():
         print('Re-configuring...')
-        run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
+        envv = { 'CC':'/llvm-3.6.2/Release/bin/clang',
+                'CXX': '/llvm-3.6.2/Release/bin/clang++',
+                'CFLAGS': '-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -I. -I.. -I../include -I./src/'}
+        run_cmd( ' '.join(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]),
+                envv, 30, cwd=lp.bugs_build, shell=True )
+        with open(os.path.join(lp.bugs_build, 'Makefile'), 'a') as fd, \
+                open(os.path.join(lp.lava_dir, 'makefile.fixup'), 'r') as fdd:
+            fd.write(fdd.read())
+        run( ['make', 'lava_preprocess'] )
     if not os.path.exists(join(lp.bugs_build, 'btrace.log')):
         print("Making with btrace...")
 
@@ -721,7 +729,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
         # Silence warnings related to adding integers to pointers since we already
         # know that it's unsafe.
-        envv = {"CFLAGS": "-Wno-int-conversion"}
+        envv = {"CFLAGS": "-Wno-int-conversion -O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -I. -I.. -I../include -I./src/"}
         if competition:
             envv["CFLAGS"] += " -DLAVA_LOGGING"
         btrace = join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace')
@@ -908,7 +916,9 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     # Silence warnings related to adding integers to pointers since we already
     # know that it's unsafe.
     make_cmd = project["make"]
-    envv = {"CFLAGS": "-Wno-int-conversion"}
+    envv = {"CC": "/llvm-3.6.2/Release/bin/clang",
+            "CXX": "/llvm-3.6.2/Release/bin/clang++",
+            "CFLAGS": "-Wno-int-conversion -O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -I. -I.. -I../include -I./src/"}
     if competition:
         envv["CFLAGS"] += " -DLAVA_LOGGING"
     (rv, outp) = run_cmd(make_cmd, envv, None, cwd=lp.bugs_build)

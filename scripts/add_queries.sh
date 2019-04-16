@@ -84,8 +84,11 @@ git commit -m 'Unmodified source.'
 
 progress "queries" 0  "Configuring..."
 mkdir -p lava-install
-$configure_cmd --prefix=$(pwd)/lava-install
+CC=/llvm-3.6.2/Release/bin/clang CXX=/llvm-3.6.2/Release/bin/clang++ CFLAGS="-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -I. -I.. -I../include -I./src/" $configure_cmd --prefix=$(pwd)/lava-install
 
+progress "queries" 0 "Preprocessing Source code..."
+cat ${lava}/makefile.fixup >> Makefile && \
+make lava_preprocess
 
 progress "queries" 0  "Making with btrace..."
 ORIGIN_IFS=$IFS
