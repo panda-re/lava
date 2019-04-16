@@ -63,12 +63,8 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
             call->getBeginLoc().print(debug(FNARG), *Mod.sm);
             debug(FNARG) << "\n";
             //debug(FNARG) << " argcount=" << call->getNumArgs() << "\n";
-<<<<<<< HEAD
-            //loc = call->getArg(0)->getBeginLoc();
-=======
             //loc = call->getArg(0)->getLocStart();
             return;
->>>>>>> d9eec22 (don't propagate dataflow on function pointers calls)
         } else if (Mod.sm->isInSystemHeader(func->getLocation())) {
             debug(FNARG) << "in system header\n";
             return;
