@@ -217,7 +217,7 @@ public:
                 if (main_files.count(getAbsolutePath(Filename)) > 0) {
                     std::stringstream top;
                     top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
-                        << "static unsigned int lava_extra[" << data_slots.size() << "] = {0};\n"
+                        << "static unsigned int lava_extra[" << extra_data_slots.size() << "] = {0};\n"
                         << "void *lava_chaff_pointer = (void*)0;\n"
                         << "void lava_set(unsigned int, unsigned int);\n"
                         << "__attribute__((visibility(\"default\")))\n"
