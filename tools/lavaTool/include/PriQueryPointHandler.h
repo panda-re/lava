@@ -68,12 +68,17 @@ struct PriQueryPointHandler : public LavaMatchHandler {
 #endif
         }
 
+        for (const LvalBytes &lval_bytes : map_get_default(extra_siphons_at, ast_loc)) {
+            result_ss << LavaSetExtra(lval_bytes.lval, lval_bytes.selected, extra_data_slots.at(lval_bytes));
+        }
+
         std::string result = result_ss.str();
         if (!result.empty()) {
             debug(PRI) << " Injecting dua siphon at " << ast_loc << "\n";
             debug(PRI) << "    Text: " << result << "\n";
         }
         siphons_at.erase(ast_loc); // Only inject once.
+        extra_siphons_at.erase(ast_loc);
         return result;
     }
 
@@ -90,19 +95,24 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                 "__asm__ __volatile__(\"xorl %ebx, %ebx;divl %ebx;\");\n";
 #endif
             } else if (bug->type == Bug::CHAFF_STACK_CONST) {
+                const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
+                LvalBytes extra_bytes(extra_dua_bytes);
                 result_ss << LIf(Test(bug).render(), {
                         LAssign(LDeref(
                                 LCast("int*",
                                     LBinop("+",
                                         LStr("lava_chaff_var_2"),
                                         LHex(bug->stackoff)))),
-                                LavaGetExtra(Slot(bug->trigger)))});
+                                LavaGetExtra(extra_data_slots.at(extra_bytes)))});
             } else if (bug->type == Bug::CHAFF_HEAP_CONST) {
+                const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
+                LvalBytes extra_bytes(extra_dua_bytes);
                 result_ss << LIf(Test(bug).render(), {
                         LAssign(LStr("lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
                         LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x18))"), LDecimal(16)),
                         LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(12)),
-                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x24))"), LavaGetExtra(Slot(bug->trigger)))});
+                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x24))"),
+                                LavaGetExtra(extra_data_slots.at(extra_bytes)))});
             }
         }
         bugs_with_atp_at.erase(key); // Only inject once.

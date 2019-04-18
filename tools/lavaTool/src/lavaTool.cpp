@@ -98,7 +98,7 @@ int main(int argc, const char **argv) {
             if (bug->type != Bug::RET_BUFFER) {
                 for (uint64_t dua_id : bug->extra_duas) {
                     const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
-                    mark_for_siphon(dua_bytes);
+                    mark_for_siphon_extra(dua_bytes);
                 }
             }
         }

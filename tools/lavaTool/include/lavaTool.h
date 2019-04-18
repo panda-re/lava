@@ -115,6 +115,9 @@ struct LvalBytes {
 // Map of bugs with siphon of a given  lval name at a given loc.
 std::map<LavaASTLoc, vector_set<LvalBytes>> siphons_at;
 std::map<LvalBytes, uint32_t> data_slots;
+// Same mapping for siphon of extra_duas
+std::map<LavaASTLoc, vector_set<LvalBytes>> extra_siphons_at;
+std::map<LvalBytes, uint32_t> extra_data_slots;
 
 std::string LavaPath;
 
@@ -492,6 +495,17 @@ void mark_for_siphon(const DuaBytes *dua_bytes) {
 
     // if insert fails do nothing. we already have a slot for this one.
     data_slots.insert(std::make_pair(lval_bytes, data_slots.size()));
+}
+
+void mark_for_siphon_extra(const DuaBytes *dua_bytes) {
+
+    LvalBytes lval_bytes(dua_bytes);
+    extra_siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
+
+    debug(INJECT) << "    Mark extra siphon at " << lval_bytes.lval->loc << "\n";
+
+    // if insert fails do nothing. we already have a slot for this one.
+    extra_data_slots.insert(std::make_pair(lval_bytes, extra_data_slots.size()));
 }
 
 #endif
