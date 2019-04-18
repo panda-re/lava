@@ -251,6 +251,10 @@ LExpr LavaSet(const SourceLval *lval, Range selected, uint32_t slot) {
     return LBlock({LFunc("lava_set", { LDecimal(slot), SelectCast(lval, selected) })});
 }
 
+LExpr LavaSetExtra(const SourceLval *lval, Range selected, uint32_t slot) {
+    return LBlock({LFunc("lava_set_extra", { LDecimal(slot), SelectCast(lval, selected) })});
+}
+
 LExpr DataFlowSet(const SourceLval *lval, Range selected, uint32_t slot) {
     return LFunc("DFLOG", { LDecimal(slot), SelectCast(lval, selected) });
 }
