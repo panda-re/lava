@@ -10,7 +10,8 @@
     "install": "make install",
     "command": "{install_dir}/bin/file -m {install_dir}/share/misc/magic.mgc {input_file}",
 
-    "max_tcn": 1,
+    "max_liveness": 0,
+    "max_tcn": 0,
 
     "main_file": [ "src/file.c" ],
 

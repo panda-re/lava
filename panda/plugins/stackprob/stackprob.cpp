@@ -44,8 +44,11 @@ void find_var(void *var_ty_void, const char *var_nm, LocType loc_t, target_ulong
         switch (loc_t) {
             case LocMem:
             {
-                //fprintf(stderr, "Target %s Loc %x - ESP %x\n", var_nm, loc, args->sp_);
-                stackoff[args->pc_] = args->sp_ - loc;
+                target_ulong framebase = get_cur_fp(first_cpu, args->pc_);
+                //target_ulong retaddr = 0;
+                //panda_virtual_memory_read(first_cpu, args->sp_, (uint8_t*)&retaddr, sizeof(target_ulong));
+                //fprintf(stderr, "Target %s : addr[%x] Loc %x - cur framebase %x (%x) - ESP %x retaddr[%x]\n", var_nm, args->pc_, loc, framebase, framebase-loc, args->sp_, retaddr);
+                stackoff[args->pc_] = framebase - loc;
                 break;
             }
             case LocReg:

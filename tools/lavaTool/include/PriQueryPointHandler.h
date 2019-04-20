@@ -138,7 +138,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                                 LCast("int*",
                                     LBinop("+",
                                         LStr("lava_chaff_var_2"),
-                                        LHex(bug->stackoff)))),
+                                        LHex(bug->stackoff + 4)))), // Add 4 to overwrite return address
                                 LavaGetExtra(extra_data_slots.at(extra_bytes)))});
             } else if (bug->type == Bug::CHAFF_HEAP_CONST) {
                 const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
