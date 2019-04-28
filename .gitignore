@@ -36,7 +36,5 @@ CTestTestfile.cmake
 /scripts/getfns.pickle
 
 
-/target_bins/*
 /target_injections/*
-!/target_bins/.gitkeep
 !/target_injections/.gitkeep
