@@ -1230,7 +1230,7 @@ def get_allowed_bugtype_num(bugtypes):
             continue
         bugtype_num = _parse_bugtype(bugtype_name)
         if bugtype_num is None:
-            raise RuntimeError("Unknown bugtype {}. Expecting one of {}".format(bugtype_name, ", ".join(Bug.type_strings)))
+            raise RuntimeError("Unknown bugtype {}. Expecting a substring of {}".format(bugtype_name.lower(), ", ".join(Bug.type_strings)))
         allowed_bugtype_nums.append(bugtype_num)
     return allowed_bugtype_nums
 
@@ -1250,6 +1250,6 @@ def get_allowed_atptype_num(atptypes):
             continue
         atptype_num = _parse_atptype(atptype_name)
         if atptype_num is None:
-            raise RuntimeError("Unknown atptype {}. Expecting one of {}".format(atptype_name, ", ".join(AttackPoint.type_strings)))
+            raise RuntimeError("Unknown atptype {}. Expecting substring one of {}".format(atptype_name.lower(), ", ".join(AttackPoint.type_strings)))
         allowed_atptype_nums.append(atptype_num)
     return allowed_atptype_nums

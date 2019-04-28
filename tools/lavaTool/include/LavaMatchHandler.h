@@ -167,6 +167,13 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                 LDecimal(0) });
     }
 
+    // Testing this idea: make a single Lexpr with the function call instead of an LBlock
+    LExpr LavaAtpQuery_test(LavaASTLoc ast_loc, AttackPoint::Type atpType) {
+        return LFunc("vm_lava_attack_point2",
+                    { LDecimal(GetStringID(StringIDs, ast_loc)), LDecimal(0),
+                        LDecimal(atpType) });
+    }
+
     /*
       An attack expression.  That is, this is where we would *like* to
       attack something.  Currently used by FunctionArgHandler and
@@ -218,14 +225,19 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             bugs_with_atp_at.erase(std::make_pair(ast_loc, atpType));
         } else if (LavaAction == LavaQueries) {
             // call attack point hypercall and return 0
-            pointerAddends.push_back(LavaAtpQuery(ast_loc, atpType));
+            pointerAddends.push_back(LavaAtpQuery_test(ast_loc, atpType));
             num_atp_queries++;
         }
 
 
         if (!pointerAddends.empty()) {
             LExpr addToPointer = LBinop("+", std::move(pointerAddends));
-            Mod.Change(toAttack).Add(addToPointer, parent);
+
+            if (LavaAction == LavaQueries) {  // Testing this change just with Queries for now, might need to be for all cases
+                Mod.Change(toAttack).MakeSeq(parent, addToPointer);
+            }else{
+                Mod.Change(toAttack).Add(addToPointer, parent);
+            }
 
             // For competitions, wrap pointer value in LAVALOG macro call-
             // it's effectively just a NOP that prints a message when the trigger is true
