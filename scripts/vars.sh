@@ -36,7 +36,7 @@ fi
 name="$(jq -r .name $json)"
 db="$(jq -r .db $json)$db_suffix"
 extradockerargs="$(jq -r .extra_docker_args $json)"
-exitCode="$(jq -r .expected_exit_code $json)"
+exitCode="$(jq -r '.expected_exit_code // "0"' $json)"
 dataflow="$(jq -r '.dataflow // "false"' $json)" # TODO use everywhere, stop passing as argument
 
 # List of function names to blacklist for data_flow injection, merged as fn1\|fn2\|fn3 so we can use sed
