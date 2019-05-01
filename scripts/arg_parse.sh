@@ -10,6 +10,7 @@ function parse_args {
         if ! [[ $1 == *"-"* ]]; then
             reset=1
             reset_db=1
+            validate=1
             add_queries=1
             make=1
             taint=1
@@ -29,6 +30,7 @@ function parse_args {
             -a|--all)
                reset=1
                reset_db=1
+               validate=1
                add_queries=1
                make=1
                taint=1
@@ -44,6 +46,7 @@ function parse_args {
            -ak) # Backwards compatability with everyone's favorite lava1 option
                reset=1
                reset_db=1
+               validate=1
                add_queries=1
                make=1
                taint=1
@@ -58,6 +61,10 @@ function parse_args {
             -r|--reset)
                reset=1
                progress "everything" 0 "Reset step will be executed"
+               ;;
+            -r|--validate)
+               validate=1
+               progress "everything" 0 "Validate step will be executed"
                ;;
             -c|--clean)
                reset_db=1

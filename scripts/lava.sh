@@ -67,6 +67,7 @@ USAGE() {
   echo
   echo "== Specify Steps to Run =="
   echo "   -r | --reset         Run reset step"
+  echo "   -v | --validate      Run validate step"
   echo "   -c | --clean         Run clean step"
   echo "   -q | --add-queries   Run add queries step"
   echo "   -m | --make          Run make step"
@@ -152,7 +153,25 @@ if [ $reset -eq 1 ]; then
     echo "reset complete $time_diff seconds"
 fi
 
+ # Build unmodified target, test orig inputs
+if [ $validate -eq 1 ]; then
+    tick
+    progress "everything" 1  "Validating configuration"
+    lf="$logs/validate.log"
+    sourcedir_v="${sourcedir}_valiate"
+    run_remote "$buildhost" "cp -r $sourcedir $sourcedir_v cd $sourcedir_v && $makecmd" "$lf"
+    run_remote "$buildhost" "cd $sourcedir_v && rm -rf lava-install" "$lf"
+    run_remote "$buildhost" "cd $sourcedir_v && $install" "$lf"
 
+    for input in $inputs # TODO validate inputs and exit codes
+    do
+        progress "everything" 1 "Validating input $input"
+        run_remote "$buildhost" "echo TODO $input" "$lf"
+    done
+    deldir $sourcedir_v
+    tock
+    echo "validate complete $time_diff seconds"
+fi
 
 
 if [ $add_queries -eq 1 ]; then
@@ -245,8 +264,10 @@ if [ $inject -eq 1 ]; then
         if [ "$injfixupsscript" != "null" ]; then
             fix="--fixupsscript='$injfixupsscript'"
         fi
+        set +e # A single injection is allowed to fail
         run_remote "$testinghost" "$python $scripts/inject.py -t $bugtypes -a $atptypes -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
-    grep yield "$lf"  | grep " real bugs "
+        grep yield "$lf"  | grep " real bugs "
+        set -e
     done
 fi
 
