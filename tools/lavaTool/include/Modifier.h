@@ -128,26 +128,14 @@ public:
     }
 
     const Modifier &MakeSeq(const Stmt *parent, const LExpr &lexp) const {
-        // Given an lexpr, insert it in a sequence with parent such that it will be evaluated in an expression that returns parent
-        // output is "(new_expr, (parent_expr))"
+        // Given an lexpr, insert it in a sequence with parent such that
+        // it will be evaluated in an expression that returns parent.
+        // This builds the expr "(new_expr, (parent_expr))"
 
-        // Alternative idea: (parent_expr), push eax, new_expr, pop eax to preserve order
-
-        // (new_expr, (parent_expr))
         Parenthesize();
         InsertBefore(", ");
         InsertBefore(lexp.render());
         Parenthesize();
-
-        // (parent_expr, asm("push eax"), new_expr, asm("pop eax"))
-        // This doesn't work because the 2nd asm returns a void and then we can't compile without adding casts
-        /*
-        InsertBefore("({");
-        InsertAfter(", asm(\"pushl %%eax\"); ");
-        InsertAfter(lexp.render());
-        InsertAfter("; asm(\"popl %%eax\");");
-        InsertAfter("})");
-        */
 
         return *this;
     }
