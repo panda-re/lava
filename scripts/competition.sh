@@ -17,7 +17,7 @@ version="1.0.0"
 
 USAGE() {
   echo "$0 version $version"
-  echo "USAGE: $0 -m [Num bugs] -n [Minimum real bugs] -l [List of bug IDs to use] -t [bugtypes] -e [Expected exit code of original program] ProjectName"
+  echo "USAGE: $0 -m [Num bugs] -n [Minimum real bugs] -l [List of bug IDs to use] -t [bugtypes] ProjectName"
   echo "       . . . or just $0 ProjectName"
   exit 1
 }
@@ -29,7 +29,6 @@ fi
 
 # defaults
 num_bugs=0
-exit_code=0
 min_yield=1
 debug=0
 diversify=""
@@ -57,10 +56,6 @@ do
       bugtypes=$OPTARG
       progress "competition" 0 "Injecting bugs of type(s): $bugtypes"
   fi
-  if [ "$flag" = "e" ]; then
-      exit_code=$OPTARG
-      progress "competition" 0 "Expect exit: $exit_code"
-  fi
   if [ "$flag" = "b" ]; then
       debug=1
       progress "competition" 0 "-b: running with pdb"
@@ -81,7 +76,7 @@ done
 shift $((OPTIND -1))
 
 project_name="$1"
-. `dirname $0`/vars.sh
+. `dirname $0`/vars.sh # Provides exitCode, hostjson, and more
 progress "competition" 1 "Found configuration for project '$project_name'"
 
 if [ "$debug" -eq "1" ]; then
@@ -92,7 +87,7 @@ mkdir -p $logs
 lf="$logs/competition.log"
 progress "competition" 1 "Starting -- logging to $lf"
 truncate "$lf"
-run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject --bugtypes=$bugtypes $usechaff $hostjson $project_name" "$lf"
+run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exitCode $diversify $skipinject --bugtypes=$bugtypes $usechaff $hostjson $project_name" "$lf"
 progress "competition" 1 "Everything finished."
 
 tail -n3 $lf

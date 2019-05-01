@@ -120,7 +120,16 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
         #atp_item_lists = db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
         # Returns list of lists where each sublist corresponds to the same atp: [[ATP1_bug1, ATP1_bug2], [ATP2_bug1], [ATP3_bug1, ATP3_bug2]]
 
-        atp_item_lists = db.uninjected_random_by_atp_bugtype(atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
+        print("Get ATP item lists")
+
+        # First try fast path
+        atp_item_lists = db.uninjected_random_by_atp_bugtype_fast(limit=limit,
+                            atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
+        if not atp_item_lists:
+            print("Warning: taking slow path of for atp_bugtype")
+            atp_item_lists = db.uninjected_random_by_atp_bugtype_slow(
+                            atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
+
         # Returns dict of list of lists where each dict is a bugtype and within each, each sublist corresponds to the same atp: [[ATP1_bug1, ATP1_bug2], [ATP2_bug1], [ATP3_bug1, ATP3_bug2]]
         while True:
             for selected_bugtype in allowed_bugtypes:
@@ -159,8 +168,8 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             # TODO: find a better solution for blacklist target-specific duas
             # For now, uncomment the following and configure the blacklist here to skip bugs containing
             # specific strings in their dua/extra_duas
-            """
-            blacklist = [("s0", None)]
+            """ #
+            blacklist = [("pWInfo", None)]
 
             cont = False
             for (badword, minidx) in blacklist:
