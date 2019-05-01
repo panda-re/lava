@@ -18,6 +18,6 @@
 
     "max_tcn": 10,
 
-    "main_file": [ "src/sqlite3.c" ],
+    "main_file": [ "src/sqlite3-pre.c" ],
     "inputs": ["inputs/input.sql", "inputs/input2.sql"]
 }
