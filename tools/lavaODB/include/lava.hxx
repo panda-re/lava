@@ -217,6 +217,7 @@ struct Dua {
 
     uint64_t instr;     // instr count
     bool fake_dua;      // true iff this dua is fake (corresponds to untainted bytes)
+    uint64_t trace_index;   // Index into the SourceTrace
 
 #pragma db index("DuaUniq") unique members(lval, inputfile, instr, fake_dua)
 
@@ -224,11 +225,12 @@ struct Dua {
     inline Dua(const SourceLval *lval, std::vector<const LabelSet*> &&viable_bytes,
             std::vector<uint32_t> &&byte_tcn, std::vector<uint32_t> &&all_labels,
             std::string inputfile, uint32_t max_tcn, uint32_t max_cardinality,
-            uint64_t instr, bool fake_dua)
+            uint64_t instr, bool fake_dua, uint64_t src_tr)
         : id(0), lval(lval), viable_bytes(std::move(viable_bytes)),
             byte_tcn(std::move(byte_tcn)), all_labels(std::move(all_labels)),
             inputfile(inputfile), max_tcn(max_tcn),
-            max_cardinality(max_cardinality), instr(instr), fake_dua(fake_dua) {}
+            max_cardinality(max_cardinality), instr(instr), fake_dua(fake_dua),
+            trace_index(src_tr) {}
 
     bool operator<(const Dua &other) const {
          return std::tie(lval->id, inputfile, instr, fake_dua) <
@@ -298,6 +300,23 @@ struct DuaBytes {
 };
 
 #pragma db object
+struct SourceTrace {
+#pragma db id auto
+    uint64_t id;
+
+#pragma db not_null
+    uint64_t index;
+#pragma db not_null
+    LavaASTLoc loc;
+
+#pragma db index("SourceTraceUniq") unique members(index)
+
+    bool operator<(const SourceTrace &other) const {
+        return index < other.index;
+    }
+};
+
+#pragma db object
 struct CallTrace {
 #pragma db id auto
     uint64_t id;
@@ -338,7 +357,9 @@ struct AttackPoint {
 
     std::vector<uint64_t> calltrace;
 
-#pragma db index("AttackPointUniq") unique members(loc, type)
+    uint64_t trace_index;   // Index into the SourceTrace
+
+#pragma db index("AttackPointUniq") unique members(loc, type, trace_index)
 
     bool operator<(const AttackPoint &other) const {
         return std::tie(type, loc) <

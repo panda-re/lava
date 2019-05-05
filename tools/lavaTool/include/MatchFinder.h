@@ -236,7 +236,13 @@ public:
                         << "lava_extra[slot] = val; }\n"
                         << "unsigned int lava_get_extra(unsigned int);\n"
                         << "__attribute__((visibility(\"default\")))\n"
-                        << "unsigned int lava_get_extra(unsigned int slot) { return lava_extra[slot]; }\n";
+                        << "unsigned int lava_get_extra(unsigned int slot) { return lava_extra[slot]; }\n"
+                        << "__attribute__((visibility(\"default\")))\n"
+                        << "int lava_check_const(unsigned int slot, unsigned int mask)"
+                        << "{ return (lava_extra[slot]&mask) == 0; }\n"
+                        << "__attribute__((visibility(\"default\")))\n"
+                        << "void lava_update_const(unsigned int slot, unsigned int mask) "
+                        << "{ lava_extra[slot] &= (~mask); }\n";
                     insert_at_top.append(top.str());
                 } else {
                     insert_at_top.append("extern void lava_set(unsigned int bn, unsigned int val);\n"

@@ -105,6 +105,9 @@ std::map<uint32_t, std::set<const Dua *> > dua_dependencies;
 // Stack Trace
 std::vector<std::pair<std::string, std::string>> cur_call_stack; // (file, func)
 
+// Source level Trace indexing - Overconstrain Injection
+uint64_t source_trace_index = 0;
+
 // Returns true with probability 1/ratio.
 inline bool decimate(double ratio) {
     return rand() * ratio < RAND_MAX;
@@ -569,7 +572,7 @@ void taint_query_pri(Json::Value& ple) {
     const AttackPoint *pad_atp;
     bool is_new_atp;
     std::tie(pad_atp, is_new_atp) = create_full(
-            AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT, calltrace});
+            AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT, calltrace, source_trace_index});
 
     if (is_dua || is_fake_dua) {
         // looks like we can subvert this for either real or fake bug.
@@ -981,6 +984,16 @@ void record_ret(Panda__LogEntry *ple) {
     cur_call_stack.pop_back();
 }
 
+
+void record_trace(Panda__LogEntry *ple) {
+    transaction t(db->begin());
+    Panda__SourceTraceId *stid = ple->source_trace_id;
+    LavaASTLoc ast_loc(ind2str[stid->ast_loc_id]);
+    const SourceTrace *srctr = create(
+            SourceTrace{0, source_trace_index++, ast_loc});
+    t.commit();
+}
+
 int main (int argc, char **argv) {
     if (argc != 5 && argc !=6 ) {
         printf("Find Bug Inject (FBI)");
@@ -1161,6 +1174,8 @@ int main (int argc, char **argv) {
             record_call(ple);
         } else if (ple.isMember("dwarfRet")) {
             record_ret(ple);
+        } else if (ple->source_trace_id) {
+            record_trace(ple);
         }
         // pandalog_free_entry(ple);
 
