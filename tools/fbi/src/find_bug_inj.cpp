@@ -109,6 +109,9 @@ std::map<uint32_t, std::set<const Dua *> > dua_dependencies;
 // Stack Trace
 std::vector<std::pair<std::string, std::string>> cur_call_stack; // (file, func)
 
+// Source level Trace indexing - Overconstrain Injection
+uint64_t source_trace_index = 0;
+
 // Returns true with probability 1/ratio.
 inline bool decimate(double ratio) {
     return rand() * ratio < RAND_MAX;
@@ -561,7 +564,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
     const AttackPoint *pad_atp;
     bool is_new_atp;
     std::tie(pad_atp, is_new_atp) = create_full(
-            AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT, calltrace});
+            AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT, calltrace, source_trace_index});
 
     if (is_dua || is_fake_dua) {
         // looks like we can subvert this for either real or fake bug.
@@ -571,7 +574,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
 
         const Dua *dua = create(Dua(lval, std::move(viable_byte),
                 std::move(byte_tcn), std::move(all_labels), inputfile,
-                c_max_tcn, c_max_card, ple->instr, is_fake_dua));
+                c_max_tcn, c_max_card, ple->instr, is_fake_dua, source_trace_index));
 
         if (is_dua) {
             // Only track liveness for non-fake duas.
@@ -916,7 +919,7 @@ void attack_point_lval_usage(Panda__LogEntry *ple) {
     const AttackPoint *atp;
     bool is_new_atp;
     std::tie(atp, is_new_atp) = create_full(AttackPoint{0,
-            ast_loc, (AttackPoint::Type)pleatp->info, {}});
+            ast_loc, (AttackPoint::Type)pleatp->info, {}, source_trace_index});
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
 
     // Don't decimate PTR_ADD bugs.
@@ -964,6 +967,16 @@ void record_ret(Panda__LogEntry *ple) {
     assert (cur_call_stack.back() == std::make_pair(std::string(ret->file_callee),
                 std::string(ret->function_name_callee)));
     cur_call_stack.pop_back();
+}
+
+
+void record_trace(Panda__LogEntry *ple) {
+    transaction t(db->begin());
+    Panda__SourceTraceId *stid = ple->source_trace_id;
+    LavaASTLoc ast_loc(ind2str[stid->ast_loc_id]);
+    const SourceTrace *srctr = create(
+            SourceTrace{0, source_trace_index++, ast_loc});
+    t.commit();
 }
 
 int main (int argc, char **argv) {
@@ -1109,6 +1122,8 @@ int main (int argc, char **argv) {
             record_call(ple);
         } else if (ple->dwarf_ret) {
             record_ret(ple);
+        } else if (ple->source_trace_id) {
+            record_trace(ple);
         }
         pandalog_free_entry(ple);
 

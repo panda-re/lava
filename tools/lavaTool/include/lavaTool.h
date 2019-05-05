@@ -119,6 +119,8 @@ std::map<LvalBytes, uint32_t> data_slots;
 std::map<LavaASTLoc, vector_set<LvalBytes>> extra_siphons_at;
 std::map<LvalBytes, uint32_t> extra_data_slots;
 
+std::map<LavaASTLoc, std::vector<LExpr>> extra_overconst_expr;
+
 std::string LavaPath;
 
 Loc::Loc(const FullSourceLoc &full_loc)
@@ -506,6 +508,39 @@ void mark_for_siphon_extra(const DuaBytes *dua_bytes) {
 
     // if insert fails do nothing. we already have a slot for this one.
     extra_data_slots.insert(std::make_pair(lval_bytes, extra_data_slots.size()));
+}
+
+void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes, uint64_t tr_start, uint64_t tr_end) {
+
+    LvalBytes lval_bytes(dua_bytes);
+
+    // gen 4 overconstrain code - each taking care of 1 byte
+    uint32_t nstep = 2;
+    uint32_t step = 32/nstep;
+    uint32_t basemask = (1<<step) - 1;
+    for (uint64_t i = 0; i < nstep; i++) {
+        auto tridx = tr_start + (rand() % (tr_end - tr_start));
+        tr_start = tridx;
+        const SourceTrace *tr = db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tridx);
+        LavaASTLoc ast_loc = tr->loc;
+        LExpr checker  = Test(bug);
+        if (i > 0) {
+            checker = /*checker &&*/ LFunc("lava_check_const", {
+                    LDecimal(extra_data_slots[lval_bytes]),
+                    LHex(basemask << ((i-1) * step))});
+            extra_overconst_expr[ast_loc].emplace_back(
+                    LIf(checker.render(), {
+                        LFunc("lava_update_const", {
+                                LDecimal(extra_data_slots[lval_bytes]),
+                                LHex(basemask << (i * step))})}));
+        } else {
+            extra_overconst_expr[ast_loc].emplace_back(
+                    LBlock({
+                        LFunc("lava_update_const", {
+                                LDecimal(extra_data_slots[lval_bytes]),
+                                LHex(basemask << (i * step))})}));
+        }
+    }
 }
 
 #endif

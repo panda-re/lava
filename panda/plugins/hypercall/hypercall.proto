@@ -1,0 +1,6 @@
+
+message SourceTraceId {
+    required uint32 ast_loc_id = 1;
+}
+
+optional SourceTraceId source_trace_id = 90;

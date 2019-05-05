@@ -97,7 +97,11 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             } else if (bug->type == Bug::CHAFF_STACK_CONST) {
                 const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
                 LvalBytes extra_bytes(extra_dua_bytes);
-                result_ss << LIf(Test(bug).render(), {
+                LExpr checker = Test(bug) && LFunc("lava_check_const", {
+                        LDecimal(extra_data_slots[extra_bytes]),
+                        LHex(0xffffffff)
+                        });
+                result_ss << LIf(checker.render(), {
                         LAssign(LDeref(
                                 LCast("int*",
                                     LBinop("+",
@@ -107,8 +111,12 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             } else if (bug->type == Bug::CHAFF_HEAP_CONST) {
                 const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
                 LvalBytes extra_bytes(extra_dua_bytes);
-                result_ss << LIf(Test(bug).render(), {
-                        LAssign(LStr("lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
+                LExpr checker = Test(bug) && LFunc("lava_check_const", {
+                        LDecimal(extra_data_slots[extra_bytes]),
+                        LHex(0xffffffff)
+                        });
+                result_ss << LIf(checker.render(), {
+                        LAssign(LStr("void *lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
                         LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x18))"), LDecimal(16)),
                         LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(12)),
                         LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x24))"),
@@ -201,6 +209,15 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             before = SiphonsForLocation(ast_loc) + AttackRetBuffer(ast_loc) + AttackChaffBugs(ast_loc);
         }
         Mod.Change(toSiphon).InsertBefore(before);
+
+        if (LavaAction == LavaInjectBugs) {
+            std::stringstream result_ss;
+            for (const LExpr &expr : map_get_default(extra_overconst_expr, ast_loc)) {
+                result_ss << expr;
+                Mod.Change(toSiphon).InsertBefore(result_ss.str());
+            }
+            extra_overconst_expr.erase(ast_loc);
+        }
     }
 };
 
