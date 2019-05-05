@@ -254,6 +254,17 @@ void pfun(void *var_ty_void, const char *var_nm, LocType loc_t, target_ulong loc
 }
 #endif
 
+
+// Trace logging in the level of source code
+void hypercall_log_trace(unsigned ast_loc_id) {
+    Panda__LogEntry ple = PANDA__LOG_ENTRY__INIT;
+    Panda__SourceTraceId stid = PANDA__SOURCE_TRACE_ID__INIT;
+    stid.ast_loc_id = ast_loc_id;
+    ple.source_trace_id = &stid;
+    pandalog_write_entry(&ple);
+}
+
+
 int guest_hypercall_callback(CPUState *cpu) {
 #ifdef TARGET_I386
     CPUArchState *env = (CPUArchState*)cpu->env_ptr;
@@ -284,6 +295,8 @@ int guest_hypercall_callback(CPUState *cpu) {
                     //pri_all_livevar_iter(cpu, pc, (liveVarCB) pfun, (void *)&args);
                     //lava_attack_point(phs);
                 }
+
+                hypercall_log_trace(phs.src_filename);
             } else {
                 printf ("Invalid magic value in PHS struct: %x != 0xabcd.\n", phs.magic);
             }
