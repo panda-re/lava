@@ -516,6 +516,10 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes, uint64_
 
     LvalBytes lval_bytes(dua_bytes);
 
+    // Just for fail safe
+    // - probably won't even trigger the bug if things like this happens
+    if (tr_end < tr_start)  tr_start = tr_end;
+
     // gen 4 overconstrain code - each taking care of 1 byte
     uint32_t nstep = 4;
     uint32_t step = 32/nstep;
