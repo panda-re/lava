@@ -491,7 +491,10 @@ LExpr knobTriggerAttack(const Bug *bug) {
 void mark_for_siphon(const DuaBytes *dua_bytes) {
 
     LvalBytes lval_bytes(dua_bytes);
-    siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
+    auto tridx = dua_bytes->dua->trace_index;
+    const SourceTrace *tr = db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tridx);
+    //siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
+    siphons_at[tr->loc].insert(lval_bytes);
 
     debug(INJECT) << "    Mark siphon at " << lval_bytes.lval->loc << "\n";
 
@@ -502,7 +505,10 @@ void mark_for_siphon(const DuaBytes *dua_bytes) {
 void mark_for_siphon_extra(const DuaBytes *dua_bytes) {
 
     LvalBytes lval_bytes(dua_bytes);
-    extra_siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
+    auto tridx = dua_bytes->dua->trace_index;
+    const SourceTrace *tr = db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tridx);
+    //extra_siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
+    extra_siphons_at[tr->loc].insert(lval_bytes);
 
     debug(INJECT) << "    Mark extra siphon at " << lval_bytes.lval->loc << "\n";
 
@@ -515,7 +521,7 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes, uint64_
     LvalBytes lval_bytes(dua_bytes);
 
     // gen 4 overconstrain code - each taking care of 1 byte
-    uint32_t nstep = 2;
+    uint32_t nstep = 4;
     uint32_t step = 32/nstep;
     uint32_t basemask = (1<<step) - 1;
     for (uint64_t i = 0; i < nstep; i++) {
