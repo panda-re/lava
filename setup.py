@@ -303,6 +303,9 @@ def main():
     run_docker(['make','--no-print-directory','-j4', 'install', '-C',
                 join(LAVA_DIR, 'tools/build/lavaTool')])
 
+    run_docker(['make','--no-print-directory','-j4', 'install', '-C',
+                join(LAVA_DIR, 'tools/build/duasan')])
+
     # ensure /etc/apt/sources.list has all of the deb-src lines uncommented
     patch_sources = join(LAVA_DIR, "scripts/patch-sources.py")
     lines = open("/etc/apt/sources.list")

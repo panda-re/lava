@@ -14,4 +14,5 @@ add_subdirectory(lavaODB)
 add_subdirectory(lavaDB)
 add_subdirectory(lavaTool)
 add_subdirectory(fbi)
+add_subdirectory(duasan)
 
