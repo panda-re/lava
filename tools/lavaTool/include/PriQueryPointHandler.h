@@ -105,7 +105,9 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         }
 
         for (const LvalBytes &lval_bytes : map_get_default(extra_siphons_at, ast_loc)) {
-            result_ss << LavaSetExtra(lval_bytes.lval, lval_bytes.selected, extra_data_slots.at(lval_bytes));
+            result_ss << LavaSetExtra(
+                    lval_bytes.lval, lval_bytes.selected,
+                    extra_data_slots.at(lval_bytes));
         }
 
         std::string result = result_ss.str();
