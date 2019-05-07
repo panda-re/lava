@@ -531,7 +531,8 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes, uint64_
     for (uint64_t i = 0; i < nstep; i++) {
         auto tridx = tr_start + (rand() % (tr_end - tr_start));
         tr_start = tridx;
-        const SourceTrace *tr = db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tridx);
+        std::unique_ptr<SourceTrace> tr(
+                db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tridx));
         LavaASTLoc ast_loc = tr->loc;
         LExpr checker  = Test(bug);
         if (i > 0) {
