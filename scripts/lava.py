@@ -473,7 +473,8 @@ def interactive_exceptions(func):
                 print("Select an option: [R]etry, [P]db, [A]bort, [W]ait")
                 i, _, _ = select.select( [sys.stdin], [], [], 60*timeout_minutes )
                 if i:
-                    in_chr = sys.stdin.readline().strip()[0]
+                    in_line = sys.stdin.readline().strip()
+                    in_chr = in_line[0] if len(in_line) else None
                     if in_chr=="r": # Retry
                         print("Retrying with original arguments: ({},{})".format(_args, _kwargs))
                         return interactive_exceptions(func)(*_args, **_kwargs)
