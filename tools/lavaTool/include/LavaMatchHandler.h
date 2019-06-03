@@ -280,7 +280,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
                     std::stringstream end_str;
 
-                    end_str << ", " << triggers[i] << ")";
+                    end_str << ", " << triggers[i] << "/* end of bug " << bug->id <<"*/)";
                     Mod.Change(toAttack).InsertAfter(end_str.str());
                     free(bug);
                 }
