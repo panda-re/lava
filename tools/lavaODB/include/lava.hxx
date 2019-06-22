@@ -310,6 +310,7 @@ struct AttackPoint {
         POINTER_WRITE,
         QUERY_POINT,
         PRINTF_LEAK,
+        MALLOC_OFF_BY_ONE,
         TYPE_END
     } type;
 
@@ -333,6 +334,7 @@ struct AttackPoint {
             "ATP_POINTER_WRITE",
             "ATP_QUERY_POINT",
             "ATP_PRINTF_LEAK",
+            "ATP_MALLOC_OFF_BY_ONE"
         };
         os << "ATP [" << m.loc.filename << " " << m.loc.begin << "] {";
         os << names[m.type] << "}";
@@ -350,6 +352,7 @@ struct Bug {
         RET_BUFFER,
         REL_WRITE,
         PRINTF_LEAK,
+        MALLOC_OFF_BY_ONE,
         TYPE_END
     } type;
 
@@ -357,6 +360,8 @@ struct Bug {
         [PTR_ADD] = 0,
         [RET_BUFFER] = 1,
         [REL_WRITE] = 2,
+	[PRINTF_LEAK] = 0,
+        [MALLOC_OFF_BY_ONE] = 0,
     };
 
 #pragma db not_null

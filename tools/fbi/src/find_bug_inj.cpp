@@ -898,6 +898,9 @@ void attack_point_lval_usage(Panda__LogEntry *ple) {
     case AttackPoint::PRINTF_LEAK:
         record_injectable_bugs_at<Bug::PRINTF_LEAK>(atp, is_new_atp, { });
         break;
+    case AttackPoint::MALLOC_OFF_BY_ONE:
+        record_injectable_bugs_at<Bug::MALLOC_OFF_BY_ONE>(atp, is_new_atp, { });
+        break;
     }
     t.commit();
 }
