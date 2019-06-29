@@ -3,7 +3,7 @@
 ## Ubuntu 64-bit 16.04.4
 The following install steps worked on 6/29/2019 with LAVA commit [c55bf1826ef9855a621f2652b30f16ac75b19cb6](https://github.com/panda-re/lava/commit/c55bf1826ef9855a621f2652b30f16ac75b19cb6).
 
-- Download and install [Ubuntu 64-bit 16.04.4](http://old-releases.ubuntu.com/releases/16.04.4/ubuntu-16.04.4-desktop-amd64.iso).
+- Download and install [Ubuntu 64-bit 16.04.6](http://releases.ubuntu.com/16.04/ubuntu-16.04.6-desktop-amd64.iso).
 - `sudo add-apt-repository ppa:phulin/panda`
 - `sudo cp /etc/apt/sources.list /etc/apt/sources.list~`
 - `sudo sed -Ei 's/^# deb-src /deb-src /' /etc/apt/sources.list`
