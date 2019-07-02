@@ -1,5 +1,5 @@
 FROM i386/debian:stretch
-RUN echo deb http://httpredir.debian.org/debian wheezy-backports main >> /etc/apt/sources.list
+RUN echo deb http://archive.debian.org/debian wheezy-backports main >> /etc/apt/sources.list
 RUN apt-get update
 RUN apt-get install -y sudo build-essential python wget cmake gdb gawk mlocate \
             vim libc++-dev  g++-multilib g++ ninja-build \
@@ -73,3 +73,6 @@ RUN apt-get install -y locales
 RUN locale-gen C.UTF-8
 RUN locale -a
 RUN update-locale LANG=C.UTF-8
+
+# Having autoconf in the container will make building autotools packages easier
+RUN apt-get install -y autoconf libtool m4 automake

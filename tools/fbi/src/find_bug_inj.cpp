@@ -70,7 +70,7 @@ uint64_t num_bugs_of_type[Bug::TYPE_END] = {0};
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
 
-bool debug = true;
+bool debug = false;
 #define dprintf(...) if (debug) { printf(__VA_ARGS__); fflush(stdout); }
 
 uint64_t max_liveness = 0;
