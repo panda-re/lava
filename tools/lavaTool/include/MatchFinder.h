@@ -142,15 +142,13 @@ public:
                 typedefDecl().bind("typedefdecl"),
                 makeHandler<FunctionPointerTypedefHandler>());
 #endif
-
-        // printf read disclosures - currently disabled
-        /* addMatcher(
-                callExpr(
-                    callee(functionDecl(hasName("::printf"))),
-                    unless(argumentCountIs(1))).bind("call_expression"),
-                makeHandler<ReadDisclosureHandler>()
-                ); */
         }
+        addMatcher(
+        	callExpr(
+	    		callee(functionDecl(hasName("::printf"))),
+	    		unless(argumentCountIs(1))).bind("call_expression"),
+			makeHandler<ReadDisclosureHandler>()
+	);
     }
     virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
         Insert.clear();
