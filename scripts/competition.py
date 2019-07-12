@@ -370,19 +370,18 @@ def main():
     lava_installdir = join(bd, "lava-install")
     with open(log_build_sh, "w") as build:
         build.write("""#!/bin/bash
-        pushd `pwd`
-        cd {bugs_build}
+        cd build-dir
 
         # Build internal version
         {make_clean}
         {configure}
         {log_make}
-        rm -rf "{internal_builddir}"
+        rm -rf "../lava-install-internal"
         {install}
         {post_install}
-        mv lava-install {internal_builddir}
 
-        popd
+        mv lava-install ../lava-install-internal
+        cd ..
         """.format(
             bugs_build=bd,
             make_clean = project["clean"] if "clean" in project.keys() else "",
@@ -510,19 +509,18 @@ def main():
     lava_installdir = join(bd, "lava-install")
     with open(public_build_sh, "w") as build:
         build.write("""#!/bin/bash
-        pushd `pwd`
-        cd {bugs_build}
+        cd build-dir
 
-        # Build public version
+        # Build internal version
         {make_clean}
         {configure}
         {make}
-        rm -rf "{public_builddir}"
+        rm -rf "../lava-install-public"
         {install}
         {post_install}
-        mv lava-install {public_builddir}
 
-        popd
+        mv lava-install ../lava-install-public
+        cd ..
         """.format(
             bugs_build=bd,
             make_clean = project["clean"] if "clean" in project.keys() else "",
