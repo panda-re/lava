@@ -77,11 +77,17 @@ struct MyMatchHandler : public MatchFinder::MatchCallback {
         auto sl = s->getLocStart();
         unsigned int lineNum = sm.getExpansionLineNumber(sl);
 
+        // return x; ==> { LAVABUG(123); return x;}
         std::string before;
-        before = "; " + LFunc("LAVABUG",
+        before = "{" + LFunc("LAVABUG",
             {LDecimal(lineNum)}).render() + "; ";
 
+        std::string after = "}";
+
         Mod.Change(s).InsertBefore(before);
+        Mod.Change(s).InsertAfterEnd(after); // After end avoids writing at 'token'[here]
+                    // and instead we write after the semicolon at 'token;'[here]. Hopefully
+
     }
 
     virtual void run(const MatchFinder::MatchResult &Result) {

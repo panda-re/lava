@@ -1,5 +1,5 @@
 #!/bin/bash
-set -x
+#set -x
 set -e
 
 # Usage ./cov [root_dir] [inputs]
@@ -14,8 +14,8 @@ shift
 
 #make clean | true
 CFLAGS=--coverage make install
-PROG_DIR="file/file-5.35/src"
-PROG="file -m file/file-5.35/magic.mgc"
+PROG_DIR="sqlite/src/src"
+PROG="sqlite"
 
 popd
 
@@ -29,7 +29,7 @@ for input in $(ls $@); do
     echo $input
     safename=$(basename $input)
 
-    ${PROG_DIR}/${PROG} ${input} | true # Non-zero exits are allowed
+    ${PROG_DIR}/${PROG} < ${input} | true # Non-zero exits are allowed
     geninfo ${PROG_DIR} -o scratch/cov_$safename.info
 
     if [ -e result.info ]; then # If exists, append

@@ -94,7 +94,7 @@ public:
     const Modifier &InsertAfterEnd (std::string str) const {
         SourceLocation end = range().second;
         unsigned lastTokenSize = Lexer::MeasureTokenLength(end, *sm, *LangOpts);
-        Insert.InsertAfter(end.getLocWithOffset(lastTokenSize+2), str);
+        Insert.InsertAfter(end.getLocWithOffset(lastTokenSize+1), str);
         return *this;
     }
 

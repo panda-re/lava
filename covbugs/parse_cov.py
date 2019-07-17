@@ -43,6 +43,10 @@ for line in lines:
     elif line.startswith("FNDA:"):
         (count, func_name) = line.split("FNDA:")[1].split(",")
         count=int(count)
+        if func_name not in results[curfile]["funcs"]:
+            continue
+        #assert(curfile in results.keys()), "Missing file {}".format(curfile)
+        #assert(func_name in results[curfile]["funcs"]), "Missing funname {} in {}".format(func_name, curfile)
         results[curfile]["funcs"][func_name]["execs"] = count
 
     elif line.startswith("DA:"):
@@ -50,13 +54,18 @@ for line in lines:
 
         # Map this source line back to its containing func
         curfunc = None
+        if not len(results[curfile]["funcs"].items()):
+            print("Warning skipping file {} because it has no functions".format(curfile))
+            continue
+
         for func, func_data in results[curfile]["funcs"].items():
             if func_data["start"] <= loc and (func_data["end"] is None or func_data["end"] > loc):
                 curfunc = func
                 break
 
         if count == 0: # uncov lines is just which lines were uncovered
-            assert(curfunc)
+            if not curfunc: continue
+            assert(curfunc), "Uncovered line but no idea what function: {}".format(line)
             results[curfile]["uncovered_lines"].append(loc)
             results[curfile]["funcs"][curfunc]["uncovlines"].append(loc)
 
