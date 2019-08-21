@@ -24,12 +24,12 @@ using namespace llvm::sys::path;
 
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
-std::vector<std::shared_ptr<SourceLval>> _lvals;
-std::set<uint64_t> finallvals;
-std::map<uint64_t, LavaASTLoc> movedlocs;
+
+std::vector<std::shared_ptr<Dua>> _duas;
+
 
 static cl::opt<std::string> SourceDir("src-prefix",
-    cl::desc("/home/tonyhu/Desktop/lava/lava/test_clang/XXX"),
+    cl::desc("Preprocessed source file directory"),
     cl::init(""));
 static cl::opt<std::string> BugDB("db",
     cl::desc("Database Name"),
@@ -70,10 +70,9 @@ LavaASTLoc GetASTLoc(const SourceManager &sm, const Stmt *s) {
     return LavaASTLoc(src_filename, fullLocStart, fullLocEnd);
 }
 
-bool locInScope(const SourceManager &sm, const CompoundStmt *body, const SourceLval *sourcelval)
+bool locInScope(const SourceManager &sm, const CompoundStmt *body, const LavaASTLoc &locdua)
 {
     LavaASTLoc loccomp = GetASTLoc(sm, body);
-    LavaASTLoc locdua  = sourcelval->loc;
     return loccomp.filename == locdua.filename
         && (!(locdua.begin < loccomp.begin))
         && (!(loccomp.end < locdua.end));
@@ -162,12 +161,10 @@ public :
     }
 
 
-    const Stmt *scopeCheck(const SourceManager &sm, const CompoundStmt *body, const SourceLval *sourcelval)
+    const Stmt *scopeCheck(const SourceManager &sm, const CompoundStmt *body, const Dua *dua)
     {
+        const SourceLval *sourcelval = dua->lval;
         const Stmt *result = nullptr;
-
-        // Check locInScope
-        if (!locInScope(sm, body, sourcelval))  return nullptr;
 
         std::vector<std::string> lvalelem = xtractMembers(sourcelval);
         for (auto stmtit = body->body_begin(); stmtit != body->body_end(); stmtit++)
@@ -182,9 +179,9 @@ public :
                     const VarDecl *vardecl = dyn_cast<VarDecl>(*sdeclit);
                     if (auto initexpr = vardecl->getAnyInitializer())
                     {
-                        if (rhsExprCheck(initexpr, lvalelem)
-                           && std::next(stmtit) != body->body_end())
-                            return *std::next(stmtit);
+                        if (rhsExprCheck(initexpr, lvalelem)) {
+                            return declstmt;
+                        }
                     }
                 }
             } else if (auto nestedcomp = dyn_cast<CompoundStmt>(*stmtit)) {
@@ -193,7 +190,7 @@ public :
                 // so we dont have to do it here
                 // In doing so, we are able to check the DUA Init in the outer
                 // scope, and move the DUA siphon within the current scope
-                result = scopeCheck(sm, nestedcomp, sourcelval);
+                result = scopeCheck(sm, nestedcomp, dua);
                 if (result) return result;
                 // Dont RETURN since we need to continue our check afterward
             } else if (auto forexpr = dyn_cast<ForStmt>(*stmtit)) {
@@ -207,7 +204,7 @@ public :
                 {
                     if (auto forbody = dyn_cast<CompoundStmt>(forexpr->getBody()))
                     {
-                        result = scopeCheck(sm, forbody, sourcelval);
+                        result = scopeCheck(sm, forbody, dua);
                         if (result) return result;
                     } else {
                         // Skip This
@@ -223,7 +220,7 @@ public :
                 {
                     if (auto whilebody = dyn_cast<CompoundStmt>(whilestmt->getBody()))
                     {
-                        result = scopeCheck(sm, whilebody, sourcelval);
+                        result = scopeCheck(sm, whilebody, dua);
                         if (result) return result;
                     }
                 }
@@ -235,7 +232,7 @@ public :
                 {
                     if (auto ifthen = dyn_cast<CompoundStmt>(ifexpr->getThen()))
                     {
-                        result = scopeCheck(sm, ifthen, sourcelval);
+                        result = scopeCheck(sm, ifthen, dua);
                         if (result) return result;
                     }
                 }
@@ -243,7 +240,7 @@ public :
                 {
                     if (auto ifelse = dyn_cast<CompoundStmt>(ifexpr->getElse()))
                     {
-                        result = scopeCheck(sm, ifelse, sourcelval);
+                        result = scopeCheck(sm, ifelse, dua);
                         if (result) return result;
                     }
                 }
@@ -271,10 +268,6 @@ public :
 
     bool paramCheck(const SourceManager &sm, const FunctionDecl *func, const SourceLval *sourcelval)
     {
-        // Check locInScope
-        if (!locInScope(sm, dyn_cast<CompoundStmt>(func->getBody()), sourcelval))
-            return false;
-
         std::vector<std::string> lvalelem = xtractMembers(sourcelval);
         for (auto paramit = func->param_begin();
                 paramit != func->param_end(); paramit++)
@@ -296,30 +289,44 @@ public :
         if (sm->isInSystemHeader(FS->getLocStart()))    return;
 
         const CompoundStmt *body = dyn_cast<CompoundStmt>(FS->getBody());
+
         if(body == nullptr) return;
+
         FullSourceLoc fullloc(sm->getExpansionLoc(body->getLocStart()), *sm);
         if (getAbsolutePath(sm->getFilename(fullloc)).compare(0, 12, "/llvm-3.6.2/")
             == 0)
             return;
 
-        for (auto lval : _lvals)
+        for (auto &dua : _duas)
         {
-            if (paramCheck(*sm, FS, lval.get()))
-            {
-                finallvals.insert(lval->id);
+            // Check locInScope, keep things going if not in the scope
+            if (!locInScope(*sm,
+                        dyn_cast<CompoundStmt>(FS->getBody()),
+                        dua->lval->loc))
                 continue;
-            }
 
-            auto movstmt = scopeCheck(*sm, body, lval.get());
-            if (movstmt)
-            {
-                auto movloc = GetASTLoc(*sm, movstmt);
-                if (lval->loc < movloc)
-                {
-                    // DUA Siphon Code has Moved Log SourceLval id <> new LavaASTLoc
-                    movedlocs[lval->id] = movloc;
-                }
-                finallvals.insert(lval->id);
+            if (paramCheck(*sm, FS, dua->lval))
+                continue;
+
+            auto newloc = scopeCheck(*sm, body, dua.get());
+            if (!newloc) {  // Discard unusable DUA - mark dua as `fake_dua`
+                dua->fake_dua = true;
+                db->update(*dua);
+            } else {
+                auto movloc = GetASTLoc(*sm, newloc);
+                // DUA Siphon Code has Moved
+                uint64_t trace_index = dua->trace_index;
+
+                std::unique_ptr<SourceTrace> curtr(
+                        db->query_one<SourceTrace>(
+                            odb::query<SourceTrace>::loc.filename == movloc.filename &&
+                            odb::query<SourceTrace>::loc.begin.line == movloc.begin.line &&
+                            odb::query<SourceTrace>::loc.begin.column == movloc.begin.column &&
+                            odb::query<SourceTrace>::loc.end.line == movloc.end.line &&
+                            odb::query<SourceTrace>::loc.end.column == movloc.end.column &&
+                            odb::query<SourceTrace>::index >= trace_index));
+                dua->trace_index = curtr->id;
+                db->update(*dua);
             }
         }
     }
@@ -373,72 +380,73 @@ int main(int argc, const char **argv)
     odb::transaction *t = new odb::transaction(db->begin());
 
     TestMatcher Matcher;
-    TestCallMatcher CallMatcher;
     MatchFinder Finder;
-    Finder.addMatcher(functionDecl(has(compoundStmt())).bind("func"),
-                      &Matcher);
-    //Finder.addMatcher(callExpr().bind("call"),
-    //        &CallMatcher);
+    Finder.addMatcher(
+            functionDecl(has(compoundStmt())).bind("func"),
+            &Matcher);
 
-    //std::shared_ptr<SourceLval> _lval(db->load<SourceLval>(1));
-    bool flag = true;
-#define STRIDE 100000
-    for (int rounds = 1; flag; rounds += STRIDE)
+    std::vector<std::string> sourcefiles;
+    std::error_code ErrorCode;
+    for (recursive_directory_iterator I(SourceDir, ErrorCode), E;
+         I != E && !ErrorCode; I.increment(ErrorCode))
     {
-        _lvals.clear();
-        for (int i = rounds; i < rounds + STRIDE; i++)
+        if (filename(I->path())[0] == '.')
         {
-            std::shared_ptr<SourceLval> _lval;
-            try {
-                std::cerr << "SourceLval id " << i << "\n";
-                //db->load(i, *_lval);
-                _lval.reset(db->load<SourceLval>(i));
-            } catch (const odb::object_not_persistent &e) {
-                std::cerr << "RESET\n";
-                t->reset(db->begin());
-                flag = false;
-                break;
-            }
-
-            _lvals.emplace_back(_lval);
+          I.no_push();
+          continue;
         }
-        std::cerr << _lvals.size() << "\n";
-        if (!_lvals.size())  continue;
-
-        std::vector<std::string> sourcefiles;
-        std::error_code ErrorCode;
-        for (recursive_directory_iterator I(SourceDir, ErrorCode), E;
-             I != E && !ErrorCode; I.increment(ErrorCode))
-        {
-            if (filename(I->path())[0] == '.')
-            {
-              I.no_push();
-              continue;
-            }
-            if (extension(I->path()) == ".c")
-                sourcefiles.push_back(I->path());
-        }
-        for (auto sfile : sourcefiles)
-        {
-            std::cerr << sfile << "\n";
-            ClangTool Tool(OptionsParser.getCompilations(), {sfile});
-            Tool.run(newFrontendActionFactory(&Finder).get());
-            std::cerr << "Intermediate Result : " << finallvals.size() << "\n";
-        }
+        if (extension(I->path()) == ".c")
+            sourcefiles.push_back(I->path());
     }
 
-    std::ofstream outlvals(BugDB+".tmp", std::fstream::out);
-    outlvals << "Final Left : " << finallvals.size() << "\n";
-    outlvals << "[";
-    for (auto lid : finallvals)
-        outlvals << lid << ",";
-    outlvals << "]\n";
-    outlvals.close();
 
-    std::ofstream outmap(BugDB+".idmap", std::fstream::out);
-    for (auto mit : movedlocs)
-        outmap << mit.first << ":" << mit.second << "\n";
-    outmap.close();
+#define STRIDE 100000
+    uint64_t i = 1;
+    do {
+        _duas.clear();
+
+        odb::result<Dua> duaquery(
+                db->query<Dua>(
+                    odb::query<Dua>::id < i + STRIDE
+                  && odb::query<Dua>::id >= i));
+
+        for (odb::result<Dua>::iterator rit(duaquery.begin());
+                rit != duaquery.end(); rit++) {
+
+            _duas.emplace_back(rit.load());
+        }
+
+        //std::cerr << sfile << "\n";
+        ClangTool Tool(OptionsParser.getCompilations(), sourcefiles);
+        Tool.run(newFrontendActionFactory(&Finder).get());
+        //std::cerr << "Intermediate Result : " << finallvals.size() << "\n";
+
+        i += STRIDE;
+    } while (_duas.size() > 0);
+
+
+    // Update Bugs used invalid Duas to Invalid Type
+    odb::result<Bug> allbugs(db->query<Bug>());
+    for (odb::result<Bug>::iterator rit(allbugs.begin());
+            rit != allbugs.end(); rit++) {
+
+        Bug *bug = rit.load();
+        if (bug->trigger->dua->fake_dua) {
+            bug->type = Bug::TYPE_END;
+            db->update(*bug);
+        } else {
+            if (bug->type != Bug::CHAFF_STACK_UNUSED) {
+                for (uint64_t dua_id : bug->extra_duas) {
+                    const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
+                    if (dua_bytes->dua->fake_dua) {
+                        bug->type = Bug::TYPE_END;
+                        db->update(*bug);
+                        break;
+                    }
+                }
+            }
+        }
+    }
 
     t->commit();
     return 0;
