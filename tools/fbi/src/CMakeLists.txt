@@ -51,7 +51,7 @@ target_link_libraries(fbi
     z
     odb
     odb-pgsql
-    jsoncpp
+    jsoncppoldabi
     pq
     protobuf
     ${PANDA_BUILD_DIR}/i386-softmmu/plog.pb.o
