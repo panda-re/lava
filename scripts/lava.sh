@@ -83,6 +83,7 @@ reset_db=0
 add_queries=0
 make=0
 taint=0
+sanitize=0
 inject=0
 num_trials=0
 kt=""
@@ -149,6 +150,7 @@ if [ $reset -eq 1 ]; then
     deldir "$directory/$name/"'*rr-*'
     # remove all plog files in the directory
     deldir "$directory/$name/*.plog"
+    deldir "$directory/$name/san"
     progress "everything" 0 "Truncating logs..."
     for i in $(ls "$logs" | grep '.log$'); do
         truncate "$logs/$i"
@@ -240,6 +242,7 @@ fi
 if [ $sanitize -eq 1 ]; then
     lf="$logs/sanitize.log"
     truncate "$lf"
+    progress "everything" 1 "Sanitize step -- "
     run_remote "$testinghost" "$scripts/sanitize.sh $project_name" "$lf"
 fi
 
