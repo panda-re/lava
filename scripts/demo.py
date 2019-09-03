@@ -1,3 +1,5 @@
+#XXX This is very old and certainly broken
+
 import getpass
 import os
 import re

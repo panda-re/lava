@@ -41,7 +41,7 @@ taint=0
 inject=0
 num_trials=0
 kt=""
-demo=0
+validate=0
 curtail=0
 bugtypes="ptr_add,rel_write" # defaults
 atptypes="pointer_write" # default - Note this does nothing for now
@@ -76,7 +76,6 @@ USAGE() {
 
   echo
   echo "== Expert only options =="
-  echo "  --demo                        Run lava demo"
   echo "  --test-data-flow              Only inject data-flow argument, no bugs"
   echo "  --curtail [count]             Curtail bug-finding after count bugs"
   echo "  --enable-knob-trigger [knob]  Enable knob trigger with specified knob" # TODO: what does that mean? Maybe disable this entirely
@@ -100,11 +99,6 @@ if [ -z "$project_name" ]; then
     USAGE
 fi
 . `dirname $0`/vars.sh
-
-if [[ $demo -eq 1 ]]
-then
-    gnome-terminal --geometry=90x40  -x bash -c "python $(dirname $0)/demo.py $json; read" &
-fi
 
 progress "everything" 1 "JSON file is $json"
 
@@ -141,8 +135,9 @@ if [ $reset -eq 1 ]; then
     deldir "$sourcedir"
     deldir "$bugsdir"
     deldir "$directory/$name/inputs"
-    deldir "$directory/$name/"'*rr-*'
+    deldir "$directory/$name/${name}_validate"
     # remove all plog files in the directory
+    deldir "$directory/$name/"'*rr-*'
     deldir "$directory/$name/*.plog"
     progress "everything" 0 "Truncating logs..."
     for i in $(ls "$logs" | grep '.log$'); do
@@ -158,17 +153,7 @@ if [ $validate -eq 1 ]; then
     tick
     progress "everything" 1  "Validating configuration"
     lf="$logs/validate.log"
-    sourcedir_v="${sourcedir}_valiate"
-    run_remote "$buildhost" "cp -r $sourcedir $sourcedir_v cd $sourcedir_v && $makecmd" "$lf"
-    run_remote "$buildhost" "cd $sourcedir_v && rm -rf lava-install" "$lf"
-    run_remote "$buildhost" "cd $sourcedir_v && $install" "$lf"
-
-    for input in $inputs # TODO validate inputs and exit codes
-    do
-        progress "everything" 1 "Validating input $input"
-        run_remote "$buildhost" "echo TODO $input" "$lf"
-    done
-    deldir $sourcedir_v
+    run_remote "$buildhost" "$scripts/validate.sh $project_name" "$lf"
     tock
     echo "validate complete $time_diff seconds"
 fi
@@ -229,7 +214,7 @@ if [ $taint -eq 1 ]; then
         run_remote "$pandahost" "psql -U postgres -c \"delete from dua_viable_bytes; delete from labelset;\" $db" "$lf"
     fi
     progress "everything" 1 "Taint step -- running panda and fbi"
-    for input in $inputs
+    for input in $inputs_arr # XXX: This was broken until recently. Not sure how things used to work. - AF. Sept 19
     do
         i=`echo $input | sed 's/\//-/g'`
         lf="$logs/bug_mining-$i.log"

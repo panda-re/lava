@@ -62,7 +62,7 @@ function parse_args {
                reset=1
                progress "everything" 0 "Reset step will be executed"
                ;;
-            -r|--validate)
+            -v|--validate)
                validate=1
                progress "everything" 0 "Validate step will be executed"
                ;;

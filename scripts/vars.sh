@@ -1,5 +1,5 @@
-#!/bin/sh
-# Set all our environment variables
+#!/bin/bash
+# Set all our environment variables. Runs as a _bash_ (not sh) script
 # $lava, $json, and  must be set prior to calling this
 
 if [ -z ${project_name+x} ]; then
@@ -50,7 +50,9 @@ tarfiledir="$tar_dir"
 tarfile="$tarfiledir/$(jq -r '.tarfile' $json)"
 directory=$output_dir
 
+# Provide inputs as a space-seperated string and an actual list
 inputs=`jq -r '.inputs' $json  | jq 'join (" ")' | sed 's/\"//g' `
+inputs_arr=$(jq -r '.inputs[]' $json)
 
 fixupscript="null"
 if [ "$(jq -r .fixupscript $json)" != "null" ]; then
@@ -71,8 +73,13 @@ testinghost="$(jq -r '.testinghost // "docker"' $json)"
 logs="$output_dir/$name/logs"
 
 makecmd="$(jq -r .make $json)"
+# runcmd ('command' in .json) and install have {foo}style format strings, change to $foo style
 install=$(jq -r .install $json)
 install="${install/\{config_dir\}/$config_dir}" # Format string replacement for config_dir
+runcmd=$(jq -r .command $json)
+runcmd="${runcmd/\{install_dir\}/\$install_dir}" # Format string replacement for install_dir
+runcmd="${runcmd/\{input_file\}/\$input_file}"   # Format string replacement for input_file
+
 post_install="$(jq -r .post_install $json)"
 install_simple=$(jq -r .install_simple $json)
 configure_cmd=$(jq -r '.configure // "/bin/true"' $json)
