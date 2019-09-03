@@ -211,7 +211,7 @@ if [ $taint -eq 1 ]; then
         # If we didn't just reset the DB, we need clear out any existing taint labels before running FBI
         progress "everything" 1 "Clearing taint data from DB"
         lf="$logs/dbwipe_taint.log"
-        run_remote "$pandahost" "psql -U postgres -c \"delete from dua_viable_bytes; delete from labelset;\" $db" "$lf"
+        run_remote "$pandahost" "psql -U postgres -c \"delete from dua_viable_bytes; delete from labelset;\" $db || (echo -e 'Error. Taint step cannot run without prior initialization.\nDid you run lava.sh -a -k $name' && false)" "$lf"
     fi
     progress "everything" 1 "Taint step -- running panda and fbi"
     for input in $inputs_arr # XXX: This was broken until recently. Not sure how things used to work. - AF. Sept 19

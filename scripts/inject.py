@@ -158,6 +158,13 @@ if __name__ == "__main__":
 
     db = LavaDatabase(project)
 
+    nobug_msg = "No bugs in project. Try running lava.sh with -t to do the taint analysis (or -a -k)"
+    try:
+        assert(db.has_bugs()), nobug_msg
+    except Exception as e: # XXX: Should be a psycopg2.ProgrammingError or psycopg2.InternalError
+        print(e)
+        raise RuntimeError(nobug_msg)
+
     try:
         os.makedirs(lp.bugs_top_dir)
     except Exception: pass

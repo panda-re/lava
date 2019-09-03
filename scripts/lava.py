@@ -243,6 +243,9 @@ class LavaDatabase(object):
         self.Session = sessionmaker(bind=self.engine)
         self.session = self.Session()
 
+    def has_bugs(self):
+        return self.session.query(Bug.id).count() > 1
+
     # If we have over a million bugs, don't bother counting things
     def huge(self):
         return self.session.query(Bug.id).count() > 1000000
