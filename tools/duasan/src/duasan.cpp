@@ -317,15 +317,23 @@ public :
                 // DUA Siphon Code has Moved
                 uint64_t trace_index = dua->trace_index;
 
+                if (movloc.filename == dua->lval->loc.filename &&
+                  !(dua->lval->loc.begin < movloc.begin))
+                    continue;
+
                 std::unique_ptr<SourceTrace> curtr(
                         db->query_one<SourceTrace>(
                             odb::query<SourceTrace>::loc.filename == movloc.filename &&
                             odb::query<SourceTrace>::loc.begin.line == movloc.begin.line &&
                             odb::query<SourceTrace>::loc.begin.column == movloc.begin.column &&
-                            odb::query<SourceTrace>::loc.end.line == movloc.end.line &&
-                            odb::query<SourceTrace>::loc.end.column == movloc.end.column &&
+                            //odb::query<SourceTrace>::loc.end.line == movloc.end.line &&
+                            //odb::query<SourceTrace>::loc.end.column == movloc.end.column &&
                             odb::query<SourceTrace>::index >= trace_index));
-                dua->trace_index = curtr->id;
+                if (curtr) {
+                    dua->trace_index = curtr->id;
+                } else {
+                    dua->fake_dua = true;
+                }
                 db->update(*dua);
             }
         }
@@ -374,6 +382,7 @@ static cl::OptionCategory ToolTemplateCategory("tool-template options");
 int main(int argc, const char **argv)
 {
     CommonOptionsParser OptionsParser(argc, argv, ToolTemplateCategory);
+    //cl::ParseCommandLineOptions(argc, argv);
 
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
                 BugDB));
@@ -385,6 +394,8 @@ int main(int argc, const char **argv)
             functionDecl(has(compoundStmt())).bind("func"),
             &Matcher);
 
+    std::vector<std::string> sourcefiles = OptionsParser.getSourcePathList();
+    /*
     std::vector<std::string> sourcefiles;
     std::error_code ErrorCode;
     for (recursive_directory_iterator I(SourceDir, ErrorCode), E;
@@ -398,6 +409,7 @@ int main(int argc, const char **argv)
         if (extension(I->path()) == ".c")
             sourcefiles.push_back(I->path());
     }
+    */
 
 
 #define STRIDE 100000
@@ -425,6 +437,7 @@ int main(int argc, const char **argv)
     } while (_duas.size() > 0);
 
 
+    std::cerr << "Finished cleaning up DUA, now updating Bugs\n";
     // Update Bugs used invalid Duas to Invalid Type
     odb::result<Bug> allbugs(db->query<Bug>());
     for (odb::result<Bug>::iterator rit(allbugs.begin());
