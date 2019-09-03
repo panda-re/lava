@@ -13,6 +13,7 @@ function parse_args {
             add_queries=1
             make=1
             taint=1
+            sanitize=1
             inject=1
             num_trials=3
             progress "everything" 0 "All steps will be executed"
@@ -32,6 +33,7 @@ function parse_args {
                add_queries=1
                make=1
                taint=1
+               sanitize=1
                inject=1
                num_trials=3
                progress "everything" 0 "All steps will be executed"
@@ -47,6 +49,7 @@ function parse_args {
                add_queries=1
                make=1
                taint=1
+               sanitize=1
                inject=1
                num_trials=3
                progress "everything" 0 "All steps will be executed"
