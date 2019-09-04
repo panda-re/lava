@@ -94,6 +94,10 @@ function parse_args {
                num_trials=1
                progress "everything" 0 "[TESTING] Inject data_flow only, 0 bugs"
                ;;
+            --reset-taint) # For testing, reset taint labels in database so we can rerun FBI by hand
+               reset_taint_labels=1
+               progress "everything" 0 "[TESTING] Resetting taint labels"
+               ;;
 
             # Arguments that take options
             -i|--inject)

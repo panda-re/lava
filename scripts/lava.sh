@@ -42,6 +42,7 @@ inject=0
 num_trials=0
 kt=""
 validate=0
+reset_taint_labels=0
 curtail=0
 bugtypes="ptr_add,rel_write" # defaults
 atptypes="pointer_write" # default - Note this does nothing for now
@@ -77,6 +78,7 @@ USAGE() {
   echo
   echo "== Expert only options =="
   echo "  --test-data-flow              Only inject data-flow argument, no bugs"
+  echo "  --reset-taint                 Reset all taint labels in database (to rerun FBI by hand)"
   echo "  --curtail [count]             Curtail bug-finding after count bugs"
   echo "  --enable-knob-trigger [knob]  Enable knob trigger with specified knob" # TODO: what does that mean? Maybe disable this entirely
   echo
@@ -203,16 +205,21 @@ if [ $reset_db -eq 1 ]; then
     RESET_DB
 fi
 
+# if requested, or if we're about to call fbi and we didn't just clear the whole DB
+if [ $reset_taint_labels -eq 1 ] || ( [ $taint -eq 1 ] && [ $reset_db -eq 0 ] ); then
+# If we didn't just reset the DB, we need clear out any existing taint labels before running FBI
+    tick
+    progress "everything" 1 "Clearing taint data from database"
+    lf="$logs/dbwipe_taint.log"
+    run_remote "$pandahost" "psql -U postgres -c \"delete from bug; delete from dua; delete from dua_viable_bytes; delete from labelset; delete from duabytes;\" $db" "$lf"
+    tock
+    echo "reset_taint_labels complete $time_diff seconds"
+fi
+
 
 if [ $taint -eq 1 ]; then
     tick
 
-    if [ $reset_db -eq 0 ]; then
-        # If we didn't just reset the DB, we need clear out any existing taint labels before running FBI
-        progress "everything" 1 "Clearing taint data from DB"
-        lf="$logs/dbwipe_taint.log"
-        run_remote "$pandahost" "psql -U postgres -c \"delete from dua_viable_bytes; delete from labelset;\" $db || (echo -e 'Error. Taint step cannot run without prior initialization.\nDid you run lava.sh -a -k $name' && false)" "$lf"
-    fi
     progress "everything" 1 "Taint step -- running panda and fbi"
     for input in $inputs_arr # XXX: This was broken until recently. Not sure how things used to work. - AF. Sept 19
     do

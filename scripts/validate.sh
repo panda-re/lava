@@ -129,9 +129,32 @@ else
     exit 1
 fi
 
-progress "validate" 0  "Done building. Time to test inputs"
-
 install_dir="$(pwd)/lava-install"
+
+binpath=${runcmd/\$install_dir/$install_dir}
+binpath=${binpath/\$input_file/}
+file_results=$(file $binpath)
+
+# Analyze the produced binary and ensure the following properties:
+# * It's 32 bits
+if [[ $file_results != *"ELF 32-bit LSB shared object"* ]]; then
+    echo "Error: Target binary ($binpath) is not 32 bit"
+    exit 1
+fi
+# * It has debugging symbols
+if [[ $file_results != *"not stripped"* ]]; then
+    echo "Error: Target binary ($binpath) missing debug symbols"
+    exit 1
+fi
+# * Debugging symbols are dwarf version 2 (CFLAGS had -gdwarf-2) for PRI
+gdwarf_versions=$(readelf --debug-dump=info $binpath | grep -A 2 'Compilation Unit @' | grep Version | awk '{ print $2 }' | sort -u)
+if [[ "$gdwarf_versions" != "2" ]]; then
+    echo "Error: Target binary ($binpath) compiled with unsupported gdwarf version. Expected 2, got $gdwarf_versions"
+    exit 1
+fi
+
+progress "validate" 0  "Target binary looks okay"
+
 
 for input_file in $inputs_arr; do
     progress "everything" 1 "Validating input '$input_file'"

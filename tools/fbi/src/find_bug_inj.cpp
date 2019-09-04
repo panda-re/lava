@@ -397,6 +397,7 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         std::initializer_list<const DuaBytes *> extra_duas);
 
 void taint_query_pri(Panda__LogEntry *ple) {
+    dprintf("taint_query_pri\n");
     assert (ple != NULL);
     Panda__TaintQueryPri *tqh = ple->taint_query_pri;
     assert (tqh != NULL);
@@ -639,13 +640,14 @@ void update_liveness(Panda__LogEntry *ple) {
             // keep track of unique taint label sets
             update_unique_taint_sets(tq->unique_label_set);
         }
-//        if (debug) { spit_tq(tq); printf("\n"); }
-
         // This should be O(mn) for m sets, n elems each.
         // though we should have n >> m in our worst case.
         const std::vector<uint32_t> &cur_labels =
             ptr_to_labelset.at(tq->ptr)->labels;
-        merge_into(cur_labels.begin(), cur_labels.end(), all_labels);
+
+        //if (cur_labels != all_labels) { // No impact on performance?
+            merge_into(cur_labels.begin(), cur_labels.end(), all_labels);
+        //}
     }
     t.commit();
 
@@ -656,14 +658,20 @@ void update_liveness(Panda__LogEntry *ple) {
     for (uint32_t l : all_labels) {
         liveness[l]++;
 
-        dprintf("checking viability of %lu duas\n", recent_dead_duas.size());
         auto it_duas = dua_dependencies.find(l);
+        if (it_duas != dua_dependencies.end()) {
+            // Only print if we have any duas
+            dprintf("checking viability of %lu duas\n", recent_dead_duas.size());
+        }
         if (it_duas != dua_dependencies.end()) {
             std::set<const Dua *> &depends = it_duas->second;
             merge_into(depends.begin(), depends.end(), depends.size(), duas_to_check);
         }
     }
 
+    if (duas_to_check.size() == 0) return;
+
+    dprintf("%lu duas to check \n", duas_to_check.size());
     std::vector<const Dua *> non_viable_duas;
     for (const Dua *dua : duas_to_check) {
         // is this dua still viable?
@@ -1023,6 +1031,33 @@ int main (int argc, char **argv) {
     */
     pandalog_open(plog.c_str(), "r");
     uint64_t num_entries_read = 0;
+
+    // Ensure we see a potential DUA and ATP at least once
+    // Otherwise nothing will work so raise an error
+    bool found_pdua = false;
+    bool found_patp = false;
+    while (1) {
+        Panda__LogEntry *ple;
+        ple = pandalog_read_entry();
+        if (ple == NULL)  break;
+
+        if (ple->taint_query_pri) found_pdua = true; // potential DUA
+        if (ple->attack_point)    found_patp = true; // potential ATP
+
+        if (found_pdua && found_patp) break; // Everything is OK, finish early
+    }
+
+    if (!found_pdua) {
+        std::cerr << "No potential DUAs identified in pandalog\n";
+        throw std::runtime_error("No potential DUAs in pandalog. Did you run with CFLAGSincluding -g and -gdwarf-2");
+    }
+
+    if (!found_patp) {
+        std::cerr << "No potential ATPs identified in pandalog\n";
+        throw std::runtime_error("No potential ATPs in pandalog");
+    }
+
+    pandalog_seek(0); // Reset pandalog iterator for actual parsing
 
     while (1) {
         // collect log entries that have same instr count (and pc).
