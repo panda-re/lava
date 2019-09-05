@@ -131,18 +131,21 @@ fi
 
 install_dir="$(pwd)/lava-install"
 
+# Substitute install_dir, then pull out up to the first space for the binary path
 binpath=${runcmd/\$install_dir/$install_dir}
-binpath=${binpath/\$input_file/}
+binpath=$(echo $binpath | awk '{print $1}')
 file_results=$(file $binpath)
 
 # Analyze the produced binary and ensure the following properties:
 # * It's 32 bits
-if [[ $file_results != *"ELF 32-bit LSB shared object"* ]]; then
+if [[ $file_results != *"ELF 32-bit LSB"* ]]; then
+    echo $file_results
     echo "Error: Target binary ($binpath) is not 32 bit"
     exit 1
 fi
 # * It has debugging symbols
 if [[ $file_results != *"not stripped"* ]]; then
+    echo $file_results
     echo "Error: Target binary ($binpath) missing debug symbols"
     exit 1
 fi
