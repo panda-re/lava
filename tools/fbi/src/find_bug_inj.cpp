@@ -1025,6 +1025,7 @@ int main (int argc, char **argv) {
     std::string db_name = project["db"].asString() + host.get("db_suffix", "").asString();
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
                 db_name));
+    fflush(NULL); // When called by inject.py we need to flush output for it to get to our log file
     /*
      re-read pandalog, this time focusing on taint queries.  Look for
      dead available data, attack points, and thus bug injection oppotunities
@@ -1040,7 +1041,7 @@ int main (int argc, char **argv) {
     unsigned int plog_entry_count = 0;
     while (1) {
         Panda__LogEntry *ple;
-        ple = pandalog_read_entry();
+        ple = pandalog_read_entry(); // This prints a lot of stuff to STDOUT :(
         if (ple == NULL)  break;
         plog_entry_count++;
 
