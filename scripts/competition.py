@@ -331,7 +331,7 @@ def main():
 
         if len(bug_list) < int(args.minYield) or len(bug_list) == 0:
             print("\n\nXXX Yield too low after injection -- Require at least {} bugs for"
-                    " competition, only have {}".format(args.minYield, len(real_bug_list)))
+                    " competition, only have {}".format(args.minYield, len(bug_list)))
             raise RuntimeError("Failure")
 
     # Re-validate one more time with all bugs to make sure they all work together
