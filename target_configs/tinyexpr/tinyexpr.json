@@ -2,7 +2,7 @@
     "name": "tinyexpr",
     "db": "tinyexpr",
     "preprocessed": true,
-    "dataflow": true,
+    "dataflow": false,
 
     "tarfile": "tinyexpr-pre.tar.gz",
 

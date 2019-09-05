@@ -2,7 +2,7 @@
     "name": "grep",
     "db": "grep",
     "preprocessed": true,
-    "dataflow": true,
+    "dataflow": false,
 
     "tarfile": "grep-3.1-pre.tar.gz",
 
@@ -14,9 +14,9 @@
     "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/grep '\\(.\\).\\(.\\)' {input_file}",
-    "injfixupsscript": "fixup.sh {bug_build}",
+    "COMMENT_injfixupsscript": "fixup.sh {bug_build}",
 
-    "main_file": [ "grep-pre.c" ], 
+    "main_file": [ "src/grep-pre.c" ], 
 
     "inputs": [ "inputs/hi.txt" ]
 }

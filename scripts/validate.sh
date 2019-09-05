@@ -119,6 +119,8 @@ fi
 
 ### TODO: validate that injfixupscript argument doesn't break build
 
+### TODO: validate that lava_get can be injected successfully (or just that main_file) exists
+
 
 # INSTALL
 progress "validate" 0  "Installing..."
