@@ -73,7 +73,7 @@ def get_bug_list(args, db, allowed_bugtypes=None, allowed_atptypes=None):
 # to put buggy source. locking etc is so that
 # two instances of inject.py can run at same time
 # and they use different directories
-def get_bugs_parent(lp):
+def get_bugs_parent(lp, nolock=False):
     bugs_parent = ""
     candidate = 0
     bugs_lock = None
@@ -82,7 +82,7 @@ def get_bugs_parent(lp):
 
     while bugs_parent == "":
         candidate_path = join(lp.bugs_top_dir, str(candidate))
-        if args.noLock:
+        if nolock:
             # just use 0 always
             bugs_parent = join(candidate_path)
         else:
@@ -94,7 +94,7 @@ def get_bugs_parent(lp):
             except lockfile.AlreadyLocked:
                 candidate += 1
 
-    if not args.noLock:
+    if not nolock:
         atexit.register(bugs_lock.release)
         for sig in [signal.SIGINT, signal.SIGTERM]:
             signal.signal(sig, lambda s, f: sys.exit(0))
@@ -103,7 +103,7 @@ def get_bugs_parent(lp):
     lp.set_bugs_parent(bugs_parent)
     return bugs_parent
 
-if __name__ == "__main__":
+def main():
     update_db = False
     parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
     parser.add_argument('host_json', help = 'Host JSON file')
@@ -218,6 +218,10 @@ if __name__ == "__main__":
             db.session.add(Run(build=build, fuzzed=None, exitcode=-22,
                                output=str(e), success=False, validated=False))
             db.session.commit()
-        raise
+        print "inject failed after %.2f seconds" % (time.time() - start_time)
+        return
 
     print "inject complete %.2f seconds" % (time.time() - start_time)
+
+if __name__ == "__main__":
+    main()

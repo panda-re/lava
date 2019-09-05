@@ -2,6 +2,23 @@
 . `dirname $0`/funcs.sh
 digit_re='^[0-9]+$'
 
+# Default values for all configuration varaibles
+ok=0
+reset=0
+reset_db=0
+add_queries=0
+make=0
+taint=0
+inject=0
+num_trials=0
+kt=""
+validate=0
+reset_taint_labels=0
+curtail=0
+bugtypes="ptr_add,rel_write" # defaults
+atptypes="pointer_write" # default - Note this does nothing for now
+many=50
+
 function parse_args {
     echo
     progress "everything" 0 "Parsing args"
@@ -75,7 +92,7 @@ function parse_args {
                progress "everything" 0 "Add queries step will be executed"
                ;;
             -m|--make)
-               make=1 # TODO: what does this mean? Make queries?
+               make=1 # TODO: does this mean make the target with the previously added queries? - Merge into add-queries step?
                progress "everything" 0 "Make step will be executed"
                ;;
             -t|--taint)

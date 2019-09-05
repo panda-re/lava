@@ -1,22 +1,16 @@
 #!/bin/bash
 #
-# A script to run all of lava.
+# A script to run all the components of lava
 #
-# Lava consists of three main steps.
+# 
 #
-# Step Q: Add taint and attack point queries to source.
-# Step M: Make the source with the queries
-# Step T: Use panda & fbi to populate db with prospective bugs
-# Step I: Try injecting bugs.
+# At a high level, running this script with -a -k will:
 #
-# Here is what everything consists of.
-#
-# Erases postgres db for this target.
-# Uses lavatool to inject queries.
-# Compiles resulting program.
+# Erase postgres db for this target.
+# Use lavatool to inject queries and compile the program with queries
 # Runs that program under PANDA taint analysis
 # Runs fbi on resulting pandalog and populates postgres db with prospective bugs to inject
-# Tries injecting a single bug.
+# Attempt to inject bugs
 #
 # Json file required params
 #
@@ -31,22 +25,6 @@
 # testinghost: what host to test injected bugs on
 # fixupscript: script to run after add_query to fix up src before make
 
-# defaults
-ok=0
-reset=0
-reset_db=0
-add_queries=0
-make=0
-taint=0
-inject=0
-num_trials=0
-kt=""
-validate=0
-reset_taint_labels=0
-curtail=0
-bugtypes="ptr_add,rel_write" # defaults
-atptypes="pointer_write" # default - Note this does nothing for now
-many=50 
 
 version="2.0.0"
 trap '' PIPE
@@ -93,6 +71,7 @@ fi
 . `dirname $0`/funcs.sh
 lava=$(dirname $(dirname $(readlink -f "$0")))
 
+# defaults for all bash flags are in arg_parse.sh
 source `dirname $0`/arg_parse.sh
 parse_args $@
 
@@ -205,13 +184,12 @@ if [ $reset_db -eq 1 ]; then
     RESET_DB
 fi
 
-# if requested, or if we're about to call fbi and we didn't just clear the whole DB
-if [ $reset_taint_labels -eq 1 ] || ( [ $taint -eq 1 ] && [ $reset_db -eq 0 ] ); then
-# If we didn't just reset the DB, we need clear out any existing taint labels before running FBI
+# if we're about to call fbi and we didn't just clear the whole DB: clear out stale data from DB
+if [ $taint -eq 1 ] && [ $reset_db -eq 0 ]; then
     tick
     progress "everything" 1 "Clearing taint data from database"
     lf="$logs/dbwipe_taint.log"
-    run_remote "$pandahost" "psql -U postgres -c \"delete from bug; delete from dua; delete from dua_viable_bytes; delete from labelset; delete from duabytes;\" $db" "$lf"
+    run_remote "$pandahost" "psql -U postgres -c \"delete from build_bugs; delete from run; delete from bug; delete from dua; delete from dua_viable_bytes; delete from labelset; delete from duabytes;\" $db" "$lf"
     tock
     echo "reset_taint_labels complete $time_diff seconds"
 fi
@@ -243,7 +221,7 @@ if [ $taint -eq 1 ]; then
 fi
 
 if [ $inject -eq 1 ]; then
-    progress "everything" 1 "Injecting step -- $num_trials trials"
+    progress "everything" 1 "Injection step -- $num_trials trials"
     if [ "$exitCode" = "null" ]; then
         exitCode="0";
     fi
@@ -256,7 +234,7 @@ if [ $inject -eq 1 ]; then
         if [ "$injfixupsscript" != "null" ]; then
             fix="--fixupsscript='$injfixupsscript'"
         fi
-        set +e # A single injection is allowed to fail
+        set +e # A single injection attempt can fail without killing this entire script
         run_remote "$testinghost" "$python $scripts/inject.py -t $bugtypes -a $atptypes -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
         grep yield "$lf"  | grep " real bugs "
         set -e
