@@ -184,12 +184,13 @@ if [ $reset_db -eq 1 ]; then
     RESET_DB
 fi
 
-# if we're about to call fbi and we didn't just clear the whole DB: clear out stale data from DB
+# if we're about to call fbi and we didn't just clear the whole DB: drop the data FBI is about to replace (otherwise we get DB errors)
 if [ $taint -eq 1 ] && [ $reset_db -eq 0 ]; then
     tick
     progress "everything" 1 "Clearing taint data from database"
     lf="$logs/dbwipe_taint.log"
-    run_remote "$pandahost" "psql -U postgres -c \"delete from build_bugs; delete from run; delete from bug; delete from dua; delete from dua_viable_bytes; delete from labelset; delete from duabytes;\" $db" "$lf"
+    run_remote "$pandahost" "psql -U postgres -c \"TRUNCATE TABLE duabytes, labelset, dua, bug CASCADE;\" $db" "$lf"
+        # Using truncate ... cascade avoids cascading deletes one table at a time and is much faster
     tock
     echo "reset_taint_labels complete $time_diff seconds"
 fi
