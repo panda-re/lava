@@ -185,7 +185,7 @@ if [ $reset_db -eq 1 ]; then
 fi
 
 # if we're about to call fbi and we didn't just clear the whole DB: drop the data FBI is about to replace (otherwise we get DB errors)
-if [ $taint -eq 1 ] && [ $reset_db -eq 0 ]; then
+if [ $reset_taint_labels -eq 1 ] || ([ $taint -eq 1 ] && [ $reset_db -eq 0 ]); then
     tick
     progress "everything" 1 "Clearing taint data from database"
     lf="$logs/dbwipe_taint.log"
