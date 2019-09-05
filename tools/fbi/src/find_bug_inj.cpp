@@ -1034,22 +1034,23 @@ int main (int argc, char **argv) {
 
     // Ensure we see a potential DUA and ATP at least once
     // Otherwise nothing will work so raise an error
+    // Also count the total number of plog entries. XXX: If we switch to the C++ interface we could do this directly and then break this loop early once both found_p{dua,atp} are true
     bool found_pdua = false;
     bool found_patp = false;
+    unsigned int plog_entry_count = 0;
     while (1) {
         Panda__LogEntry *ple;
         ple = pandalog_read_entry();
         if (ple == NULL)  break;
+        plog_entry_count++;
 
         if (ple->taint_query_pri) found_pdua = true; // potential DUA
         if (ple->attack_point)    found_patp = true; // potential ATP
-
-        if (found_pdua && found_patp) break; // Everything is OK, finish early
     }
 
     if (!found_pdua) {
         std::cerr << "No potential DUAs identified in pandalog\n";
-        throw std::runtime_error("No potential DUAs in pandalog. Did you run with CFLAGSincluding -g and -gdwarf-2");
+        throw std::runtime_error("No potential DUAs in pandalog. Did you run with CFLAGS including -g and -gdwarf-2");
     }
 
     if (!found_patp) {
@@ -1059,6 +1060,7 @@ int main (int argc, char **argv) {
 
     pandalog_seek(0); // Reset pandalog iterator for actual parsing
 
+    unsigned int plog_idx=0;
     while (1) {
         // collect log entries that have same instr count (and pc).
         // these are to be considered together.
@@ -1067,11 +1069,15 @@ int main (int argc, char **argv) {
         if (ple == NULL)  break;
         num_entries_read++;
         if ((num_entries_read % 10000) == 0) {
-            printf("processed %lu pandalog entries \n", num_entries_read);
+            float complete_p = plog_idx;
+            complete_p /= plog_entry_count;
+            complete_p *= 100;
+            printf("processed %lu pandalog entries: %.2f%% complete \n", num_entries_read, complete_p);
             std::cout << num_bugs_added_to_db << " added to db "
                 << recent_dead_duas.size() << " current duas "
                 << num_real_duas << " real duas "
                 << num_fake_duas << " fake duas\n";
+            fflush(NULL); // When called by inject.py we need to flush output for it to get to our log file
         }
 
         if (ple->taint_query_pri) {
@@ -1091,6 +1097,7 @@ int main (int argc, char **argv) {
             std::cout << "*** Curtailing output of fbi at " << num_real_duas << "\n";
             break;
         }
+        plog_idx++;
     }
     std::cout << num_bugs_added_to_db << " added to db ";
     pandalog_close();
