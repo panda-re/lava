@@ -321,14 +321,13 @@ public :
                   !(dua->lval->loc.begin < movloc.begin))
                     continue;
 
-                std::unique_ptr<SourceTrace> curtr(
-                        db->query_one<SourceTrace>(
+                SourceTrace *curtr = &*db->query<SourceTrace>(
                             odb::query<SourceTrace>::loc.filename == movloc.filename &&
                             odb::query<SourceTrace>::loc.begin.line == movloc.begin.line &&
                             odb::query<SourceTrace>::loc.begin.column == movloc.begin.column &&
                             //odb::query<SourceTrace>::loc.end.line == movloc.end.line &&
                             //odb::query<SourceTrace>::loc.end.column == movloc.end.column &&
-                            odb::query<SourceTrace>::index >= trace_index));
+                            odb::query<SourceTrace>::index >= trace_index).begin();
                 if (curtr) {
                     dua->trace_index = curtr->id;
                 } else {
@@ -445,15 +444,17 @@ int main(int argc, const char **argv)
 
         Bug *bug = rit.load();
         if (bug->trigger->dua->fake_dua) {
-            bug->type = Bug::TYPE_END;
-            db->update(*bug);
+            //bug->type = Bug::TYPE_END;
+            //db->update(*bug);
+            db->erase(*bug);
         } else {
             if (bug->type != Bug::CHAFF_STACK_UNUSED) {
                 for (uint64_t dua_id : bug->extra_duas) {
                     const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
                     if (dua_bytes->dua->fake_dua) {
-                        bug->type = Bug::TYPE_END;
-                        db->update(*bug);
+                        //bug->type = Bug::TYPE_END;
+                        //db->update(*bug);
+                        db->erase(*bug);
                         break;
                     }
                 }
