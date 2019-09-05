@@ -75,10 +75,10 @@ logs="$output_dir/$name/logs"
 makecmd="$(jq -r .make $json)"
 # runcmd ('command' in .json) and install have {foo}style format strings, change to $foo style
 install=$(jq -r .install $json)
-install="${install/\{config_dir\}/$config_dir}" # Format string replacement for config_dir
+install=$(echo "$install" | awk -v dir=$config_dir '{ gsub(/{config_dir}/, dir); print }') # Actualy substitute
 runcmd=$(jq -r .command $json)
-runcmd="${runcmd/\{install_dir\}/\$install_dir}" # Format string replacement for install_dir
-runcmd="${runcmd/\{input_file\}/\$input_file}"   # Format string replacement for input_file
+runcmd=$(echo "$runcmd" | awk '{ gsub(/{install_dir}/, "$install_dir"); print }') # Leave variable
+runcmd=$(echo "$runcmd" | awk '{ gsub(/{input_file}/, "$input_file"); print }') # Leave variable
 
 post_install="$(jq -r .post_install $json)"
 install_simple=$(jq -r .install_simple $json)

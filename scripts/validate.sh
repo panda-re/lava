@@ -20,9 +20,6 @@ USAGE() {
     echo "Usage: $1 ProjectName"
 }
 
-set -e # Exit on error
-#set -x # Debug mode
-
 if [ $# -ne 1 ]; then
   USAGE $0
   exit 1
@@ -137,9 +134,9 @@ fi
 
 install_dir="$(pwd)/lava-install"
 
-# Substitute install_dir, then pull out up to the first space for the binary path
-binpath=${runcmd/\$install_dir/$install_dir}
-binpath=$(echo $binpath | awk '{print $1}')
+# Substitute install_dir and read up to the first space in from runcmd (to get bin path)
+binpath=$(echo "$runcmd" | awk -v dir=$install_dir '{ gsub(/\$install_dir/, dir); print $1 }')
+
 file_results=$(file $binpath)
 
 # Analyze the produced binary and ensure the following properties:
@@ -169,8 +166,8 @@ for input_file in $inputs_arr; do
     progress "everything" 1 "Validating input '$input_file'"
     # Substitute variable strings with real values
     full_input="$config_dir/$input_file"
-    this_runcmd=${runcmd/\$install_dir/$install_dir}
-    this_runcmd=${this_runcmd/\$input_file/$full_input}
+
+    this_runcmd=$(echo "$runcmd" | awk -v dir=$install_dir '{ gsub(/\$install_dir/, dir); print }' | awk -v inp=$full_input '{ gsub(/\$input_file/, inp); print }')
 
     if [ ! -e $full_input ]; then
         echo "Missing input $full_input"
@@ -179,10 +176,11 @@ for input_file in $inputs_arr; do
 
     /bin/sh -c "$this_runcmd" > /dev/null # Run the command
     exit_c=$?
-    if [ $exit_c -eq 0 ]; then
+    if [ $exit_c -eq 0 ]
+    then
         echo "OK"
     else
-        echo "Bad exit code for input $input_file:\n\tCommand $raw_cmd\n\tReturned $exit_c"
+        echo -e "Bad exit code for input $input_file:\n\tCommand $this_runcmd\n\tReturned $exit_c"
         exit 1
     fi
 
