@@ -21,6 +21,7 @@ import random
 from math import sqrt
 from os.path import basename, dirname, join, abspath, exists
 
+from utils import bad_bin_search
 from vars import parse_vars
 from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     run_cmd, run_cmd_notimeout, mutfile, inject_bugs, LavaPaths, \
@@ -28,12 +29,7 @@ from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
     fuzzed_input_for_bug, get_trigger_line, AttackPoint, Bug, \
     get_allowed_bugtype_num, limit_atp_reuse
 
-# from pycparser.diversifier.diversify import diversify
-#from process_compile_commands import get_c_files
-
 version="2.0.0"
-
-RETRY_COUNT = 0
 
 # Build both scripts - in a seperate fn for testing
 def run_builds(scripts):
@@ -212,6 +208,31 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
 
     return [b.id for b in bugs_and_non_bugs]
 
+def inject_bug_list(bug_list, db, lp, project, args, host_json, dataflow, lavatoolseed):
+    '''
+    Given a list of bugs, try to inject them all and ensure the program still works
+
+    May raise an AssertionError if injection fails or validation breaks original program
+
+    Returns a list of validated bugs
+    '''
+
+    real_bug_list = []
+    # add bugs to the source code and check that we can still compile
+    (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, host_json, \
+                                      project, args, False, dataflow=dataflow, competition=True,
+                                      validated=False, lavatoolseed=lavatoolseed)
+
+    assert build is not None # build is none if injection fails
+
+    # Test if the injected bugs cause approperiate crashes and that our competition infrastructure parses the crashes correctly
+    # validate_bugs raise an AssertionError if the original input now a crash
+    real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
+                                      args, False, competition=True, bug_solutions=bug_solutions)
+
+    assert(real_bug_list is not None)
+    return real_bug_list
+
 def main():
     parser = argparse.ArgumentParser(prog="competition.py", description='Inject and test LAVA bugs.')
     parser.add_argument('host_json', help = 'Host JSON file')
@@ -229,7 +250,7 @@ def main():
             #help = ('Diversify source code. Default false.'))
     parser.add_argument('-c', '--chaff', action="store_true", default=False, # TODO chaf and unvalided bugs aren't always the same thing
             help = ('Leave unvalidated bugs in the binary'))
-    parser.add_argument('-t', '--bugtypes', action="store", default="rel_write",
+    parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
                         help = ('bug types to inject'))
     parser.add_argument('--version', action="version", version="%(prog)s {}".format(version))
 
@@ -293,21 +314,38 @@ def main():
     ## With our bug list in hand, we inject all these bugs and count how many we can trigger
     ###############
 
-    real_bug_list = []
-    # add bugs to the source code and check that we can still compile
-    (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json, \
-                                      project, args, False, dataflow=dataflow, competition=True,
-                                      validated=False, lavatoolseed=lavatoolseed)
-    assert build is not None # build is None when injection fails. Could block here to allow for manual patches
+    # Do a binary search over bug list to identify bugs that break the build
 
-    # Test if the injected bugs cause approperiate crashes and that our competition infrastructure parses the crashes correctly
-    real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                      args, False, competition=True, bug_solutions=bug_solutions)
+    # Closure on everything but bug_list
+    def inject_closure(new_bug_list):
+        return inject_bug_list(new_bug_list, db, lp, project, args, args.host_json, dataflow, lavatoolseed)
 
-    if len(real_bug_list) < int(args.minYield):
-        print("\n\nXXX Yield too low after injection -- Require at least {} bugs for"
+    orig_bugc = len(bug_list)
+
+    if orig_bugc > 1:  # We can't do a binary search over one item, just continue and detect if it's bad in re-validate step
+        bug_list = bad_bin_search(bug_list, inject_closure)
+        assert(bug_list is not None)
+        new_bugc = len(bug_list)
+        if new_bugc < orig_bugc:
+            print("Removed {} bad bugs from bug list".format(orig_bugc - new_bugc))
+
+        if len(bug_list) < int(args.minYield) or len(bug_list) == 0:
+            print("\n\nXXX Yield too low after injection -- Require at least {} bugs for"
+                    " competition, only have {}".format(args.minYield, len(real_bug_list)))
+            raise RuntimeError("Failure")
+
+    # Re-validate one more time with all bugs to make sure they all work together
+    try:
+        real_bug_list = inject_closure(bug_list)
+    except AssertionError:
+        print("Attempted to inject {} bugs that validated seperately but encountered errors".format(len(bug_list)))
+        raise
+
+    if len(real_bug_list) < int(args.minYield) or len(real_bug_list) == 0:
+        print("\n\nXXX Yield too low after final injection -- Require at least {} bugs for"
                 " competition, only have {}".format(args.minYield, len(real_bug_list)))
         raise RuntimeError("Failure")
+
 
     print "\n\n Yield acceptable: {}".format(len(real_bug_list))
 
@@ -576,7 +614,7 @@ done""".format(command = project['command'].format(**{"install_dir": "./lava-ins
     os.chmod(trigger_all_crashes, (stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IROTH | stat.S_IXOTH))
     # Build a version to ship in src
     run_builds([log_build_sh, public_build_sh])
-    print("Injected {} bugs".format(len(real_bug_list)))
+    print("Injected {} bugs into corpus at {}".format(len(real_bug_list), corpdir))
 
     print("Counting how many crashes competition infrastructure identifies...")
     run_cmd(trigger_all_crashes, cwd=corpdir) # Prints about segfaults

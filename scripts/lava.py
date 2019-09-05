@@ -1250,8 +1250,6 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     return validated
 
 
-
-@interactive_exceptions
 def test_orig(db, lp, project, update_db, input_files, build, expectedExitCode):
     timeout = project.get('timeout', 5)
     unfuzzed_outputs = {}
@@ -1283,14 +1281,18 @@ def test_orig(db, lp, project, update_db, input_files, build, expectedExitCode):
                                success=True, validated=False))
     return unfuzzed_outputs
 
-# validate this set of bugs
+# validate this set of bugs. Returns None if we've broken the program, otherwise a list of valid bugs
 def validate_bugs(bug_list, db, lp, project, input_files, build,
                   args, update_db, competition=False, bug_solutions=None):
 
     print("Validate bugs: {}".format(bug_list))
 
     print("Test for exit codes 0 or {}".format(args.exitCode))
-    unfuzzed_outputs = test_orig(db, lp, project, update_db, input_files, build, args.exitCode)
+    try:
+        unfuzzed_outputs = test_orig(db, lp, project, update_db, input_files, build, args.exitCode)
+    except AssertionError:
+        return None
+
     print("ORIG INPUT STILL WORKS\n")
 
     # second, try each of the fuzzed inputs and validate

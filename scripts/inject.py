@@ -190,6 +190,8 @@ def main():
         # determine which of those bugs actually cause a seg fault
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build,
                                       args, update_db)
+        if not real_bug_list:
+            raise RuntimeError("Target program no longer works for original input")
 
 
         def count_bug_types(id_list):

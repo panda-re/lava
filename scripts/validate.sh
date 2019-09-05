@@ -115,6 +115,10 @@ else
     exit 1
 fi
 
+### TODO: validate that CFLAGS can be updated with `CFLAGS=-DLAVA_LOGGING make`
+
+### TODO: validate that injfixupscript argument doesn't break build
+
 
 # INSTALL
 progress "validate" 0  "Installing..."

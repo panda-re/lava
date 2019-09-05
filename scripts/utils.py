@@ -1,13 +1,16 @@
-def bad_bin_search(args, fun):
+def bad_bin_search(args, fun, depth=0):
     '''
     Given a list of items and a function that takes a list,
     do a binary search to remove all items that cause fun to fail
 
     Assumes args starts with > 1 element
 
+    XXX: Runs out of memory if you have lots of failures and ~1000 or more bugs to test
+
     Returns a list of OK args
     '''
     if len(args) <= 1: # Already failed on this arg, don't retry it
+        print("Identified bad bug: {}".format(args[0]))
         return []
 
     mid = len(args)/2
@@ -16,17 +19,22 @@ def bad_bin_search(args, fun):
 
     if len(left):
         try: # If left still fails, reduce farther
-            fun(left)
+            res = fun(left)
+            if not len(res): raise RuntimeError("Recurse")
         except (AssertionError, RuntimeError):
-            left = bad_bin_search(left, fun)
+            left = bad_bin_search(left, fun, depth+1)
 
     if len(right):
         try: # If right still fails, reduce farther
-            fun(right)
+            #right = fun(right)
+            res = fun(right)
+            if not len(res): raise RuntimeError("Recurse")
         except (AssertionError, RuntimeError):
-            right = bad_bin_search(right, fun)
+            right = bad_bin_search(right, fun, depth+1)
 
-    return left + right
+    #return left + right
+    both =  left + right
+    return both
 
 if __name__ == "__main__":
     def test_fn(l):
