@@ -789,7 +789,6 @@ def collect_src_and_print(bugs_to_inject, db):
     return (src_files, input_files)
 
 
-@interactive_exceptions
 def build_buggy(project, competition, lp):
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
