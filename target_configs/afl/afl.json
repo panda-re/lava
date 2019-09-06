@@ -1,8 +1,8 @@
 {
     "name": "afl",
     "db": "afl",
-    "preprocessed": "true",
-    "dataflow": "true",
+    "preprocessed": true,
+    "dataflow": true,
 
     "tarfile": "afl-25b-pre.tar.gz",
 

@@ -2,7 +2,7 @@
     "name": "file",
     "db": "file",
     "preprocessed": true,
-    "dataflow": true,
+    "dataflow": false,
 
     "tarfile": "file-5.35-pre.tar.gz",
 
@@ -14,11 +14,11 @@
     "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/file -m {install_dir}/share/misc/magic.mgc {input_file}",
-    "injfixupsscript": "file_fixup.sh {bug_build}",
+    "comment_injfixupsscript": "file_fixup.sh {bug_build}",
 
     "max_tcn": 10,
 
-    "main_file": [ "src/file.c" ],
+    "main_file": [ "src/file-pre.c" ],
 
     "inputs": ["inputs/testsuite.mp3", "inputs/testsuite.fitdata"]
 }

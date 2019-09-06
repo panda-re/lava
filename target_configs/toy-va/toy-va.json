@@ -1,6 +1,6 @@
 {
-    "name": "toy",
-    "db": "toy",
+    "name": "toy-va",
+    "db": "toy-va",
     "preprocessed": true,
     "dataflow": true,
 
@@ -8,15 +8,15 @@
     "snapshot": "root",
     "expect_prompt": "root@debian-i386:~#",
 
-    "tarfile": "toy-pre.tar.gz",
+    "tarfile": "toy-va-pre.tar.gz",
 
     "configure": "true",
     "make": "make CFLAGS+=-gdwarf-2",
     "clean": "make clean",
     "install": "make install",
-    "command": "{install_dir}/bin/toy {input_file}",
+    "command": "{install_dir}/bin/toy-va {input_file}",
 
-    "main_file": [ "toy.c" ],
+    "main_file": [ "toy-va-pre.c" ],
 
     "inputs": [ "inputs/testsmall.bin" ]
 }

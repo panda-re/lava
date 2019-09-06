@@ -1,8 +1,8 @@
 {
     "name": "jq",
     "db": "jq",
-    "preprocessed": "true",
-    "dataflow": "false",
+    "preprocessed": true,
+    "dataflow": false,
 
     "tarfile": "jq-1.6-pre.tar.gz",
 

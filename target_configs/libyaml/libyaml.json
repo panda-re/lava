@@ -1,8 +1,8 @@
 {
     "name": "libyaml",
     "db": "libyaml",
-    "preprocessed": "true",
-    "dataflow": "false",
+    "preprocessed": true,
+    "dataflow": false,
 
     "tarfile": "libyaml-pre.tar.gz",
 

@@ -2,7 +2,7 @@
     "name": "pcre2",
     "db": "pcre2",
     "preprocessed": true,
-    "dataflow": true,
+    "dataflow": false,
 
     "tarfile": "pcre2-10.2-pre.tar.gz",
 
