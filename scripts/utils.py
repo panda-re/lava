@@ -21,6 +21,7 @@ def bad_bin_search(args, fun, depth=0):
         try: # If left still fails, reduce farther
             res = fun(left)
             if not len(res): raise RuntimeError("Recurse")
+            left = res
         except (AssertionError, RuntimeError):
             left = bad_bin_search(left, fun, depth+1)
 
@@ -29,6 +30,7 @@ def bad_bin_search(args, fun, depth=0):
             #right = fun(right)
             res = fun(right)
             if not len(res): raise RuntimeError("Recurse")
+            right = res
         except (AssertionError, RuntimeError):
             right = bad_bin_search(right, fun, depth+1)
 
