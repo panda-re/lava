@@ -286,32 +286,6 @@ def main():
         os.chdir(PANDA_BUILD_DIR)
         run([join(PANDA_DIR, 'build.sh')])
         os.chdir(LAVA_DIR)
-    # Compile lavaTool inside the docker container.
-    progress("Creating $LAVA_DIR/tools/lavaTool/config.mak")
-    with open("tools/lavaTool/config.mak", "w") as f:
-        LLVM_DOCKER_DIR = '/llvm-{}'.format(LLVM_VERSION)
-        f.write(LLVM_MAK.format(LLVM_BUILD_PATH=LLVM_DOCKER_DIR,
-                                LLVM_SRC_PATH=LLVM_DOCKER_DIR))
-    run_docker(['rm', '-rf', join(LAVA_DIR, 'tools/build')])
-    run_docker(['mkdir', '-p', join(LAVA_DIR, 'tools/build')])
-    run_docker(['mkdir', '-p', join(LAVA_DIR, 'tools/install')])
-
-    run_docker(['cmake', '-B{}'.format(join(LAVA_DIR, 'tools/build')),
-                '-H{}'.format(join(LAVA_DIR, 'tools')),
-                '-DCMAKE_INSTALL_PREFIX={}'.format(join(LAVA_DIR,
-                                                        'tools/install'))])
-    run_docker(['make','--no-print-directory','-j4', 'install', '-C',
-                join(LAVA_DIR, 'tools/build/lavaTool')])
-
-    # ensure /etc/apt/sources.list has all of the deb-src lines uncommented
-    patch_sources = join(LAVA_DIR, "scripts/patch-sources.py")
-    lines = open("/etc/apt/sources.list")
-    filt_lines = [line for line in lines if line.strip().startswith("#deb-src")
-                  or line.strip().startswith("# deb-src")]
-    if len(filt_lines) > 0:
-        progress("Uncommenting {} deb-src lines in".format(len(filt_lines)) +
-                 "/etc/apt/sources.list")
-        run(['sudo', 'python', patch_sources])
 
     progress("Checking for ODB orm libraries")
     odb_version = "2.4.0"
@@ -342,6 +316,33 @@ def main():
         run("sudo make install")
 
     progress("Finished installing ODB libraries")
+
+    # Compile lavaTool inside the docker container.
+    progress("Creating $LAVA_DIR/tools/lavaTool/config.mak")
+    with open("tools/lavaTool/config.mak", "w") as f:
+        LLVM_DOCKER_DIR = '/llvm-{}'.format(LLVM_VERSION)
+        f.write(LLVM_MAK.format(LLVM_BUILD_PATH=LLVM_DOCKER_DIR,
+                                LLVM_SRC_PATH=LLVM_DOCKER_DIR))
+    run_docker(['rm', '-rf', join(LAVA_DIR, 'tools/build')])
+    run_docker(['mkdir', '-p', join(LAVA_DIR, 'tools/build')])
+    run_docker(['mkdir', '-p', join(LAVA_DIR, 'tools/install')])
+
+    run_docker(['cmake', '-B{}'.format(join(LAVA_DIR, 'tools/build')),
+                '-H{}'.format(join(LAVA_DIR, 'tools')),
+                '-DCMAKE_INSTALL_PREFIX={}'.format(join(LAVA_DIR,
+                                                        'tools/install'))])
+    run_docker(['make','--no-print-directory','-j4', 'install', '-C',
+                join(LAVA_DIR, 'tools/build/lavaTool')])
+
+    # ensure /etc/apt/sources.list has all of the deb-src lines uncommented
+    patch_sources = join(LAVA_DIR, "scripts/patch-sources.py")
+    lines = open("/etc/apt/sources.list")
+    filt_lines = [line for line in lines if line.strip().startswith("#deb-src")
+                  or line.strip().startswith("# deb-src")]
+    if len(filt_lines) > 0:
+        progress("Uncommenting {} deb-src lines in".format(len(filt_lines)) +
+                 "/etc/apt/sources.list")
+        run(['sudo', 'python', patch_sources])
 
     progress("Installing python dependencies.")
     if command_exited_nonzero("python -c \"import {}\"".format("subprocess32")):
