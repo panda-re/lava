@@ -23,7 +23,7 @@ changes to your system. Once it finishes, you should have
 [PANDA](https://github.com/panda-re/panda) installed into
 `panda/build/` (PANDA is used to perform dynamic taint analysis).
 
-Next, run `init-host.py` to generate a `host.json`.
+Setup will automatically run `init_host.py` to generate a `host.json`.
 This file is used by LAVA to store settings specific
 to your machine. You can edit these settings as necessary, but the default
 values should work.
