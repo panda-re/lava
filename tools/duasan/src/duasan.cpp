@@ -321,15 +321,15 @@ public :
                   !(dua->lval->loc.begin < movloc.begin))
                     continue;
 
-                SourceTrace *curtr = &*db->query<SourceTrace>(
+                odb::result<SourceTrace> trres (db->query<SourceTrace>(
                             odb::query<SourceTrace>::loc.filename == movloc.filename &&
                             odb::query<SourceTrace>::loc.begin.line == movloc.begin.line &&
                             odb::query<SourceTrace>::loc.begin.column == movloc.begin.column &&
                             //odb::query<SourceTrace>::loc.end.line == movloc.end.line &&
                             //odb::query<SourceTrace>::loc.end.column == movloc.end.column &&
-                            odb::query<SourceTrace>::index >= trace_index).begin();
-                if (curtr) {
-                    dua->trace_index = curtr->id;
+                            odb::query<SourceTrace>::index >= trace_index));
+                if (!trres.empty()) {
+                    dua->trace_index = trres.begin()->index;
                 } else {
                     dua->fake_dua = true;
                 }
