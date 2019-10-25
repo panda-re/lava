@@ -40,8 +40,11 @@ def genFnTraceHelper(db, bug_list, fnwhitelist, fnpickle):
                 if not likelyroot:  likelyroot = fn  # Set End-of-dataflow it's fnptr
                 break
 
-        assert(likelyroot)
-        fnroot.append(likelyroot)
+        if likelyroot:
+            fnroot.append(likelyroot)
+        else:
+            fnroot.append("main")
+            fnend.append("main")
 
     # Fixup dataflow arg list From other callers
     for fn in fndataflow:
