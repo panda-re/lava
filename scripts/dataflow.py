@@ -68,10 +68,13 @@ def genStackVarHelper(db, bug_list, fnwhitelist):
             .filter(Bug.type == Bug.CHAFF_STACK_CONST).all()
     for bug in buglist:
         atp = bug.atp
-        cur_ctid = atp.ctrace[-1]
-        ct = db.session.query(CallTrace).get(cur_ctid)
-        fn = ct.caller.split('!')[1]
-        fnlist.append(fn)
+        if atp.ctrace:
+            cur_ctid = atp.ctrace[-1]
+            ct = db.session.query(CallTrace).get(cur_ctid)
+            fn = ct.caller.split('!')[1]
+            fnlist.append(fn)
+        else:
+            fnlist.append("main")
 
     with open(fnwhitelist, 'a') as fd:
         for fn in fnlist:

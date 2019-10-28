@@ -101,10 +101,7 @@ int main(int argc, const char **argv) {
                     mark_for_siphon_extra(dua_bytes);
 
                     // Siphon Overconstrain injection point
-                    mark_for_overconst_extra(
-                            bug, dua_bytes,
-                            dua_bytes->dua->trace_index,
-                            bug->atp->trace_index);
+                    mark_for_overconst_extra(bug, dua_bytes);
                 }
             }
         }
