@@ -210,7 +210,6 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             // stack-pivot-then-return.  Ugh.
             before = SiphonsForLocation(ast_loc) + AttackRetBuffer(ast_loc) + AttackChaffBugs(ast_loc);
         }
-        Mod.Change(toSiphon).InsertBefore(before);
 
         if (LavaAction == LavaInjectBugs) {
             std::stringstream result_ss;
@@ -220,6 +219,9 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             }
             extra_overconst_expr.erase(ast_loc);
         }
+
+        // Ensure lava_set/lava_set_extra always comes first
+        Mod.Change(toSiphon).InsertBefore(before);
     }
 };
 
