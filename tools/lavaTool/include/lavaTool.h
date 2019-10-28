@@ -512,7 +512,10 @@ void mark_for_siphon_extra(const DuaBytes *dua_bytes) {
     extra_data_slots.insert(std::make_pair(lval_bytes, extra_data_slots.size()));
 }
 
-void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes, uint64_t tr_start, uint64_t tr_end) {
+void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
+
+    uint64_t tr_start = bug->atp->trace_index;
+    uint64_t tr_end = dua_bytes->dua->trace_index;
 
     LvalBytes lval_bytes(dua_bytes);
 
@@ -521,14 +524,14 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes, uint64_
     if (tr_end < tr_start)  tr_start = tr_end;
 
     // gen 4 overconstrain code - each taking care of 1 byte
-    uint32_t nstep = 4;
+    uint32_t nstep = 2;
     uint32_t step = 32/nstep;
     uint32_t basemask = (1<<step) - 1;
-    for (uint64_t i = 0; i < nstep; i++) {
-        auto tridx = tr_start + (rand() % (tr_end - tr_start));
-        tr_start = tridx;
+    for (uint32_t i = 0; i < nstep; i++) {
+        if (tr_end != tr_start)
+            tr_start = tr_start + (rand() % (tr_end - tr_start));
         std::unique_ptr<SourceTrace> tr(
-                db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tridx));
+                db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tr_start));
         LavaASTLoc ast_loc = tr->loc;
         LExpr checker  = Test(bug);
         if (i > 0) {

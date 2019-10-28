@@ -658,15 +658,31 @@ void taint_query_pri(Json::Value& ple) {
 
     record_injectable_bugs_at<Bug::CHAFF_STACK_UNUSED>(
             si->insertionpoint, pad_atp, is_new_atp, {});
-    for (const auto &exploit_dua : recent_dead_duas) {
-        Range r = get_dua_dead_range(exploit_dua.second, {});
-        if (r.empty())  continue;
-        const DuaBytes *k = create(DuaBytes{exploit_dua.second, r});
-        record_injectable_bugs_at<Bug::CHAFF_STACK_CONST>(
-                si->insertionpoint, pad_atp, is_new_atp, { k });
-        record_injectable_bugs_at<Bug::CHAFF_HEAP_CONST>(
-                si->insertionpoint, pad_atp, is_new_atp, { k });
-        break;
+#define RANDOM_SAMPLING_THRESHOLD   2
+    uint64_t randcount = RANDOM_SAMPLING_THRESHOLD;
+    if (RANDOM_SAMPLING_THRESHOLD > recent_duas_by_instr.size()) {
+        for (const auto &exploit_dua : recent_dead_duas) {
+            Range r = get_dua_dead_range(exploit_dua.second, {});
+            if (r.empty())  continue;
+            const DuaBytes *k = create(DuaBytes{exploit_dua.second, r});
+            record_injectable_bugs_at<Bug::CHAFF_STACK_CONST>(
+                    si->insertionpoint, pad_atp, is_new_atp, { k });
+            record_injectable_bugs_at<Bug::CHAFF_HEAP_CONST>(
+                    si->insertionpoint, pad_atp, is_new_atp, { k });
+            //break;
+        }
+    } else {
+        while (randcount--) {
+            const Dua *exploit_dua = recent_duas_by_instr[rand() % recent_duas_by_instr.size()];
+            Range r = get_dua_dead_range(exploit_dua, {});
+            if (r.empty())  continue;
+            const DuaBytes *k = create(DuaBytes{exploit_dua, r});
+            record_injectable_bugs_at<Bug::CHAFF_STACK_CONST>(
+                    si->insertionpoint, pad_atp, is_new_atp, { k });
+            record_injectable_bugs_at<Bug::CHAFF_HEAP_CONST>(
+                    si->insertionpoint, pad_atp, is_new_atp, { k });
+            //break;
+        }
     }
 
     t.commit();
@@ -890,8 +906,8 @@ void record_injectable_bugs_at(const uint32_t stackoff, const AttackPoint *atp, 
         assert(bug_type != Bug::RET_BUFFER ||
                 atp->type == AttackPoint::QUERY_POINT);
         assert(extra_duas.size() == Bug::num_extra_duas[bug_type]);
-        Bug bug(bug_type, trigger, c_max_liveness, atp, extra_duas, stackoff);
-        db->persist(bug);
+        const Bug *bug = create(Bug(bug_type, trigger, c_max_liveness, atp, extra_duas, stackoff));
+        //db->persist(bug);
         num_bugs_of_type[bug_type]++;
 
         num_bugs_added_to_db++;

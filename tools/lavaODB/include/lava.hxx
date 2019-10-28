@@ -547,7 +547,7 @@ struct Bug {
 
     uint32_t stackoff;
 
-#pragma db index("BugUniq") unique members(type, atp, trigger_lval)
+#pragma db index("BugUniq") unique members(type, atp, trigger, extra_duas)
 #pragma db index("BugLvalsQuery") members(atp, type)
 
     Bug() {}
@@ -606,6 +606,12 @@ struct Bug {
         p.set_max_liveness(this->max_liveness);
         p.add_extra_duas(0);
         p.set_magic(this->magic);
+    }
+
+    bool operator<(const Bug &other) const {
+         return std::tie(type, trigger->id, atp->id, extra_duas) <
+             std::tie(other.type, other.trigger->id,
+                     other.atp->id, other.extra_duas);
     }
 };
 
