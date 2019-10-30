@@ -525,8 +525,29 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
 
     // gen 4 overconstrain code - each taking care of 1 byte
     uint32_t nstep = 2;
-    uint32_t step = 32/nstep;
-    uint32_t basemask = (1<<step) - 1;
+    uint32_t flipflag = rand()&1;
+    std::string checkfunc = "";
+    switch (rand()%6) {
+    case 0:
+        checkfunc = "lava_check_const_high_1";
+        break;
+    case 1:
+        checkfunc = "lava_check_const_high_2";
+        break;
+    case 2:
+        checkfunc = "lava_check_const_high_3";
+        break;
+    case 3:
+        checkfunc = "lava_check_const_high_4";
+        break;
+    case 4:
+        checkfunc = "lava_check_const_high_5";
+        break;
+    case 5:
+    default:
+        checkfunc = "lava_check_const_high_6";
+        break;
+    }
     for (uint32_t i = 0; i < nstep; i++) {
         if (tr_end != tr_start)
             tr_start = tr_start + (rand() % (tr_end - tr_start));
@@ -534,21 +555,40 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
                 db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tr_start));
         LavaASTLoc ast_loc = tr->loc;
         LExpr checker  = Test(bug);
-        if (i > 0) {
-            checker = /*checker &&*/ LFunc("lava_check_const", {
-                    LDecimal(extra_data_slots[lval_bytes]),
-                    LHex(basemask << ((i-1) * step))});
-            extra_overconst_expr[ast_loc].emplace_back(
-                    LIf(checker.render(), {
-                        LFunc("lava_update_const", {
-                                LDecimal(extra_data_slots[lval_bytes]),
-                                LHex(basemask << (i * step))})}));
+        if (flipflag) {
+            if (i > 0) {
+                checker = /*checker &&*/ LFunc(checkfunc, {
+                        LDecimal(extra_data_slots[lval_bytes]) });
+                extra_overconst_expr[ast_loc].emplace_back(
+                        LIf(checker.render(), {
+                            LFunc("lava_update_const_high", {
+                                    LDecimal(extra_data_slots[lval_bytes]) })}));
+            } else {
+                checker = /*checker &&*/ LFunc("lava_check_const_low", {
+                        LDecimal(extra_data_slots[lval_bytes]),
+                        LDecimal(rand()&0xffff) });
+                extra_overconst_expr[ast_loc].emplace_back(
+                        LIf(checker.render(), {
+                            LFunc("lava_update_const_low", {
+                                    LDecimal(extra_data_slots[lval_bytes]) })}));
+            }
         } else {
-            extra_overconst_expr[ast_loc].emplace_back(
-                    LBlock({
-                        LFunc("lava_update_const", {
-                                LDecimal(extra_data_slots[lval_bytes]),
-                                LHex(basemask << (i * step))})}));
+            if (i == 0) {
+                checker = /*checker &&*/ LFunc(checkfunc, {
+                        LDecimal(extra_data_slots[lval_bytes]) });
+                extra_overconst_expr[ast_loc].emplace_back(
+                        LIf(checker.render(), {
+                            LFunc("lava_update_const_high", {
+                                    LDecimal(extra_data_slots[lval_bytes]) })}));
+            } else {
+                checker = /*checker &&*/ LFunc("lava_check_const_low", {
+                        LDecimal(extra_data_slots[lval_bytes]),
+                        LDecimal(rand()&0xffff) });
+                extra_overconst_expr[ast_loc].emplace_back(
+                        LIf(checker.render(), {
+                            LFunc("lava_update_const_low", {
+                                    LDecimal(extra_data_slots[lval_bytes]) })}));
+            }
         }
     }
 }
