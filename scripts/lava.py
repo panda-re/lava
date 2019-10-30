@@ -431,6 +431,7 @@ def run_cmd_notimeout(cmd, **kwargs):
 
 def mutfile(filename, fuzz_labels_list, new_filename, bug,
             kt=False, knob=0, solution=None):
+    passval = struct.pack('<I', 0x0101ffff)
     # Open filename, mutate it and store in new_filename such that
     # it hopefully triggers the passed bug
     if kt:
@@ -488,9 +489,12 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug,
             file_bytes[offset] = c_val[i]
 
     else:
-        for fuzz_labels in fuzz_labels_list:
-            for (i, offset) in zip(range(4), fuzz_labels):
-                file_bytes[offset] = magic_val[i]
+        for (i, offset) in zip(range(4), fuzz_labels_list[0]):
+            file_bytes[offset] = magic_val[i]
+        if (len(fuzz_labels_list) > 1):
+            for fuzz_labels in fuzz_labels_list[1:]:
+                for (i, offset) in zip(range(4), fuzz_labels):
+                    file_bytes[offset] = passval[i]
 
     with open(new_filename, 'wb') as fuzzed_f:
         fuzzed_f.write(file_bytes)

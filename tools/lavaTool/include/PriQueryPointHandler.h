@@ -135,9 +135,8 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             } else if (bug->type == Bug::CHAFF_STACK_CONST) {
                 const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
                 LvalBytes extra_bytes(extra_dua_bytes);
-                LExpr checker = Test(bug) && LFunc("lava_check_const", {
-                        LDecimal(extra_data_slots[extra_bytes]),
-                        LHex(0xffffffff)
+                LExpr checker = Test(bug) && LFunc("lava_check_state", {
+                        LDecimal(extra_data_slots[extra_bytes])
                         });
                 result_ss << LIf(checker.render(), {
                         LAssign(LDeref(
@@ -149,9 +148,8 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             } else if (bug->type == Bug::CHAFF_HEAP_CONST) {
                 const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
                 LvalBytes extra_bytes(extra_dua_bytes);
-                LExpr checker = Test(bug) && LFunc("lava_check_const", {
-                        LDecimal(extra_data_slots[extra_bytes]),
-                        LHex(0xffffffff)
+                LExpr checker = Test(bug) && LFunc("lava_check_state", {
+                        LDecimal(extra_data_slots[extra_bytes])
                         });
                 result_ss << LIf(checker.render(), {
                         LAssign(LStr("void *lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),

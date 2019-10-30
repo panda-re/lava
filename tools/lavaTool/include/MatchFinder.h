@@ -214,40 +214,73 @@ public:
             if (!ArgDataflow)
 #endif
             {
+                std::stringstream top;
                 if (main_files.count(getAbsolutePath(Filename)) > 0) {
-                    std::stringstream top;
-                    top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
-                        << "static unsigned int lava_extra[" << extra_data_slots.size() << "] = {0};\n"
-                        << "void *lava_chaff_pointer = (void*)0;\n"
-                        << "void lava_set(unsigned int, unsigned int);\n"
-                        << "__attribute__((visibility(\"default\")))\n"
-                        << "void lava_set(unsigned int slot, unsigned int val) {\n"
-                        << "#ifdef DUA_LOGGING\n"
-                            << "fprintf(stderr, \"\\nlava_set:%d=%d: %s:%d\\n\", slot, val, __FILE__, __LINE__);\n"
-                            << "fflush(NULL);\n"
-                        << "#endif\n"
-                        << "lava_val[slot] = val; }\n"
-                        << "unsigned int lava_get(unsigned int);\n"
-                        << "__attribute__((visibility(\"default\")))\n"
-                        << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n"
-                        << "void lava_set_extra(unsigned int, unsigned int);\n"
-                        << "__attribute__((visibility(\"default\")))\n"
-                        << "void lava_set_extra(unsigned int slot, unsigned int val) {\n"
-                        << "lava_extra[slot] = val; }\n"
-                        << "unsigned int lava_get_extra(unsigned int);\n"
-                        << "__attribute__((visibility(\"default\")))\n"
-                        << "unsigned int lava_get_extra(unsigned int slot) { return lava_extra[slot]; }\n"
-                        << "__attribute__((visibility(\"default\")))\n"
-                        << "int lava_check_const(unsigned int slot, unsigned int mask)"
-                        << "{ return (lava_extra[slot]&mask) == 0; }\n"
-                        << "__attribute__((visibility(\"default\")))\n"
-                        << "void lava_update_const(unsigned int slot, unsigned int mask) "
-                        << "{ lava_extra[slot] &= (~mask); }\n";
-                    insert_at_top.append(top.str());
+                    top << "unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
+                        << "unsigned int lava_extra[" << extra_data_slots.size() << "] = {0};\n"
+                        << "unsigned int lava_state[" << extra_data_slots.size() << "] = {0};\n"
+                        << "void *lava_chaff_pointer = (void*)0;\n";
                 } else {
-                    insert_at_top.append("extern void lava_set(unsigned int bn, unsigned int val);\n"
-                    "extern unsigned int lava_get(unsigned int);\n");
+                    top << "extern unsigned int lava_val;\n"
+                        << "extern unsigned int lava_extra;\n"
+                        << "extern unsigned int lava_state;\n"
+                        << "extern void *lava_chaff_pointer;\n";
                 }
+                top << ""
+                    //<< "void lava_set(unsigned int, unsigned int);\n"
+                    //<< "__attribute__((visibility(\"default\")))\n"
+                    << "#define lava_set(slot, val) { \\\n"
+                    //<< "#ifdef DUA_LOGGING\n"
+                    //    << "fprintf(stderr, \"\\nlava_set:%d=%d: %s:%d\\n\", slot, val, __FILE__, __LINE__);\n"
+                    //    << "fflush(NULL);\n"
+                    //<< "#endif\n"
+                    << "lava_val[slot] = val; }\n"
+                    //<< "unsigned int lava_get(unsigned int);\n"
+                    //<< "__attribute__((visibility(\"default\")))\n"
+                    << "#define lava_get(slot)  lava_val[slot] \n"
+                    //<< "void lava_set_extra(unsigned int, unsigned int);\n"
+                    //<< "__attribute__((visibility(\"default\")))\n"
+                    << "#define lava_set_extra(slot, val) { \\\n"
+                    << "lava_extra[slot] = val; lava_state[slot]=0; }\n"
+                    //<< "unsigned int lava_get_extra(unsigned int);\n"
+                    //<< "__attribute__((visibility(\"default\")))\n"
+                    << "#define lava_get_extra(slot) lava_extra[slot] \n"
+
+                    //<< "__attribute__((visibility(\"default\")))\n"
+                    << "#define lava_check_const_high_1(slot) "
+                    << "((!(((lava_extra[slot])>>16)&4)) && (!(lava_extra[slot]>>31)))\n"
+                    //<< "__attribute__((visibility(\"default\")))\n"
+                    << "#define lava_check_const_high_2(slot) "
+                    << "((!(((lava_extra[slot])>>18)&1)) && (__builtin_popcount(lava_extra[slot]&0xff000000)<7))\n"
+                    //<< "__attribute__((visibility(\"default\")))\n"
+                    << "#define lava_check_const_high_3(slot) "
+                    << "(__builtin_clz(lava_extra[slot])>4)\n"
+                    << "#define lava_check_const_high_4(slot) "
+                    << "((((int)lava_extra[slot])>((int)-1)) && ((lava_extra[slot]>>16)&0x0101))\n"
+                    << "#define lava_check_const_high_5(slot) "
+                    << "((__builtin_clz(lava_extra[slot])>4) && (((((lava_extra[slot]>>16)*0xfe)&0xf0f0)&0xffff)==0xf0f0))\n"
+                    << "#define lava_check_const_high_6(slot) "
+                    << "((((((lava_extra[slot]>>16)*0xfe)&0xf0f0)&0xffff)==0xf0f0) && (!(((lava_extra[slot])>>18)&1)))\n"
+
+                    << "#define lava_check_const_high_pass(slot) "
+                    << "((!(lava_extra[slot]>>31)) && (((lava_extra[slot]*0xfe)&0xf0f0)==0xf0f0))\n"
+
+                    //<< "__attribute__((visibility(\"default\")))\n"
+                    << "#define lava_update_const_high(slot) "
+                    << "{ lava_state[slot]|=1; }\n"
+
+                    //<< "__attribute__((visibility(\"default\")))\n"
+                    << "#define lava_check_const_low(slot, val) "
+                    << "(lava_extra[slot]&val)\n"
+
+                    //<< "__attribute__((visibility(\"default\")))\n"
+                    << "#define lava_update_const_low(slot) "
+                    << "{ lava_state[slot]|=2; }\n"
+
+                    //<< "__attribute__((visibility(\"default\")))\n"
+                    << "#define lava_check_state(slot) "
+                    << "(lava_state[slot] == 3)\n";       // exactly 2 constraints
+                insert_at_top.append(top.str());
             }
         }
 
