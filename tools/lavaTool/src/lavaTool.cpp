@@ -88,6 +88,12 @@ int main(int argc, const char **argv) {
         std::transform(bug_ids.begin(), bug_ids.end(), std::back_inserter(bugs),
                 [&](uint32_t bug_id) { return db->load<Bug>(bug_id); });
 
+        while (!real_bug) {
+            real_bug = bugs[rand()%bugs.size()];
+            if (real_bug->type != Bug::CHAFF_STACK_CONST)
+                real_bug = nullptr;
+        }
+
         for (const Bug *bug : bugs) {
             LavaASTLoc atp_loc = bug->atp->loc;
             auto key = std::make_pair(atp_loc, bug->atp->type);

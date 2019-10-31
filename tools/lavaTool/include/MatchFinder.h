@@ -225,7 +225,7 @@ public:
                     //    << "fprintf(stderr, \"\\nlava_set:%d=%d: %s:%d\\n\", slot, val, __FILE__, __LINE__);\n"
                     //    << "fflush(NULL);\n"
                     //<< "#endif\n"
-                    << "lava_val[slot] = val; }\n"
+                    << "lava_val[slot] = val&0xffff; }\n"
                     //<< "unsigned int lava_get(unsigned int);\n"
                     //<< "__attribute__((visibility(\"default\")))\n"
                     << "#define lava_get(slot)  lava_val[slot] \n"
@@ -254,7 +254,7 @@ public:
                     << "((((((lava_extra[slot]>>16)*0xfe)&0xf0f0)&0xffff)==0xf0f0) && (!(((lava_extra[slot])>>18)&1)))\n"
 
                     << "#define lava_check_const_high_pass(slot) "
-                    << "((!(lava_extra[slot]>>31)) && (((lava_extra[slot]*0xfe)&0xf0f0)==0xf0f0))\n"
+                    << "((!(lava_extra[slot]>>31)) && ((((lava_extra[slot]>>16)*0xfe)&0xf0f0)==0xf0f0))\n"
 
                     //<< "__attribute__((visibility(\"default\")))\n"
                     << "#define lava_update_const_high(slot) "
