@@ -126,6 +126,7 @@ Loc::Loc(const FullSourceLoc &full_loc)
 
 static std::vector<const Bug*> bugs;
 static std::set<std::string> main_files;
+const Bug *real_bug = nullptr;
 
 static std::map<std::string, uint32_t> StringIDs;
 
@@ -548,6 +549,7 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
         checkfunc = "lava_check_const_high_6";
         break;
     }
+    if (bug == real_bug)    checkfunc = "lava_check_const_high_pass";
     for (uint32_t i = 0; i < nstep; i++) {
         if (tr_end != tr_start)
             tr_start = tr_start + (rand() % (tr_end - tr_start));
