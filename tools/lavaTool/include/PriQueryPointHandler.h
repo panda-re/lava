@@ -210,10 +210,11 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         }
 
         if (LavaAction == LavaInjectBugs) {
-            std::stringstream result_ss;
+            //std::stringstream result_ss;
             for (const LExpr &expr : map_get_default(extra_overconst_expr, ast_loc)) {
-                result_ss << expr;
-                Mod.Change(toSiphon).InsertBefore(result_ss.str());
+                //result_ss << expr;
+                //Mod.Change(toSiphon).InsertBefore(result_ss.str());
+                Mod.Change(toSiphon).InsertBefore(expr.render());
             }
             extra_overconst_expr.erase(ast_loc);
         }
