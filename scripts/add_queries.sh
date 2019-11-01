@@ -107,7 +107,7 @@ IFS=$ORIGIN_IFS
 
 
 progress "queries" 0  "Installing..."
-bash -c $install
+bash -c "$install"
 
 
 # figure out where llvm is
