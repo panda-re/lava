@@ -184,6 +184,8 @@ int main(int argc, const char **argv) {
         }
     }
 
+    std::cout << "Final Real Bug : " << real_bug->id << "\n";
+
     if (t) {
         t->commit();
         delete t;
