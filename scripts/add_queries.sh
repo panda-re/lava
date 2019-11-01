@@ -116,7 +116,7 @@ IFS=$ORIGIN_IFS
 
 
 progress "queries" 0  "Installing..."
-bash -c $install
+bash -c "$install"
 
 
 progress "queries" 0  "Creating compile_commands.json..."
