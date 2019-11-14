@@ -153,8 +153,6 @@ def user_in_docker(username):
 
 
 DOCKER_MAP_DIRS = [LAVA_DIR, os.environ['HOME']]
-DOCKER_MAP_FILES = ['/etc/passwd', '/etc/group',
-                    '/etc/shadow', '/etc/gshadow']
 map_dirs_dedup = []
 # quadratic but who cares
 for d in DOCKER_MAP_DIRS:
@@ -168,8 +166,6 @@ for d in DOCKER_MAP_DIRS:
 
 map_dirs_args = sum([['-v', '{0}:{0}'.format(d)]
                      for d in map_dirs_dedup], [])
-map_files_args = sum([['-v', '{0}:{0}:ro'.format(d)]
-                      for d in DOCKER_MAP_FILES], [])
 
 ENV_VARS = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy',
             'https_proxy', 'no_proxy']
@@ -183,15 +179,25 @@ ALREADY_IN_DOCKER_GROUP = user_in_docker(getpass.getuser())
 
 
 def run_docker(cmd):
+    user = os.environ['USER']
+    uid  = os.getuid()
+    shell= os.environ['SHELL']
+    home = os.environ['HOME']
+    with open("/tmp/passwd", "w") as f:
+        f.write("{USER}:{USER}:{UID}:{UID}:{USER}:{HOME}:{SHELL}\n".format(USER=user, UID=uid, HOME=home, SHELL=shell))
+        f.write("{USER}:{USER}:{UID}:{UID}:{USER}:{HOME}:{SHELL}\n".format(USER="root", UID=0, HOME=home, SHELL=shell))
+
     cmd, cmd_args = cmd_to_list(cmd)
     sudo_args = [] if ALREADY_IN_DOCKER_GROUP else ['sudo']
     # Have to be sudo in case we just installed docker
     # and don't have the group yet.
     cmd_args = sudo_args + ['docker', 'run', '--rm'] + map_dirs_args + \
-        map_files_args + env_var_args + \
-        [DOCKER_NAME, 'su', '-l', getpass.getuser(), '-c', cmd]
+        env_var_args + \
+        ["-v", "/tmp/passwd/:/etc/passwd", # Map in tmp file
+         "--user", str(uid),
+        DOCKER_NAME, cmd]
     try:
-        progress("Running in docker [{}] . . . ".format(cmd))
+        progress("Running in docker [{}] . . . ".format(cmd)) # XXX: This fails, why?
         print "[{}]".format(" ".join(cmd_args))
         subprocess.check_call(cmd_args)
     except subprocess.CalledProcessError:

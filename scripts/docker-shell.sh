@@ -8,6 +8,7 @@ lava="$(dirname $(dirname $(readlink -f $0)))"
 
 if [ "$#" -eq 0 ]; then
     container="lava32"
+    cmd="bash" # If no 2nd argument specified, start interactive shell instead
 else
     project_name=$1
     cmd="${@:2}"
@@ -26,20 +27,14 @@ else
     [ "$extradockerargs" = "null" ] && extradockerargs="";
 fi
 
-whoami="$(whoami)"
-path=""
-cmd="sudo -u $whoami bash -c -- \"$cmd\""
-
-# If no 2nd argument specified, start interactive shell instead
-if [ -z "$2" ] ; then
-    cmd="login -f $whoami LANG=C.UTF-8 LANGUAGE=en_US LC_ALL=C.UTF-8"
-    # path="$PWD"
-    # TODO start shell at current path
-fi
+# Create a fake passwd file so we have the same UID in the container and also a root user to sudo to
+echo "${USER}:${USER}:${UID}:${UID}:${USER}:${HOME}:${SHELL}" > /tmp/passwd
+echo "root:x:0:0:root:/root:/bin/bash" >> /tmp/passwd
 
 set -x
 # to run debugger you need --privileged here
 docker run --rm -it \
+    --user $UID \
     --privileged \
     -e "HTTP_PROXY=$HTTP_PROXY" \
     -e "HTTPS_PROXY=$HTTPS_PROXY" \
@@ -48,13 +43,10 @@ docker run --rm -it \
     -e "LANG=C.UTF-8" \
     -e "LANGUAGE=en_US" \
     -e "LC_ALL=C.UTF-8" \
+    -v /tmp/passwd:/etc/passwd \
     -v /var/run/postgresql:/var/run/postgresql \
-    -v /etc/passwd:/etc/passwd:ro \
-    -v /etc/group:/etc/group:ro \
-    -v /etc/shadow:/etc/shadow:ro \
-    -v /etc/gshadow:/etc/gshadow:ro \
     -v "$HOME":"$HOME" \
     --cap-add=SYS_PTRACE \
     $docker_map_args \
     $extradockerargs \
-    ${container} sh -c "trap '' PIPE; $cmd"
+    ${container} "$cmd"

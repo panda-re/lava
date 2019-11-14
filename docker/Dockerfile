@@ -76,3 +76,6 @@ RUN update-locale LANG=C.UTF-8
 
 # Having autoconf in the container will make building autotools packages easier
 RUN apt-get install -y autoconf libtool m4 automake
+
+# Once you're in the guest, you can be root
+RUN echo 'ALL ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
