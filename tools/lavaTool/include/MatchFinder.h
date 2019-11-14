@@ -212,9 +212,9 @@ public:
                         << "unsigned int lava_state[" << extra_data_slots.size() << "] = {0};\n"
                         << "void *lava_chaff_pointer = (void*)0;\n";
                 } else {
-                    top << "extern unsigned int lava_val;\n"
-                        << "extern unsigned int lava_extra;\n"
-                        << "extern unsigned int lava_state;\n"
+                    top << "extern unsigned int lava_val[];\n"
+                        << "extern unsigned int lava_extra[];\n"
+                        << "extern unsigned int lava_state[];\n"
                         << "extern void *lava_chaff_pointer;\n";
                 }
                 top << ""
