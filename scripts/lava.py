@@ -430,8 +430,8 @@ def run_cmd_notimeout(cmd, **kwargs):
 
 
 def mutfile(filename, fuzz_labels_list, new_filename, bug,
-            kt=False, knob=0, solution=None):
-    passval = struct.pack('<I', 0x0101ffff)
+            kt=False, knob=0, solution=None, patchval=0x0101ffff):
+    passval = struct.pack('<I', patchval)
     # Open filename, mutate it and store in new_filename such that
     # it hopefully triggers the passed bug
     if kt:
@@ -1088,6 +1088,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
         print("Knob size: {}".format(args.knobTrigger))
         mutfile_kwargs = {'kt': True, 'knob': args.knobTrigger}
 
+    mutfile_kwargs['patchval'] = 0x0708ffff
     fuzz_labels_list = [bug.trigger.all_labels]
     if len(bug.extra_duas) > 0:
         extra_query = db.session.query(DuaBytes) \
@@ -1142,6 +1143,58 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
         print("RV is zero which is good b/c this used a fake dua")
         assert rv == 0
         validated = False
+
+    # Retry with another patch value
+    if not validated:
+        mutfile_kwargs['patchval'] = 0x2050ffff
+        mutfile(unfuzzed_input, fuzz_labels_list, fuzzed_input, bug,
+                solution=solution, **mutfile_kwargs)
+        timeout = project.get('timeout', 5)
+        (rv, outp) = run_modified_program(project, lp.bugs_install,
+                                          fuzzed_input, timeout, shell=True)
+        print("retval = %d" % rv)
+        if bug.trigger.dua.fake_dua is False:
+            print ("bug type is " + Bug.type_strings[bug.type])
+            if bug.type == Bug.PRINTF_LEAK:
+                if outp != unfuzzed_outputs[bug.trigger.dua.inputfile]:
+                    print ("printf bug -- outputs disagree\n")
+                    validated = True
+            else:
+                # this really is supposed to be a bug
+                # we should see a seg fault or something
+                # NB: Wrapping programs in bash transforms rv -> 128 - rv,
+                # so we do the mod
+                if (rv % 256) > 128 and rv != -9: # check and ignoring timeouts
+                    print("RV indicates memory corruption")
+                    # Default: not checking that bug manifests at same line as
+                    # trigger point or is found by competition grading
+                    # infrastructure
+                    validated = True
+                    if competition:
+                        found_bugs = check_competition_bug(rv, outp)
+                        if set(found_bugs) == set([bug.id]):
+                            print("... and competition infrastructure agrees")
+                            validated &= True
+                        else:
+                            validated &= False
+                            print("... but competition infrastructure"
+                                  " misidentified it ({} vs {})".format(found_bugs, bug.id))
+                    if args.checkStacktrace:
+                        if check_stacktrace_bug(lp, project, bug, fuzzed_input):
+                            print("... and stacktrace agrees with trigger line")
+                            validated &= True
+                        else:
+                            print("... but stacktrace disagrees with trigger line")
+                            validated &= False
+                else:
+                    print("RV does not indicate memory corruption")
+                    validated = False
+        else:
+            # this really is supposed to be a non-bug
+            # we should see a 0
+            print("RV is zero which is good b/c this used a fake dua")
+            assert rv == 0
+            validated = False
 
     if update_db:
         db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
