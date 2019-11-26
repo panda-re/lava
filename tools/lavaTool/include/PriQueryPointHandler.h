@@ -90,9 +90,9 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
             if (bug->type == Bug::CHAFF_STACK_UNUSED) {
                 result_ss << LIf(Test(bug).render(), {
-                        LFunc("memcpy", {LStr("lava_chaff_var_1"),
+                        LFunc("memcpy", {LStr("(void*)(lava_chaff_var_2-4)"),
                                 LRandomBytes(UNUSED_RANDOM_BYTES, 8), LDecimal(8)}),
-                        LAssign(LDeref(LStr(ARG_NAME)), LStr("lava_chaff_var_0"))});
+                        LAssign(LDeref(LStr(ARG_NAME)), LStr("*(int*)lava_chaff_var_2"))});
 #ifdef TRIG_UNUSED
                 "__asm__ __volatile__(\"xorl %ebx, %ebx;divl %ebx;\");\n";
 #endif
@@ -103,12 +103,14 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                         LDecimal(extra_data_slots[extra_bytes])
                         });
                 result_ss << LIf(checker.render(), {
-                        LAssign(LDeref(
-                                LCast("int*",
-                                    LBinop("+",
-                                        LStr("lava_chaff_var_2"),
-                                        LHex(bug->stackoff + 4)))), // Add 4 to overwrite return address
-                                LavaGetExtra(extra_data_slots.at(extra_bytes)))});
+                        LAsm({ LavaGetExtra(extra_data_slots.at(extra_bytes)) },
+                                { "movl %0, 4(%%ebp)" })});
+                        //LAssign(LDeref(
+                        //        LCast("int*",
+                        //            LBinop("+",
+                        //                LStr("lava_chaff_var_2"),
+                        //                LHex(bug->stackoff + 4)))), // Add 4 to overwrite return address
+                        //        LavaGetExtra(extra_data_slots.at(extra_bytes)))});
             } else if (bug->type == Bug::CHAFF_HEAP_CONST) {
                 const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
                 LvalBytes extra_bytes(extra_dua_bytes);
@@ -117,8 +119,8 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                         });
                 result_ss << LIf(checker.render(), {
                         LAssign(LStr("void *lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
-                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x18))"), LDecimal(16)),
-                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(12)),
+                        //LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x18))"), LDecimal(16)),
+                        //LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(12)),
                         LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x24))"),
                                 LavaGetExtra(extra_data_slots.at(extra_bytes)))});
             }
@@ -188,6 +190,9 @@ struct PriQueryPointHandler : public LavaMatchHandler {
 
         std::string before;
         if (LavaAction == LavaQueries) {
+            std::string fnname = get_containing_function_name(Result, *toSiphon).second;
+            if ((fnname.rfind("_func") != (fnname.size()-5)) && (fnname.rfind("_callback") != (fnname.size()-9))) 
+            {
             // this is used in first pass clang tool, adding queries
             // to be intercepted by panda to query taint on in-scope variables
 #ifdef LEGACY_CHAFF_BUGS
@@ -200,6 +205,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                 LStr("&lava_chaff_var_2")}).render() + "; ";    // Pass the func addr through hypercall
 
             num_taint_queries += 1;
+            }
         } else if (LavaAction == LavaInjectBugs) {
             // This is used in second pass clang tool, injecting bugs.
             // This part is just about inserting DUA siphon, the first half of the bug.

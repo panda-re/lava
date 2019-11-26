@@ -110,7 +110,7 @@ struct LExpr {
             ::infix(expr.instrs.cbegin(), expr.instrs.cend(), os,
                     "\"", "\\n\\t", "\"");
             os << " : : ";
-            expr.infix(os, "\"rm\" (", "), \"rm\" (", ")");
+            expr.infix(os, "\"r\" (", "), \"r\" (", ")");
             os << ")";
         } else if (expr.t == LExpr::DEREF) {
             os << '*' << *expr.args.at(0);
