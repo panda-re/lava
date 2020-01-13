@@ -28,7 +28,7 @@ class Command(object):
         self.parent = parent
         self.argv = argv
         self.line = line
-        self.isCompilerDriver = (os.path.basename(self.argv[0]) in kDrivers)
+        self.isCompilerDriver = (os.path.basename(self.argv[0]).split('-', 1)[0] in kDrivers)
 
 
 def readPidList(pidlist):
