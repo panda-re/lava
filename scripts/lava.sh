@@ -93,7 +93,7 @@ ATP_TYPE=""
 # default bugtypes
 #bugtypes="ptr_add,rel_write"
 #bugtypes="chaff_bug_stack_unused"
-bugtypes="chaff_bug_stack_const,chaff_bug_heap_const,chaff_bug_stack_unused"
+bugtypes="chaff_bug_stack_const,chaff_bug_heap_const"
 #bugtypes="chaff_bug_heap_const"
 # default # of bugs to be injected at a time
 many=50
