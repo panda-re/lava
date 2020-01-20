@@ -119,8 +119,8 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                         });
                 result_ss << LIf(checker.render(), {
                         LAssign(LStr("void *lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
-                        //LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x18))"), LDecimal(16)),
-                        //LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(12)),
+                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x18))"), LDecimal(16)),
+                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(12)),
                         LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x24))"),
                                 LavaGetExtra(extra_data_slots.at(extra_bytes)))});
             }
@@ -190,9 +190,6 @@ struct PriQueryPointHandler : public LavaMatchHandler {
 
         std::string before;
         if (LavaAction == LavaQueries) {
-            std::string fnname = get_containing_function_name(Result, *toSiphon).second;
-            if ((fnname.rfind("_func") != (fnname.size()-5)) && (fnname.rfind("_callback") != (fnname.size()-9))) 
-            {
             // this is used in first pass clang tool, adding queries
             // to be intercepted by panda to query taint on in-scope variables
 #ifdef LEGACY_CHAFF_BUGS
@@ -205,7 +202,6 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                 LStr("&lava_chaff_var_2")}).render() + "; ";    // Pass the func addr through hypercall
 
             num_taint_queries += 1;
-            }
         } else if (LavaAction == LavaInjectBugs) {
             // This is used in second pass clang tool, injecting bugs.
             // This part is just about inserting DUA siphon, the first half of the bug.
