@@ -7,7 +7,7 @@
 lava="$(dirname $(dirname $(readlink -f $0)))"
 
 if [ "$#" -eq 0 ]; then
-    container="lava32"
+    container="lava32chaff"
 else
     project_name=$1
     cmd="${@:2}"

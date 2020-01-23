@@ -643,8 +643,8 @@ void taint_query_pri(Panda__LogEntry *ple) {
                 si->astnodename);
     }
 
-    record_injectable_bugs_at<Bug::CHAFF_STACK_UNUSED>(
-            si->insertionpoint, pad_atp, is_new_atp, {});
+    //record_injectable_bugs_at<Bug::CHAFF_STACK_UNUSED>(
+    //        si->insertionpoint, pad_atp, is_new_atp, {});
 #define RANDOM_SAMPLING_THRESHOLD   2
     uint64_t randcount = RANDOM_SAMPLING_THRESHOLD;
     if (RANDOM_SAMPLING_THRESHOLD > recent_duas_by_instr.size()) {
