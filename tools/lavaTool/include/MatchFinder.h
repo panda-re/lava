@@ -293,7 +293,8 @@ public:
                     // 1. (regview) << "((!(lava_extra[slot]>>31)) && ((((lava_extra[slot]>>16)*0xfe)&0xf0f0)==0xf0f0))\n"
                     // 2. (zipread) << "((__builtin_clz(lava_extra[slot])) && (!(__builtin_parity((lava_extra[slot])>>16))))\n"
                     // 3. (graphland) << "(lava_tempval=((lava_extra[slot]>>16)&0xffff),lava_tempval=(__builtin_powif(lava_tempval,8)+__builtin_powif(lava_tempval,3)),((*(int*)&lava_tempval)&0x50505050)==0x40000040) && (__builtin_clz(lava_extra[slot]))\n"
-                    << "((lava_tempval=(lava_extra[slot]>>16),lava_tempval=(__builtin_powif(lava_tempval,7)),(*(int*)&lava_tempval)&1) && (lava_tempval=((lava_extra[slot]>>16)^0x5555),__builtin_clz(*(int*)&lava_tempval)))\n"
+                    //<< "((lava_tempval=(lava_extra[slot]>>16),lava_tempval=(__builtin_powif(lava_tempval,7)),(*(int*)&lava_tempval)&1) && (lava_tempval=((lava_extra[slot]>>16)^0x5555),__builtin_clz(*(int*)&lava_tempval)))\n"
+                    << "1\n"
 
                     //<< "__attribute__((visibility(\"default\")))\n"
                     << "#define lava_update_const_high(slot) "
