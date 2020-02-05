@@ -528,28 +528,25 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
     uint32_t nstep = 2;
     uint32_t flipflag = rand()&1;
     std::string checkfunc = "";
-    switch (rand()%6) {
+    switch (rand()%5) {
     case 0:
-        checkfunc = "lava_check_const_high_1";
+        checkfunc = "lava_check_const_low_1";
         break;
     case 1:
-        checkfunc = "lava_check_const_high_2";
+        checkfunc = "lava_check_const_low_2";
         break;
     case 2:
-        checkfunc = "lava_check_const_high_3";
+        checkfunc = "lava_check_const_low_3";
         break;
     case 3:
-        checkfunc = "lava_check_const_high_4";
+        checkfunc = "lava_check_const_low_5";
         break;
     case 4:
-        checkfunc = "lava_check_const_high_5";
-        break;
-    case 5:
     default:
-        checkfunc = "lava_check_const_high_6";
+        checkfunc = "lava_check_const_low_6";
         break;
     }
-    if (bug == real_bug)    checkfunc = "lava_check_const_high_pass";
+    if (bug == real_bug)    checkfunc = "lava_check_const_low_4";
     for (uint32_t i = 0; i < nstep; i++) {
         if (tr_end != tr_start)
             tr_start = tr_start + (rand() % (tr_end - tr_start));
@@ -563,15 +560,14 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
                         LDecimal(extra_data_slots[lval_bytes]) });
                 extra_overconst_expr[ast_loc].emplace_back(
                         LIf(checker.render(), {
-                            LFunc("lava_update_const_high", {
+                            LFunc("lava_update_const_low", {
                                     LDecimal(extra_data_slots[lval_bytes]) })}));
             } else {
-                checker = /*checker &&*/ LFunc("lava_check_const_low", {
-                        LDecimal(extra_data_slots[lval_bytes]),
-                        LDecimal(rand()&0xffff) });
+                checker = /*checker &&*/ LFunc("lava_check_const_high", {
+                        LDecimal(extra_data_slots[lval_bytes])});
                 extra_overconst_expr[ast_loc].emplace_back(
                         LIf(checker.render(), {
-                            LFunc("lava_update_const_low", {
+                            LFunc("lava_update_const_high", {
                                     LDecimal(extra_data_slots[lval_bytes]) })}));
             }
         } else {
@@ -580,15 +576,14 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
                         LDecimal(extra_data_slots[lval_bytes]) });
                 extra_overconst_expr[ast_loc].emplace_back(
                         LIf(checker.render(), {
-                            LFunc("lava_update_const_high", {
+                            LFunc("lava_update_const_low", {
                                     LDecimal(extra_data_slots[lval_bytes]) })}));
             } else {
-                checker = /*checker &&*/ LFunc("lava_check_const_low", {
-                        LDecimal(extra_data_slots[lval_bytes]),
-                        LDecimal(rand()&0xffff) });
+                checker = /*checker &&*/ LFunc("lava_check_const_high", {
+                        LDecimal(extra_data_slots[lval_bytes])});
                 extra_overconst_expr[ast_loc].emplace_back(
                         LIf(checker.render(), {
-                            LFunc("lava_update_const_low", {
+                            LFunc("lava_update_const_high", {
                                     LDecimal(extra_data_slots[lval_bytes]) })}));
             }
         }
