@@ -65,7 +65,7 @@ class Call:
         self.fnptr = call['fnptr']
         self.args = call['args']
         self.ret_tyep = call['ret_type']
-        assert (not see)
+        #assert (not see)
 
 
 if __name__ == '__main__':

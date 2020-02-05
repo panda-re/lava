@@ -1094,7 +1094,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
         print("Knob size: {}".format(args.knobTrigger))
         mutfile_kwargs = {'kt': True, 'knob': args.knobTrigger}
 
-    mutfile_kwargs['patchval'] = 0x0806ffff
+    mutfile_kwargs['patchval'] = 0x0011cb88
     fuzz_labels_list = [bug.trigger.all_labels]
     if len(bug.extra_duas) > 0:
         extra_query = db.session.query(DuaBytes)\
@@ -1152,7 +1152,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
 
     # Retry with another patch value
     if not validated:
-        mutfile_kwargs['patchval'] = 0x2050ffff
+        mutfile_kwargs['patchval'] = 0x88cb1100
         mutfile(unfuzzed_input, fuzz_labels_list, fuzzed_input, bug,
                 solution=solution, **mutfile_kwargs)
         timeout = project.get('timeout', 5)
