@@ -2,6 +2,23 @@
 . `dirname $0`/funcs.sh
 digit_re='^[0-9]+$'
 
+# Default values for all configuration varaibles
+ok=0
+reset=0
+reset_db=0
+add_queries=0
+make=0
+taint=0
+inject=0
+num_trials=0
+kt=""
+validate=0
+reset_taint_labels=0
+curtail=0
+bugtypes="ptr_add,rel_write" # defaults
+atptypes="pointer_write" # default - Note this does nothing for now
+many=50
+
 function parse_args {
     echo
     progress "everything" 0 "Parsing args"
@@ -10,6 +27,7 @@ function parse_args {
         if ! [[ $1 == *"-"* ]]; then
             reset=1
             reset_db=1
+            validate=1
             add_queries=1
             make=1
             taint=1
@@ -29,6 +47,7 @@ function parse_args {
             -a|--all)
                reset=1
                reset_db=1
+               validate=1
                add_queries=1
                make=1
                taint=1
@@ -44,6 +63,7 @@ function parse_args {
            -ak) # Backwards compatability with everyone's favorite lava1 option
                reset=1
                reset_db=1
+               validate=1
                add_queries=1
                make=1
                taint=1
@@ -59,6 +79,10 @@ function parse_args {
                reset=1
                progress "everything" 0 "Reset step will be executed"
                ;;
+            -v|--validate)
+               validate=1
+               progress "everything" 0 "Validate step will be executed"
+               ;;
             -c|--clean)
                reset_db=1
                progress "everything" 0 "Reset (clean) just databse step will be executed"
@@ -68,7 +92,7 @@ function parse_args {
                progress "everything" 0 "Add queries step will be executed"
                ;;
             -m|--make)
-               make=1 # TODO: what does this mean? Make queries?
+               make=1 # TODO: does this mean make the target with the previously added queries? - Merge into add-queries step?
                progress "everything" 0 "Make step will be executed"
                ;;
             -t|--taint)
@@ -86,6 +110,10 @@ function parse_args {
                many=0
                num_trials=1
                progress "everything" 0 "[TESTING] Inject data_flow only, 0 bugs"
+               ;;
+            --reset-taint) # For testing, reset taint labels in database so we can rerun FBI by hand
+               reset_taint_labels=1
+               progress "everything" 0 "[TESTING] Resetting taint labels"
                ;;
 
             # Arguments that take options
@@ -134,29 +162,22 @@ function parse_args {
                ;;
             -y|--bug-types)
                 if [ "$2" ]; then
-                    bugtypes="$2" # TODO: a single arguments must be passed as 'arg1,'
+                    bugtypes="$2"
                     progress "everything" 0 "Injecting bugs of type(s): $bugtypes"
                     shift
                 else
                     die 'ERROR: --bug-types requires comma-seperated list of bug types'
                 fi
                ;;
-            -b|--atp-type )
-                # -b [bugType] : use this to specify attact point type: [mem_write|mem_read|fn_arg]
-                # TODO: should allow combinations of atp types
+            -b|--atp-types )
+                # -b [bugType] : use this to specify attact point type: pointer_read,pointer_write,function_call
                 if [ "$2" ]; then
-                    ATP_TYPE="$2"
+                    atptypes="$2"
+                    progress "everything" 0 "Query step will be executed with atp types: = $atptypes"
+                    shift
                 else
-                    die 'ERROR: --atp-types requires a single atp-type'
+                    die 'ERROR: --atp-types requires comma-seperated list of atp types'
                 fi
-
-                if [ "$ATP_TYPE" != "mem_read" -a "$ATP_TYPE" != "fn_arg" -a "$ATP_TYPE" != "mem_write" ]; then
-                    echo "ATP Type ($ATP_TYPE) is not valid must specify:"
-                    echo "    --atp-type [mem_write|mem_read|fn_arg]"
-                    echo "Exiting . . ."
-                    exit 1
-                fi
-                progress "everything" 0 "Query step will be executed with bug type: atp = $ATP_TYPE"
                 ;;
 
             #TODO: enable --inject=1 instead of just --inject 1 with something like:

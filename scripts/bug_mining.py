@@ -39,7 +39,6 @@ qemu_use_rr = False
 
 start_time = 0
 version="2.0.0"
-curtail=0
 
 def tick():
     global start_time
@@ -82,8 +81,8 @@ input_file = abspath(project["config_dir"] + "/" + sys.argv[3])
 input_file_base = os.path.basename(input_file)
 print("bug_mining.py %s %s" % (project_name, input_file))
 
+curtail = 0
 if len(sys.argv) > 4:
-    global curtail
     curtail = int(sys.argv[4])
 
 qemu_path = project['qemu']
@@ -99,6 +98,7 @@ with open(join(qemu_build_dir, 'config-host.mak')) as config_host:
             src_path = value
             break
 assert src_path
+
 panda_scripts_dir = join(src_path, 'panda', 'scripts')
 sys.path.append(panda_scripts_dir)
 
@@ -131,7 +131,9 @@ shutil.copy(input_file, installdir)
 
 create_recording(qemu_path, project['qcow'], project['snapshot'],
                  command_args, installdir, isoname,
-                 project["expect_prompt"], rr=qemu_use_rr)
+                 project["expect_prompt"],
+                 #'ide1-cd0', # XXX: When we upgrade to a newer version of panda, we'll need this argument here
+                 rr=qemu_use_rr)
 
 try:
     os.mkdir('inputs')

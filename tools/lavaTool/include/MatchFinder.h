@@ -63,6 +63,8 @@ namespace clang {
 class LavaMatchFinder : public MatchFinder, public SourceFileCallbacks {
 public:
     LavaMatchFinder() : Mod(Insert) {
+        // Here we register all our matchers to call into various helpers
+        // to add queries and ultimately find ATPs
 
         // This is a write to array element or pointer
         // i.e. we have *p = ... or x[i] = ...
@@ -106,6 +108,7 @@ public:
                 makeHandler<PriQueryPointHandler>()
                 );
 
+        // ATP type: function arguments
         addMatcher(
                 callExpr(
                     forEachArgMatcher(expr(isAttackableMatcher()).bind("arg"))).bind("call"),
@@ -114,7 +117,15 @@ public:
 
 
 
-        // fortenforge's matchers (for data_flow argument addition)
+        // ATP Type: printf read disclosures - Disabled here because it's broken(?)
+        /* addMatcher(
+                callExpr(
+                    callee(functionDecl(hasName("::printf"))),
+                    unless(argumentCountIs(1))).bind("call_expression"),
+                makeHandler<ReadDisclosureHandler>()
+                ); */
+
+        // Add data_flow to the program
         if (ArgDataflow && LavaAction == LavaInjectBugs) {
             // function declarations & definition.  Decl without body is prototype
             addMatcher(
@@ -142,14 +153,6 @@ public:
                 typedefDecl().bind("typedefdecl"),
                 makeHandler<FunctionPointerTypedefHandler>());
 #endif
-
-        // printf read disclosures - currently disabled
-        /* addMatcher(
-                callExpr(
-                    callee(functionDecl(hasName("::printf"))),
-                    unless(argumentCountIs(1))).bind("call_expression"),
-                makeHandler<ReadDisclosureHandler>()
-                ); */
         }
     }
     virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
@@ -202,7 +205,7 @@ public:
                         << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
                     insert_at_top.append(top.str());
                 } else {
-                    insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
+                    insert_at_top.append("extern void lava_set(unsigned int bn, unsigned int val);\n"
                     "extern unsigned int lava_get(unsigned int);\n");
                 }
             }

@@ -397,6 +397,7 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         std::initializer_list<const DuaBytes *> extra_duas);
 
 void taint_query_pri(Panda__LogEntry *ple) {
+    dprintf("taint_query_pri\n");
     assert (ple != NULL);
     Panda__TaintQueryPri *tqh = ple->taint_query_pri;
     assert (tqh != NULL);
@@ -639,13 +640,14 @@ void update_liveness(Panda__LogEntry *ple) {
             // keep track of unique taint label sets
             update_unique_taint_sets(tq->unique_label_set);
         }
-//        if (debug) { spit_tq(tq); printf("\n"); }
-
         // This should be O(mn) for m sets, n elems each.
         // though we should have n >> m in our worst case.
         const std::vector<uint32_t> &cur_labels =
             ptr_to_labelset.at(tq->ptr)->labels;
-        merge_into(cur_labels.begin(), cur_labels.end(), all_labels);
+
+        //if (cur_labels != all_labels) { // No impact on performance?
+            merge_into(cur_labels.begin(), cur_labels.end(), all_labels);
+        //}
     }
     t.commit();
 
@@ -656,14 +658,20 @@ void update_liveness(Panda__LogEntry *ple) {
     for (uint32_t l : all_labels) {
         liveness[l]++;
 
-        dprintf("checking viability of %lu duas\n", recent_dead_duas.size());
         auto it_duas = dua_dependencies.find(l);
+        if (it_duas != dua_dependencies.end()) {
+            // Only print if we have any duas
+            dprintf("checking viability of %lu duas\n", recent_dead_duas.size());
+        }
         if (it_duas != dua_dependencies.end()) {
             std::set<const Dua *> &depends = it_duas->second;
             merge_into(depends.begin(), depends.end(), depends.size(), duas_to_check);
         }
     }
 
+    if (duas_to_check.size() == 0) return;
+
+    dprintf("%lu duas to check \n", duas_to_check.size());
     std::vector<const Dua *> non_viable_duas;
     for (const Dua *dua : duas_to_check) {
         // is this dua still viable?
@@ -972,8 +980,8 @@ int main (int argc, char **argv) {
     printf("max card of taint set returned by query = %d\n", max_card);
 
     if (!project.isMember("max_tcn")) {
-        printf("max_tcn not set, using default 100\n");
-        project["max_tcn"] = 100;
+        printf("max_tcn not set, using default 1\n");
+        project["max_tcn"] = 1;
     }
     if (!project["max_tcn"].isUInt()) {
         throw std::runtime_error("Could not parse max_tcn");
@@ -1017,6 +1025,7 @@ int main (int argc, char **argv) {
     std::string db_name = project["db"].asString() + host.get("db_suffix", "").asString();
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
                 db_name));
+    fflush(NULL); // When called by inject.py we need to flush output for it to get to our log file
     /*
      re-read pandalog, this time focusing on taint queries.  Look for
      dead available data, attack points, and thus bug injection oppotunities
@@ -1024,6 +1033,35 @@ int main (int argc, char **argv) {
     pandalog_open(plog.c_str(), "r");
     uint64_t num_entries_read = 0;
 
+    // Ensure we see a potential DUA and ATP at least once
+    // Otherwise nothing will work so raise an error
+    // Also count the total number of plog entries. XXX: If we switch to the C++ interface we could do this directly and then break this loop early once both found_p{dua,atp} are true
+    bool found_pdua = false;
+    bool found_patp = false;
+    unsigned int plog_entry_count = 0;
+    while (1) {
+        Panda__LogEntry *ple;
+        ple = pandalog_read_entry(); // This prints a lot of stuff to STDOUT :(
+        if (ple == NULL)  break;
+        plog_entry_count++;
+
+        if (ple->taint_query_pri) found_pdua = true; // potential DUA
+        if (ple->attack_point)    found_patp = true; // potential ATP
+    }
+
+    if (!found_pdua) {
+        std::cerr << "No potential DUAs identified in pandalog\n";
+        throw std::runtime_error("No potential DUAs in pandalog. Did you run with CFLAGS including -g and -gdwarf-2");
+    }
+
+    if (!found_patp) {
+        std::cerr << "No potential ATPs identified in pandalog\n";
+        throw std::runtime_error("No potential ATPs in pandalog");
+    }
+
+    pandalog_seek(0); // Reset pandalog iterator for actual parsing
+
+    unsigned int plog_idx=0;
     while (1) {
         // collect log entries that have same instr count (and pc).
         // these are to be considered together.
@@ -1032,11 +1070,15 @@ int main (int argc, char **argv) {
         if (ple == NULL)  break;
         num_entries_read++;
         if ((num_entries_read % 10000) == 0) {
-            printf("processed %lu pandalog entries \n", num_entries_read);
+            float complete_p = plog_idx;
+            complete_p /= plog_entry_count;
+            complete_p *= 100;
+            printf("processed %lu pandalog entries: %.2f%% complete \n", num_entries_read, complete_p);
             std::cout << num_bugs_added_to_db << " added to db "
                 << recent_dead_duas.size() << " current duas "
                 << num_real_duas << " real duas "
                 << num_fake_duas << " fake duas\n";
+            fflush(NULL); // When called by inject.py we need to flush output for it to get to our log file
         }
 
         if (ple->taint_query_pri) {
@@ -1056,6 +1098,7 @@ int main (int argc, char **argv) {
             std::cout << "*** Curtailing output of fbi at " << num_real_duas << "\n";
             break;
         }
+        plog_idx++;
     }
     std::cout << num_bugs_added_to_db << " added to db ";
     pandalog_close();

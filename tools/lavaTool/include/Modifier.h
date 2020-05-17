@@ -94,7 +94,7 @@ public:
     const Modifier &InsertAfterEnd (std::string str) const {
         SourceLocation end = range().second;
         unsigned lastTokenSize = Lexer::MeasureTokenLength(end, *sm, *LangOpts);
-        Insert.InsertAfter(end.getLocWithOffset(lastTokenSize+2), str);
+        Insert.InsertAfter(end.getLocWithOffset(lastTokenSize+1), str);
         return *this;
     }
 
@@ -125,6 +125,19 @@ public:
             Parenthesize();
         }
         return Operate("+", addend, parent);
+    }
+
+    const Modifier &MakeSeq(const Stmt *parent, const LExpr &lexp) const {
+        // Given an lexpr, insert it in a sequence with parent such that
+        // it will be evaluated in an expression that returns parent.
+        // This builds the expr "(new_expr, (parent_expr))"
+
+        Parenthesize();
+        InsertBefore(", ");
+        InsertBefore(lexp.render());
+        Parenthesize();
+
+        return *this;
     }
 
     void InsertAt(SourceLocation loc, std::string str) {

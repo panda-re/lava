@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Whoops had built lavaTool from fasano/debug_fnptrs not master
-# Switched back to master and ~fingerscrossed~ we might inject a bit better
-
 sed -i -e 's/data_flowvoid/data_flow/g' $1/*/*.c
 sed -i -e 's/(int \*data_flow, (void \*)0)$/((void \*)0)/g' $1/src/jddctmgr-pre.c
 

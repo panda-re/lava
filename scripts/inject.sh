@@ -11,11 +11,12 @@ set -e # Exit on error
 
 # Load lava-functions
 . `dirname $0`/funcs.sh
+lava=$(dirname $(dirname $(readlink -f "$0")))
 version="2.0.0"
 
 USAGE() {
   echo "$0 version $version"
-  echo "USAGE: $0 -a -k -m [Num bugs] -n [Minimum real bugs] -l [List of bug IDs to use] -e [Expected exit code of original program] JSONfile"
+  echo "USAGE: $0 -m [Num bugs] -n [Minimum real bugs] -l [List of bug IDs to use] -e [Expected exit code of original program] JSONfile"
   echo "       . . . or just $0 JSONfile"
   exit 1
 }
@@ -32,10 +33,10 @@ exit_code=0
 min_yield=1
 diversify=""
 skipinject=""
-dataflow=""
+dataflow_arg=""
 echo
 progress "inject" 0 "Parsing args"
-while getopts  "sbdikm:l:n:e:" flag
+while getopts  "sbdim:l:n:e:" flag
 do
   if [ "$flag" = "l" ]; then
       bug_list="-l $OPTARG"
@@ -47,7 +48,7 @@ do
   fi
   if [ "$flag" = "d" ]; then
       progress "inject" 0 "-d: using data flow"
-      dataflow="-d"
+      dataflow_arg="-d"
   fi
   if [ "$flag" = "e" ]; then
       exit_code=$OPTARG
@@ -68,7 +69,7 @@ do
 done
 shift $((OPTIND -1))
 
-json="$(realpath $1)"
+project_name=$1
 . `dirname $0`/vars.sh
 progress "inject" 1 "JSON file is $json"
 
@@ -76,7 +77,7 @@ mkdir -p $logs
 lf="$logs/inject.log"
 progress "inject" 1 "Starting -- logging to $lf"
 truncate "$lf"
-run_remote "$testinghost" "$python $scripts/inject.py -m $num_bugs $bug_list -e $exit_code $dataflow $json" "$lf"
+run_remote "$testinghost" "$python $scripts/inject.py -m $num_bugs $bug_list -e $exit_code $dataflow_arg $hostjson $project_name" "$lf"
 grep yield "$lf"
 
 progress "inject" 1 "Finished."

@@ -23,8 +23,7 @@
     "favoriteFruit": "apple"
   },
   {
-    "null", null,
-    "int", 1234,
+    "int": 1234,
     "hello": "there",
     "tags": [
       "dolor",

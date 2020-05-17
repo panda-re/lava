@@ -17,7 +17,7 @@
 
     "main_file": [ "src/example-pre.c" ],
 
-    "injfixupsscript": "fixup.sh",
+    "injfixupsscript": "fixup.sh {bug_build}",
 
     "inputs": [ "inputs/testorig.jpg" ]
 }

@@ -2,7 +2,7 @@
     "name": "toy",
     "db": "toy",
     "preprocessed": true,
-    "dataflow": "true",
+    "dataflow": true,
 
     "qcow": "wheezy_panda2.qcow2",
     "snapshot": "root",
@@ -17,8 +17,6 @@
     "command": "{install_dir}/bin/toy {input_file}",
 
     "main_file": [ "toy.c" ],
-
-    "dataflow": "true",
 
     "inputs": [ "inputs/testsmall.bin" ]
 }

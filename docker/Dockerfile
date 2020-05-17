@@ -76,3 +76,6 @@ RUN update-locale LANG=C.UTF-8
 
 # Having autoconf in the container will make building autotools packages easier
 RUN apt-get install -y autoconf libtool m4 automake
+
+# sqlite3 needs tcl
+RUN apt-get install -y tcl

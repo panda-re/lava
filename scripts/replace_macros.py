@@ -1,6 +1,9 @@
 import sys
 import os
 import shutil
+import re
+
+bug_msg = re.compile(r'/\* end of bug [a-z0-9*] *\*/')
 
 def find_end(line, start_idx_off):
     open_parens = 1
@@ -27,12 +30,15 @@ def cleanup(line):
         end_idx = find_end(line, start_idx_off)
 
         contents = line[start_idx_off:][:end_idx]
+        if ", " not in contents:
+            print("BAD LINE", line)
 
         # Now we have A, VAL...VAL, C
         first = contents.index(", ")+2
         last = contents.rindex(", ")
 
         line = line[:start_idx] + contents[first:last] + line[start_idx_off+end_idx+1:]
+        line = bug_msg.sub("", line) # Remove all /* end of bug 123b4 */ messages
 
     while "DFLOG" in line:
         #DFLOG(115, *(const unsigned int *)ubuf);

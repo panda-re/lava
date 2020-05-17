@@ -91,9 +91,37 @@ target_include_directories(lavaInitTool BEFORE
         ${CMAKE_CURRENT_SOURCE_DIR}/../include
     )
 
+# lavaCovBugs target compiled against llvm
+# TODO: this shouldn't depend on ODB but it needs it for lava.hxx?
+add_executable(lavaCovBugs lavaCovBugs.cpp)
+target_compile_options(lavaCovBugs PRIVATE -fno-omit-frame-pointer -O3 -fexceptions -frtti)
+set_target_properties(lavaCovBugs PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
+set_property(TARGET lavaCovBugs PROPERTY CXX_STANDARD 14)
+target_include_directories(lavaCovBugs BEFORE
+        PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    )
+
+# lavaCovBugsLoc target compiled against llvm
+# TODO: this shouldn't depend on ODB but it needs it for lava.hxx?
+add_executable(lavaCovBugsLoc lavaCovBugsLoc.cpp)
+target_compile_options(lavaCovBugsLoc PRIVATE -fno-omit-frame-pointer -O3 -fexceptions -frtti)
+set_target_properties(lavaCovBugsLoc PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
+set_property(TARGET lavaCovBugsLoc PROPERTY CXX_STANDARD 14)
+target_include_directories(lavaCovBugsLoc BEFORE
+        PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    )
+
 target_link_libraries(lavaTool lavaDB_x32 omg odb odb-pgsql lava-odb_x32 ${LLVM_CLANG_LINK_LIBRARIES})
 target_link_libraries(lavaFnTool lavaDB_x32 omg odb odb-pgsql lava-odb_x32 ${LLVM_CLANG_LINK_LIBRARIES})
 target_link_libraries(lavaInitTool ${LLVM_CLANG_LINK_LIBRARIES})
+target_link_libraries(lavaCovBugs ${LLVM_CLANG_LINK_LIBRARIES})
+target_link_libraries(lavaCovBugsLoc ${LLVM_CLANG_LINK_LIBRARIES})
 
 install (TARGETS lavaTool
          RUNTIME DESTINATION bin
@@ -110,6 +138,20 @@ install (TARGETS lavaFnTool
          )
 
 install (TARGETS lavaInitTool
+         RUNTIME DESTINATION bin
+         LIBRARY DESTINATION lib
+         ARCHIVE DESTINATION lib/static
+         OPTIONAL
+         )
+
+install (TARGETS lavaCovBugs
+         RUNTIME DESTINATION bin
+         LIBRARY DESTINATION lib
+         ARCHIVE DESTINATION lib/static
+         OPTIONAL
+         )
+
+install (TARGETS lavaCovBugsLoc
          RUNTIME DESTINATION bin
          LIBRARY DESTINATION lib
          ARCHIVE DESTINATION lib/static

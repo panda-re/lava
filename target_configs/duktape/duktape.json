@@ -15,7 +15,7 @@
     "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/duk {input_file}",
-    "injfixupsscript": "duktape_fixup.sh {bug_build}",
+    "COMMENT_injfixupsscript": "duktape_fixup.sh {bug_build}",
 
     "max_tcn": 10,
 

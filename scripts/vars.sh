@@ -1,5 +1,5 @@
-#!/bin/sh
-# Set all our environment variables
+#!/bin/bash
+# Set all our environment variables. Runs as a _bash_ (not sh) script
 # $lava, $json, and  must be set prior to calling this
 
 if [ -z ${project_name+x} ]; then
@@ -36,7 +36,7 @@ fi
 name="$(jq -r .name $json)"
 db="$(jq -r .db $json)$db_suffix"
 extradockerargs="$(jq -r .extra_docker_args $json)"
-exitCode="$(jq -r .expected_exit_code $json)"
+exitCode="$(jq -r '.expected_exit_code // "0"' $json)"
 dataflow="$(jq -r '.dataflow // "false"' $json)" # TODO use everywhere, stop passing as argument
 
 # List of function names to blacklist for data_flow injection, merged as fn1\|fn2\|fn3 so we can use sed
@@ -50,7 +50,9 @@ tarfiledir="$tar_dir"
 tarfile="$tarfiledir/$(jq -r '.tarfile' $json)"
 directory=$output_dir
 
+# Provide inputs as a space-seperated string and an actual list
 inputs=`jq -r '.inputs' $json  | jq 'join (" ")' | sed 's/\"//g' `
+inputs_arr=$(jq -r '.inputs[]' $json)
 
 fixupscript="null"
 if [ "$(jq -r .fixupscript $json)" != "null" ]; then
@@ -71,8 +73,13 @@ testinghost="$(jq -r '.testinghost // "docker"' $json)"
 logs="$output_dir/$name/logs"
 
 makecmd="$(jq -r .make $json)"
+# runcmd ('command' in .json) and install have {foo}style format strings, change to $foo style
 install=$(jq -r .install $json)
-install="${install/\{config_dir\}/$config_dir}" # Format string replacement for config_dir
+install=$(echo "$install" | awk -v dir=$config_dir '{ gsub(/{config_dir}/, dir); print }') # Actualy substitute
+runcmd=$(jq -r .command $json)
+runcmd=$(echo "$runcmd" | awk '{ gsub(/{install_dir}/, "$install_dir"); print }') # Leave variable
+runcmd=$(echo "$runcmd" | awk '{ gsub(/{input_file}/, "$input_file"); print }') # Leave variable
+
 post_install="$(jq -r .post_install $json)"
 install_simple=$(jq -r .install_simple $json)
 configure_cmd=$(jq -r '.configure // "/bin/true"' $json)

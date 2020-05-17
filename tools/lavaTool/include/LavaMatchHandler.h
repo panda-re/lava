@@ -101,34 +101,69 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         return std::make_pair(std::string("Meh"),std::string("Unknown"));
     }
 
+
     std::pair<std::string,std::string> get_containing_function_name(const MatchFinder::MatchResult &Result, const Stmt &stmt) {
 
         const Stmt *pstmt = &stmt;
 
         std::pair<std::string,std::string> fail = std::make_pair(std::string("Notinafunction"), std::string("Notinafunction"));
-        while (true) {
+
+        auto printing_policy = PrintingPolicy(Result.Context->getLangOpts());
+
+
+        while (true) { // Loop for all parents
             const auto &parents = Result.Context->getParents(*pstmt);
-            //debug(FNARG) << "get_containing_function_name: " << parents.size() << " parents\n";
-            for (auto &parent : parents) {
-                //debug(FNARG) << "parent: " << parent.getNodeKind().asStringRef().str() << "\n";
-            }
-            if (parents.empty()) {
-                //debug(FNARG) << "get_containing_function_name: no parents for stmt? ";
-                pstmt->dumpPretty(*Result.Context);
+            if (parents.empty()) { // Break loop if no more parents
+                debug(FNARG) << "get_containing_function_name: no parents for stmt? ";
+                //pstmt->dumpPretty(*Result.Context);
                 //debug(FNARG) << "\n";
                 return fail;
             }
+
+            //debug(FNARG) << "get_containing_function_name: " << parents.size() << " parents\n";
+            //for (auto &parent : parents) {
+            //    debug(FNARG) << "parent: " << parent.getNodeKind().asStringRef().str() << "\n";
+            //}
             if (parents[0].get<TranslationUnitDecl>()) {
                 //debug(FNARG)<< "get_containing_function_name: parents[0].get<TranslationUnitDecl? ";
                 pstmt->dumpPretty(*Result.Context);
-                //debug(FNARG) << "\n";
+                debug(FNARG) << "\n";
                 return fail;
             }
-            const FunctionDecl *fd = parents[0].get<FunctionDecl>();
-            if (fd) return fundecl_fun_name(Result, fd);
+
+
+            // Ensure we always go up to a parent no matter what. We know it's not empty so the 0th item exists
             pstmt = parents[0].get<Stmt>();
+            // Find the first element in parents that's a function decl and return its name
+            // if none are parent decls, just let the loop keep running (walk up to grand-parents)
+            for (auto &parent : parents) {
+                auto nodeKind = parent.getNodeKind().asStringRef().str().c_str(); // TODO: better non-string comparison
+                pstmt = parent.get<Stmt>();
+                if (strcmp(nodeKind, "FunctionDecl") == 0) {
+                    const FunctionDecl *fd = parent.get<FunctionDecl>();
+                    if (fd) {
+                        auto ret= fundecl_fun_name(Result, fd);
+                        debug(FNARG) << "FnDecl: Returning " << ret.first << ":" << ret.second << "\n";
+                        return ret;
+                    }
+
+                } else if (strcmp(nodeKind, "CallExpr") == 0) {
+                    // If our parent is a callexpr, then we're an argument
+                    // so we'll return the name of that parent function
+                    const CallExpr *ce = parent.get<CallExpr>();
+                    if (ce) {
+                        const FunctionDecl *fd = ce->getDirectCallee();
+                        if (fd) {
+                            auto ret= fundecl_fun_name(Result, fd);
+                            debug(FNARG) << "FnDecl: Returning " << ret.first << ":" << ret.second << "\n";
+                            return ret;
+                        }
+                    }
+                }
+            }
+
             if (!pstmt) {
-                //debug(FNARG) << "get_containing_function_name: !pstmt \n";
+                debug(FNARG) << "get_containing_function_name: !pstmt \n";
                 const VarDecl *pvd = parents[0].get<VarDecl>();
                 if (pvd) {
                     const auto &parents = Result.Context->getParents(*pvd);
@@ -160,11 +195,9 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
     // A query inserted at a possible attack point. Used, dynamically, just to
     // tell us when an input gets to the attack point.
     LExpr LavaAtpQuery(LavaASTLoc ast_loc, AttackPoint::Type atpType) {
-        return LBlock({
-                LFunc("vm_lava_attack_point2",
+        return LFunc("vm_lava_attack_point2",
                     { LDecimal(GetStringID(StringIDs, ast_loc)), LDecimal(0),
-                        LDecimal(atpType) }),
-                LDecimal(0) });
+                        LDecimal(atpType) });
     }
 
     /*
@@ -194,7 +227,6 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             }
 
             // this should be a function bug -> LExpr to add.
-            auto pointerAttack = KnobTrigger ? knobTriggerAttack : traditionalAttack;
             for (const Bug *bug : injectable_bugs) {
                 assert(bug->atp->type == atpType);
                 // was in if ArgCompetition, but we want to inject bugs more often
@@ -204,8 +236,8 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
                 bugs.push_back(bug2);
 
                 if (bug->type == Bug::PTR_ADD) {
-                    pointerAddends.push_back(pointerAttack(bug));
-                    triggers.push_back(Test(bug)); //  Might fail for knobTriggers?
+                    pointerAddends.push_back(traditionalAttack(bug));
+                    triggers.push_back(Test(bug));
                 } else if (bug->type == Bug::REL_WRITE) {
                     const DuaBytes *extra0 = db->load<DuaBytes>(bug2->extra_duas[0]);
                     const DuaBytes *extra1 = db->load<DuaBytes>(bug2->extra_duas[1]);
@@ -225,7 +257,14 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
         if (!pointerAddends.empty()) {
             LExpr addToPointer = LBinop("+", std::move(pointerAddends));
-            Mod.Change(toAttack).Add(addToPointer, parent);
+
+            if (LavaAction == LavaQueries) { // Queries are added as sequences
+                // foo(1) becomes foo((vm_lava_attack_point2(0,1,2), 1)
+                Mod.Change(toAttack).MakeSeq(parent, addToPointer);
+            } else { // while attacks are actually addition
+                // foo(1) becomes foo(1+(dua_get(1)==0x41424344)*0x41424344)
+                Mod.Change(toAttack).Add(addToPointer, parent);
+            }
 
             // For competitions, wrap pointer value in LAVALOG macro call-
             // it's effectively just a NOP that prints a message when the trigger is true
@@ -241,7 +280,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
                     std::stringstream end_str;
 
-                    end_str << ", " << triggers[i] << ")";
+                    end_str << ", " << triggers[i] << "/* end of bug " << bug->id <<"*/)";
                     Mod.Change(toAttack).InsertAfter(end_str.str());
                     free(bug);
                 }

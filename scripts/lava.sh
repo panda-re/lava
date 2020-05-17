@@ -1,22 +1,16 @@
 #!/bin/bash
 #
-# A script to run all of lava.
+# A script to run all the components of lava
 #
-# Lava consists of three main steps.
+# 
 #
-# Step Q: Add taint and attack point queries to source.
-# Step M: Make the source with the queries
-# Step T: Use panda & fbi to populate db with prospective bugs
-# Step I: Try injecting bugs.
+# At a high level, running this script with -a -k will:
 #
-# Here is what everything consists of.
-#
-# Erases postgres db for this target.
-# Uses lavatool to inject queries.
-# Compiles resulting program.
+# Erase postgres db for this target.
+# Use lavatool to inject queries and compile the program with queries
 # Runs that program under PANDA taint analysis
 # Runs fbi on resulting pandalog and populates postgres db with prospective bugs to inject
-# Tries injecting a single bug.
+# Attempt to inject bugs
 #
 # Json file required params
 #
@@ -30,7 +24,7 @@
 # pandahost:   what remote host to run panda and postgres on
 # testinghost: what host to test injected bugs on
 # fixupscript: script to run after add_query to fix up src before make
-#
+
 
 version="2.0.0"
 trap '' PIPE
@@ -46,12 +40,13 @@ USAGE() {
   echo "   -a | --all     Run all lava steps and inject $many bugs over 3 trials"
   echo "   -k | --force   Delete old data without confirmation"
   echo "   -n [num_bugs] | --count [num_bugs]   Specify number of bugs to be injected at once"
-  echo "   -y [bug_types] | --bug-types [bug_types]   Specify a comma seperated list of bug types: " # TODO never used?
-  echo "   -b [atp_type] | --atp-type [atp_type]   Specify a single ATP type. One of mem_read, fn_arg, or mem_write"
+  echo "   -y [bug_types] | --bug-types [bug_types]   Specify a comma seperated list of bug types: ptr_add,rel_write"
+  echo "   -b [atp_types] | --atp-types [atp_types]   Specify a comma seperated list of ATP types. pointer_read,pointer_write,function_call"
 
   echo
   echo "== Specify Steps to Run =="
   echo "   -r | --reset         Run reset step"
+  echo "   -v | --validate      Run validate step"
   echo "   -c | --clean         Run clean step"
   echo "   -q | --add-queries   Run add queries step"
   echo "   -m | --make          Run make step"
@@ -60,8 +55,8 @@ USAGE() {
 
   echo
   echo "== Expert only options =="
-  echo "  --demo                        Run lava demo"
   echo "  --test-data-flow              Only inject data-flow argument, no bugs"
+  echo "  --reset-taint                 Reset all taint labels in database (to rerun FBI by hand)"
   echo "  --curtail [count]             Curtail bug-finding after count bugs"
   echo "  --enable-knob-trigger [knob]  Enable knob trigger with specified knob" # TODO: what does that mean? Maybe disable this entirely
   echo
@@ -76,24 +71,7 @@ fi
 . `dirname $0`/funcs.sh
 lava=$(dirname $(dirname $(readlink -f "$0")))
 
-# defaults
-ok=0
-reset=0
-reset_db=0
-add_queries=0
-make=0
-taint=0
-inject=0
-num_trials=0
-kt=""
-demo=0
-curtail=0
-ATP_TYPE=""
-# default bugtypes
-bugtypes="ptr_add,rel_write"
-# default # of bugs to be injected at a time
-many=50
-
+# defaults for all bash flags are in arg_parse.sh
 source `dirname $0`/arg_parse.sh
 parse_args $@
 
@@ -102,11 +80,6 @@ if [ -z "$project_name" ]; then
     USAGE
 fi
 . `dirname $0`/vars.sh
-
-if [[ $demo -eq 1 ]]
-then
-    gnome-terminal --geometry=90x40  -x bash -c "python $(dirname $0)/demo.py $json; read" &
-fi
 
 progress "everything" 1 "JSON file is $json"
 
@@ -143,8 +116,9 @@ if [ $reset -eq 1 ]; then
     deldir "$sourcedir"
     deldir "$bugsdir"
     deldir "$directory/$name/inputs"
-    deldir "$directory/$name/"'*rr-*'
+    deldir "$directory/$name/${name}_validate"
     # remove all plog files in the directory
+    deldir "$directory/$name/"'*rr-*'
     deldir "$directory/$name/*.plog"
     progress "everything" 0 "Truncating logs..."
     for i in $(ls "$logs" | grep '.log$'); do
@@ -155,7 +129,15 @@ if [ $reset -eq 1 ]; then
     echo "reset complete $time_diff seconds"
 fi
 
-
+ # Build unmodified target, test orig inputs
+if [ $validate -eq 1 ]; then
+    tick
+    progress "everything" 1  "Validating configuration"
+    lf="$logs/validate.log"
+    run_remote "$buildhost" "$scripts/validate.sh $project_name" "$lf"
+    tock
+    echo "validate complete $time_diff seconds"
+fi
 
 
 if [ $add_queries -eq 1 ]; then
@@ -164,7 +146,7 @@ if [ $add_queries -eq 1 ]; then
     lf="$logs/add_queries.log"
     truncate "$lf"
     progress "everything" 1 "Adding queries to source -- logging to $lf"
-    run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $project_name" "$lf"
+    run_remote "$buildhost" "$scripts/add_queries.sh $project_name" "$lf"
     if [ "$fixupscript" != "null" ]; then
         lf="$logs/fixups.log"
         truncate "$lf"
@@ -202,18 +184,23 @@ if [ $reset_db -eq 1 ]; then
     RESET_DB
 fi
 
+# if we're about to call fbi and we didn't just clear the whole DB: drop the data FBI is about to replace (otherwise we get DB errors)
+if [ $reset_taint_labels -eq 1 ] || ([ $taint -eq 1 ] && [ $reset_db -eq 0 ]); then
+    tick
+    progress "everything" 1 "Clearing taint data from database"
+    lf="$logs/dbwipe_taint.log"
+    run_remote "$pandahost" "psql -U postgres -c \"TRUNCATE TABLE duabytes, labelset, dua, bug CASCADE;\" $db" "$lf"
+        # Using truncate ... cascade avoids cascading deletes one table at a time and is much faster
+    tock
+    echo "reset_taint_labels complete $time_diff seconds"
+fi
+
 
 if [ $taint -eq 1 ]; then
     tick
 
-    if [ $reset_db -eq 0 ]; then
-        # If we didn't just reset the DB, we need clear out any existing taint labels before running FBI
-        progress "everything" 1 "Clearing taint data from DB"
-        lf="$logs/dbwipe_taint.log"
-        run_remote "$pandahost" "psql -U postgres -c \"delete from dua_viable_bytes; delete from labelset;\" $db" "$lf"
-    fi
     progress "everything" 1 "Taint step -- running panda and fbi"
-    for input in $inputs
+    for input in $inputs_arr # XXX: This was broken until recently. Not sure how things used to work. - AF. Sept 19
     do
         i=`echo $input | sed 's/\//-/g'`
         lf="$logs/bug_mining-$i.log"
@@ -235,7 +222,7 @@ if [ $taint -eq 1 ]; then
 fi
 
 if [ $inject -eq 1 ]; then
-    progress "everything" 1 "Injecting step -- $num_trials trials"
+    progress "everything" 1 "Injection step -- $num_trials trials"
     if [ "$exitCode" = "null" ]; then
         exitCode="0";
     fi
@@ -248,8 +235,10 @@ if [ $inject -eq 1 ]; then
         if [ "$injfixupsscript" != "null" ]; then
             fix="--fixupsscript='$injfixupsscript'"
         fi
-        run_remote "$testinghost" "$python $scripts/inject.py -t $bugtypes -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
-    grep yield "$lf"  | grep " real bugs "
+        set +e # A single injection attempt can fail without killing this entire script
+        run_remote "$testinghost" "$python $scripts/inject.py -t $bugtypes -a $atptypes -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
+        grep yield "$lf"  | grep " real bugs "
+        set -e
     done
 fi
 

@@ -67,8 +67,7 @@ struct FunctionArgHandler : public LavaMatchHandler {
 
         debug(INJECT) << "FunctionArgHandler @ " << GetASTLoc(sm, toAttack) << "\n";
 
-/*
-//        auto fnname = get_containing_function_name(Result, *toAttack);
+        auto fnname = get_containing_function_name(Result, *toAttack);
         std::string filename = fnname.first;
         std::string functionname = fnname.second;
         if (functionname == "Notinafunction") return;
@@ -77,7 +76,6 @@ struct FunctionArgHandler : public LavaMatchHandler {
         if (functionname.find("__builtin_") != std::string::npos) {
             return;
         }
-*/
         AttackExpression(sm, toAttack, nullptr, nullptr, AttackPoint::FUNCTION_ARG);
     }
 };

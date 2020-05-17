@@ -58,7 +58,9 @@ run_tests() {
     printf '%s %*.*s' "$project" 0 $((n_padlength - ${#project})) "$pad"
 
     # Run each step individually, check for errors
-    (run_test $project "01_reset" "--reset -k" &&
+    (run_test $project "00_validate" "--validate" &&
+    pass &&
+    run_test $project "01_reset" "--reset -k" &&
     pass &&
     run_test $project "02_clean" "--clean -k" &&
     pass

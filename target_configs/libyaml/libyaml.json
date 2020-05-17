@@ -1,8 +1,8 @@
 {
     "name": "libyaml",
     "db": "libyaml",
-    "preprocessed": "true",
-    "dataflow": "true",
+    "preprocessed": true,
+    "dataflow": false,
 
     "tarfile": "libyaml-pre.tar.gz",
 
@@ -13,12 +13,11 @@
     "make": "make",
     "clean": "make clean",
     "install": "make install",
-    "command": "{install_dir}/bin/libyaml {input_file}",
+    "command": "{install_dir}/bin/libyaml -c -u {input_file}",
 
-    "injfixupsscript": "fixup.sh {bug_build}",
+    "COMMENT_injfixupsscript": "fixup.sh {bug_build}",
 
     "main_file": [ "src/parser.c" ],
 
-    "inputs": [ "inputs/spec.yaml"],
-    "_comment_other_inputs_are_broken": [ "inputs/spec.yaml", "inputs/bin.yaml", "inputs/test_yaml2.yaml"]
+    "inputs": [ "inputs/bin.yaml", "inputs/test_yaml2.yaml"]
 }

@@ -111,7 +111,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         const Stmt *toSiphon = Result.Nodes.getNodeAs<Stmt>("stmt");
         const SourceManager &sm = *Result.SourceManager;
 
-        if (ArgDataflow) {
+        if (ArgDataflow) { // XXX: non-dataflow args still can't added everywhere
             auto fnname = get_containing_function_name(Result, *toSiphon);
 
             // only instrument this stmt

@@ -3,6 +3,7 @@ from __future__ import print_function
 import os
 import re
 import sys
+import select
 import math
 import shlex
 import struct
@@ -143,7 +144,7 @@ class AttackPoint(Base):
 
     id = Column(BigInteger, primary_key=True)
     loc = ASTLoc.composite('loc')
-    typ = Column('type', Integer)
+    typ = Column('type', Integer) # TODO: it's typ here and type on Bug. Be consistent
 
     # enum Type {
     FUNCTION_CALL = 0
@@ -152,17 +153,12 @@ class AttackPoint(Base):
     QUERY_POINT = 3
     PRINTF_LEAK = 4
     # } type;
+    type_strings = [ "ATP_FUNCTION_CALL", "ATP_POINTER_READ", "ATP_POINTER_WRITE",
+        "ATP_QUERY_POINT", "ATP_PRINTF_LEAK", ]
 
     def __str__(self):
-        type_strs = [
-            "ATP_FUNCTION_CALL",
-            "ATP_POINTER_READ",
-            "ATP_POINTER_WRITE",
-            "ATP_QUERY_POINT",
-            "ATP_PRINTF_LEAK",
-        ]
         return 'ATP[{}](loc={}:{}, type={})'.format(
-            self.id, self.loc.filename, self.loc.begin.line, type_strs[self.typ]
+            self.id, self.loc.filename, self.loc.begin.line, AttackPoint.type_strings[self.typ]
         )
 
 
@@ -247,6 +243,9 @@ class LavaDatabase(object):
         self.Session = sessionmaker(bind=self.engine)
         self.session = self.Session()
 
+    def has_bugs(self):
+        return self.session.query(Bug.id).count() > 1
+
     # If we have over a million bugs, don't bother counting things
     def huge(self):
         return self.session.query(Bug.id).count() > 1000000
@@ -268,35 +267,116 @@ class LavaDatabase(object):
     def uninjected_random(self, fake, allowed_bugtypes=None):
         return self.uninjected2(fake, allowed_bugtypes).order_by(func.random())
 
-    def uninjected_random_by_atp_bugtype(self, fake, atp_types=None, allowed_bugtypes=None, atp_lim=10):
-        # For each ATP find X possible bugs,
+    def uninjected_random_by_atp_bugtype_fast(self, limit=100, fake=False, atp_types=None, allowed_bugtypes=None, atp_lim=10):
+        # For each ATP  find X possible bugs, TODO: limit to not all ATPs
         # Returns dict list of lists:
         #   {bugtype1:[[atp0_bug0, atp0_bug1,..], [atp1_bug0, atp1_bug1,..]],
         #    bugtype2:[[atp0_bug0, atp0_bug1,..], [atp1_bug0, atp1_bug1,..]]}
         # Where sublists are randomly sorted
+        limit2 = limit*2
+        if atp_types:
+            _atps = self.session.query(AttackPoint.id).filter(AttackPoint.typ.in_(atp_types)).limit(limit2).all()
+        else:
+            _atps = self.session.query(AttackPoint.id).limit(limit2).all()
+
+        atps = [r.id for r in _atps]
+        results = {}
+        for bugtype in allowed_bugtypes:
+            results[bugtype] = []
+
+        assert(len(allowed_bugtypes)), "Requires bugtypes"
+
+        # XXX: Postgresql is very slow at selecting random results from big tables
+        # so we use the technique described in
+        # https://www.gab.lc/articles/bigdata_postgresql_order_by_random/
+        # and select a number of random IDs less thatn the UID of the max item
+        # and then grab elements with those IDs. Note this could cause
+
+        # Idea: get a bigsubset, examine each, distribute through res
+        # And if we have >=lim that are valid, then we're done
+
+        num_ids = limit*10 # Consider 10x the number of requested bugs
+        # Our bugs table has an incrementing ID. Find the highest value
+        max_id = self.session.execute("SELECT ROUND(RANDOM() * (SELECT MAX(id) FROM bug)) as id").first()
+        assert(max_id != None)
+        max_id = int(max_id[0])
+
+        # Now select random integers below that maximum ID
+        id_query = """
+        select (ROUND(RANDOM()*{max_id})) from generate_series(1,{num_ids});""".format(num_ids=num_ids, max_id=max_id)
+
+        bug_ids = [int(x[0]) for x in self.session.execute(id_query)]
+
+        for bug_id in bug_ids:
+            bug_obj = self.session.query(Bug) \
+            .filter(Bug.id==bug_id) \
+            .filter(Bug.type.in_(allowed_bugtypes)) \
+            .join(Bug.atp) \
+            .join(Bug.trigger) \
+            .join(DuaBytes.dua).first()
+
+            if bug_obj: # May be none if this bug isn't an allowed bug_type
+                results[bug_obj.type].append(bug_obj)
+
+        # Now reformat within each bugtype to be lists of lists grouped by bugs
+        final_results = {}
+        for bugtype, bugs in results.items():
+            final_results[bugtype] = []
+            these_bugs = {} # bug.id: [bug_obj1, bug_obj2]
+            for bug in bugs:
+                if bug.id not in these_bugs.keys():
+                    these_bugs[bug.id] = []
+                these_bugs[bug.id].append(bug)
+            for bug_list_at_atp in these_bugs.values():
+                final_results[bugtype].append(bug_list_at_atp)
+        results = final_results
+
+        total = 0
+        for bugtype in allowed_bugtypes:
+            total += sum([len(x) for x in results[bugtype]])
+
+        # If we found enough, return the list
+        if total > limit:
+            return results
+        else:
+            print("uninjected_random_by_atp_bugtype_fast: found {} of {} requested bugs".format(
+                total, limit))
+            return None
+
+    def uninjected_random_by_atp_bugtype_slow(self, fake=False, atp_types=None, allowed_bugtypes=None, atp_lim=10):
+        assert(atp_lim>0)
+        # For each ATP  find X possible bugs
+        # Returns dict list of lists:
+        #   {bugtype1:[[atp0_bug0, atp0_bug1,..], [atp1_bug0, atp1_bug1,..]],
+        #    bugtype2:[[atp0_bug0, atp0_bug1,..], [atp1_bug0, atp1_bug1,..]]}
+        # Where sublists are randomly sorted
+
         if atp_types:
             _atps = self.session.query(AttackPoint.id).filter(AttackPoint.typ.in_(atp_types)).all()
         else:
             _atps = self.session.query(AttackPoint.id).all()
 
         atps = [r.id for r in _atps]
-        #print(atps)
-        print("Found {} distinct ATPs".format(len(atps)))
+        print("Considering {} distinct ATPs of specified type(s)".format(len(atps)))
 
         results = {}
         assert(len(allowed_bugtypes)), "Requires bugtypes"
 
         for bugtype in allowed_bugtypes:
             results[bugtype] = []
-            for atp in atps:
-                q = self.session.query(Bug).filter(Bug.atp_id==atp).filter(~Bug.builds.any()) \
-                .filter(Bug.type == bugtype) \
-                .join(Bug.atp)\
-                .join(Bug.trigger)\
-                .join(DuaBytes.dua)\
-                .filter(Dua.fake_dua == fake)
 
-                results[bugtype].append(q.order_by(func.random()).limit(atp_lim).all())
+            for atp in atps:
+                q = self.session.query(Bug) \
+                .filter(Bug.atp_id==atp) \
+                .filter(Bug.type == bugtype) \
+                .join(Bug.atp) \
+                .join(Bug.trigger) \
+                .join(DuaBytes.dua)
+                #.filter(Dua.fake_dua == fake) # We don't use the
+                #.filter(~Bug.builds.any()) \ # Ok to get 'already built' bugs?
+
+                res = q.order_by(func.random()).limit(atp_lim).all() # Note we randomize these, otherwise they're sequential
+                results[bugtype].append(res)
         return results
 
     def uninjected_random_by_atp(self, fake, atp_types=None,
@@ -329,13 +409,18 @@ class LavaDatabase(object):
             results.append(q.order_by(func.random()).limit(atp_lim).all())
         return results
 
-    def uninjected_random_limit(self, allowed_bugtypes=None, count=100):
+    def uninjected_random_limit(self, allowed_bugtypes=None, allowed_atptypes=None, count=100):
         # Fast, doesn't support fake bugs, only return IDs of allowed bugtypes
         ret = self.session.query(Bug)\
             .filter(~Bug.builds.any()) \
             .options(load_only("id"))
         if allowed_bugtypes:
             ret = ret.filter(Bug.type.in_(allowed_bugtypes))
+        """ TODO
+        if allowed_atptypes: # Ensure ATP is in an allowed location
+            ret = ret.filter(Bug.atp.typ.in_(allowed_atptypes))
+        """
+
         return ret.order_by(func.random()).limit(count).all()
 
     def uninjected_random_y(self, fake, allowed_bugtypes=None, yield_count=100):
@@ -373,6 +458,46 @@ class LavaDatabase(object):
         count = self.uninjected2(fake).count()
         return self.uninjected2(fake)[random.randrange(0, count)]
 
+def interactive_exceptions(func):
+    """
+    Decorator to allow interactivity either through pdb or by restarting a function.
+    If no user-input for 5 minutes, raises original exception. Previously called retriable_fatal
+    """
+    timeout_minutes = 20
+
+    def decorated_func(*_args, **_kwargs):
+        try:
+            return func(*_args, **_kwargs)
+        except Exception as e:
+            print("Fatal error in {}: {}".format(func.__name__, e))
+            print("(Interactive for {} minutes before raising exception)".format(timeout_minutes))
+
+            while True:
+                print("Select an option: [R]etry, [P]db, [A]bort, [W]ait")
+                i, _, _ = select.select( [sys.stdin], [], [], 60*timeout_minutes )
+                if i:
+                    in_line = sys.stdin.readline().strip()
+                    in_chr = in_line[0] if len(in_line) else None
+                    if in_chr=="r": # Retry
+                        print("Retrying with original arguments: ({},{})".format(_args, _kwargs))
+                        return interactive_exceptions(func)(*_args, **_kwargs)
+                    elif in_chr=="p":
+                        print("Dropping into interactive debugger. Afterwards, function will be rerun")
+                        import pdb
+                        pdb.set_trace()
+                        return interactive_exceptions(func)(*_args, **_kwargs)
+                    elif in_chr=="a":
+                        print("Re-raising exception")
+                        raise e
+                    elif in_chr=="w":
+                        print("Waiting another {}".format(timeout_minutes))
+                    else:
+                        print("Unknown command. Enter r, p, or a")
+
+                else: # No input, reraise exception
+                    print("(Ending interactivity due to no input for {} minutes)".format(timeout_minutes))
+                    raise e
+    return decorated_func
 
 def run_cmd(cmd, envv=None, timeout=30, cwd=None, rr=False, shell=False):
     if type(cmd) in [str, unicode] and not shell:
@@ -487,7 +612,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug,
 
 # run lavatool on this file to inject any parts of this list of bugs
 def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
-                 knobTrigger=False, dataflow=False, competition=False,
+                 dataflow=False, competition=False,
                  randseed=0):
     print("Running lavaTool on [{}]...".format(filename))
     lt_debug = False
@@ -517,8 +642,6 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
         cmd.append("-debug")
     if dataflow:
         cmd.append('-arg_dataflow')
-    if knobTrigger > 0:
-        cmd.append('-kt')
     if competition:
         cmd.append('-competition')
     if randseed:
@@ -602,7 +725,6 @@ class LavaPaths(object):
         self.bugs_build = join(self.bugs_parent, self.source_root)
         self.bugs_install = join(self.bugs_build, 'lava-install')
 
-
 # Given a list of bugs, return the IDs for a subset of bugs with
 # `max_per_line` bugs on each line of source
 def limit_atp_reuse(bugs, max_per_line=1):
@@ -666,6 +788,33 @@ def collect_src_and_print(bugs_to_inject, db):
     sys.stdout.flush()
     return (src_files, input_files)
 
+
+def build_buggy(project, competition, lp):
+    print("------------\n")
+    print("ATTEMPTING BUILD OF INJECTED BUG(S)")
+    print("build_dir = " + lp.bugs_build)
+
+    # Silence warnings related to adding integers to pointers since we already
+    # know that it's unsafe.
+    make_cmd = project["make"]
+    envv = {"CFLAGS": "-Wno-int-conversion"}
+    if competition:
+        envv["CFLAGS"] += " -DLAVA_LOGGING"
+    (rv, outp) = run_cmd(make_cmd, envv, None, cwd=lp.bugs_build)
+    if rv == 0:
+        return (rv, outp)
+    else:
+        print("Lava tool returned {}! Error log below:".format(rv))
+        print(outp[1])
+        print()
+        print("===================================")
+        print("build of injected bug failed!!!!!!!")
+        print("LAVA TOOL FAILED")
+        print("===================================")
+        print()
+        print(outp[0].replace("\\n", "\n"))
+        print(outp[1].replace("\\n", "\n"))
+        raise RuntimeError("Failed to build buggy program")
 
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
@@ -815,7 +964,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
     def modify_source(dirname):
         return run_lavatool(bugs_to_inject, lp, host_file, project,
-                            llvm_src, dirname, knobTrigger=args.knobTrigger,
+                            llvm_src, dirname, 
                             dataflow=dataflow, competition=competition, randseed=lavatoolseed)
 
     bug_solutions = {}  # Returned by lavaTool
@@ -869,50 +1018,21 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     # Ugh.  Lavatool very hard to get right
     # Permit automated fixups via script after bugs inject
     # but before make. TODO: consolidate these arguments into project.keys
-    if "injfixupsscript" in project.keys():
-        print("Running injfixupsscript: {}"
-                .format(project["injfixupsscript"]
-                        .format(bug_build=lp.bugs_build), cwd=lp.bugs_build))
-        run_cmd(project["injfixupsscript"]
-                .format(bug_build=lp.bugs_build), cwd=lp.bugs_build)
-
-    if hasattr(args, "fixupscript"):
-        print("Running fixupscript: {}"
-                .format(args.fixupscript.format(bug_build=lp.bugs_build),
-                        cwd=lp.bugs_build))
-        run_cmd(args.fixupsscript.format(bug_build=lp.bugs_build),
-                cwd=lp.bugs_build)
+    for k in ["injfixupsscript", "fixupscript"]:
+        if k in project.keys():
+            print("Running {}: {}"
+                .format(k, project["injfixupsscript"].format(bug_build=lp.bugs_build)))
+            run_cmd(project[k]
+                    .format(bug_build=lp.bugs_build), cwd=lp.bugs_build)
 
     # paranoid clean -- some build systems need this
     if 'clean' in project.keys():
         check_call(project['clean'], cwd=lp.bugs_build, shell=True)
 
-    # compile
-    print("------------\n")
-    print("ATTEMPTING BUILD OF INJECTED BUG(S)")
-    print("build_dir = " + lp.bugs_build)
-
-    # Silence warnings related to adding integers to pointers since we already
-    # know that it's unsafe.
-    make_cmd = project["make"]
-    envv = {"CFLAGS": "-Wno-int-conversion"}
-    if competition:
-        envv["CFLAGS"] += " -DLAVA_LOGGING"
-    (rv, outp) = run_cmd(make_cmd, envv, None, cwd=lp.bugs_build)
-
-    if rv != 0:
-        print("Lava tool returned {}! Error log below:".format(rv))
-        print(outp[1])
-        print()
-        print("===================================")
-        print("build of injected bug failed!!!!!!!")
-        print("LAVA TOOL FAILED")
-        print("===================================")
-        print()
-        print(outp[0].replace("\\n", "\n"))
-        print(outp[1].replace("\\n", "\n"))
-
-        print("Build of injected bugs failed")
+    # compile the buggy program
+    try:
+        (rv, outp) = build_buggy(project, competition, lp)
+    except RuntimeError: # Unhandled by interactive_exceptions, return error to parent
         return (None, input_files, bug_solutions)
 
     # build success
@@ -949,7 +1069,6 @@ def get_suffix(fn):
         return ""
     else:
         return "." + split[-1]
-
 
 # run the bugged-up program
 def run_modified_program(project, install_dir, input_file,
@@ -1063,9 +1182,6 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     print(str(bug))
     print("fuzzed = [%s]" % fuzzed_input)
     mutfile_kwargs = {}
-    if args.knobTrigger:
-        print("Knob size: {}".format(args.knobTrigger))
-        mutfile_kwargs = {'kt': True, 'knob': args.knobTrigger}
 
     fuzz_labels_list = [bug.trigger.all_labels]
     if len(bug.extra_duas) > 0:
@@ -1105,6 +1221,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
                         validated &= False
                         print("... but competition infrastructure"
                               " misidentified it ({} vs {})".format(found_bugs, bug.id))
+                """ # Stacktrace is removed from args but if we ever wanted it back...
                 if args.checkStacktrace:
                     if check_stacktrace_bug(lp, project, bug, fuzzed_input):
                         print("... and stacktrace agrees with trigger line")
@@ -1112,6 +1229,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
                     else:
                         print("... but stacktrace disagrees with trigger line")
                         validated &= False
+                """
             else:
                 print("RV does not indicate memory corruption")
                 validated = False
@@ -1131,41 +1249,49 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     return validated
 
 
-# validate this set of bugs
-def validate_bugs(bug_list, db, lp, project, input_files, build,
-                  args, update_db, competition=False, bug_solutions=None):
-
+def test_orig(db, lp, project, update_db, input_files, build, expectedExitCode):
     timeout = project.get('timeout', 5)
-
-    print("------------\n")
-    # first, try the original files
-    print("TESTING -- ORIG INPUT")
-    print(bug_list)
-    print("------------\n")
     unfuzzed_outputs = {}
+
+    # first, try the original files
+    print("------------\nTESTING -- Original {} input(s)".format(len(input_files)))
     for input_file in input_files:
         unfuzzed_input = join(project["output_dir"],
                               'inputs', basename(input_file))
         (rv, outp) = run_modified_program(project, lp.bugs_install,
                                           unfuzzed_input, timeout, shell=True)
         unfuzzed_outputs[basename(input_file)] = outp
-        if rv != args.exitCode:
+        if rv != 0 and rv != expectedExitCode: # Note exit 0 is explicitly always allowed
             print("***** buggy program fails on original input - \
                   Exit code {} does not match expected {}"
-                  .format(rv, args.exitCode))
+                  .format(rv, expectedExitCode))
             print(outp[0])
             print()
             print(outp[1])
             assert False  # Fails on original input
         else:
             print("buggy program succeeds on original input {}"
-                  "with exit code {}".format(input_file, rv))
+                  " with exit code {}".format(input_file, rv))
         print("output:")
         lines = outp[0] + " ; " + outp[1]
         if update_db:
             db.session.add(Run(build=build, fuzzed=None, exitcode=rv,
                                output=lines.decode('ascii', 'ignore'),
                                success=True, validated=False))
+    return unfuzzed_outputs
+
+# validate this set of bugs. Returns None if we've broken the program, otherwise a list of valid bugs
+def validate_bugs(bug_list, db, lp, project, input_files, build,
+                  args, update_db, competition=False, bug_solutions=None):
+
+    print("Validate bugs: {}".format(bug_list))
+
+    print("Test for exit codes 0 or {}".format(args.exitCode))
+    try:
+        unfuzzed_outputs = test_orig(db, lp, project, update_db, input_files, build, args.exitCode)
+    except AssertionError:
+        return None
+
     print("ORIG INPUT STILL WORKS\n")
 
     # second, try each of the fuzzed inputs and validate
@@ -1214,18 +1340,42 @@ def get_bugs(db, bug_id_list):
     return bugs
 
 
-def get_allowed_bugtype_num(args):
+def get_allowed_bugtype_num(bugtypes):
+    """
+    Given a comma seperated string of bug-types, return a list of their IDs
+    """
     allowed_bugtype_nums = []
-    for bugtype_name in args.bugtypes.split(","):
-        if not len(bugtype_name):
-            continue
-        btnl = bugtype_name.lower()
-        bugtype_num = None
+    def _parse_bugtype(typ):
         for i in range(len(Bug.type_strings)):
             btsl = Bug.type_strings[i].lower()
-            if btnl in btsl:
-                bugtype_num = i
+            if typ.lower() in btsl:
+                return i
+
+    for bugtype_name in bugtypes.split(","):
+        if not len(bugtype_name):
+            continue
+        bugtype_num = _parse_bugtype(bugtype_name)
         if bugtype_num is None:
-            raise RuntimeError("I dont have a bug type [%s]" % bugtype_name)
+            raise RuntimeError("Unknown bugtype {}. Expecting a substring of {}".format(bugtype_name.lower(), ", ".join(Bug.type_strings)))
         allowed_bugtype_nums.append(bugtype_num)
     return allowed_bugtype_nums
+
+def get_allowed_atptype_num(atptypes):
+    """
+    Given a comma seperated string of atp-types, return a list of their IDs
+    """
+    allowed_atptype_nums = []
+    def _parse_atptype(typ):
+        for i in range(len(AttackPoint.type_strings)):
+            btsl = AttackPoint.type_strings[i].lower()
+            if typ.lower() in btsl:
+                return i
+
+    for atptype_name in atptypes.split(","):
+        if not len(atptype_name):
+            continue
+        atptype_num = _parse_atptype(atptype_name)
+        if atptype_num is None:
+            raise RuntimeError("Unknown atptype {}. Expecting substring one of {}".format(atptype_name.lower(), ", ".join(AttackPoint.type_strings)))
+        allowed_atptype_nums.append(atptype_num)
+    return allowed_atptype_nums

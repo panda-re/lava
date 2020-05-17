@@ -2,10 +2,9 @@
     "name": "yara",
     "db": "yara",
     "preprocessed": true,
-    "dataflow": true,
+    "dataflow": false,
 
-    "tarfile": "yara-3.8.1-pre.tar.gz",
-
+    "tarfile": "yara-3.8.1-pre.tar.gz", 
     "qcow": "wheezy_panda2.qcow2",
     "snapshot": "root",
     "expect_prompt": "root@debian-i386:~#",
