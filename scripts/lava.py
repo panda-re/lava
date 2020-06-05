@@ -160,6 +160,7 @@ class AttackPoint(Base):
             "ATP_POINTER_WRITE",
             "ATP_QUERY_POINT",
             "ATP_PRINTF_LEAK",
+            "ATP_MALLOC_OFF_BY_ONE"
         ]
         return 'ATP[{}](loc={}:{}, type={})'.format(
             self.id, self.loc.filename, self.loc.begin.line, type_strs[self.typ]
@@ -181,9 +182,10 @@ class Bug(Base):
     RET_BUFFER = 1
     REL_WRITE = 2
     PRINTF_LEAK = 3
+    MALLOC_OFF_BY_ONE = 4
     # };
     type_strings = ['BUG_PTR_ADD', 'BUG_RET_BUFFER',
-                    'BUG_REL_WRITE', 'BUG_PRINTF_LEAK']
+                    'BUG_REL_WRITE', 'BUG_PRINTF_LEAK', 'MALLOC_OFF_BY_ONE']
 
     id = Column(BigInteger, primary_key=True)
     type = Column(Integer)

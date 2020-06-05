@@ -13,6 +13,7 @@
 #include "FunctionPointerFieldHandler.h"
 #include "CallExprArgAdditionalHandler.h"
 #include "FunctionPointerTypedefHandler.h"
+#include "MallocOffByOneArgHandler.h"
 
 // Must match value in scripts/fninstr.py
 //#define IGNORE_FN_PTRS
@@ -151,6 +152,12 @@ public:
                 makeHandler<ReadDisclosureHandler>()
                 ); */
         }
+
+	addMatcher(
+		callExpr(
+			callee(functionDecl(hasName("malloc")))).bind("call_expression"),
+		makeHandler<MallocOffByOneArgHandler>()
+	);
     }
     virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
         Insert.clear();
