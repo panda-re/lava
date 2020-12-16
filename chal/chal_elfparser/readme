@@ -1,0 +1,7 @@
+
+source code from : git@github.com:TheCodeArtist/elf-parser.git
+
+2000 bugs
+1 exploitable
+
+constrain the lower half of address space

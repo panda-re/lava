@@ -1,0 +1,6 @@
+
+50 bugs
+1 exploitable
+
+1bug version:
+    bypass constrain check by always true branch

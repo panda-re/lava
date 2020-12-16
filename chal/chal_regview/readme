@@ -1,0 +1,10 @@
+Debian 9.5 x64
+
+100 stack overflow & heap overflow chaff bugs
+1 exploitable
+
+states are updated based on different extra_dua
+- possible extra_dua reuse, could cause different bugs use the same extra dua trigger the exploitable bug
+
+1bug version:
+    use original pass constrain
