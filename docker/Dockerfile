@@ -55,7 +55,7 @@ RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/usr-local-lib.conf
 RUN ldconfig
 
 RUN pip install --upgrade -v pip -i https://pypi.python.org/simple/
-RUN pip install subprocess32 lockfile sqlalchemy -i https://pypi.python.org/simple
+RUN pip install subprocess32 lockfile SQLAlchemy==1.0.14 -i https://pypi.python.org/simple
 
 RUN pip install pyyaml
 RUN ln -s /usr/lib/libjsoncpp.so.0 /usr/lib/libjsoncpp.so.1
