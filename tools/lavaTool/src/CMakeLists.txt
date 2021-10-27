@@ -41,7 +41,9 @@ include_directories(${LLVM_INCLUDE_DIRS})
 # omg target compiled as static library
 add_library (omg STATIC omg.cpp)
 set_property(TARGET omg PROPERTY CXX_STANDARD 11)
-set_target_properties(omg PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
+target_compile_options(omg PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
+#set_target_properties(omg PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
+set_target_properties(omg PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
 target_include_directories(omg BEFORE
     PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
@@ -50,8 +52,9 @@ target_include_directories(omg BEFORE
 
 # lavaTool target compiled against llvm, omg, odb odb-pgsql and lava odb
 add_executable(lavaTool lavaTool.cpp)
-target_compile_options(lavaTool PRIVATE -fno-omit-frame-pointer -O3 -fexceptions -frtti)
-set_target_properties(lavaTool PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
+target_compile_options(lavaTool PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0 -fno-omit-frame-pointer -O3 -fexceptions -frtti)
+#set_target_properties(lavaTool PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
+set_target_properties(lavaTool PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
 set_property(TARGET lavaTool PROPERTY CXX_STANDARD 14)
 target_include_directories(lavaTool BEFORE
         PUBLIC
@@ -64,8 +67,9 @@ target_include_directories(lavaTool BEFORE
 
 # lavaFnTool target compiled against llvm, omg, odb odb-pgsql and lava odb
 add_executable(lavaFnTool lavaFnTool.cpp)
-target_compile_options(lavaFnTool PRIVATE -fno-omit-frame-pointer -O3 -fexceptions -frtti)
-set_target_properties(lavaFnTool PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
+target_compile_options(lavaFnTool PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0 -fno-omit-frame-pointer -O3 -fexceptions -frtti)
+#set_target_properties(lavaFnTool PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
+set_target_properties(lavaFnTool PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
 set_property(TARGET lavaFnTool PROPERTY CXX_STANDARD 14)
 target_include_directories(lavaFnTool BEFORE
         PUBLIC
@@ -81,8 +85,9 @@ add_dependencies(lavaTool lavaFnTool)
 # lavaInitTool target compiled against llvm
 # TODO: this shouldn't depend on ODB but it needs it for lava.hxx?
 add_executable(lavaInitTool lavaInitTool.cpp)
-target_compile_options(lavaInitTool PRIVATE -fno-omit-frame-pointer -O3 -fexceptions -frtti)
-set_target_properties(lavaInitTool PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
+target_compile_options(lavaInitTool PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0 -fno-omit-frame-pointer -O3 -fexceptions -frtti)
+#set_target_properties(lavaInitTool PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
+set_target_properties(lavaInitTool PROPERTIES  LINK_FLAGS "-flto -fuse-ld=gold")
 set_property(TARGET lavaInitTool PROPERTY CXX_STANDARD 14)
 target_include_directories(lavaInitTool BEFORE
         PUBLIC
@@ -91,8 +96,10 @@ target_include_directories(lavaInitTool BEFORE
         ${CMAKE_CURRENT_SOURCE_DIR}/../include
     )
 
-target_link_libraries(lavaTool lavaDB_x32 omg odb odb-pgsql lava-odb_x32 ${LLVM_CLANG_LINK_LIBRARIES})
-target_link_libraries(lavaFnTool lavaDB_x32 omg odb odb-pgsql lava-odb_x32 ${LLVM_CLANG_LINK_LIBRARIES})
+#target_link_libraries(lavaTool lavaDB_x32 omg odb odb-pgsql lava-odb_x32 ${LLVM_CLANG_LINK_LIBRARIES})
+#target_link_libraries(lavaFnTool lavaDB_x32 omg odb odb-pgsql lava-odb_x32 ${LLVM_CLANG_LINK_LIBRARIES})
+target_link_libraries(lavaTool lavaDB_x64 omg odb odb-pgsql lava-odb_x64 ${LLVM_CLANG_LINK_LIBRARIES})
+target_link_libraries(lavaFnTool lavaDB_x64 omg odb odb-pgsql lava-odb_x64 ${LLVM_CLANG_LINK_LIBRARIES})
 target_link_libraries(lavaInitTool ${LLVM_CLANG_LINK_LIBRARIES})
 
 install (TARGETS lavaTool
