@@ -26,17 +26,19 @@ add_custom_target (cleanup
     COMMENT "Cleaning up tools/lavaODB/generated folder"
 )
 
-add_library(lava-odb_x32 STATIC ${GENERATED}/lava-odb.cxx)
-set_property(TARGET lava-odb_x32 PROPERTY CXX_STANDARD 11)
-set_target_properties(lava-odb_x32 PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32")
-target_link_libraries(lava-odb_x32 odb odb-pgsql)
-add_dependencies(lava-odb_x32 cleanup)
-target_include_directories(lava-odb_x32 BEFORE
-    PUBLIC
-    ${GENERATED}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+#add_library(lava-odb_x32 STATIC ${GENERATED}/lava-odb.cxx)
+#set_property(TARGET lava-odb_x32 PROPERTY CXX_STANDARD 11)
+#target_compile_options(lava-odb_x32 PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
+#set_target_properties(lava-odb_x32 PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32")
+#target_link_libraries(lava-odb_x32 odb odb-pgsql)
+#add_dependencies(lava-odb_x32 cleanup)
+#target_include_directories(lava-odb_x32 BEFORE
+#    PUBLIC
+#    ${GENERATED}
+#    ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 
 add_library(lava-odb_x64 STATIC ${GENERATED}/lava-odb.cxx)
+target_compile_options(lava-odb_x64 PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
 set_property(TARGET lava-odb_x64 PROPERTY CXX_STANDARD 11)
 target_link_libraries(lava-odb_x64 odb odb-pgsql)
 add_dependencies(lava-odb_x64 cleanup)
