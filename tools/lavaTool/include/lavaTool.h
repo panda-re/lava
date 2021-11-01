@@ -28,7 +28,7 @@ extern "C" {
 #include <libgen.h>
 }
 
-#include <jsoncpp/json/json.h>
+#include <json/json.h>
 #include <odb/pgsql/database.hxx>
 
 #include "clang/AST/AST.h"

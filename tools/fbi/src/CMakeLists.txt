@@ -16,7 +16,7 @@ target_include_directories(fbilib BEFORE
         ${PANDA_BUILD_DIR}/i386-softmmu
         /usr/lib/odb/x86_64-linux-gnu/include
 )
-target_compile_options(fbilib PRIVATE -DPLOG_READER)
+target_compile_options(fbilib PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0 -DPLOG_READER)
 set_property(TARGET fbilib PROPERTY CXX_STANDARD 14)
 
 # fbi target
@@ -51,7 +51,7 @@ target_link_libraries(fbi
     z
     odb
     odb-pgsql
-    jsoncppoldabi
+    jsoncpp
     pq
     protobuf
     ${PANDA_BUILD_DIR}/i386-softmmu/plog.pb.o

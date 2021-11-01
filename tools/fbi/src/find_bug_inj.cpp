@@ -24,7 +24,7 @@ extern "C" {
 #include "panda/plog_print.h"
 }
 
-#include <jsoncpp/json/json.h>
+#include <json/json.h>
 
 #include <iostream>
 #include <fstream>
