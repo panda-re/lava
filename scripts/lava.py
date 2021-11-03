@@ -242,7 +242,7 @@ class LavaDatabase(object):
     def __init__(self, project):
         self.project = project
         self.engine = create_engine(
-            "postgresql+psycopg2://{}@/{}".format(
+                "postgresql+psycopg2://{}@database:5432/{}".format(
                 "postgres", project['db']
             )
         )
