@@ -103,3 +103,10 @@ RUN wget https://releases.llvm.org/3.3/cfe-3.3.src.tar.gz
 RUN tar -xzf cfe-3.3.src.tar.gz && mv cfe-3.3.src /llvm-3.3.src/tools/clang
 WORKDIR /llvm-3.3.src
 RUN CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' ./configure --prefix=/llvm-3.3-install && make -j $(nproc) && make install
+
+# Setting up remote Postgres(host) && PANDA Aux Packages
+RUN apt-get install -y genisoimage postgresql-client-9.6
+# pg_hba.conf:
+# host    all             all             172.17.0.1/16            md5
+# postgresql.conf:
+# listen_addresses = 'localhost, 172.17.0.1'

@@ -66,7 +66,7 @@ if [ "$(jq -r .injfixupsscript $json)" != "null" ]; then
 fi
 
 buildhost="$(jq -r '.buildhost // "docker"' $json)"
-pandahost="$(jq -r '.pandahost // "localhost"' $json)"
+pandahost="$(jq -r '.pandahost // "docker"' $json)"
 testinghost="$(jq -r '.testinghost // "docker"' $json)"
 logs="$output_dir/$name/logs"
 

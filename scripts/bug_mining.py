@@ -218,7 +218,7 @@ sys.stdout.flush()
 tick()
 
 progress("Trying to create database {}...".format(project['name']))
-createdb_args = ['createdb', '-U', 'postgres', project['db']]
+createdb_args = ['createdb', '-U', 'postgres', '-h', 'database', project['db']]
 createdb_result = subprocess32.call(createdb_args,
                                     stdout=sys.stdout, stderr=sys.stderr)
 
@@ -227,7 +227,7 @@ if createdb_result == 0:  # Created new DB; now populate
     progress("Database created. Initializing...")
     # psql_args = ['psql', '-U', 'postgres', '-d', project['db'],
     # '-f', join(join(lavadir, 'include'), 'lava.sql')]
-    psql_args = ['psql', '-U', 'postgres', '-d', project['db'],
+    psql_args = ['psql', '-U', 'postgres', '-h', 'database', '-d', project['db'],
                  '-f', join(join(lavadir, 'fbi'), 'lava.sql')]
     dprint("psql invocation: [%s]" % (" ".join(psql_args)))
     subprocess32.check_call(psql_args, stdout=sys.stdout, stderr=sys.stderr)
@@ -279,3 +279,4 @@ for i in range(len(Bug.type_strings)):
 print("total dua:", db.session.query(Dua).count())
 print("total atp:", db.session.query(AttackPoint).count())
 print("total bug:", db.session.query(Bug).count())
+db.session.close()
