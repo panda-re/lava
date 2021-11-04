@@ -132,10 +132,10 @@ RESET_DB() {
     lf="$logs/dbwipe.log"
     truncate "$lf"
     progress "everything" 1  "Resetting lava db -- logging to $lf"
-    run_remote "$pandahost" "dropdb --if-exists -U postgres -h database $db" "$lf"
-    run_remote "$pandahost" "createdb -U postgres -h database $db || true" "$lf"
-    run_remote "$pandahost" "psql -d $db -h database -f $lava/tools/lavaODB/generated/lava.sql -U postgres" "$lf"
-    run_remote "$pandahost" "echo dbwipe complete" "$lf"
+    run_remote "$buildhost" "dropdb -U postgres -h database $db || true" "$lf"
+    run_remote "$buildhost" "createdb -U postgres -h database $db || true" "$lf"
+    run_remote "$buildhost" "psql -d $db -h database -f $lava/tools/lavaODB/generated/lava.sql -U postgres" "$lf"
+    run_remote "$buildhost" "echo dbwipe complete" "$lf"
 }
 
 if [ $reset -eq 1 ]; then
@@ -210,7 +210,7 @@ if [ $taint -eq 1 ]; then
         # If we didn't just reset the DB, we need clear out any existing taint labels before running FBI
         progress "everything" 1 "Clearing taint data from DB"
         lf="$logs/dbwipe_taint.log"
-        run_remote "$pandahost" "psql -U postgres -h database -c \"delete from dua_viable_bytes; delete from labelset;\" $db" "$lf"
+        run_remote "$buildhost" "psql -U postgres -h database -c \"delete from dua_viable_bytes; delete from labelset;\" $db" "$lf"
     fi
     progress "everything" 1 "Taint step -- running panda and fbi"
     for input in $inputs
@@ -219,16 +219,16 @@ if [ $taint -eq 1 ]; then
         lf="$logs/bug_mining-$i.log"
         truncate "$lf"
         progress "everything" 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
-        run_remote "$pandahost" "$python $scripts/bug_mining.py $hostjson $project_name $input $curtail" "$lf"
+        run_remote "$buildhost" "$python $scripts/bug_mining.py $hostjson $project_name $input $curtail" "$lf"
         echo -n "Num Bugs in db: "
-        bug_count=$(run_remote "$pandahost" "psql -At $db -U postgres -h database -c 'select count(*) from bug'")
+        bug_count=$(run_remote "$buildhost" "psql -At $db -U postgres -h database -c 'select count(*) from bug'")
         if [ "$bug_count" = "0" ]; then
             echo "FATAL ERROR: no bugs found"
             exit 1
         fi
         echo "Found $bug_count bugs"
         echo
-        run_remote "$pandahost" "psql $db -U postgres -h database -c 'select count(*), type from bug group by type order by type'"
+        run_remote "$buildhost" "psql $db -U postgres -h database -c 'select count(*), type from bug group by type order by type'"
     done
     tock
     echo "bug_mining complete $time_diff seconds"
