@@ -515,8 +515,8 @@ void mark_for_siphon_extra(const DuaBytes *dua_bytes) {
 
 void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
 
-    uint64_t tr_start = bug->atp->trace_index;
-    uint64_t tr_end = dua_bytes->dua->trace_index;
+    uint64_t tr_end = bug->atp->trace_index;
+    uint64_t tr_start = dua_bytes->dua->trace_index;
 
     LvalBytes lval_bytes(dua_bytes);
 
