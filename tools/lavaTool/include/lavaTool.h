@@ -199,6 +199,12 @@ static cl::opt<bool> ArgCompetition("competition",
     cl::desc("Log before/after bugs when competition is #defined"),
     cl::cat(LavaCategory),
     cl::init(false));
+static cl::opt<std::string> DBHost("host",
+    cl::desc("Remote Host"),
+    cl::init("database"));
+static cl::opt<int> DBPort("port",
+    cl::desc("Remote Port"),
+    cl::init(5432));
 
 unsigned int RANDOM_SEED = 0;
 

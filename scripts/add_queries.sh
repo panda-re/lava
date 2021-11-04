@@ -90,7 +90,7 @@ fi
 
 progress "queries" 0 "Preprocessing Source code..."
 cat ${lava}/makefile.fixup >> Makefile && \
-make lava_preprocess
+CC=/llvm-3.6.2/Release/bin/clang CXX=/llvm-3.6.2/Release/bin/clang++ make lava_preprocess
 
 progress "queries" 0  "Making with btrace..."
 ORIGIN_IFS=$IFS

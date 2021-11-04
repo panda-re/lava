@@ -75,7 +75,7 @@ int main(int argc, const char **argv) {
             exit(1);
         }
         db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
-                    DBName));
+                    DBName, DBHost, DBPort));
         t = new odb::transaction(db->begin());
 
         main_files = parse_commas_strings(MainFileList);

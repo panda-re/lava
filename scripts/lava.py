@@ -253,7 +253,7 @@ class LavaDatabase(object):
     def __init__(self, project):
         self.project = project
         self.engine = create_engine(
-            "postgresql+psycopg2://{}@/{}".format(
+                "postgresql+psycopg2://{}@database:5432/{}".format(
                 "postgres", project['db']
             )
         )
@@ -718,12 +718,15 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         envv = { 'CC':'/llvm-3.6.2/Release/bin/clang',
                 'CXX': '/llvm-3.6.2/Release/bin/clang++',
                 'CFLAGS': '-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -I. -I.. -I../include -I./src/'}
-        run_cmd( ' '.join(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]),
-                envv, 30, cwd=lp.bugs_build, shell=True )
+        if project['configure']:
+            run_cmd( ' '.join(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]),
+                    envv, 30, cwd=lp.bugs_build, shell=True )
         with open(os.path.join(lp.bugs_build, 'Makefile'), 'a') as fd, \
                 open(os.path.join(lp.lava_dir, 'makefile.fixup'), 'r') as fdd:
             fd.write(fdd.read())
-        run( ['make', 'lava_preprocess'] )
+        envv = { 'CC':'/llvm-3.6.2/Release/bin/clang',
+                'CXX': '/llvm-3.6.2/Release/bin/clang++',}
+        run_cmd( ' '.join(['make', 'lava_preprocess']), envv, 30, cwd=lp.bugs_build, shell=True )
     if not os.path.exists(join(lp.bugs_build, 'btrace.log')):
         print("Making with btrace...")
 
@@ -736,6 +739,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         envv = {"CFLAGS": "-Wno-int-conversion -O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -I. -I.. -I../include -I./src/"}
         if competition:
             envv["CFLAGS"] += " -DLAVA_LOGGING"
+        envv={}
         btrace = join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace')
         print("Running btrace make command: {} {} with env: {} in {}"
                 .format(btrace, project['make'], envv, lp.bugs_build))
@@ -1308,4 +1312,7 @@ def get_allowed_bugtype_num(args):
         if bugtype_num is None:
             raise RuntimeError("I dont have a bug type [%s]" % bugtype_name)
         allowed_bugtype_nums.append(bugtype_num)
+
+    if args.many == "1":
+        return [Bug.CHAFF_STACK_CONST]
     return allowed_bugtype_nums

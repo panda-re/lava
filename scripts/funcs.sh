@@ -81,6 +81,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
                 -v /etc/shadow:/etc/shadow:ro \
                 -v /etc/gshadow:/etc/gshadow:ro \
                 -v /home:/home:ro \
+                --add-host=database:172.17.0.1 \
                 $docker_map_args \
                 $extradockerargs \
                 $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/llvm-3.6.2/Release/lib; $command\"" \

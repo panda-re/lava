@@ -1104,8 +1104,10 @@ int main (int argc, char **argv) {
     inputfile = std::string(argv[4]);
 
     std::string db_name = project["db"].asString() + host.get("db_suffix", "").asString();
+    std::string DBHost("database");
+    int DBPort = 5432;
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
-                db_name));
+                db_name, DBHost, DBPort));
     /*
      re-read pandalog, this time focusing on taint queries.  Look for
      dead available data, attack points, and thus bug injection oppotunities
