@@ -713,6 +713,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         envv = {"CFLAGS": "-Wno-int-conversion"}
         if competition:
             envv["CFLAGS"] += " -DLAVA_LOGGING"
+        envv={}
         btrace = join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace')
         print("Running btrace make command: {} {} with env: {} in {}"
                 .format(btrace, project['make'], envv, lp.bugs_build))
@@ -1230,4 +1231,7 @@ def get_allowed_bugtype_num(args):
         if bugtype_num is None:
             raise RuntimeError("I dont have a bug type [%s]" % bugtype_name)
         allowed_bugtype_nums.append(bugtype_num)
+
+    if args.many == "1":
+        return [Bug.CHAFF_STACK_CONST]
     return allowed_bugtype_nums
