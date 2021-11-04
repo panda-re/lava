@@ -726,7 +726,9 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         with open(os.path.join(lp.bugs_build, 'Makefile'), 'a') as fd, \
                 open(os.path.join(lp.lava_dir, 'makefile.fixup'), 'r') as fdd:
             fd.write(fdd.read())
-        run( ['make', 'lava_preprocess'] )
+        envv = { 'CC':'/llvm-3.6.2/Release/bin/clang',
+                'CXX': '/llvm-3.6.2/Release/bin/clang++',}
+        run_cmd( ' '.join(['make', 'lava_preprocess']), envv, 30, cwd=lp.bugs_build, shell=True )
     if not os.path.exists(join(lp.bugs_build, 'btrace.log')):
         print("Making with btrace...")
 
@@ -1303,4 +1305,6 @@ def get_allowed_bugtype_num(args):
             raise RuntimeError("I dont have a bug type [%s]" % bugtype_name)
         allowed_bugtype_nums.append(bugtype_num)
 
+    if args.many == "1":
+        return [Bug.CHAFF_STACK_CONST]
     return allowed_bugtype_nums

@@ -151,11 +151,8 @@ if [ $reset -eq 1 ]; then
     deldir "$directory/$name/"'*rr-*'
     # remove all plog files in the directory
     deldir "$directory/$name/*.plog"
-<<<<<<< HEAD
     deldir "$directory/$name/*.json"
-=======
     deldir "$directory/$name/san"
->>>>>>> f7734cc (finalize dua sanitize scripting)
     progress "everything" 0 "Truncating logs..."
     for i in $(ls "$logs" | grep '.log$'); do
         truncate "$logs/$i"

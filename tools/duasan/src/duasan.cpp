@@ -34,6 +34,12 @@ static cl::opt<std::string> SourceDir("src-prefix",
 static cl::opt<std::string> BugDB("db",
     cl::desc("Database Name"),
     cl::init(""));
+static cl::opt<std::string> DBHost("host",
+    cl::desc("Remote Host"),
+    cl::init("database"));
+static cl::opt<int> DBPort("port",
+    cl::desc("Remote Port"),
+    cl::init(5432));
 
 Loc::Loc(const FullSourceLoc &full_loc)
     : line(full_loc.getExpansionLineNumber()),
@@ -384,7 +390,7 @@ int main(int argc, const char **argv)
     //cl::ParseCommandLineOptions(argc, argv);
 
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
-                BugDB));
+                BugDB, DBHost, DBPort));
     odb::transaction *t = new odb::transaction(db->begin());
 
     TestMatcher Matcher;
