@@ -17,11 +17,12 @@ NYU, and Northeastern University.
 
 # Quick Start
 
-On a system running Ubuntu 16.04, you should be able to just run `python2
-setup.py`. Note that this install script will install packages and make
-changes to your system. Once it finishes, you should have
-[PANDA](https://github.com/panda-re/panda) installed into
-`panda/build/` (PANDA is used to perform dynamic taint analysis).
+On a system running Ubuntu 16.04, with the appropriate dependencies installed
+(see [docs/setup.md](docs/setup.md) for details), you should be able to just 
+run `python2 setup.py`. Note that this install script will install packages
+and make changes to your system. Once it finishes, you should have
+[PANDA](https://github.com/panda-re/panda) installed into `panda/build/`
+(PANDA is used to perform dynamic taint analysis).
 
 Next, run `init-host.py` to generate a `host.json`.
 This file is used by LAVA to store settings specific
