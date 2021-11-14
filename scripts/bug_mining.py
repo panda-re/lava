@@ -83,7 +83,7 @@ input_file_base = os.path.basename(input_file)
 print("bug_mining.py %s %s" % (project_name, input_file))
 
 if len(sys.argv) > 4:
-    global curtail
+    #global curtail
     curtail = int(sys.argv[4])
 
 qemu_path = project['qemu']
@@ -242,7 +242,7 @@ fbi_args = [join(lavadir, 'tools', 'install', 'bin', 'fbi'), host_json,
             project_name, pandalog, input_file_base]
 
 # Command line curtial argument takes priority, otherwise use project specific one
-global curtail
+#global curtail
 if curtail !=0 :
     fbi_args.append(str(curtail))
 elif "curtail" in project:

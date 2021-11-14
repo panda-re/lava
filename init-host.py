@@ -95,7 +95,7 @@ def main():
 
     if not isfile(join(LAVA_DIR, basename(QCOW_URL))):
         progress("Downloading {}".format(basename(QCOW_URL)))
-        run(["wget", QCOW_URL, "-O", QCOW_FILE_NAME])
+        run(["wget", "--no-check-certificate", QCOW_URL, "-O", QCOW_FILE_NAME])
     else:
         progress("Found existing {}".format(basename(QCOW_URL)))
 
