@@ -217,8 +217,8 @@ def main():
               Run as user!\nUSAGE: {}".format(sys.argv[0]))
 
     progress("Installing LAVA apt-get dependencies")
-    if not all(map(is_package_installed, LAVA_DEPS)):
-        run(['sudo', 'apt-get', '-y', 'install'] + LAVA_DEPS)
+    #if not all(map(is_package_installed, LAVA_DEPS)):
+    #    run(['sudo', 'apt-get', '-y', 'install'] + LAVA_DEPS)
 
     # set up postgres authentication.
     if not isfile(join(os.environ['HOME'], '.pgpass')):
@@ -288,7 +288,7 @@ def main():
         run(['git', 'submodule', 'sync'])
         run(['git', 'submodule', 'update', '--init', 'dtc'])
         os.chdir(PANDA_BUILD_DIR)
-        run([join(PANDA_DIR, 'build.sh')])
+        run_docker([join(PANDA_DIR, '../setup.sh')])
         os.chdir(LAVA_DIR)
     # Compile lavaTool inside the docker container.
     progress("Creating $LAVA_DIR/tools/lavaTool/config.mak")
@@ -308,48 +308,48 @@ def main():
                 join(LAVA_DIR, 'tools/build/lavaTool')])
 
     # ensure /etc/apt/sources.list has all of the deb-src lines uncommented
-    patch_sources = join(LAVA_DIR, "scripts/patch-sources.py")
-    lines = open("/etc/apt/sources.list")
-    filt_lines = [line for line in lines if line.strip().startswith("#deb-src")
-                  or line.strip().startswith("# deb-src")]
-    if len(filt_lines) > 0:
-        progress("Uncommenting {} deb-src lines in".format(len(filt_lines)) +
-                 "/etc/apt/sources.list")
-        run(['sudo', 'python', patch_sources])
+    #patch_sources = join(LAVA_DIR, "scripts/patch-sources.py")
+    #lines = open("/etc/apt/sources.list")
+    #filt_lines = [line for line in lines if line.strip().startswith("#deb-src")
+    #              or line.strip().startswith("# deb-src")]
+    #if len(filt_lines) > 0:
+    #    progress("Uncommenting {} deb-src lines in".format(len(filt_lines)) +
+    #             "/etc/apt/sources.list")
+    #    run(['sudo', 'python', patch_sources])
 
-    progress("Checking for ODB orm libraries")
-    odb_version = "2.4.0"
-    odb_baseurl = "http://www.codesynthesis.com/download/odb/2.4/"
-    if not isfile('/usr/bin/odb'):
-        os.chdir(BUILD_DIR)
-        run("wget {}/odb_{}-1_amd64.deb".format(odb_baseurl, odb_version))
-        run("sudo dpkg -i odb_{}-1_amd64.deb".format(odb_version))
+    #progress("Checking for ODB orm libraries")
+    #odb_version = "2.4.0"
+    #odb_baseurl = "http://www.codesynthesis.com/download/odb/2.4/"
+    #if not isfile('/usr/bin/odb'):
+    #    os.chdir(BUILD_DIR)
+    #    run("wget {}/odb_{}-1_amd64.deb".format(odb_baseurl, odb_version))
+    #    run("sudo dpkg -i odb_{}-1_amd64.deb".format(odb_version))
 
-    if not isfile('/usr/local/lib/libodb.so') and \
-            not isfile('/usr/lib/libodb.so'):
-        os.chdir(BUILD_DIR)
-        run("wget {}/libodb-{}.tar.gz".format(odb_baseurl, odb_version))
-        run("tar -xf libodb-{}.tar.gz".format(odb_version))
-        os.chdir("libodb-{}/".format(odb_version))
-        run("sh configure")
-        run(['make', '-j', str(cpu_count())])
-        run("sudo make install")
+    #if not isfile('/usr/local/lib/libodb.so') and \
+    #        not isfile('/usr/lib/libodb.so'):
+    #    os.chdir(BUILD_DIR)
+    #    run("wget {}/libodb-{}.tar.gz".format(odb_baseurl, odb_version))
+    #    run("tar -xf libodb-{}.tar.gz".format(odb_version))
+    #    os.chdir("libodb-{}/".format(odb_version))
+    #    run("sh configure")
+    #    run(['make', '-j', str(cpu_count())])
+    #    run("sudo make install")
 
-    if not isfile('/usr/local/lib/libodb-pgsql.so') and \
-            not isfile('/usr/lib/libodb-pgsql.so'):
-        os.chdir(BUILD_DIR)
-        run("wget {}/libodb-pgsql-{}.tar.gz".format(odb_baseurl, odb_version))
-        run("tar -xf libodb-pgsql-{}.tar.gz".format(odb_version))
-        os.chdir("libodb-pgsql-{}/".format(odb_version))
-        run("sh configure")
-        run(['make', '-j', str(cpu_count())])
-        run("sudo make install")
+    #if not isfile('/usr/local/lib/libodb-pgsql.so') and \
+    #        not isfile('/usr/lib/libodb-pgsql.so'):
+    #    os.chdir(BUILD_DIR)
+    #    run("wget {}/libodb-pgsql-{}.tar.gz".format(odb_baseurl, odb_version))
+    #    run("tar -xf libodb-pgsql-{}.tar.gz".format(odb_version))
+    #    os.chdir("libodb-pgsql-{}/".format(odb_version))
+    #    run("sh configure")
+    #    run(['make', '-j', str(cpu_count())])
+    #    run("sudo make install")
 
-    progress("Finished installing ODB libraries")
+    #progress("Finished installing ODB libraries")
 
-    progress("Installing python dependencies.")
-    if command_exited_nonzero("python -c \"import {}\"".format("subprocess32")):
-        run("sudo pip install subprocess32")
+    #progress("Installing python dependencies.")
+    #if command_exited_nonzero("python -c \"import {}\"".format("subprocess32")):
+    #    run("sudo pip install subprocess32")
 
     # -----------Beginning .mak file stuff -------------------
     # I think this would be useful, but i'm seperating it out
@@ -376,7 +376,7 @@ def main():
     progress("Compiling fbi")
 
     os.chdir(join(LAVA_DIR, "tools/build"))
-    run("make --no-print-directory -j4 -C fbi install")
+    run_docker("make --no-print-directory -j4 -C {} install".format(join(LAVA_DIR, "tools/build/fbi")))
     os.chdir(LAVA_DIR)
 
     return 0

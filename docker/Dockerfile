@@ -95,7 +95,7 @@ WORKDIR protobuf-c-1.3.1
 RUN CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' ./configure && make -j $(nproc) && make install && ldconfig
 
 # Setup PANDA
-RUN apt-get install -y libglib2.0-dev libpixman-1-dev groff-base libdwarf-dev libcapstone-dev wireshark-dev libelf-dev
+RUN apt-get install -y libglib2.0-dev libpixman-1-dev groff-base libdwarf-dev libcapstone-dev wireshark-dev libelf-dev flex bison
 WORKDIR /
 RUN wget https://releases.llvm.org/3.3/llvm-3.3.src.tar.gz
 RUN tar -xzf llvm-3.3.src.tar.gz
