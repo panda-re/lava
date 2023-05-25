@@ -18,7 +18,10 @@ from os.path import expandvars
 from colorama import Fore
 from colorama import Style
 
-QCOW_URL = "http://panda.moyix.net/~moyix/wheezy_panda2.qcow2"
+# moyix server is down, so we use the official panda image
+# QCOW_URL = "http://panda.moyix.net/~moyix/wheezy_panda2.qcow2"
+QCOW_URL = "https://panda.re/qcows/linux/debian/7.3/x86/debian_7.3_x86.qcow"
+QCOW_FILE_NAME = "wheezy_panda2.qcow2"
 TAR_URL = "ftp://ftp.astron.com/pub/file/file-5.22.tar.gz"
 LAVA_DIR = dirname(abspath(sys.argv[0]))
 os.chdir(LAVA_DIR)
@@ -85,7 +88,7 @@ def main():
     if not isfile(join(TAR_DIR, basename(TAR_URL))):
         progress("Downloading %s".format(basename(TAR_URL)))
         os.chdir(TAR_DIR)
-        run(["wget", TAR_URL])
+        run(["wget", TAR_URL, "-O", QCOW_FILE_NAME])
         os.chdir(LAVA_DIR)
     else:
         progress("Found existing target_bins/{}".format(basename(TAR_URL)))

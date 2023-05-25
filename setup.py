@@ -282,6 +282,10 @@ def main():
         except OSError:
             print "Warning: Panda build directory is already there"
         os.chdir(PANDA_DIR)
+        # The dtc submodule no longer works through git://, so we replace it with https://.
+        run(['sed', '-i', 's|url = git://git.qemu-project.org/dtc.git|url = https://git.qemu-project.org/dtc.git|g', '.gitmodules'])
+        # sync the submodule (apply the url protocol change)
+        run(['git', 'submodule', 'sync'])
         run(['git', 'submodule', 'update', '--init', 'dtc'])
         os.chdir(PANDA_BUILD_DIR)
         run([join(PANDA_DIR, 'build.sh')])
