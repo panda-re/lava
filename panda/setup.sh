@@ -15,4 +15,5 @@ QEMU_CFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' "
     --extra-plugins-path="${PANDA_DIR}/.."
 
 make -j ${PANDA_NPROC:-$(nproc || sysctl -n hw.ncpu)}
+make install
 popd
