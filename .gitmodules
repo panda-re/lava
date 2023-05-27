@@ -1,4 +1,4 @@
 [submodule "panda/src"]
 	path = panda/src
-	url = https://github.com/dnivra/panda.git
+	url = https://github.com/HighW4y2H3ll/panda
 	branch = dev
