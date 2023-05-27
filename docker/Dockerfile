@@ -22,27 +22,22 @@ RUN apt-get build-dep -y libodb libjsoncpp
 ENV release 3.6.2
 ENV llvm_version llvm-${release}
 
-RUN wget --no-check-certificate https://llvm.org/releases/$release/$llvm_version.src.tar.xz
-RUN tar -xJf $llvm_version.src.tar.xz
-
-RUN mv $llvm_version.src $llvm_version
-RUN cd $llvm_version
+RUN wget --no-check-certificate http://llvm.org/releases/$release/$llvm_version.src.tar.xz && \
+    mkdir $llvm_version && tar -xJf $llvm_version.src.tar.xz -C $llvm_version --strip-components=1 && \
+    rm $llvm_version.src.tar.xz
 
 WORKDIR /$llvm_version/tools
 ENV clang_version cfe-$release
-RUN wget --no-check-certificate https://llvm.org/releases/$release/$clang_version.src.tar.xz
-RUN tar -xJf $clang_version.src.tar.xz
-RUN mv $clang_version.src clang
+RUN wget --no-check-certificate http://llvm.org/releases/$release/$clang_version.src.tar.xz && \
+    mkdir clang && tar -xJf $clang_version.src.tar.xz -C clang --strip-components=1 && \
+    rm $clang_version.src.tar.xz
 
 WORKDIR /$llvm_version/tools/clang/tools
-RUN wget --no-check-certificate https://llvm.org/releases/$release/clang-tools-extra-$release.src.tar.xz
-RUN tar -xJf clang-tools-extra-$release.src.tar.xz
-RUN mv clang-tools-extra-$release.src extra
+RUN wget --no-check-certificate http://llvm.org/releases/$release/clang-tools-extra-$release.src.tar.xz && \
+    mkdir extra && tar -xJf clang-tools-extra-$release.src.tar.xz -C extra --strip-components=1 && \
+    rm clang-tools-extra-$release.src.tar.xz
 
-WORKDIR /$llvm_version
-#RUN ./configure --enable-optimized --disable-assertions --enable-targets=x86 --enable-shared --enable-pic --host=i486-linux-gnu --build=i486-linux-gnu
-RUN mkdir /$llvm_version/build
-RUN mkdir /$llvm_version/Release
+RUN mkdir /$llvm_version/build /$llvm_version/Release
 WORKDIR /$llvm_version/build
 RUN cmake ../ -DCMAKE_INSTALL_PREFIX=/$llvm_version/Release -DLLVM_TARGETS_TO_BUILD=X86 \
               -DBUILD_SHARED_LIBS=true -DLLVM_ENABLE_ASSERTIONS=false -DLLVM_ENABLE_RTTI=true \
@@ -53,16 +48,16 @@ RUN cmake ../ -DCMAKE_INSTALL_PREFIX=/$llvm_version/Release -DLLVM_TARGETS_TO_BU
 RUN ninja install
 
 WORKDIR /
-RUN wget http://codesynthesis.com/download/odb/2.4/odb_2.4.0-1_amd64.deb
-RUN dpkg -i odb_2.4.0-1_amd64.deb
+RUN wget http://codesynthesis.com/download/odb/2.4/odb_2.4.0-1_i386.deb && \
+    dpkg -i odb_2.4.0-1_i386.deb && rm odb_2.4.0-1_i386.deb
 #RUN wget http://codesynthesis.com/download/odb/2.4/odb-2.4.0.tar.gz
-RUN wget http://codesynthesis.com/download/odb/2.4/libodb-2.4.0.tar.gz
-RUN tar xf libodb-2.4.0.tar.gz
+RUN wget http://codesynthesis.com/download/odb/2.4/libodb-2.4.0.tar.gz && \
+    tar xf libodb-2.4.0.tar.gz && rm libodb-2.4.0.tar.g
 WORKDIR /libodb-2.4.0
 RUN CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' ./configure --enable-shared && make -j $(nproc) && make install
 WORKDIR /
-RUN wget http://codesynthesis.com/download/odb/2.4/libodb-pgsql-2.4.0.tar.gz
-RUN tar xf libodb-pgsql-2.4.0.tar.gz
+RUN wget http://codesynthesis.com/download/odb/2.4/libodb-pgsql-2.4.0.tar.gz && \
+    tar xf libodb-pgsql-2.4.0.tar.gz && rm libodb-pgsql-2.4.0.tar.gz
 WORKDIR /libodb-pgsql-2.4.0
 RUN CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' ./configure --enable-shared && make -j $(nproc) && make install
 
@@ -94,12 +89,12 @@ RUN cmake -DCMAKE_CXX_FLAGS="-D_GLIBCXX_USE_CXX11_ABI=0" . && make -j && make in
 
 # Install protobuf
 WORKDIR /
-RUN git clone https://github.com/protocolbuffers/protobuf.git
+RUN git clone https://github.com/protocolbuffers/protobuf.git -b 3.6.x
 WORKDIR protobuf
-RUN git checkout 3.6.x
 RUN ./autogen.sh && CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' ./configure && make -j $(nproc) && make install && ldconfig
 WORKDIR /
-RUN wget https://github.com/protobuf-c/protobuf-c/releases/download/v1.3.1/protobuf-c-1.3.1.tar.gz && tar -xzf protobuf-c-1.3.1.tar.gz
+RUN wget https://github.com/protobuf-c/protobuf-c/releases/download/v1.3.1/protobuf-c-1.3.1.tar.gz && \
+    tar -xzf protobuf-c-1.3.1.tar.gz && rm protobuf-c-1.3.1.tar.gz
 WORKDIR protobuf-c-1.3.1
 RUN CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' ./configure && make -j $(nproc) && make install && ldconfig
 
