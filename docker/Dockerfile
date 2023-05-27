@@ -48,11 +48,11 @@ RUN cmake ../ -DCMAKE_INSTALL_PREFIX=/$llvm_version/Release -DLLVM_TARGETS_TO_BU
 RUN ninja install
 
 WORKDIR /
-RUN wget http://codesynthesis.com/download/odb/2.4/odb_2.4.0-1_i386.deb && \
-    dpkg -i odb_2.4.0-1_i386.deb && rm odb_2.4.0-1_i386.deb
+RUN wget http://codesynthesis.com/download/odb/2.4/odb_2.4.0-1_amd64.deb && \
+    dpkg -i odb_2.4.0-1_amd64.deb && rm odb_2.4.0-1_amd64.deb
 #RUN wget http://codesynthesis.com/download/odb/2.4/odb-2.4.0.tar.gz
 RUN wget http://codesynthesis.com/download/odb/2.4/libodb-2.4.0.tar.gz && \
-    tar xf libodb-2.4.0.tar.gz && rm libodb-2.4.0.tar.g
+    tar xf libodb-2.4.0.tar.gz && rm libodb-2.4.0.tar.gz
 WORKDIR /libodb-2.4.0
 RUN CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' ./configure --enable-shared && make -j $(nproc) && make install
 WORKDIR /
