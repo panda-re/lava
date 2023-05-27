@@ -1,12 +1,19 @@
 FROM debian:stretch
-RUN echo deb http://ftp.us.debian.org/debian/ stretch main > /etc/apt/sources.list
-RUN echo deb http://archive.debian.org/debian wheezy-backports main >> /etc/apt/sources.list
-RUN apt-get update
+RUN echo "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20220630T220025Z/ stretch main" > /etc/apt/sources.list
+RUN echo "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20220630T220025Z/ stretch-updates main" >> /etc/apt/sources.list
+RUN echo "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20220630T220025Z/ stretch-backports main" >> /etc/apt/sources.list
+RUN apt-get update && apt-get -y dist-upgrade && \
+    apt-get remove -y libnettle6 libelf1 && \
+    apt-get install -y --allow-downgrades zlib1g=1:1.2.8.dfsg-5 && \
+    apt-get autoremove -y
 RUN apt-get install -y sudo build-essential python wget cmake gdb gawk mlocate \
             vim libc++-dev  g++-multilib g++ ninja-build \
             git jq bc python python-colorama zsh \
             python-psycopg2 python-pexpect python-psutil \
-            python-numpy python-argparse python-pip python-dev libpq-dev
+            python-numpy python-argparse python-pip python-dev libpq-dev \
+            sudo gdb gawk zlib1g-dev autoconf libtool pkg-config locales \
+            genisoimage postgresql-client-9.6 \
+            libglib2.0-dev libpixman-1-dev groff-base libdwarf-dev libcapstone-dev wireshark-dev libelf-dev
 ENV release 3.6.2
 ENV llvm_version llvm-${release}
 
@@ -68,10 +75,7 @@ RUN echo "LD_LIBRARY_PATH=/$llvm_version/Release/lib" >> /etc/environment
 RUN echo "LIBRARY_PATH=/usr/local/lib" >> /etc/environment
 RUN echo "PATH=$PATH:/$llvm_version/Release/bin" >> /etc/environment
 
-RUN apt-get install -y sudo gdb gawk zlib1g-dev autoconf libtool pkg-config
-
 # Set locale to C.UTF-8 instead of us_EN.UTF-8
-RUN apt-get install -y locales
 RUN locale-gen C.UTF-8
 RUN locale -a
 RUN update-locale LANG=C.UTF-8
@@ -95,7 +99,6 @@ WORKDIR protobuf-c-1.3.1
 RUN CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' ./configure && make -j $(nproc) && make install && ldconfig
 
 # Setup PANDA
-RUN apt-get install -y libglib2.0-dev libpixman-1-dev groff-base libdwarf-dev libcapstone-dev wireshark-dev libelf-dev
 WORKDIR /
 RUN wget https://releases.llvm.org/3.3/llvm-3.3.src.tar.gz
 RUN tar -xzf llvm-3.3.src.tar.gz
@@ -105,7 +108,6 @@ WORKDIR /llvm-3.3.src
 RUN CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' ./configure --prefix=/llvm-3.3-install && make -j $(nproc) && make install
 
 # Setting up remote Postgres(host) && Lava Aux Packages
-RUN apt-get install -y genisoimage postgresql-client-9.6
 # pg_hba.conf:
 # host    all             all             172.17.0.1/16            md5
 # postgresql.conf:
