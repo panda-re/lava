@@ -1,91 +1,51 @@
-# LAVA: Large Scale Automated Vulnerability Addition
+# Chaff README
 
-Evaluating and improving bug-finding tools is currently difficult due to
-a shortage of ground truth corpora (i.e., software that has known bugs
-with triggering inputs). LAVA attempts to solve this problem by
-automatically injecting bugs into software. Every LAVA bug is
-accompanied by an input that triggers it whereas normal inputs are
-extremely unlikely to do so. These vulnerabilities are synthetic but, we
-argue, still realistic, in the sense that they are embedded deep within
-programs and are triggered by real inputs. Our work forms the basis of
-an approach for generating large ground-truth vulnerability corpora on
-demand, enabling rigorous tool evaluation and providing a high-quality
-target for tool developers.
+These instructions were tested on Ubuntu 22.04.
 
-LAVA is the product of a collaboration between MIT Lincoln Laboratory,
-NYU, and Northeastern University.
+## Building chaff
 
-# Quick Start
-
-On a system running Ubuntu 16.04, you should be able to just run `python2
-setup.py`. Note that this install script will install packages and make
-changes to your system. Once it finishes, you should have
-[PANDA](https://github.com/panda-re/panda) installed into
-`panda/build/` (PANDA is used to perform dynamic taint analysis).
-
-Next, run `init-host.py` to generate a `host.json`.
-This file is used by LAVA to store settings specific
-to your machine. You can edit these settings as necessary, but the default
-values should work.
-
-Project configurations are located in the `target_configs` directory, where
-every configuration is located at `target_configs/projectname/projectname.json`.
-Paths specified within these configuration files are relative to values set
-in your `host.json` file.
-
-Finally, you can run `./scripts/lava.sh` to actually inject bugs
-into a program. Just provide the name of a project that is in the
-`target_configs` directory, for example:
+Build the Docker image
 
 ```
-./scripts/lava.sh toy
+cd chaff/docker
+docker build -t lava32chaff .
+```
+(The Docker image uses Debian snapshot as repository, which can be slow at times. If it is taking
+too long, interrupt and restart the build. It might speed things up.)
+
+Next spawn a shell in the Docker image
+
+```
+./scripts/docker-shell.sh
 ```
 
-You should now have a buggy copy of toy!
+In this shell, build panda and then build the LAVA tools
 
-If you want to inject bugs into a new target, you will likely need to make some
-modifications. Check out [How-to-Lava](docs/how-to-lava.md) for guidance.
-
-# Documentation
-Check out the [docs](docs/) folder to get started.
-
-
-# Current Status
-## Version 2.0.0
-
-Expected results from test suite:
 ```
-Project       RESET    CLEAN    ADD      MAKE     TAINT    INJECT   COMP
-blecho        PASS     PASS     PASS     PASS     PASS     PASS     PASS
-libyaml       PASS     PASS     PASS     PASS     PASS     PASS     PASS
-file          PASS     PASS     PASS     PASS     PASS     PASS     PASS
-toy           PASS     PASS     PASS     PASS     PASS     PASS     PASS
-pcre2         PASS     PASS     PASS     PASS     PASS     PASS     PASS
-jq            PASS     PASS     PASS     PASS     PASS     PASS     PASS
-grep          PASS     PASS     PASS     PASS     PASS     FAIL
-libjpeg       PASS     PASS     PASS     PASS     FAIL
-tinyexpr      PASS     PASS     PASS     PASS     FAIL
-duktape       PASS     PASS     PASS     FAIL
-tweetNaCl     PASS     PASS     FAIL
-gzip          FAIL
+./panda/setup.sh
+python2 ./setup_container.py
 ```
 
-# Authors
+(`panda/setup.sh` may fail in install step but that error is fine.)
 
-LAVA is the result of several years of development by many people; a
-partial (alphabetical) list of contributors is below:
+## Preparing host
 
-* Andy Davis
-* Brendan Dolan-Gavitt
-* Andrew Fasano
-* Zhenghao Hu
-* Patrick Hulin
-* Amy Jiang
-* Engin Kirda
-* Tim Leek
-* Andrea Mambretti
-* Wil Robertson
-* Aaron Sedlacek
-* Rahul Sridhar
-* Frederick Ulrich
-* Ryan Whelan
+- `sudo apt install postgresql python-pip libodb-pgsql-2.4 jq`
+- Install docker. [See here for instructions](https://docs.docker.com/engine/install/ubuntu/)
+- `pip2 install colorama`
+- Run `setup_postgresql.py` using `python2` to set up DB and some DB config.
+- To enable accessing database from docker container, add
+    - add `listen_addresses = '172.17.0.1, localhost'` and `password_encryption = md5` to
+      `/etc/postgresql/<version>/main/postgresql.conf`.
+    - add `host all all 172.17.0.0/16 md5` to `/etc/postgresql/<version>/main/pg_hba.conf`.
+    - replace all `scram-sha-256` with `md5` in `/etc/postgresql/<version>/main/pg_hba.conf`
+    - Reset password by logging into psql.
+    - Restart postgresql.
+    - Run docker shell and see if logging in using `psql -h 172.17.0.1 -U postgres` works using the
+      password.
+
+## Inserting chaff bugs
+
+- `python2 ./init-host.py`
+- `./scripts/lava.sh -ak <target>`
+- For more options, run `./scripts/lava.sh -h`
