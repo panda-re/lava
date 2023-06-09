@@ -19,8 +19,8 @@ from colorama import Fore
 from colorama import Style
 
 # moyix server is down, so we use the official panda image
-# QCOW_URL = "http://panda.moyix.net/~moyix/wheezy_panda2.qcow2"
-QCOW_URL = "https://panda.re/qcows/linux/debian/7.3/x86/debian_7.3_x86.qcow"
+QCOW_URL = "http://panda.moyix.net/~moyix/wheezy_panda2.qcow2"
+# QCOW_URL = "https://panda.re/qcows/linux/debian/7.3/x86/debian_7.3_x86.qcow"
 QCOW_FILE_NAME = "wheezy_panda2.qcow2"
 TAR_URL = "ftp://ftp.astron.com/pub/file/file-5.22.tar.gz"
 LAVA_DIR = dirname(abspath(sys.argv[0]))
