@@ -19,6 +19,9 @@ from colorama import Fore
 from colorama import Style
 
 QCOW_URL = "http://panda.moyix.net/~moyix/wheezy_panda2.qcow2"
+# if moyix server is down, this image will also work
+# QCOW_URL = "https://panda.re/qcows/linux/debian/7.3/x86/debian_7.3_x86.qcow"
+QCOW_FILE_NAME = "wheezy_panda2.qcow2"
 TAR_URL = "ftp://ftp.astron.com/pub/file/file-5.22.tar.gz"
 LAVA_DIR = dirname(abspath(sys.argv[0]))
 os.chdir(LAVA_DIR)
@@ -92,7 +95,7 @@ def main():
 
     if not isfile(join(LAVA_DIR, basename(QCOW_URL))):
         progress("Downloading {}".format(basename(QCOW_URL)))
-        run(["wget", QCOW_URL])
+        run(["wget", QCOW_URL, "-O", QCOW_FILE_NAME])
     else:
         progress("Found existing {}".format(basename(QCOW_URL)))
 

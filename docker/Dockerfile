@@ -1,4 +1,9 @@
 FROM i386/debian:stretch
+# i386/debian includes commented lines in /etc/apt/sources.list, which point to 
+# snapshots of last available versions of packages for wheezy, along with the broken
+# repo links. This line swaps the commented and uncommented lines in /etc/apt/sources.list.
+RUN awk '{ if ($0 ~ /^#/) print substr($0, 3); else print "# " $0 }' /etc/apt/sources.list > /tmp/sources && cat /tmp/sources > /etc/apt/sources.list && \
+    echo 'Acquire::Check-Valid-Until "false";' >> /etc/apt/apt.conf.d/10no--check-valid-until
 RUN echo deb http://archive.debian.org/debian wheezy-backports main >> /etc/apt/sources.list
 RUN apt-get update
 RUN apt-get install -y sudo build-essential python wget cmake gdb gawk mlocate \
