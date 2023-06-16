@@ -40,8 +40,8 @@ python2 ./setup_container.py
       `/etc/postgresql/<version>/main/postgresql.conf`.
     - add `host all all 172.17.0.0/16 md5` to `/etc/postgresql/<version>/main/pg_hba.conf`.
     - replace all `scram-sha-256` with `md5` in `/etc/postgresql/<version>/main/pg_hba.conf`
-    - Reset password by logging into psql.
     - Restart postgresql.
+    - Reset password by logging into psql.
     - Run docker shell and see if logging in using `psql -h 172.17.0.1 -U postgres` works using the
       password.
 
