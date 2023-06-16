@@ -70,8 +70,9 @@ Finally, you can run `./scripts/lava.sh` to actually inject bugs into a program.
 cd chaff/docker
 docker build -t lava32chaff .
 ```
-(The Docker image uses Debian snapshot as repository, which can be slow at times. If it is taking
-too long, interrupt and restart the build. It might speed things up.)
+(The Docker image uses Debian snapshot as repository, which can be slow at times possibly due to
+rate limiting. If apt-get commands are taking too long, interrupt and restart the build. It might
+speed things up.)
 
 Next spawn a shell in the Docker image
 
