@@ -12,13 +12,13 @@ RUN apt-get update && apt-get -y dist-upgrade && \
 RUN apt-get install -y sudo build-essential python wget cmake gdb gawk mlocate \
             vim libc++-dev  g++-multilib g++ ninja-build \
             git jq bc python python-colorama zsh \
-            python-psycopg2 python-pexpect python-psutil \
+            python-pexpect python-psutil \
             python-numpy python-argparse python-pip python-dev libpq-dev \
             sudo gdb gawk zlib1g-dev autoconf libtool pkg-config locales \
             genisoimage postgresql-client-9.6 \
             libglib2.0-dev libpixman-1-dev groff-base libdwarf-dev libcapstone-dev wireshark-dev libelf-dev \
             flex bison
-RUN apt-get build-dep -y libodb libjsoncpp
+#RUN apt-get build-dep -y libodb libjsoncpp
 ENV release 3.6.2
 ENV llvm_version llvm-${release}
 
@@ -67,7 +67,7 @@ RUN ldconfig
 RUN pip install --upgrade -v pip -i https://pypi.python.org/simple/
 RUN pip install subprocess32 lockfile sqlalchemy==1.0.14 -i https://pypi.python.org/simple
 
-RUN pip install pyyaml pycparser
+RUN pip install pyyaml pycparser psycopg2
 RUN updatedb
 
 RUN echo "LLVM_DIR=/$llvm_version/Release/share/llvm/cmake" >> /etc/environment
@@ -107,8 +107,10 @@ RUN tar -xzf cfe-3.3.src.tar.gz && mv cfe-3.3.src /llvm-3.3.src/tools/clang
 WORKDIR /llvm-3.3.src
 RUN CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' ./configure --prefix=/llvm-3.3-install && make -j $(nproc) && make install
 
-# Setting up remote Postgres(host) && Lava Aux Packages
+# Setting up remote Postgres 9.6(host) && Lava Aux Packages
 # pg_hba.conf:
 # host    all             all             172.17.0.1/16            md5
 # postgresql.conf:
 # listen_addresses = 'localhost, 172.17.0.1'
+# wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+# echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/postgresql-pgdg.list

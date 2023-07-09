@@ -56,6 +56,10 @@ def run(cmd):
         raise
 
 if __name__ == '__main__':
+    # Compile btrace
+    compile_cmd = ['cd', os.path.join(LAVA_DIR, 'tools', 'btrace'),
+                   '&&', 'bash', 'compile.sh']
+    run(['bash', '-c', subprocess.list2cmdline(compile_cmd)])
     # Compile lavaTool inside the docker container.
     progress("Creating $LAVA_DIR/tools/lavaTool/config.mak")
     with open("tools/lavaTool/config.mak", "w") as f:

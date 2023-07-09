@@ -84,7 +84,8 @@ git commit -m 'Unmodified source.'
 
 progress "queries" 0  "Configuring..."
 mkdir -p lava-install
-if [ -e "$configure_cmd" ]; then
+configure_file=${configure_cmd%% *}
+if [ -e "$configure_file" ]; then
     CC=/llvm-3.6.2/Release/bin/clang CXX=/llvm-3.6.2/Release/bin/clang++ CFLAGS="-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -I. -I.. -I../include -I./src/" $configure_cmd --prefix=$(pwd)/lava-install
 fi
 
