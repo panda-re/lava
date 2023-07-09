@@ -26,7 +26,8 @@ tar -xf "$tarfile"
 progress "sanitize" 0  "Preprocessing code..."
 cd "$targetname"
 mkdir -p lava-install
-if [ -e "$configure_cmd" ]; then
+configure_file=${configure_cmd%% *}
+if [ -e "$configure_file" ]; then
     CC=/llvm-3.6.2/Release/bin/clang CXX=/llvm-3.6.2/Release/bin/clang++ CFLAGS="-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -I. -I.. -I../include -I./src/" $configure_cmd --prefix=$(pwd)/lava-install
 fi
 
@@ -65,12 +66,17 @@ c_files=$(python $lava/tools/lavaTool/get_c_files.py $targetname)
 c_dirs=$(for i in $c_files; do dirname $i; done | sort | uniq)
 
 progress "sanitize" 0 "Run sanitizer..."
-for this_c_file in $c_files; do
-    stdbuf -o0 echo lava/tools/install/bin/duasan -db=$db -p=$sandir/$targetname/compile_commands.json -src-prefix=$(readlink -f $targetname) $this_c_file
-    $lava/tools/install/bin/duasan -db=$db \
-        -p="$sandir/$targetname/compile_commands.json" \
-        -src-prefix=$(readlink -f "$targetname") \
-        $this_c_file
-done
+stdbuf -o0 echo lava/tools/install/bin/duasan -db=$db -p=$sandir/$targetname/compile_commands.json -src-prefix=$(readlink -f $targetname) $c_files
+$lava/tools/install/bin/duasan -db=$db \
+    -p="$sandir/$targetname/compile_commands.json" \
+    -src-prefix=$(readlink -f "$targetname") \
+    $c_files
+#for this_c_file in $c_files; do
+#    stdbuf -o0 echo lava/tools/install/bin/duasan -db=$db -p=$sandir/$targetname/compile_commands.json -src-prefix=$(readlink -f $targetname) $this_c_file
+#    $lava/tools/install/bin/duasan -db=$db \
+#        -p="$sandir/$targetname/compile_commands.json" \
+#        -src-prefix=$(readlink -f "$targetname") \
+#        $this_c_file
+#done
 
 popd
