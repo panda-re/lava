@@ -222,11 +222,15 @@ public:
                         << "void *lava_chaff_pointer = (void*)0;\n"
                         << "char lava_patch_array[0x10000] __attribute__((section(\".orz\"))) = {1};\n";
                 } else {
-                    top << "extern unsigned int lava_val[];\n"
-                        << "extern unsigned int lava_extra[];\n"
-                        << "extern unsigned int lava_state[];\n"
-                        << "extern void *lava_chaff_pointer;\n";
-                        //<< "extern char lava_patch_array[];\n";
+                    //top << "extern unsigned int lava_val[];\n"
+                    //    << "extern unsigned int lava_extra[];\n"
+                    //    << "extern unsigned int lava_state[];\n"
+                    //    << "extern void *lava_chaff_pointer;\n";
+                    //    //<< "extern char lava_patch_array[];\n";
+                    top << "unsigned int __attribute__((weak)) lava_val[" << data_slots.size() << "];\n"
+                        << "unsigned int __attribute__((weak)) lava_extra[" << extra_data_slots.size() << "];\n"
+                        << "unsigned int __attribute__((weak)) lava_state[" << extra_data_slots.size() << "];\n"
+                        << "void * __attribute__((weak)) lava_chaff_pointer;\n";
                 }
                 top << ""
                     << "float lava_tempval;\n"
