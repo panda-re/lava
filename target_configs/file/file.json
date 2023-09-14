@@ -10,7 +10,7 @@
     "snapshot": "root",
     "expect_prompt": "root@debian-i386:~#",
 
-    "configure": "./configure",
+    "configure": "./configure --enable-static=no",
     "make": "make",
     "clean": "make clean",
     "install": "make install",
