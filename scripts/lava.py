@@ -430,7 +430,7 @@ def run_cmd_notimeout(cmd, **kwargs):
 
 
 def mutfile(filename, fuzz_labels_list, new_filename, bug,
-            kt=False, knob=0, solution=None, patchval=0x0101ffff):
+            kt=False, knob=0, solution=None, patchval=0):
     passval = struct.pack('<I', patchval)
     # Open filename, mutate it and store in new_filename such that
     # it hopefully triggers the passed bug
@@ -718,7 +718,6 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     if not os.path.exists(join(lp.bugs_build, 'config.log')) \
             and 'configure' in project.keys():
         print('Re-configuring...')
-        run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
         envv = project["env_var"]
         if project['configure']:
             run_cmd(' '.join(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]),
@@ -1090,7 +1089,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
         print("Knob size: {}".format(args.knobTrigger))
         mutfile_kwargs = {'kt': True, 'knob': args.knobTrigger}
 
-    mutfile_kwargs['patchval'] = 0x0011cb88
+    #mutfile_kwargs['patchval'] = 0x0011cb88
     fuzz_labels_list = [bug.trigger.all_labels]
     if len(bug.extra_duas) > 0:
         extra_query = db.session.query(DuaBytes) \
