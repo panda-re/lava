@@ -4,8 +4,8 @@
     "preprocessed": true,
     "dataflow": true,
     "tarfile": "file-5.22-pre.tar.gz",
-    "configure": "./configure --enable-static=no",
 
+    "configure": "./configure --enable-static=yes --enable-shared=no",
     "make": "make",
     "clean": "make clean",
     "install": "make install",
