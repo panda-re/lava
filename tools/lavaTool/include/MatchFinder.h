@@ -207,21 +207,21 @@ public:
             {
                 std::stringstream top;
                 if (main_files.count(getAbsolutePath(Filename)) > 0) {
-                    top << "unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
-                        << "unsigned int lava_extra[" << extra_data_slots.size() << "] = {0};\n"
-                        << "unsigned int lava_state[" << extra_data_slots.size() << "] = {0};\n"
-                        << "void *lava_chaff_pointer = (void*)0;\n"
+                    top << "unsigned __attribute__ ((visibility (\"default\"))) int lava_val[" << data_slots.size() << "] = {0};\n"
+                        << "unsigned __attribute__ ((visibility (\"default\"))) int lava_extra[" << extra_data_slots.size() << "] = {0};\n"
+                        << "unsigned __attribute__ ((visibility (\"default\"))) int lava_state[" << extra_data_slots.size() << "] = {0};\n"
+                        << "void * __attribute__ ((visibility (\"default\"))) lava_chaff_pointer = (void*)0;\n"
                         << "char lava_patch_array[0x10000] __attribute__((section(\".orz\"))) = {1};\n";
                 } else {
-                    //top << "extern unsigned int lava_val[];\n"
-                    //    << "extern unsigned int lava_extra[];\n"
-                    //    << "extern unsigned int lava_state[];\n"
-                    //    << "extern void *lava_chaff_pointer;\n";
-                    //    //<< "extern char lava_patch_array[];\n";
-                    top << "unsigned int __attribute__((weak)) lava_val[" << data_slots.size() << "];\n"
-                        << "unsigned int __attribute__((weak)) lava_extra[" << extra_data_slots.size() << "];\n"
-                        << "unsigned int __attribute__((weak)) lava_state[" << extra_data_slots.size() << "];\n"
-                        << "void * __attribute__((weak)) lava_chaff_pointer;\n";
+                    top << "extern unsigned int lava_val[];\n"
+                        << "extern unsigned int lava_extra[];\n"
+                        << "extern unsigned int lava_state[];\n"
+                        << "extern void *lava_chaff_pointer;\n";
+                        //<< "extern char lava_patch_array[];\n";
+                    //top << "unsigned int __attribute__((weak)) lava_val[" << data_slots.size() << "];\n"
+                    //    << "unsigned int __attribute__((weak)) lava_extra[" << extra_data_slots.size() << "];\n"
+                    //    << "unsigned int __attribute__((weak)) lava_state[" << extra_data_slots.size() << "];\n"
+                    //    << "void * __attribute__((weak)) lava_chaff_pointer;\n";
                 }
                 top << ""
                     << "float lava_tempval;\n"
@@ -293,7 +293,7 @@ public:
                     // 4. (mp3ninja) << "((lava_tempval=(lava_extra[slot]>>16),lava_tempval=(__builtin_powif(lava_tempval,7)),(*(int*)&lava_tempval)&1) && (lava_tempval=((lava_extra[slot]>>16)^0x5555),__builtin_clz(*(int*)&lava_tempval)))\n"
 
                     << "#define lava_check_const_high(slot) "
-                    << "(((lava_extra[slot]>>16)&0xffff)==0x0011)\n"
+                    << "(((lava_extra[slot]>>16)&0xffff)==0)\n"
                     //<< "__attribute__((visibility(\"default\")))\n"
                     << "#define lava_update_const_high(slot) "
                     << "{ lava_state[slot]|=1; }\n"
@@ -302,17 +302,17 @@ public:
                     //<< "#define lava_check_const_low(slot, val) "
                     //<< "(lava_extra[slot]&val)\n"
                     << "#define lava_check_const_low_1(slot) "
-                    << "((!(__builtin_popcount(lava_extra[slot]&0x5aa5)&2)) && (__builtin_clz(lava_extra[slot]<<16)))\n"
+                    << "(__builtin_popcount(lava_extra[slot]&0xffff) == 0)\n"
                     << "#define lava_check_const_low_2(slot) "
-                    << "((lava_tempval=(lava_extra[slot]&0xffff),__builtin_ffs(*(int*)&lava_tempval)>15) && (lava_tempval=(lava_extra[slot]&0xffff),__builtin_popcount(*(int*)&lava_tempval)>11))\n"
+                    << "(__builtin_ffs(lava_extra[slot]<<16) == 0)\n"
                     << "#define lava_check_const_low_3(slot) "
-                    << "((lava_tempval=(lava_extra[slot]&0xffff),((*(int*)(&lava_tempval))&0xf000000)==0x5000000) && (lava_tempval=(lava_extra[slot]&0xffff),((*(int*)(&lava_tempval))&0xf000)<0x7000))\n"
+                    << "(!(lava_extra[slot]&0xffff))\n"
                     << "#define lava_check_const_low_4(slot) "
-                    << "(((((lava_extra[slot]&0xffff)*0xfe)&0xf0f0)==0xf0f0) && (__builtin_ffs(lava_extra[slot])>3))\n"
+                    << "(((lava_extra[slot]&0xffff)*0xfe)==0)\n"
                     << "#define lava_check_const_low_5(slot) "
-                    << "((lava_tempval=(lava_extra[slot]&0xffff),lava_tempval+=0xdeadbeef,((*(int*)&lava_tempval)%10)>5) && (lava_tempval=(lava_extra[slot]&0xffff),lava_tempval*=1337,((*(int*)&lava_tempval)&0xf0)==0xf0))\n"
+                    << "(__builtin_popcount(((lava_extra[slot]&0xffff)+1)) == 1)\n"
                     << "#define lava_check_const_low_6(slot) "
-                    << "((lava_tempval=((lava_extra[slot])&0xffff),lava_tempval=(__builtin_powif(lava_tempval,8)+__builtin_powif(lava_tempval,3)),((*(int*)&lava_tempval)&0x50505050)==0x40000040) && (__builtin_clz(lava_extra[slot]<<16)))\n"
+                    << "(__builtin_clz(((lava_extra[slot]&0xffff)+1)<<16) == 15)\n"
 
                     //<< "__attribute__((visibility(\"default\")))\n"
                     << "#define lava_update_const_low(slot) "
