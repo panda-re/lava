@@ -433,7 +433,7 @@ def run_cmd_notimeout(cmd, **kwargs):
 
 
 def mutfile(filename, fuzz_labels_list, new_filename, bug,
-            kt=False, knob=0, solution=None, patchval=0x0101ffff):
+            kt=False, knob=0, solution=None, patchval=0):
     passval = struct.pack('<I', patchval)
     # Open filename, mutate it and store in new_filename such that
     # it hopefully triggers the passed bug
@@ -717,7 +717,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         print('Re-configuring...')
         envv = { 'CC':'/llvm-3.6.2/Release/bin/clang',
                 'CXX': '/llvm-3.6.2/Release/bin/clang++',
-                'CFLAGS': '-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -I. -I.. -I../include -I./src/'}
+                'CFLAGS': '-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
         if project['configure']:
             run_cmd( ' '.join(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]),
                     envv, 30, cwd=lp.bugs_build, shell=True )
@@ -736,7 +736,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
         # Silence warnings related to adding integers to pointers since we already
         # know that it's unsafe.
-        envv = {"CFLAGS": "-Wno-int-conversion -O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -I. -I.. -I../include -I./src/"}
+        envv = {"CFLAGS": "-Wno-int-conversion -O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/"}
         if competition:
             envv["CFLAGS"] += " -DLAVA_LOGGING"
         envv={}
@@ -926,7 +926,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     make_cmd = project["make"]
     envv = {"CC": "/llvm-3.6.2/Release/bin/clang",
             "CXX": "/llvm-3.6.2/Release/bin/clang++",
-            "CFLAGS": "-Wno-int-conversion -O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -I. -I.. -I../include -I./src/"}
+            "CFLAGS": "-Wno-int-conversion -O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/"}
     if competition:
         envv["CFLAGS"] += " -DLAVA_LOGGING"
     (rv, outp) = run_cmd(make_cmd, envv, None, cwd=lp.bugs_build)
@@ -1098,7 +1098,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
         print("Knob size: {}".format(args.knobTrigger))
         mutfile_kwargs = {'kt': True, 'knob': args.knobTrigger}
 
-    mutfile_kwargs['patchval'] = 0x0011cb88
+    #mutfile_kwargs['patchval'] = 0x0011cb88
     fuzz_labels_list = [bug.trigger.all_labels]
     if len(bug.extra_duas) > 0:
         extra_query = db.session.query(DuaBytes)\
