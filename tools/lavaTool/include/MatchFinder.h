@@ -219,8 +219,8 @@ public:
                     top << "unsigned __attribute__ ((visibility (\"default\"))) int lava_val[" << data_slots.size() << "] = {0};\n"
                         << "unsigned __attribute__ ((visibility (\"default\"))) int lava_extra[" << extra_data_slots.size() << "] = {0};\n"
                         << "unsigned __attribute__ ((visibility (\"default\"))) int lava_state[" << extra_data_slots.size() << "] = {0};\n"
-                        << "void * __attribute__ ((visibility (\"default\"))) lava_chaff_pointer = (void*)0;\n"
-                        << "char lava_patch_array[0x10000] __attribute__((section(\".orz\"))) = {1};\n";
+                        << "void * __attribute__ ((visibility (\"default\"))) lava_chaff_pointer = (void*)0;\n";
+                        //<< "char lava_patch_array[0x10000] __attribute__((section(\".orz\"))) = {1};\n";
                 } else {
                     top << "extern unsigned int lava_val[];\n"
                         << "extern unsigned int lava_extra[];\n"
@@ -233,7 +233,7 @@ public:
                     //    << "void * __attribute__((weak)) lava_chaff_pointer;\n";
                 }
                 top << ""
-                    << "float lava_tempval;\n"
+                    //<< "float lava_tempval;\n"
                     << "#define MOD(X, Y) ((X)%(Y))\n"
                     << "#define P2(X, Y) MOD((MOD((X), (Y))*MOD((X), (Y))), (Y))\n"
                     << "#define MULTI(X, Y, Z) MOD((MOD((X), (Z))*MOD((Y), (Z))), (Z))\n"
