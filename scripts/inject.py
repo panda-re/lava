@@ -133,6 +133,7 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
                         help = ('bug types to inject'))
     parser.add_argument('--version', action="version", version="%(prog)s {}".format(version))
+    parser.add_argument('--debuginject', action="store_true", default=False)
 
 
     args = parser.parse_args()
@@ -174,7 +175,8 @@ if __name__ == "__main__":
     # add all those bugs to the source code and check that it compiles
         # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
     (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json,
-                                       project, args, update_db, dataflow=dataflow, competition=args.competition)
+                                       project, args, update_db, dataflow=dataflow, competition=args.competition,
+                                       inj_debug=args.debuginject)
     if build is None:
         raise RuntimeError("LavaTool failed to build target binary")
 

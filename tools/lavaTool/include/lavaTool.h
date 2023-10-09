@@ -205,6 +205,10 @@ static cl::opt<std::string> DBHost("host",
 static cl::opt<int> DBPort("port",
     cl::desc("Remote Port"),
     cl::init(5432));
+static cl::opt<bool> DebugInject("debug-inject",
+    cl::desc("Debug Option: Replacing All bugs to Divide-by-Zero"),
+    cl::cat(LavaCategory),
+    cl::init(false));
 
 unsigned int RANDOM_SEED = 0;
 

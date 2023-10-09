@@ -90,6 +90,7 @@ kt=""
 demo=0
 curtail=0
 ATP_TYPE=""
+debug_inject=""
 # default bugtypes
 #bugtypes="ptr_add,rel_write"
 bugtypes="chaff_bug_stack_const"
@@ -261,7 +262,7 @@ if [ $inject -eq 1 ]; then
         if [ "$injfixupsscript" != "null" ]; then
             fix="--fixupsscript='$injfixupsscript'"
         fi
-        run_remote "$testinghost" "$python $scripts/inject.py -t $bugtypes -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
+        run_remote "$testinghost" "$python $scripts/inject.py -t $bugtypes -m $many -e $exitCode "$debug_inject" $kt $fix $hostjson $project_name" "$lf"
     grep yield "$lf"  | grep " real bugs "
     done
 fi

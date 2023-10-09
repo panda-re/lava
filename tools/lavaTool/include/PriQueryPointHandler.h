@@ -89,22 +89,30 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         auto key = std::make_pair(ast_loc, AttackPoint::QUERY_POINT);
         for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
             if (bug->type == Bug::CHAFF_STACK_UNUSED) {
-                result_ss << LIf(Test(bug).render(), {
-                        LFunc("memcpy", {LStr("(void*)(lava_chaff_var_2-4)"),
-                                LRandomBytes(UNUSED_RANDOM_BYTES, 8), LDecimal(8)}),
-                        LAssign(LDeref(LStr(ARG_NAME)), LStr("*(int*)lava_chaff_var_2"))});
-#ifdef TRIG_UNUSED
-                "__asm__ __volatile__(\"xorl %ebx, %ebx;divl %ebx;\");\n";
-#endif
+                if (DebugInject) {
+                    result_ss << LIf(Test(bug).render(),
+                            LAsm({}, {"__asm__ __volatile__(\"xorl %ebx, %ebx;divl %ebx;\");\n"}));
+                } else {
+                    result_ss << LIf(Test(bug).render(),
+                            {LFunc("memcpy", {LStr("(void*)(lava_chaff_var_2-4)"),
+                                    LRandomBytes(UNUSED_RANDOM_BYTES, 8), LDecimal(8)}),
+                            LAssign(LDeref(LStr(ARG_NAME)), LStr("*(int*)lava_chaff_var_2"))});
+                }
             } else if (bug->type == Bug::CHAFF_STACK_CONST) {
                 const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
                 LvalBytes extra_bytes(extra_dua_bytes);
                 LExpr checker = Test(bug) && LFunc("lava_check_state", {
                         LDecimal(extra_data_slots[extra_bytes])
                         });
-                result_ss << LIf(checker.render(), {
-                        LAsm({ LavaGetExtra(extra_data_slots.at(extra_bytes)) },
-                                { "movl %0, 4(%%ebp)" })});
+                if (DebugInject) {
+                    result_ss << LIf(checker.render(), {
+                            LAsm({ LavaGetExtra(extra_data_slots.at(extra_bytes)) },
+                                    { "divl %0" })});
+                } else {
+                    result_ss << LIf(checker.render(), {
+                            LAsm({ LavaGetExtra(extra_data_slots.at(extra_bytes)) },
+                                    { "movl %0, 4(%%ebp)" })});
+                }
                         //LAssign(LDeref(
                         //        LCast("int*",
                         //            LBinop("+",
@@ -117,12 +125,18 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                 LExpr checker = Test(bug) && LFunc("lava_check_state", {
                         LDecimal(extra_data_slots[extra_bytes])
                         });
-                result_ss << LIf(checker.render(), {
-                        LAssign(LStr("void *lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
-                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x18))"), LDecimal(16)),
-                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(12)),
-                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x24))"),
-                                LavaGetExtra(extra_data_slots.at(extra_bytes)))});
+                if (DebugInject) {
+                    result_ss << LIf(checker.render(), {
+                            LAsm({ LavaGetExtra(extra_data_slots.at(extra_bytes)) },
+                                    { "divl %0" })});
+                } else {
+                    result_ss << LIf(checker.render(), {
+                            LAssign(LStr("void *lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
+                            LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x18))"), LDecimal(16)),
+                            LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(12)),
+                            LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x24))"),
+                                    LavaGetExtra(extra_data_slots.at(extra_bytes)))});
+                }
             }
         }
         bugs_with_atp_at.erase(key); // Only inject once.
