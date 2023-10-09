@@ -54,13 +54,8 @@ def get_bug_list(args, db, allowed_bugtypes):
             bugs_to_inject = db.uninjected_random_limit(allowed_bugtypes=allowed_bugtypes, count=num_bugs_to_inject)
 
         bug_list = [b.id for b in bugs_to_inject]
-<<<<<<< HEAD
         print("%d is size of bug_list" % (len(bug_list)))
         update_db = True
-=======
-        print "%d is size of bug_list" % (len(bug_list))
-        #update_db = True
->>>>>>> 2233db4 (disable update_db, probably easier to debug...)
     else:
         assert False
     return update_db, bug_list
@@ -134,6 +129,8 @@ if __name__ == "__main__":
     #                        help = ('White list file of functions to bug and data flow'))
     parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
                         help='bug types to inject')
+    parser.add_argument('--debuginject', action="store_true", default=False)
+
 
     args = parser.parse_args()
     global project
@@ -174,8 +171,8 @@ if __name__ == "__main__":
     # add all those bugs to the source code and check that it compiles
     # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
     (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json,
-                                                      project, args, update_db, dataflow=dataflow,
-                                                      competition=args.competition)
+                                       project, args, update_db, dataflow=dataflow, competition=args.competition,
+                                       inj_debug=args.debuginject)
     if build is None:
         raise RuntimeError("LavaTool failed to build target binary")
 

@@ -90,6 +90,7 @@ kt=""
 demo=0
 curtail=0
 ATP_TYPE=""
+debug_inject=""
 # default bugtypes
 #bugtypes="ptr_add,rel_write"
 bugtypes="chaff_bug_stack_const"

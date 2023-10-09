@@ -161,6 +161,9 @@ function parse_args {
                 fi
                 progress "everything" 0 "Query step will be executed with bug type: atp = $ATP_TYPE"
                 ;;
+            --debug-inject)
+                debug_inject="--debuginject"
+                ;;
 
             #TODO: enable --inject=1 instead of just --inject 1 with something like:
             #--file=?*)

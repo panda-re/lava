@@ -503,7 +503,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug,
 # run lavatool on this file to inject any parts of this list of bugs
 def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
                  knobTrigger=False, dataflow=False, competition=False,
-                 randseed=0):
+                 randseed=0, inj_debug=False):
     print("Running lavaTool on [{}]...".format(filename))
     lt_debug = project['debug']
     if (len(bug_list)) == 0:
@@ -533,6 +533,8 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
 
     if lt_debug:
         cmd.append("-debug")
+    if inj_debug:
+        cmd.append("--debug-inject")
     if dataflow:
         cmd.append('-arg_dataflow')
     if knobTrigger > 0:
@@ -690,7 +692,7 @@ def collect_src_and_print(bugs_to_inject, db):
 # version of the program in bug_dir
 def inject_bugs(bug_list, db, lp, host_file, project, args,
                 update_db, dataflow=False, competition=False,
-                validated=False, lavatoolseed=0):
+                validated=False, lavatoolseed=0, inj_debug=False):
     # TODO: don't pass args, just pass the data we need to run
     # TODO: split into multiple functions, this is huge
 
@@ -836,7 +838,8 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     def modify_source(dirname):
         return run_lavatool(bugs_to_inject, lp, host_file, project,
                             project['llvm-dir'], dirname, knobTrigger=args.knobTrigger,
-                            dataflow=dataflow, competition=competition, randseed=lavatoolseed)
+                            dataflow=dataflow, competition=competition, randseed=lavatoolseed,
+                            inj_debug=inj_debug)
 
     bug_solutions = {}  # Returned by lavaTool
 
