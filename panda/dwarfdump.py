@@ -45,7 +45,7 @@ class VarInfo:
         self.scope = None
         self.decl_lno = None
         self.decl_fn = None
-        self.loc_op = None
+        self.loc_op = []
         self.type = None
 
 class FuncInfo:
@@ -59,9 +59,47 @@ class FuncInfo:
         self.varlist = []
 
 class TypeInfo:
-    def __init__(self):
-        self.size = 0
-        self.children = []
+    def __init__(self, name):
+        self.name = name
+
+class StructType(TypeInfo):
+    def __init__(self, name, size):
+        TypeInfo.__init__(self, name)
+        self.size = size
+        self.children = {}  # <member_offset: (name, type_offset)>
+
+class BaseType(TypeInfo):
+    def __init__(self, name, size):
+        TypeInfo.__init__(self, name)
+        self.size = size
+
+class SugarType(TypeInfo):
+    def __init__(self, name):
+        TypeInfo.__init__(self, name)
+        self.ref = None
+
+class PointerType(SugarType):
+    def __init__(self, name):
+        SugarType.__init__(self, name)
+
+class ArrayType(TypeInfo):
+    def __init__(self, name, range_off):
+        TypeInfo.__init__(self, name)
+        self.ref = range_off
+
+class ArrayRangeType(TypeInfo):
+    def __init__(self, name, type_off, cnt):
+        TypeInfo.__init__(self, name)
+        self.ref = type_off
+        self.size = cnt
+
+class EnumType(TypeInfo):
+    def __init__(self, name):
+        TypeInfo.__init__(self, name)
+
+class SubroutineType(TypeInfo):
+    def __init__(self, name):
+        TypeInfo.__init__(self, name)
 
 class Scope:
     def __init__(self, lopc, hipc):
@@ -102,6 +140,7 @@ with open(sys.argv[1], 'r') as fd:
     lvl_stack = []
     scope_stack = []
     func_stack = []
+    type_stack = []
     tag = ".debug_info"
     if tag in data:
         for line in data[tag]:
@@ -125,6 +164,7 @@ with open(sys.argv[1], 'r') as fd:
                 scope_stack = [Scope(base_addr, end_addr)]
                 lvl_stack = [(lvl, 'DW_TAG_compile_unit')]
                 func_stack = []
+                type_stack = []
                 cu_off = int(idx.split('+')[0], 16)
                 continue
 
@@ -136,6 +176,8 @@ with open(sys.argv[1], 'r') as fd:
                     scope_stack.pop()
                 if lvl_stack[-1][1] == 'DW_TAG_subprogram':
                     func_stack.pop()
+                if lvl_stack[-1][1] == 'DW_TAG_structure_type':
+                    type_stack.pop()
 
             if lvl != lvl_stack[-1][0] or lvl != (lvl_stack[-1][0]+1):
                 continue
@@ -161,7 +203,8 @@ with open(sys.argv[1], 'r') as fd:
                 v.decl_fn = v.decl_fn[v.decl_fn.find(' ')+1:]
                 if 'DW_AT_location' not in res:
                     continue
-                v.loc_op = res['DW_AT_location'].split(':')[-1].strip()
+                v.loc_op.extend([f'DW_OP_{x.strip()}' for x in \
+                        res['DW_AT_location'].split(':')[-1].strip().split('DW_OP_')])
                 assert ('DW_AT_type' in res)
                 v.type = int(res['DW_AT_type'], 16)
 
@@ -185,7 +228,8 @@ with open(sys.argv[1], 'r') as fd:
                 v.decl_fn = v.decl_fn[v.decl_fn.find(' ')+1:]
                 if 'DW_AT_location' not in res:
                     continue
-                v.loc_op = res['DW_AT_location'].split(':')[-1].strip()
+                v.loc_op.extend([f'DW_OP_{x.strip()}' for x in \
+                        res['DW_AT_location'].split(':')[-1].strip().split('DW_OP_')])
                 assert ('DW_AT_type' in res)
                 v.type = int(res['DW_AT_type'], 16)
 
@@ -228,3 +272,134 @@ with open(sys.argv[1], 'r') as fd:
                 if cu_off not in func_info:
                     func_info[cu_off] = set()
                 func_info[cu_off].add(f)
+
+            elif tname == "DW_TAG_structure_type":
+                assert ('DW_AT_byte_size' in res)
+                sz = int(res['DW_AT_byte_size'], 16)
+                name = res['DW_AT_name'] if 'DW_AT_name' in res else ""
+                t = StructType(name, sz)
+
+                if cu_off not in type_info:
+                    type_info[cu_off] = {}
+                if idx not in type_info[cu_off]:
+                    type_info[cu_off][idx] = t
+
+                type_stack.append(t)
+                lvl_stack.append((lvl, 'DW_TAG_structure_type'))
+
+            elif tname == "DW_TAG_member":
+                assert (lvl_stack[-1][1] == 'DW_TAG_structure_type')
+
+                name = res['DW_AT_name'] if 'DW_AT_name' in res else ""
+
+                assert ('DW_AT_type' in res)
+                toff = int(res['DW_AT_type'], 16)
+
+                assert ('DW_AT_data_member_location' in res)
+                loc_op = [f'DW_OP_{x.strip()}' for x in \
+                        res['DW_AT_data_member_location'].split(':')[-1].strip().split('DW_OP_')]
+                # Signal attribute form DW_FORM_data1/2/4/8
+                assert (len(loc_op) == 1)
+                assert (loc_op[0].split()[0] == 'DW_OP_plus_uconst')
+                off = int(loc_op[0].split()[1])
+
+                type_stack[-1][off] = (name, toff)
+
+            elif tname == "DW_TAG_array_type":
+                name = res['DW_AT_name'] if 'DW_AT_name' in res else ""
+                assert ('DW_AT_type' in res)
+                toff = int(res['DW_AT_type'], 16)
+
+                t = ArrayType(name, toff)
+
+                if cu_off not in type_info:
+                    type_info[cu_off] = {}
+                if idx not in type_info[cu_off]:
+                    type_info[cu_off][idx] = t
+
+                lvl_stack.append((lvl, 'DW_TAG_array_type'))
+
+            elif tname == "DW_TAG_subrange_type":
+                name = res['DW_AT_name'] if 'DW_AT_name' in res else ""
+                assert ('DW_AT_type' in res)
+                toff = int(res['DW_AT_type'], 16)
+                assert ('DW_AT_count' in res)
+                cnt = int(res['DW_AT_count'], 16)
+
+                t = ArrayRangeType(name, toff, cnt)
+
+                if cu_off not in type_info:
+                    type_info[cu_off] = {}
+                if idx not in type_info[cu_off]:
+                    type_info[cu_off][idx] = t
+
+            elif tname == "DW_TAG_subroutine_type":
+                name = res['DW_AT_name'] if 'DW_AT_name' in res else ""
+                t = SubroutineType(name)
+
+                if cu_off not in type_info:
+                    type_info[cu_off] = {}
+                if idx not in type_info[cu_off]:
+                    type_info[cu_off][idx] = t
+            elif tname == "DW_TAG_formal_parameter":
+                pass
+
+            elif tname == "DW_TAG_base_type":
+                name = res['DW_AT_name'] if 'DW_AT_name' in res else ""
+                assert ('DW_AT_byte_size' in res)
+                sz = int(res['DW_AT_byte_size'], 16)
+                t = BaseType(name, sz)
+
+                if cu_off not in type_info:
+                    type_info[cu_off] = {}
+                if idx not in type_info[cu_off]:
+                    type_info[cu_off][idx] = t
+
+            elif tname == "DW_TAG_pointer_type":
+                name = res['DW_AT_name'] if 'DW_AT_name' in res else ""
+                t = PointerType(name)
+
+                assert ('DW_AT_type' in res)
+                t.ref = int(res['DW_AT_type'], 16)
+
+                if cu_off not in type_info:
+                    type_info[cu_off] = {}
+                if idx not in type_info[cu_off]:
+                    type_info[cu_off][idx] = t
+
+            elif tname == "DW_TAG_enumeration_type":
+                name = res['DW_AT_name'] if 'DW_AT_name' in res else ""
+                t = EnumType(name)
+
+                if cu_off not in type_info:
+                    type_info[cu_off] = {}
+                if idx not in type_info[cu_off]:
+                    type_info[cu_off][idx] = t
+
+            elif tname in [
+                    "DW_TAG_restrict_type",
+                    "DW_TAG_const_type",
+                    "DW_TAG_volatile_type",
+                    "DW_TAG_typedef"
+                    ]:
+                name = res['DW_AT_name'] if 'DW_AT_name' in res else ""
+                t = SugarType(name)
+
+                assert ('DW_AT_type' in res)
+                t.ref = int(res['DW_AT_type'], 16)
+
+                if cu_off not in type_info:
+                    type_info[cu_off] = {}
+                if idx not in type_info[cu_off]:
+                    type_info[cu_off][idx] = t
+
+            elif tname == "DW_TAG_union_type":
+                pass
+            elif tname == "DW_TAG_ptr_to_member_type":
+                pass
+            elif tname == "DW_TAG_imported_declaration":
+                pass
+            elif tname == "DW_TAG_unspecified_parameters":
+                pass
+            elif tname == "DW_TAG_constant":
+                pass
