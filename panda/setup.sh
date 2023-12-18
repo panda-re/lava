@@ -7,7 +7,7 @@ PANDA_DIR="$( realpath $( dirname "${BASH_SOURCE[0]}" ) )"
 mkdir -p ${PANDA_DIR}/build
 pushd ${PANDA_DIR}/build
 QEMU_CFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' "../src/configure" \
-    --target-list=i386-softmmu \
+    --target-list=x86_64-softmmu \
     --prefix="${PANDA_DIR}/install" \
     --cc=gcc-6 --cxx=g++-6 \
     --enable-llvm --with-llvm="${LLVM_DIR}" \
