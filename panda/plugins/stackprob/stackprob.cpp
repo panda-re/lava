@@ -13,8 +13,8 @@ extern "C" {
 #include "pri/pri.h"
 
 // needed for accessing type information on linux/elf based systems
-#include "pri_dwarf/pri_dwarf_types.h"
-#include "pri_dwarf/pri_dwarf_ext.h"
+#include "dwarf2/dwarf2_types.h"
+#include "dwarf2/dwarf2_ext.h"
 
 #include "stackprob_int_fns.h"
 
@@ -44,7 +44,7 @@ void find_var(void *var_ty_void, const char *var_nm, LocType loc_t, target_ulong
         switch (loc_t) {
             case LocMem:
             {
-                target_ulong framebase = get_cur_fp(first_cpu, args->pc_);
+                target_ulong framebase = dwarf2_get_cur_fp(first_cpu, args->pc_);
                 //target_ulong retaddr = 0;
                 //panda_virtual_memory_read(first_cpu, args->sp_, (uint8_t*)&retaddr, sizeof(target_ulong));
                 //fprintf(stderr, "Target %s : addr[%x] Loc %x - cur framebase %x (%x) - ESP %x retaddr[%x]\n", var_nm, args->pc_, loc, framebase, framebase-loc, args->sp_, retaddr);
@@ -83,8 +83,8 @@ bool init_plugin(void *self) {
     assert(init_callstack_instr_api());
     panda_require("pri");
     assert(init_pri_api());
-    panda_require("pri_dwarf");
-    assert(init_pri_dwarf_api());
+    panda_require("dwarf2");
+    assert(init_dwarf2_api());
 
     //panda_enable_precise_pc();
     //panda_enable_memcb();

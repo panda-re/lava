@@ -3,7 +3,7 @@ LAVA_C_FILES := $(shell find . -name '*.c')
 .PHONY: lava_preprocess
 lava_preprocess: $(LAVA_C_FILES)
 	for lavafile in $^; do \
-   		$(CC) -I. -include stdio.h -static -g -gdwarf-2 -O0 -m32 $(CFLAGS) -E $${lavafile} -o $${lavafile}_pre; \
+   		$(CC) -I. -include stdio.h -static -g -gdwarf-2 -O0 $(CFLAGS) -E $${lavafile} -o $${lavafile}_pre; \
 		cp $${lavafile} $${lavafile}_bak; \
 		mv $${lavafile}_pre $${lavafile}; \
 	done
