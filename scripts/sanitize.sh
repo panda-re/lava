@@ -28,7 +28,7 @@ cd "$targetname"
 mkdir -p lava-install
 configure_file=${configure_cmd%% *}
 if [ -e "$configure_file" ]; then
-    CC=/llvm-3.6.2/Release/bin/clang CXX=/llvm-3.6.2/Release/bin/clang++ CFLAGS="-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" $configure_cmd --prefix=$(pwd)/lava-install
+    CC=/llvm-3.6.2/Release/bin/clang CXX=/llvm-3.6.2/Release/bin/clang++ CFLAGS="-O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" $configure_cmd --prefix=$(pwd)/lava-install
 fi
 
 cat ${lava}/makefile.fixup >> Makefile && \
