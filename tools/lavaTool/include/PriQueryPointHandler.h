@@ -146,8 +146,13 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                                     { "divl %0" })});
                 } else {
                     result_ss << LIf(checker.render(), {
+                            LIfDef("__x86_64__", {
                             LAsm({ LavaGetExtra(extra_data_slots.at(extra_bytes)) },
-                                    { "movl %0, 4(%%ebp)" })});
+                                    { "movq %0, 8(%%rbp)" }),
+                            LAsm({ LavaGetExtra(extra_data_slots.at(extra_bytes)) },
+                                    { "movl %0, 8(%%ebp)" })
+                            })
+                            });
                 }
                         //LAssign(LDeref(
                         //        LCast("int*",

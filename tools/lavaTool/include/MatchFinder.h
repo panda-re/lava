@@ -259,7 +259,7 @@ public:
                     << "lava_extra[slot] = val; lava_state[slot]=0; }\n"
                     //<< "unsigned int lava_get_extra(unsigned int);\n"
                     //<< "__attribute__((visibility(\"default\")))\n"
-                    << "#define lava_get_extra(slot) lava_extra[slot] \n"
+                    << "#define lava_get_extra(slot) ((unsigned long long)lava_extra[slot]) \n"
 
                     //<< "__attribute__((visibility(\"default\")))\n"
                     //<< "#define lava_check_const_high_1(slot) "
