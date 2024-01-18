@@ -182,9 +182,11 @@ build_args = sum([['--build-arg', '{}={}'.format(k, v)]
 ALREADY_IN_DOCKER_GROUP = user_in_docker(getpass.getuser())
 
 
-def run_docker(cmd):
+def run_docker(cmd, workdir=None):
     cmd, cmd_args = cmd_to_list(cmd)
     sudo_args = [] if ALREADY_IN_DOCKER_GROUP else ['sudo']
+    if workdir:
+        cmd = "cd {} && ".format(workdir) + cmd
     # Have to be sudo in case we just installed docker
     # and don't have the group yet.
     cmd_args = sudo_args + ['docker', 'run', '--rm'] + map_dirs_args + \
@@ -268,13 +270,8 @@ def main():
     # check for location of panda in PANDA_DIR
     # make sure that it is PANDA2
     progress("Checking for PANDA in " + PANDA_DIR)
-    if not isdir(PANDA_DIR):
-        os.chdir(dirname(PANDA_DIR))
-        run("rm -f install_ubuntu.sh")
-        run("wget {}".format(PANDA_UBUNTU))
-        run("bash install_ubuntu.sh")
-        os.chdir(LAVA_DIR)
-    elif not isfile(join(LAVA_DIR, "tools", "fbi", "panda.mak")) or \
+    if not isdir(PANDA_DIR) or \
+            not isfile(join(LAVA_DIR, "tools", "fbi", "panda.mak")) or \
             not isfile(join(PANDA_BUILD_DIR, 'config.log')):
         progress("Building PANDA in " + PANDA_BUILD_DIR)
         try:
@@ -296,67 +293,6 @@ def main():
         LLVM_DOCKER_DIR = '/llvm-{}'.format(LLVM_VERSION)
         f.write(LLVM_MAK.format(LLVM_BUILD_PATH=LLVM_DOCKER_DIR,
                                 LLVM_SRC_PATH=LLVM_DOCKER_DIR))
-    run_docker(['rm', '-rf', join(LAVA_DIR, 'tools/build')])
-    run_docker(['mkdir', '-p', join(LAVA_DIR, 'tools/build')])
-    run_docker(['mkdir', '-p', join(LAVA_DIR, 'tools/install')])
-
-    run_docker(['cmake', '-B{}'.format(join(LAVA_DIR, 'tools/build')),
-                '-H{}'.format(join(LAVA_DIR, 'tools')),
-                '-DCMAKE_INSTALL_PREFIX={}'.format(join(LAVA_DIR,
-                                                        'tools/install'))])
-    run_docker(['make','--no-print-directory','-j4', 'install', '-C',
-                join(LAVA_DIR, 'tools/build/lavaTool')])
-
-    # ensure /etc/apt/sources.list has all of the deb-src lines uncommented
-    #patch_sources = join(LAVA_DIR, "scripts/patch-sources.py")
-    #lines = open("/etc/apt/sources.list")
-    #filt_lines = [line for line in lines if line.strip().startswith("#deb-src")
-    #              or line.strip().startswith("# deb-src")]
-    #if len(filt_lines) > 0:
-    #    progress("Uncommenting {} deb-src lines in".format(len(filt_lines)) +
-    #             "/etc/apt/sources.list")
-    #    run(['sudo', 'python', patch_sources])
-
-    #progress("Checking for ODB orm libraries")
-    #odb_version = "2.4.0"
-    #odb_baseurl = "http://www.codesynthesis.com/download/odb/2.4/"
-    #if not isfile('/usr/bin/odb'):
-    #    os.chdir(BUILD_DIR)
-    #    run("wget {}/odb_{}-1_amd64.deb".format(odb_baseurl, odb_version))
-    #    run("sudo dpkg -i odb_{}-1_amd64.deb".format(odb_version))
-
-    #if not isfile('/usr/local/lib/libodb.so') and \
-    #        not isfile('/usr/lib/libodb.so'):
-    #    os.chdir(BUILD_DIR)
-    #    run("wget {}/libodb-{}.tar.gz".format(odb_baseurl, odb_version))
-    #    run("tar -xf libodb-{}.tar.gz".format(odb_version))
-    #    os.chdir("libodb-{}/".format(odb_version))
-    #    run("sh configure")
-    #    run(['make', '-j', str(cpu_count())])
-    #    run("sudo make install")
-
-    #if not isfile('/usr/local/lib/libodb-pgsql.so') and \
-    #        not isfile('/usr/lib/libodb-pgsql.so'):
-    #    os.chdir(BUILD_DIR)
-    #    run("wget {}/libodb-pgsql-{}.tar.gz".format(odb_baseurl, odb_version))
-    #    run("tar -xf libodb-pgsql-{}.tar.gz".format(odb_version))
-    #    os.chdir("libodb-pgsql-{}/".format(odb_version))
-    #    run("sh configure")
-    #    run(['make', '-j', str(cpu_count())])
-    #    run("sudo make install")
-
-    #progress("Finished installing ODB libraries")
-
-    #progress("Installing python dependencies.")
-    #if command_exited_nonzero("python -c \"import {}\"".format("subprocess32")):
-    #    run("sudo pip install subprocess32")
-
-    # -----------Beginning .mak file stuff -------------------
-    # I think this would be useful, but i'm seperating it out
-    # in case anyone thinks it's a bad idea
-    # the idea is that if someone wants llvm and panda installed in certain
-    # locations, they can make their lava.mak ahead of time
-    # then setup.py will parse it and configure the environmet to those specs
     os.chdir(LAVA_DIR)
 
     if not isfile(join(LAVA_DIR, "fbi", "panda.mak")):
@@ -373,11 +309,9 @@ def main():
 
     # ----------------End .mak file stuff ---------------------
     progress("Making each component of lava, fbi and lavaTool")
-    progress("Compiling fbi")
 
-    os.chdir(join(LAVA_DIR, "tools/build"))
-    run_docker("make --no-print-directory -j4 -C {} install".format(join(LAVA_DIR, "tools/build/fbi")))
     os.chdir(LAVA_DIR)
+    run_docker(['python', 'setup_container.py'], workdir=LAVA_DIR)
 
     return 0
 

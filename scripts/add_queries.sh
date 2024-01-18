@@ -84,7 +84,13 @@ git commit -m 'Unmodified source.'
 
 progress "queries" 0  "Configuring..."
 mkdir -p lava-install
-$configure_cmd --prefix=$(pwd)/lava-install
+configure_file=${configure_cmd%% *}
+if [ -e "$configure_file" ]; then
+    CC=/llvm-3.6.2/Release/bin/clang \
+        CXX=/llvm-3.6.2/Release/bin/clang++ \
+        CFLAGS="-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
+        $configure_cmd --prefix=$(pwd)/lava-install
+fi
 
 
 progress "queries" 0  "Making with btrace..."
@@ -97,6 +103,9 @@ for i in ${MAKES[@]}; do
     IFS=' '
     read -ra ARGS <<< $i
     echo "$lava/tools/btrace/sw-btrace ${ARGS[@]}"
+    CC=/llvm-3.6.2/Release/bin/clang \
+        CXX=/llvm-3.6.2/Release/bin/clang++ \
+        CFLAGS="-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
     $lava/tools/btrace/sw-btrace ${ARGS[@]}
     IFS='&&'
 done

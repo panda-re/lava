@@ -71,7 +71,7 @@ RUN ldconfig
 RUN pip install --upgrade -v pip -i https://pypi.python.org/simple/
 RUN pip install subprocess32 lockfile sqlalchemy==1.0.14 -i https://pypi.python.org/simple
 
-RUN pip install pyyaml
+RUN pip install pyyaml pycparser psycopg2
 RUN updatedb
 
 RUN echo "LLVM_DIR=/$llvm_version/Release/share/llvm/cmake" >> /etc/environment
