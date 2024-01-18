@@ -1,12 +1,23 @@
 FROM debian:stretch
-RUN echo deb http://ftp.us.debian.org/debian/ stretch main > /etc/apt/sources.list
-RUN echo deb http://archive.debian.org/debian wheezy-backports main >> /etc/apt/sources.list
-RUN apt-get update
+RUN echo "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20220630T220025Z/ stretch main" > /etc/apt/sources.list
+RUN echo "deb-src [check-valid-until=no] http://snapshot.debian.org/archive/debian/20220630T220025Z/ stretch main" >> /etc/apt/sources.list
+RUN echo "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20220630T220025Z/ stretch-updates main" >> /etc/apt/sources.list
+RUN echo "deb-src [check-valid-until=no] http://snapshot.debian.org/archive/debian/20220630T220025Z/ stretch-updates main" >> /etc/apt/sources.list
+RUN echo "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20220630T220025Z/ stretch-backports main" >> /etc/apt/sources.list
+RUN echo "deb-src [check-valid-until=no] http://snapshot.debian.org/archive/debian/20220630T220025Z/ stretch-backports main" >> /etc/apt/sources.list
+RUN apt-get update && apt-get -y dist-upgrade && \
+    apt-get remove -y libnettle6 libelf1 && \
+    apt-get install -y --allow-downgrades zlib1g=1:1.2.8.dfsg-5 && \
+    apt-get autoremove -y
 RUN apt-get install -y sudo build-essential python wget cmake gdb gawk mlocate \
             vim libc++-dev  g++-multilib g++ ninja-build \
             git jq bc python python-colorama zsh \
-            python-psycopg2 python-pexpect python-psutil \
-            python-numpy python-argparse python-pip python-dev libpq-dev
+            python-pexpect python-psutil \
+            python-numpy python-argparse python-pip python-dev libpq-dev \
+            sudo gdb gawk zlib1g-dev autoconf libtool pkg-config locales \
+            genisoimage postgresql-client-9.6 \
+            libglib2.0-dev libpixman-1-dev groff-base libdwarf-dev libcapstone-dev wireshark-dev libelf-dev \
+            flex bison
 ENV release 3.6.2
 ENV llvm_version llvm-${release}
 
