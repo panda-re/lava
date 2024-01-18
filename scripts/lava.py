@@ -701,6 +701,12 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
             and 'configure' in project.keys():
         print('Re-configuring...')
         run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
+        envv = { 'CC':'/llvm-3.6.2/Release/bin/clang',
+                'CXX': '/llvm-3.6.2/Release/bin/clang++',
+                'CFLAGS': '-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
+        if project['configure']:
+            run_cmd( ' '.join(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]),
+                    envv, 30, cwd=lp.bugs_build, shell=True )
     if not os.path.exists(join(lp.bugs_build, 'btrace.log')):
         print("Making with btrace...")
 
@@ -710,7 +716,9 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
         # Silence warnings related to adding integers to pointers since we already
         # know that it's unsafe.
-        envv = {"CFLAGS": "-Wno-int-conversion"}
+        envv = { 'CC':'/llvm-3.6.2/Release/bin/clang',
+                'CXX': '/llvm-3.6.2/Release/bin/clang++',
+                'CFLAGS': '-Wno-int-conversion -O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
         if competition:
             envv["CFLAGS"] += " -DLAVA_LOGGING"
         envv={}
@@ -898,7 +906,9 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     # Silence warnings related to adding integers to pointers since we already
     # know that it's unsafe.
     make_cmd = project["make"]
-    envv = {"CFLAGS": "-Wno-int-conversion"}
+    envv = { 'CC':'/llvm-3.6.2/Release/bin/clang',
+            'CXX': '/llvm-3.6.2/Release/bin/clang++',
+            'CFLAGS': '-Wno-int-conversion -O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
     if competition:
         envv["CFLAGS"] += " -DLAVA_LOGGING"
     (rv, outp) = run_cmd(make_cmd, envv, None, cwd=lp.bugs_build)
