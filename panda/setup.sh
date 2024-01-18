@@ -10,8 +10,7 @@ QEMU_CFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' "
     --prefix="${PANDA_DIR}/install" \
     --cc=gcc-6 --cxx=g++-6 \
     --enable-llvm --with-llvm="${LLVM_DIR}" \
-    --python=python2 \
-    --extra-plugins-path="${PANDA_DIR}/.."
+    --python=python2
 
 make -j ${PANDA_NPROC:-$(nproc || sysctl -n hw.ncpu)}
 popd
