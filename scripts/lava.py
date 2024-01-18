@@ -1232,6 +1232,4 @@ def get_allowed_bugtype_num(args):
             raise RuntimeError("I dont have a bug type [%s]" % bugtype_name)
         allowed_bugtype_nums.append(bugtype_num)
 
-    if args.many == "1":
-        return [Bug.CHAFF_STACK_CONST]
     return allowed_bugtype_nums

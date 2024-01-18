@@ -131,7 +131,7 @@ shutil.copy(input_file, installdir)
 
 create_recording(qemu_path, project['qcow'], project['snapshot'],
                  command_args, installdir, isoname,
-                 project["expect_prompt"], rr=qemu_use_rr)
+                 project["expect_prompt"], "ide1-cd0", rr=qemu_use_rr)
 
 try:
     os.mkdir('inputs')
