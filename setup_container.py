@@ -77,9 +77,6 @@ if __name__ == '__main__':
     run(['make','--no-print-directory','-j4', 'install', '-C',
                 os.path.join(LAVA_DIR, 'tools/build/lavaTool')])
 
-    run(['make','--no-print-directory','-j4', 'install', '-C',
-                os.path.join(LAVA_DIR, 'tools/build/duasan')])
-
     # -----------Beginning .mak file stuff -------------------
     # I think this would be useful, but i'm seperating it out
     # in case anyone thinks it's a bad idea
