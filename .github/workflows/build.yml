@@ -1,0 +1,26 @@
+name: Build and Test LAVA
+
+on:
+  push:
+    branches:
+      - master
+      - update-dep
+  pull_request:
+    branches:
+      - master
+      - update-dep
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install all requirements
+      run: sh install.sh
+
+    - name: Confirm Lava tests work as expected
+      run: echo "Hello!"
+
+    # Perhaps here is where I add the code about pushing to DockerHub?

@@ -1,0 +1,30 @@
+name: Build and Publish Docker Container and Pypanda Docs # Only for main lava repo, not forks
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+
+  build_stable:
+    if: github.repository  == 'panda-re/lava' && github.ref == 'refs/heads/master'
+    runs-on: panda-arc
+    steps:
+    - name: 'Login to Docker Registry'
+      uses: docker/login-action@v3
+      with:
+        username: pandare
+        password: ${{secrets.pandare_dockerhub}}
+
+    - name: Checkout LAVA at current commit
+      uses: actions/checkout@v4
+      with:
+          fetch-depth: 0
+
+    - name: Build lava:latest
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ github.workspace }}
+        tags: pandare/lava:latest
+        target: lava
