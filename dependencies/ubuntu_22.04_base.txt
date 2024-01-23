@@ -1,0 +1,3 @@
+# lava dependencies, needed to run LAVA
+python3-pip
+libprotobuf-dev

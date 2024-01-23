@@ -97,7 +97,7 @@ def main():
         progress("Downloading {}".format(basename(QCOW_URL)))
         run(["wget", "--no-check-certificate", QCOW_URL, "-O", QCOW_FILE_NAME])
     else:
-        progress("Found existing {}".format(basename(QCOW_URL)))
+        progress("Found existing {}".format(basename(QCOW_FILE_NAME)))
 
     if not isfile(join(LAVA_DIR, "host.json")):
         progress("Building host.json")
@@ -115,7 +115,7 @@ def main():
         out_json = join(LAVA_DIR, "host.json")
 
         with open(out_json, 'w') as f:
-            f.write(json.dumps(json_configs))
+            f.write(json.dumps(json_configs, indent=4))
     else:
         progress("Found existing host.json")
 

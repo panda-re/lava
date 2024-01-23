@@ -1,6 +1,7 @@
-# ignore IDE and existing lava build directory
+# ignore IDE and any panda wheel/debian packages
 .idea
-lava
+*.deb
+*.whl
 
 # this existed before
 .gdb_history

@@ -1,0 +1,82 @@
+name: Publish Lava Docker Container # Only for main lava repo, not forks
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+jobs:
+  create_release:
+    if: github.repository == 'panda-re/lava'
+    runs-on: ubuntu-latest
+    outputs:
+      v-version: ${{ steps.version.outputs.v-version }}
+    steps:
+      - name: Get next version
+        uses: reecetech/version-increment@2024.10.1
+        id: version
+        with:
+          release_branch: master
+          use_api: true
+          increment: major
+  
+  create_release_assets:
+    needs: [create_release]
+    if: github.repository == 'panda-re/lava'
+    runs-on: panda-arc
+    steps:  
+      - name: Checkout LAVA at current commit
+        uses: actions/checkout@v4
+      
+      - name: Create Wheel File
+        run: |
+          sudo apt-get update -y
+      #    python3 -m pip install build
+      #    python3 -m build --wheel .
+
+      - name: Create Debian Package
+        run: |
+          cmake -B"./tools/build" \
+          -H"./tools" \
+          -DCMAKE_INSTALL_PREFIX="/usr" \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DLAVA_VERSION=${{ needs.create_release.outputs.v-version }}
+          cmake --build "./tools/build" --parallel "$(nproc)" --config Release
+          cd ./tools/build
+          cpack -G DEB        
+      - name: Upload wheel and debian packages to release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ needs.create_release.outputs.v-version }}
+          draft: false
+          generate_release_notes: true
+          prerelease: false
+          files: |
+            tools/build/lava*.deb
+
+  build_container:
+    needs: [create_release, create_release_assets]
+    if: github.repository  == 'panda-re/lava'
+    runs-on: panda-arc
+    steps:
+    - name: 'Login to Docker Registry'
+      uses: docker/login-action@v3
+      with:
+        username: pandare
+        password: ${{secrets.ALL_PANDARE_DOCKERHUB}}
+
+    - name: Checkout LAVA at current commit
+      uses: actions/checkout@v4
+
+    - name: Build LAVA container
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ github.workspace }}
+        push: true
+        tags: |
+          pandare/lava:latest
+          pandare/lava:${{ github.sha }}
+          pandare/lava:${{ needs.create_release.outputs.v-version }}
