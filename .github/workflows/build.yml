@@ -18,7 +18,7 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Install all requirements
-      run: sh install.sh
+      run: bash install.sh
 
     - name: Confirm Lava tests work as expected
       run: echo "Hello!"
