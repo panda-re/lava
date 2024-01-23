@@ -13,12 +13,12 @@ progress() {
 
 # Step 1: Install panda debian package
 wget https://github.com/panda-re/panda/releases/download/v1.6/pandare_22.04.deb
-sudo dpkg -i pandare_22.04.deb
+$SUDO dpkg -i pandare_22.04.deb
 
 # Remove the comment to update all debian stuff from sources.list
-sudo cp /etc/apt/sources.list /etc/apt/sources.list~
-sudo sed -Ei 's/^# deb-src /deb-src /' /etc/apt/sources.list
-sudo apt-get update
+$SUDO cp /etc/apt/sources.list /etc/apt/sources.list~
+$SUDO sed -Ei 's/^# deb-src /deb-src /' /etc/apt/sources.list
+$SUDO apt-get update
 
 progress "Updates complete"
 
@@ -45,23 +45,25 @@ else
   echo "Unsupported Ubuntu version: $version. Create a list of build dependencies in ${dep_base}_{base,build}.txt and try again."
   exit 1
 fi
-sudo apt-get build-dep qemu
+$SUDO apt-get build-dep qemu
 progress "Installed build dependencies"
 
-sudo pip3 install --upgrade pip
+$SUDO pip3 install --upgrade pip
 
 # This seems to be the better replacement to have all python packages
-sudo pip3 install -r docker/requirements.txt
+$SUDO pip3 install -r docker/requirements.txt
 progress "Installed Python requirements"
 
+# Everything here is everything in setup_container.py
 rm -rf tools/build
 mkdir -p tools/build
 mkdir -p tools/install
-# cmake -Btools/build -Htools -DCMAKE_INSTALL_PREFIX=tools/install
+cmake -Btools/build -Htools -DCMAKE_INSTALL_PREFIX=tools/install
 
 # Compile lavaTool
-# make --no-print-directory -j4 -Ctools/build/lavaTool install
+make --no-print-directory -j4 install -Ctools/build/lavaTool
 
-# Review with Zhenghao, I need to compile fbi next
-# make --no-print-directory -j4 -C tools/build/fbi install
+# Compile FBI
+make --no-print-directory -j4 -C fbi install -Ctools/build
+
 progress "Installed LAVA"
