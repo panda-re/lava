@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -ex
+
 # shellcheck disable=SC2034
 sudo=""
 if [ $EUID -ne 0 ]; then
