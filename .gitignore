@@ -1,6 +1,6 @@
 # ignore IDE and existing lava build directory
 .idea
-lava
+*.deb
 
 # this existed before
 .gdb_history
