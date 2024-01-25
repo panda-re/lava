@@ -8,7 +8,7 @@ odb
 libodbc2
 
 # https://installati.one/install-libodb-pgsql-2.4-ubuntu-20-04/
-libodb-pgsql
+libodb-pgsql-dev
 
 # https://pypi.org/project/pyzmq/
 libzmq3-dev
