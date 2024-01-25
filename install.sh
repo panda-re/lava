@@ -15,7 +15,7 @@ progress() {
 
 # Step 1: Install panda debian package
 wget https://github.com/panda-re/panda/releases/download/v1.6/pandare_22.04.deb
-$SUDO dpkg -i pandare_22.04.deb
+$SUDO apt install pandare_22.04.deb
 
 # Remove the comment to update all debian stuff from sources.list
 $SUDO cp /etc/apt/sources.list /etc/apt/sources.list~
