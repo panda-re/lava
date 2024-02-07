@@ -183,6 +183,8 @@ public :
                         sdeclit++)
                 {
                     const VarDecl *vardecl = dyn_cast<VarDecl>(*sdeclit);
+                    if (vardecl->getNameAsString() == lvalelem[0])
+                        return nullptr;
                     if (auto initexpr = vardecl->getAnyInitializer())
                     {
                         if (rhsExprCheck(initexpr, lvalelem)) {
