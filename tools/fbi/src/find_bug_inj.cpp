@@ -656,8 +656,8 @@ void taint_query_pri(Json::Value& ple) {
                 si["astnodename"].asString().c_str());
     }
 
-    //record_injectable_bugs_at<Bug::CHAFF_STACK_UNUSED>(
-    //        si->insertionpoint, pad_atp, is_new_atp, {});
+    record_injectable_bugs_at<Bug::CHAFF_STACK_UNUSED>(
+            si->insertionpoint, pad_atp, is_new_atp, {});
 #define RANDOM_SAMPLING_THRESHOLD   2
     uint64_t randcount = RANDOM_SAMPLING_THRESHOLD;
     if (RANDOM_SAMPLING_THRESHOLD > recent_duas_by_instr.size()) {
@@ -668,6 +668,8 @@ void taint_query_pri(Json::Value& ple) {
             record_injectable_bugs_at<Bug::CHAFF_STACK_CONST>(
                     si->insertionpoint, pad_atp, is_new_atp, { k });
             record_injectable_bugs_at<Bug::CHAFF_HEAP_CONST>(
+                    si->insertionpoint, pad_atp, is_new_atp, { k });
+            record_injectable_bugs_at<Bug::CHAFF_DIVZERO>(
                     si->insertionpoint, pad_atp, is_new_atp, { k });
             //break;
         }
@@ -680,6 +682,8 @@ void taint_query_pri(Json::Value& ple) {
             record_injectable_bugs_at<Bug::CHAFF_STACK_CONST>(
                     si->insertionpoint, pad_atp, is_new_atp, { k });
             record_injectable_bugs_at<Bug::CHAFF_HEAP_CONST>(
+                    si->insertionpoint, pad_atp, is_new_atp, { k });
+            record_injectable_bugs_at<Bug::CHAFF_DIVZERO>(
                     si->insertionpoint, pad_atp, is_new_atp, { k });
             //break;
         }
