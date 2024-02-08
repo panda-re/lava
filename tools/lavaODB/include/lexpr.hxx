@@ -261,7 +261,7 @@ LExpr DataFlowSet(const SourceLval *lval, Range selected, uint32_t slot) {
 
 template<typename UInt>
 LExpr MagicTest(UInt magic_value, LExpr maskedLavaGet) {
-    return LHex(magic_value&0xffff) == maskedLavaGet;
+    return LHex(magic_value) == maskedLavaGet;
 }
 
 template<LExpr Get(const Bug *)>
