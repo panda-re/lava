@@ -124,7 +124,21 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         std::stringstream result_ss;
         auto key = std::make_pair(ast_loc, AttackPoint::QUERY_POINT);
         for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
-            if (bug->type == Bug::CHAFF_STACK_UNUSED) {
+            if (bug->type == Bug::CHAFF_DIVZERO) {
+                const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
+                LvalBytes extra_bytes(extra_dua_bytes);
+                LExpr checker = Test(bug) && LFunc("lava_check_state", {
+                        LDecimal(extra_data_slots[extra_bytes])
+                        });
+                result_ss << LIf(checker.render(), {
+                        LIfDef("__x86_64__", {
+                                LAsm({ LavaGetExtra(extra_data_slots.at(extra_bytes)) },
+                                        { "divq %0" }),
+                                LAsm({ LavaGetExtra(extra_data_slots.at(extra_bytes)) },
+                                        { "divl %0" })
+                                })
+                        });
+            } else if (bug->type == Bug::CHAFF_STACK_UNUSED) {
                 if (DebugInject) {
                     result_ss << LIf(Test(bug).render(),
                             LAsm({}, {"__asm__ __volatile__(\"xorl %ebx, %ebx;divl %ebx;\");\n"}));
@@ -150,7 +164,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                             LAsm({ LavaGetExtra(extra_data_slots.at(extra_bytes)) },
                                     { "movq %0, 8(%%rbp)" }),
                             LAsm({ LavaGetExtra(extra_data_slots.at(extra_bytes)) },
-                                    { "movl %0, 8(%%ebp)" })
+                                    { "movl %0, 4(%%ebp)" })
                             })
                             });
                 }
@@ -172,11 +186,21 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                                     { "divl %0" })});
                 } else {
                     result_ss << LIf(checker.render(), {
+                            LIfDef("__x86_64__", {
+                            LBlock({
+                            LAssign(LStr("void *lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
+                            LAssign(LStr("*((long long*)(((char*)lava_chaff_pointer)+0x10))"), LDecimal(32)),
+                            LAssign(LStr("*((long long*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(24)),
+                            LAssign(LStr("*((long long*)(((char*)lava_chaff_pointer)+0x28))"),
+                                    LavaGetExtra(extra_data_slots.at(extra_bytes)))
+                            }),
+                            LBlock({
                             LAssign(LStr("void *lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
                             LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x18))"), LDecimal(16)),
                             LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(12)),
                             LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x24))"),
-                                    LavaGetExtra(extra_data_slots.at(extra_bytes)))});
+                                    LavaGetExtra(extra_data_slots.at(extra_bytes)))
+                            }) }) });
                 }
             }
         }

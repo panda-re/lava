@@ -400,6 +400,7 @@ struct Bug {
         CHAFF_STACK_UNUSED,
         CHAFF_STACK_CONST,
         CHAFF_HEAP_CONST,
+        CHAFF_DIVZERO,
         TYPE_END
     } type;
 
@@ -411,6 +412,7 @@ struct Bug {
         [CHAFF_STACK_UNUSED] = 0,
         [CHAFF_STACK_CONST] = 1,
         [CHAFF_HEAP_CONST] = 1,
+        [CHAFF_DIVZERO] = 1,
     };
 
 #pragma db not_null

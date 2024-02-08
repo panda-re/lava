@@ -184,11 +184,12 @@ class Bug(Base):
     CHAFF_STACK_UNUSED = 4
     CHAFF_STACK_CONST = 5
     CHAFF_HEAP_CONST = 6
+    CHAFF_DIVZERO = 7
     # };
     type_strings = ['BUG_PTR_ADD', 'BUG_RET_BUFFER',
                     'BUG_REL_WRITE', 'BUG_PRINTF_LEAK',
                     'CHAFF_BUG_STACK_UNUSED', 'CHAFF_BUG_STACK_CONST',
-                    'CHAFF_BUG_HEAP_CONST']
+                    'CHAFF_BUG_HEAP_CONST', 'CHAFF_BUG_DIVZERO']
 
     id = Column(BigInteger, primary_key=True)
     type = Column(Integer)
@@ -1150,7 +1151,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
 
     # Retry with another patch value
     if not validated:
-        mutfile_kwargs['patchval'] = 0x88cb1100
+        #mutfile_kwargs['patchval'] = 0x88cb1100
         mutfile(unfuzzed_input, fuzz_labels_list, fuzzed_input, bug,
                 solution=solution, **mutfile_kwargs)
         timeout = project.get('timeout', 5)
