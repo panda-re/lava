@@ -1,7 +1,7 @@
 import sys
 import yaml
 import re
-import cPickle as pickle
+import pickle
 import argparse
 
 debug = True
@@ -13,8 +13,8 @@ debug = True
 # TODO: parameterize this
 IGNORE_FN_PTRS = False
 
-
-parser = argparse.ArgumentParser(description='Use output of LavaFnTool to figure out which parts of preproc code to instrument')
+parser = argparse.ArgumentParser(
+    description='Use output of LavaFnTool to figure out which parts of preproc code to instrument')
 
 # TODO use vars.py to figure this out instead of arguments
 parser.add_argument('-d', '--dataflow', action="store_true", default=False,
@@ -24,7 +24,7 @@ parser.add_argument('-i', '--input', action="store", default=None,
 parser.add_argument('-o', '--output', action="store", default=None,
                     help="name of output yaml file containing instrumentation decisions")
 
-(args,rest) = parser.parse_known_args()
+(args, rest) = parser.parse_known_args()
 
 data_flow = args.dataflow
 
@@ -36,7 +36,7 @@ def parse_fundecl(fd):
         ext = fd['extern']
     else:
         ext = None
-    return (ext, ret_type, params)
+    return ext, ret_type, params
 
 
 def check_start_end(x):
@@ -45,7 +45,7 @@ def check_start_end(x):
     f1 = start.split(":")[0]
     f2 = end.split(":")[0]
     assert (f1 == f2)
-    return (f1, start, end, start==end)
+    return f1, start, end, start == end
 
 
 class Function:
@@ -64,7 +64,7 @@ class FnPtrAssign:
     def __init__(self, fpa):
         (self.filename, self.start, self.end, see) = check_start_end(fpa)
         (self.extern, self.ret_type, self.params) = parse_fundecl(fpa['fundecl'])
-        # this is the value being assigned to the fn ptr, i.e. the RHS
+        # this is the value being assigned to the fn ptr, i.e., the RHS
         self.name = fpa['name']
         assert (not see)
 
@@ -88,7 +88,8 @@ prots = {}
 calls = {}
 fpas = {}
 
-def addtohl(h,k,v):
+
+def addtohl(h, k, v):
     if not (k in h):
         h[k] = []
     h[k].append(v)
@@ -102,13 +103,14 @@ def merge(v, vors):
         assert (v is None)
     return vors + v
 
+
 if True:
     for filename in rest:
-        print "FILE [%s] " % filename
+        print("FILE [%s] " % filename)
         y = yaml.load(open(filename))
-        assert(y is not None), "Missing output file from fninstr"
+        assert (y is not None), "Missing output file from fninstr"
         for x in y:
-    #        print x
+            #        print x
             if 'fun' in x:
                 fd = Function(x['fun'])
                 if fd.start == fd.end:
@@ -124,20 +126,19 @@ if True:
                 fpa = FnPtrAssign(x['fnPtrAssign'])
                 addtohl(fpas, fpa.name, fpa)
 
-    f = open("getfns.pickle", "w")
+    f = open("getfns.pickle", "wb")
     pickle.dump(fundefs, f)
     pickle.dump(prots, f)
     pickle.dump(calls, f)
     pickle.dump(fpas, f)
     f.close()
 else:
-    f = open("getfns.pickle", "r")
+    f = open("getfns.pickle", "rb")
     fundefs = pickle.load(f)
     prots = pickle.load(f)
     calls = pickle.load(f)
     fpas = pickle.load(f)
     f.close()
-
 
 """
 
@@ -155,13 +156,13 @@ all_fns = set()
 fns_passed_as_args = {}
 for name in prots.keys():
     all_fns.add(name)
-print "%d fn names in prots" % (len(all_fns))
+print("%d fn names in prots" % (len(all_fns)))
 for name in fundefs.keys():
     all_fns.add(name)
-print "%d fn names in prots+fundefs" % (len(all_fns))
+print("%d fn names in prots+fundefs" % (len(all_fns)))
 for name in calls.keys():
     all_fns.add(name)
-print "%d fn names in prots+fundefs+calls" % (len(all_fns))
+print("%d fn names in prots+fundefs+calls" % (len(all_fns)))
 for name in calls.keys():
     # examine args in each of the calls
     # to see if any are passing a function or fn pointer
@@ -174,8 +175,7 @@ for name in calls.keys():
                     all_fns.add(arg['name'])
                     addtohl(fns_passed_as_args, arg['name'], call.name)
 
-print "%d fn names in prots+fundefs+calls+callargs" % (len(all_fns))
-
+print("%d fn names in prots+fundefs+calls+callargs" % (len(all_fns)))
 
 """
 
@@ -226,15 +226,14 @@ for name in all_fns:
             assert fd.hasbody
             instr_judgement[name] = OKI
             if debug:
-                print  "Instr candidate %s has body" % name
+                print("Instr candidate %s has body" % name)
             break
     else:
         # we have no fundec for this fn, thus definitely no body.
         # so don't instrument
         instr_judgement[name] = DIB | DADFA
         if debug:
-            print "Won't instrument %s (data_flow) since we don't have body" % name
-
+            print("Won't instrument %s (data_flow) since we don't have body" % name)
 
 instr = set()
 for name in instr_judgement.keys():
@@ -258,7 +257,6 @@ for name in instr:
         if not (disposition is OKI):
             instr_judgement[name] = disposition
 
-
 """
 Make another pass to see if there are any fns assigned to fnptrs
 If so, (for now) we won't inject in them since we can't control the
@@ -266,7 +264,7 @@ type of the function pointer
 """
 if IGNORE_FN_PTRS:
     for name in fpas:
-        instr_judgement[name] |=  DADFA | DIB
+        instr_judgement[name] |= DADFA | DIB
 
 # Ok we have a list of instrumentable functions.
 # Now, we need to transitively close.
@@ -276,20 +274,19 @@ any_change = True
 while any_change:
     any_change = False
     for called_fn_name in calls.keys():
-        if (instr_judgement[called_fn_name] is OKI):
+        if instr_judgement[called_fn_name] is OKI:
             # We 'think' we can instrument called_fn_name
             for call in calls[called_fn_name]:
-                if (not (instr_judgement[call.containing_function] is OKI)):
+                if not (instr_judgement[call.containing_function] is OKI):
                     # ... however, it is called from a function that cant be instrumented
                     # thus it cant really be instrumented.
                     any_change = True
-                    print "Cant instrument %s because its called from %s which we can't instrument" % (called_fn_name, call.containing_function)
+                    print("Cant instrument %s because its called from %s which we can't instrument" % (
+                    called_fn_name, call.containing_function))
                     instr_judgement[called_fn_name] = DIB | DADFA
                     break
     if any_change:
-        print "instr_judgement changed. Iterating."
-
-
+        print("instr_judgement changed. Iterating.")
 
 ninstr = {}
 for name in instr:
@@ -298,24 +295,16 @@ for name in instr:
         ninstr[disp] = 0
     ninstr[disp] += 1
 
-
 for i in range(4):
     if i in ninstr:
-        print "instrflags=%d: count=%d" % (i, ninstr[i])
+        print("instrflags=%d: count=%d" % (i, ninstr[i]))
 
 for name in instr_judgement.keys():
     if instr_judgement[name] == OKI:
-        print "Intrumenting fun [%s]" % name
-
-
-
+        print("Intrumenting fun [%s]" % name)
 
 f = open(args.output, "w")
 for name in instr_judgement.keys():
     if instr_judgement[name] == OKI:
         f.write("NOFILENAME %s\n" % name)
 f.close()
-
-
-
-

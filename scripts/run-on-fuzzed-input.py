@@ -5,14 +5,14 @@ import json
 import lockfile
 import os
 import string
-import subprocess32
+import subprocess
 import sys
 import time
 import difflib
 import itertools
 from colorama import Fore
 assert itertools
-from sqlalchemy.orm import joinedload_all
+
 import re
 import shutil
 assert re
@@ -63,12 +63,12 @@ def get_suffix(fn):
         return "." + split[-1]
 
 def run(args, **kwargs):
-    print "run(", " ".join(args), ")"
-    subprocess32.check_call(args, cwd=bugs_build,
+    print("run(", " ".join(args), ")")
+    subprocess.check_call(args, cwd=bugs_build,
             stdout=sys.stdout, stderr=sys.stderr, **kwargs)
 
 def exit_error(msg):
-    print Fore.RED + msg + Fore.RESET
+    print(Fore.RED + msg + Fore.RESET)
     sys.exit(1)
 
 # here's how to run the built program
@@ -77,7 +77,7 @@ def run_modified_program(install_dir, input_file, timeout, rr=False, rr_dir=""):
     if rr:
         cmd = "{} record {}".format(RR, cmd)
     if debugging:
-        print cmd
+        print(cmd)
     envv = {}
     lib_path = project['library_path'].format(install_dir=install_dir)
     envv["LD_LIBRARY_PATH"] = join(install_dir, lib_path)
@@ -96,19 +96,19 @@ def run_modified_program(install_dir, input_file, timeout, rr=False, rr_dir=""):
                       if "_RR_TRACE_DIR" in envv
                       else "")
             libpath_env = "LD_LIBRARY_PATH={}".format(envv["LD_LIBRARY_PATH"])
-            print "Could not get return code from rr ps"
-            print "stdout: {}".format(ps_stdout)
-            print "stderr: {}".format(ps_stderr)
-            print "cmd: [{} {} {}]".format(rr_env, libpath_env, cmd)
-            print "{} ps {}".format(RR, rr_dir)
+            print("Could not get return code from rr ps")
+            print("stdout: {}".format(ps_stdout))
+            print("stderr: {}".format(ps_stderr))
+            print("cmd: [{} {} {}]".format(rr_env, libpath_env, cmd))
+            print("{} ps {}".format(RR, rr_dir))
             sys.exit(1)
-        return (rc, outp[1:])
+        return rc, outp[1:]
     else:
-        return (rc, outp)
+        return rc, outp
 
 def confirm_bug_in_executable(install_dir):
     cmd = project['command'].format(install_dir=install_dir,input_file="foo")
-    nm_cmd = ('nm {}').format(cmd.split()[0])
+    nm_cmd = 'nm {}'.format(cmd.split()[0])
 
     (exitcode, output) = run_cmd_notimeout(nm_cmd, None, {})
     if exitcode != 0:
@@ -138,11 +138,11 @@ def rr_get_tick_from_event(rr_trace_dir, event_num):
         m = TICKS_RE.search(pout)
         return int(m.groups()[0])
     except:
-        print "RR dumps did not return proper ouput for event"
-        print "========stdout========"
-        print pout
-        print "========stderr========"
-        print perr
+        print("RR dumps did not return proper ouput for event")
+        print("========stdout========")
+        print(pout)
+        print("========stderr========")
+        print(perr)
         sys.exit(1)
 
 def get_atp_line(bug, bugs_build):
@@ -200,18 +200,18 @@ def do_function(inp):
     # print "retval = %d" % rv
     # print "output: [{}]".format(" ;".join(outp))
     if args.compareToQueriesBuild:
-        print "DIFFING . . .",
+        print("DIFFING . . .")
         (orig_rv, orig_outp) = run_modified_program(queries_install, fuzzed_input, timeout)
         diff = list(difflib.ndiff(orig_outp, outp))
         if (len(diff) < 2 or
             not any(map(lambda line: line[0] in ["+", "-"], diff))):
-            print "SAME!"
+            print("SAME!")
         elif all(map(lambda line: line == "", outp)):
-            print "Inject Build Has No Output - CANCELING"
+            print("Inject Build Has No Output - CANCELING")
             pass
         else:
-            print "DIFFERENT"
-            print "".join(diff),
+            print("DIFFERENT")
+            print("".join(diff))
     # We could try to figure out how to update the DB with the exit code for the
     # input
     # if UPDATE_DB:
@@ -245,14 +245,14 @@ def do_function(inp):
                 before_tick = rr_get_tick_from_event(rr_trace_dir, before)
                 count = after_tick - before_tick
             except StopIteration:
-                print "\"Instruction Count = \" was not in gdb output"
+                print("\"Instruction Count = \" was not in gdb output")
                 cmd = project['command'].format(install_dir=bugs_install,input_file=fuzzed_input)
-                print "======gdb out======"
-                print "\n".join(out)
-                print "======end gdb out======"
-                print "Bug_id {} failed on KT:{}".format(bug.id, knobSize)
-                print "cmd: [{} {} replay {}]".format(lib_prefix, RR, cmd)
-                print "rr cmd: [{}]".format(full_cmd)
+                print("======gdb out======")
+                print("\n".join(out))
+                print("======end gdb out======")
+                print("Bug_id {} failed on KT:{}".format(bug.id, knobSize))
+                print("cmd: [{} {} replay {}]".format(lib_prefix, RR, cmd))
+                print("rr cmd: [{}]".format(full_cmd))
                 sys.exit(1)
                 # count = -1
             # os.system(full_cmd)
@@ -267,24 +267,24 @@ def do_function(inp):
             full_cmd = "LD_LIBRARY_PATH={} {}".format(lib_path, gdb_cmd)
             (rc, (out, err)) = run_cmd(gdb_cmd, bugs_install, envv, 10000) # shell=True)
             if VERBOSE:
-                print out.split("\n")[-2], err
+                print(out.split("\n")[-2], err)
             else:
                 prediction = "{}:{}".format(basename(bug.atp.loc_filename),
                                          get_atp_line(bug, bugs_build))
-                print "Prediction {}".format(prediction)
+                print("Prediction {}".format(prediction))
                 for line in out.split("\n"):
                     if line.startswith("#0"):
                         actual = line.split(" at ")[1]
                         if actual != prediction:
-                            print "Actual {}".format(actual)
-                            print "DIVERGENCE.  Exiting . . ."
+                            print("Actual {}".format(actual))
+                            print("DIVERGENCE.  Exiting . . .")
                             sys.exit(1)
                         break
 
 
     else:
         count = -1
-    return (bug.id, knobSize, rv == -6 or rv == -11, count)
+    return bug.id, knobSize, rv == -6 or rv == -11, count
 
 
 if __name__ == "__main__":
@@ -322,7 +322,7 @@ if __name__ == "__main__":
         if not checkKnobRangeExpression(args.knobTrigger):
             exit_error("--knobTrigger: \"{}\" is not valid python range expression".format(args.knobRange))
         knobRange = sorted(list(set(eval(args.knobTrigger))))
-        print "Testing {} inputs for knob offsets in range: {}".format(len(knobRange), knobRange)
+        print("Testing {} inputs for knob offsets in range: {}".format(len(knobRange), knobRange))
         KT = True
     else:
         KT = False
@@ -363,29 +363,30 @@ if __name__ == "__main__":
                 bugs_parent = join(candidate_path)
                 bugs_lock = lock
             except lockfile.AlreadyLocked:
-                print "Can\'t acquire lock on bug folder"
+                print("Can\'t acquire lock on bug folder")
                 bugs_parent = ""
                 sys.exit(1)
                 candidate += 1
 
-    print "Using dir", bugs_parent
+    print("Using dir", bugs_parent)
 
-    if (not args.noLock):
+    if not args.noLock:
         # release bug lock.  who cares if another process
         # could theoretically modify this directory
         bugs_lock.release()
-        # atexit.register(bugs_lock.release)
+        # at exit.register(bugs_lock.release)
         # for sig in [signal.SIGINT, signal.SIGTERM]:
         # signal.signal(sig, lambda s, f: sys.exit(-1))
 
     try:
         os.mkdir(bugs_parent)
-    except: pass
+    except:
+        pass
 
     if 'source_root' in project:
         source_root = project['source_root']
     else:
-        tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
+        tar_files = subprocess.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
         source_root = tar_files.splitlines()[0].split(os.path.sep)[0]
 
     queries_build = join(top_dir, source_root)
@@ -441,21 +442,21 @@ if __name__ == "__main__":
     os.mkdir(RR_TRACES_TOP_DIR)
     try:
         # build succeeded -- testing
-        print "------------\n"
+        print("------------\n")
         # first, try the original file
-        print "TESTING -- ORIG INPUT"
+        print("TESTING -- ORIG INPUT")
         orig_input = join(top_dir, 'inputs', basename(bug.trigger.dua.inputfile))
 
         (rv, outp) = run_modified_program(bugs_install, orig_input, timeout)
-        if rv != args.exitCode
-            print "***** buggy program fails on original input!"
+        if rv != args.exitCode:
+            print("***** buggy program fails on original input!")
             assert False
         else:
-            print "buggy program succeeds on original input"
-        print "retval = %d" % rv
-        print "SUCCESS"
+            print("buggy program succeeds on original input")
+        print("retval = %d" % rv)
+        print("SUCCESS")
         # second, fuzz it with the magic value
-        print "TESTING -- FUZZED INPUTS"
+        print("TESTING -- FUZZED INPUTS")
         # iterate through knob range or just a list of one element
 
         # start 4 worker processes
@@ -471,17 +472,17 @@ if __name__ == "__main__":
             # print "({},{},{},{})".format(bug_id, ks, is_valid, step_size)
         ################# multiprocessing solution ###################
         for inp in itertools.product(knobSize_iter, bugs_to_inject):
-            print "=================================================="
+            print("==================================================")
             out_data = do_function(inp)
             (bug_id, ks, is_valid, step_size) = out_data
-            print "({},{},{},{})".format(bug_id, ks, is_valid, step_size)
+            print("({},{},{},{})".format(bug_id, ks, is_valid, step_size))
             # if UPDATE_DB: db.session.commit()
             # NB: at the end of testing, the fuzzed input is still in place
             # if you want to try it
             ##################################################################
     except Exception as e:
-        print "TESTING FAIL"
+        print("TESTING FAIL")
         raise
 
-    print "inject complete %.2f seconds" % (time.time() - start_time)
+    print("inject complete %.2f seconds" % (time.time() - start_time))
 

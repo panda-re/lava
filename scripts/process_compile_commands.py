@@ -2,6 +2,7 @@ import json
 import os
 from os.path import join
 
+
 # processes compile_commands.json to remove duplicate entries and add extra entries
 
 def process_compile_commands(cc_filename, extra_cc_filename):
@@ -26,6 +27,7 @@ def process_compile_commands(cc_filename, extra_cc_filename):
     cc_file = open(cc_filename, 'w')
     json.dump(new_compile_commands, cc_file)
     cc_file.close()
+
 
 def get_c_files(bugs_build, cc_filename):
     cc_file = open(cc_filename, 'r')

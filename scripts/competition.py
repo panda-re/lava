@@ -1,39 +1,26 @@
 #!/usr/bin/python
 
 import argparse
-import atexit
 import datetime
-import json
-import lockfile
 import os
-import pipes
-import re
-import shlex
-import shutil
-import signal
-import string
-import stat
-import subprocess32
-import sys
-import time
 import random
+import shutil
+import stat
+import subprocess
+from os.path import basename, join
 
-from math import sqrt
-from os.path import basename, dirname, join, abspath, exists
-
-from vars import parse_vars
-from lava import LavaDatabase, Bug, Build, DuaBytes, Run, \
-    run_cmd, run_cmd_notimeout, mutfile, inject_bugs, LavaPaths, \
-    validate_bugs, run_modified_program, unfuzzed_input_for_bug, \
-    fuzzed_input_for_bug, get_trigger_line, AttackPoint, Bug, \
+from lava import LavaDatabase, run_cmd, run_cmd_notimeout, inject_bugs, LavaPaths, \
+    validate_bugs, fuzzed_input_for_bug, AttackPoint, Bug, \
     get_allowed_bugtype_num, limit_atp_reuse
+from vars import parse_vars
 
 # from pycparser.diversifier.diversify import diversify
-#from process_compile_commands import get_c_files
+# from process_compile_commands import get_c_files
 
-version="2.0.0"
+version = "2.0.0"
 
 RETRY_COUNT = 0
+
 
 # Build both scripts - in a seperate fn for testing
 def run_builds(scripts):
@@ -45,10 +32,11 @@ def run_builds(scripts):
             raise RuntimeError("Could not build {}".format(script))
         print("Built with command {}".format(script))
 
+
 def random_choice(options, probs):
     # Select from options with probabilities from prob
     sum_probs = sum(probs)
-    norm_probs = [float(x)/sum_probs for x in probs]
+    norm_probs = [float(x) / sum_probs for x in probs]
     r = random.uniform(0, 1)
     for idx, prb in enumerate(norm_probs):
         if r < prb: return options[idx]
@@ -64,8 +52,8 @@ def random_choice(options, probs):
 # because otherwise the db might give us all the same dua
 
 def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
-    #XXX This function is prtty gross, definitely needs a rewrite
-    max_duplicates_per_line = 50 # Max duplicates we *try* to inject per line. After validation, we filter down to ~1 per line
+    # XXX This function is prtty gross, definitely needs a rewrite
+    max_duplicates_per_line = 50  # Max duplicates we *try* to inject per line. After validation, we filter down to ~1 per line
     bugs_and_non_bugs = []
     dfl_fileline = {}
     afl_fileline = {}
@@ -81,7 +69,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
         """
 
         if not (item.type in allowed_bugtypes):
-            #print("skipping type {} not in {}".format(item.type, allowed_bugtypes))
+            # print("skipping type {} not in {}".format(item.type, allowed_bugtypes))
             return True
         dfl = (item.trigger_lval.loc_filename, item.trigger_lval.loc_begin_line)
         afl = (item.atp.loc_filename, item.atp.loc_begin_line, item.atp.loc_begin_column)
@@ -89,21 +77,23 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
         if not (dfl in dfl_fileline.keys()): dfl_fileline[dfl] = 0
         if not (afl in afl_fileline.keys()): afl_fileline[afl] = 0
 
-        if (dfl_fileline[dfl] > max_duplicates_per_line):
-            #print "skipping dfl %s" % (str(dfl))
+        if dfl_fileline[dfl] > max_duplicates_per_line:
+            # print "skipping dfl %s" % (str(dfl))
             return True
-        if (afl_fileline[afl] > max_duplicates_per_line):
-            #print "skipping afl %s" % (str(afl))
+        if afl_fileline[afl] > max_duplicates_per_line:
+            # print "skipping afl %s" % (str(afl))
             return True
         if fake:
-            print "non-bug",
+            print("non-bug")
         else:
-            print "bug    ",
-        print 'id={} dua_fl={} atp_fl={} dua_ast={} type={}'.format(item.id, str(dfl), str(afl), str(item.trigger_lval.ast_name), Bug.type_strings[item.type])
+            print("bug    ")
+        print('id={} dua_fl={} atp_fl={} dua_ast={} type={}'.format(item.id, str(dfl), str(afl),
+                                                                    str(item.trigger_lval.ast_name),
+                                                                    Bug.type_strings[item.type]))
         dfl_fileline[dfl] += 1
         afl_fileline[afl] += 1
         bugs_and_non_bugs.append(item)
-        if (len(bugs_and_non_bugs) >= limit):
+        if len(bugs_and_non_bugs) >= limit:
             print("Abort bug-selection because we already found {} bugs to inject".format(limit))
             return False
         return True
@@ -116,45 +106,50 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
         atp_types = [AttackPoint.FUNCTION_CALL, AttackPoint.POINTER_WRITE]
 
         # Get limit bugs at each ATP
-        #atp_item_lists = db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
+        # atp_item_lists = db.uninjected_random_by_atp(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
         # Returns list of lists where each sublist corresponds to the same atp: [[ATP1_bug1, ATP1_bug2], [ATP2_bug1], [ATP3_bug1, ATP3_bug2]]
 
-        atp_item_lists = db.uninjected_random_by_atp_bugtype(fake, atp_types=atp_types, allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
+        atp_item_lists = db.uninjected_random_by_atp_bugtype(fake, atp_types=atp_types,
+                                                             allowed_bugtypes=allowed_bugtypes, atp_lim=limit)
         # Returns dict of list of lists where each dict is a bugtype and within each, each sublist corresponds to the same atp: [[ATP1_bug1, ATP1_bug2], [ATP2_bug1], [ATP3_bug1, ATP3_bug2]]
         while True:
 
             for selected_bugtype in allowed_bugtypes:
-                atp_item_lists[selected_bugtype] = [x for x in atp_item_lists[selected_bugtype] if len(x)] # Delete any empty lists
+                atp_item_lists[selected_bugtype] = [x for x in atp_item_lists[selected_bugtype] if
+                                                    len(x)]  # Delete any empty lists
             if sum([len(x) for x in atp_item_lists.values()]) == 0:
-                print("Abort bug-selection because we've selected all {} potential bugs we have (Failed to find all {} requested bugs)".format(len(bugs_and_non_bugs), limit))
+                print(
+                    "Abort bug-selection because we've selected all {} potential bugs we have (Failed to find all {} requested bugs)".format(
+                        len(bugs_and_non_bugs), limit))
                 break
 
             # Randomly select a sublist from atp_item_lists (none will be empty)
-            #weight by bugtype
+            # weight by bugtype
 
-
-            # Of the allowed bugtypes, the ratio will be normalized. 
+            # Of the allowed bugtypes, the ratio will be normalized.
             # As this is now, we'll pick REL_WRITES (multiduas) more often than others because they work less frequently
             # Ratios for RET_BUFFER and PRINTF_LEAK are just guesses
             bug_ratios = {Bug.REL_WRITE: 200, Bug.PTR_ADD: 15, Bug.RET_BUFFER: 15, Bug.PRINTF_LEAK: 15}
             for x in allowed_bugtypes:
                 if x not in bug_ratios:
-                    assert("Bug type {} not in bug_ratios. Fix me!".format(Bug.type_strings[this_bugtype]))
+                    assert ("Bug type {} not in bug_ratios. Fix me!".format(Bug.type_strings[this_bugtype]))
             allowed_bug_ratios = [bug_ratios[x] for x in allowed_bugtypes]
 
             this_bugtype = random_choice(allowed_bugtypes, allowed_bug_ratios)
-            #print("Selected bugtype {}".format(Bug.type_strings[this_bugtype]))
+            # print("Selected bugtype {}".format(Bug.type_strings[this_bugtype]))
 
             this_bugtype_atp_item_lists = atp_item_lists[this_bugtype]
             if len(this_bugtype_atp_item_lists) == 0:
                 # TODO: intelligently select a different bugype in this case
                 allowed_bugtypes.remove(this_bugtype)
-                print("Warning: tried to select a bug of type {} but none available".format(Bug.type_strings[this_bugtype]))
-                assert(len(allowed_bugtypes) >0), "No bugs available"
+                print("Warning: tried to select a bug of type {} but none available".format(
+                    Bug.type_strings[this_bugtype]))
+                assert (len(allowed_bugtypes) > 0), "No bugs available"
                 continue
 
-            atp_item_idx = random.randint(0, len(this_bugtype_atp_item_lists)-1)
-            item = this_bugtype_atp_item_lists[atp_item_idx].pop() # Pop the first bug from that bug_list (Sublist will be sorted randomly)
+            atp_item_idx = random.randint(0, len(this_bugtype_atp_item_lists) - 1)
+            item = this_bugtype_atp_item_lists[
+                atp_item_idx].pop()  # Pop the first bug from that bug_list (Sublist will be sorted randomly)
 
             """
             # TODO: fix this manual libjpeg hack. Blacklist bugs here by strings in their dua/extra_duas
@@ -176,7 +171,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
             # End of libjpeg hack
             """
 
-            abort |= not parse(item) # Once parse returns true, break
+            abort |= not parse(item)  # Once parse returns true, break
             if abort:
                 break
     else:
@@ -190,7 +185,7 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
         afl = (item.atp.loc_filename, item.atp.loc_begin_line, item.atp.loc_begin_column)
         if afl not in afls.keys():
             afls[afl] = 0
-        afls[afl] +=1
+        afls[afl] += 1
 
     print("{} potential bugs were selected across {} ATPs:".format(len(bugs_and_non_bugs), len(afls)))
     for bugtype in allowed_bugtypes:
@@ -200,35 +195,36 @@ def competition_bugs_and_non_bugs(limit, db, allowed_bugtypes, buglist):
     for atp, count in afls.items():
         print("\t{}\t bugs at {}".format(count, atp))
 
-
     return [b.id for b in bugs_and_non_bugs]
+
 
 def main():
     parser = argparse.ArgumentParser(prog="competition.py", description='Inject and test LAVA bugs.')
-    parser.add_argument('host_json', help = 'Host JSON file')
-    parser.add_argument('project', help = 'Project name')
+    parser.add_argument('host_json', help='Host JSON file')
+    parser.add_argument('project', help='Project name')
 
     parser.add_argument('-m', '--many', action="store", default=-1,
-            help = 'Inject this many bugs and this many non-bugs (chosen randomly)')
+                        help='Inject this many bugs and this many non-bugs (chosen randomly)')
     parser.add_argument('-n', '--minYield', action="store", default=-1,
-            help = 'Require at least this many real bugs')
+                        help='Require at least this many real bugs')
     parser.add_argument('-l', '--buglist', action="store", default=False,
-            help = 'Inject this list of bugs')
+                        help='Inject this list of bugs')
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
-            help = ('Expected exit code when program exits without crashing. Default 0'))
-    #parser.add_argument('-i', '--diversify', action="store_true", default=False,
-            #help = ('Diversify source code. Default false.'))
-    parser.add_argument('-c', '--chaff', action="store_true", default=False, # TODO chaf and unvalided bugs aren't always the same thing
-            help = ('Leave unvalidated bugs in the binary'))
+                        help='Expected exit code when program exits without crashing. Default 0')
+    # parser.add_argument('-i', '--diversify', action="store_true", default=False,
+    # help = ('Diversify source code. Default false.'))
+    parser.add_argument('-c', '--chaff', action="store_true", default=False,
+                        # TODO chaf and unvalided bugs aren't always the same thing
+                        help='Leave unvalidated bugs in the binary')
     parser.add_argument('-t', '--bugtypes', action="store", default="rel_write",
-                        help = ('bug types to inject'))
+                        help='bug types to inject')
     parser.add_argument('--version', action="version", version="%(prog)s {}".format(version))
 
     args = parser.parse_args()
     global project
     project = parse_vars(args.host_json, args.project)
 
-    dataflow = project.get("dataflow", False) # Default to false
+    dataflow = project.get("dataflow", False)  # Default to false
 
     allowed_bugtypes = get_allowed_bugtype_num(args)
 
@@ -265,15 +261,16 @@ def main():
     ###############
 
     if args.buglist:
-        print ("bug_list incoming %s" % (str(args.buglist)))
-        bug_list = competition_bugs_and_non_bugs(len(args.buglist), db, allowed_bugtypes, eval(args.buglist)) # XXX EVAL WHY
+        print("bug_list incoming %s" % (str(args.buglist)))
+        bug_list = competition_bugs_and_non_bugs(len(args.buglist), db, allowed_bugtypes,
+                                                 eval(args.buglist))  # XXX EVAL WHY
     elif args.many:
         bug_list = competition_bugs_and_non_bugs(int(args.many), db, allowed_bugtypes, None)
     else:
         print("Fatal error: no bugs specified")
         raise RuntimeError
 
-    assert len(bug_list) # Found no bugs
+    assert len(bug_list)  # Found no bugs
 
     print('bug_list (len={}):'.format(len(bug_list)))
     bug_list_str = ','.join([str(bug_id) for bug_id in bug_list])
@@ -285,21 +282,21 @@ def main():
 
     real_bug_list = []
     # add bugs to the source code and check that we can still compile
-    (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json, \
-                                      project, args, False, dataflow=dataflow, competition=True,
-                                      validated=False, lavatoolseed=lavatoolseed)
-    assert build is not None # build is None when injection fails. Could block here to allow for manual patches
+    (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json,
+                                                      project, args, False, dataflow=dataflow, competition=True,
+                                                      validated=False, lavatoolseed=lavatoolseed)
+    assert build is not None  # build is None when injection fails. Could block here to allow for manual patches
 
     # Test if the injected bugs cause approperiate crashes and that our competition infrastructure parses the crashes correctly
-    real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, \
-                                      args, False, competition=True, bug_solutions=bug_solutions)
+    real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build,
+                                  args, False, competition=True, bug_solutions=bug_solutions)
 
     if len(real_bug_list) < int(args.minYield):
         print("\n\nXXX Yield too low after injection -- Require at least {} bugs for"
-                " competition, only have {}".format(args.minYield, len(real_bug_list)))
+              " competition, only have {}".format(args.minYield, len(real_bug_list)))
         raise RuntimeError("Failure")
 
-    print "\n\n Yield acceptable: {}".format(len(real_bug_list))
+    print("\n\n Yield acceptable: {}".format(len(real_bug_list)))
 
     # TODO- the rebuild process may invalidate a previously validated bug because the trigger will change
     # Need to find a way to pass data between lavaTool and here so we can reinject *identical* bugs as before
@@ -318,31 +315,31 @@ def main():
         real_bug_list = limit_atp_reuse(real_bugs)
 
         # TODO retry a few times if we fail this test
-        if bug_list != real_bug_list: # Only reinject if our bug list has changed
+        if bug_list != real_bug_list:  # Only reinject if our bug list has changed
             if len(real_bug_list) < int(args.minYield):
                 print("\n\nXXX Yield too low after reducing duplicates -- Require at least {} bugs for  \
                         competition, only have {}".format(args.minYield, len(real_bug_list)))
                 raise RuntimeError("Failure")
-            (build, input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, args.host_json, \
-                                                  project, args, False, dataflow=dataflow, competition=True, validated=True,
-                                                  lavatoolseed=lavatoolseed)
+            (build, input_files, bug_solutions) = inject_bugs(real_bug_list, db, lp, args.host_json,
+                                                              project, args, False, dataflow=dataflow,
+                                                              competition=True, validated=True,
+                                                              lavatoolseed=lavatoolseed)
 
-            assert build is not None # build is None if injection fails
+            assert build is not None  # build is None if injection fails
 
     ###############
     ## Now build our corpora directory with the buggy source dir, binaries in lava-install-public,
     ## lava-install-internal, and scripts to rebuild the binaries
     ###############
 
-
     corpus_dir = join(compdir, "corpora")
-    subprocess32.check_call(["mkdir", "-p", corpus_dir])
+    subprocess.check_call(["mkdir", "-p", corpus_dir])
 
     # original bugs src dir
     # directory for this corpus
     corpname = "lava-corpus-" + ((datetime.datetime.now()).strftime("%Y-%m-%d-%H-%M-%S"))
-    corpdir = join(corpus_dir,corpname)
-    subprocess32.check_call(["mkdir", corpdir])
+    corpdir = join(corpus_dir, corpname)
+    subprocess.check_call(["mkdir", corpdir])
 
     lava_bd = join(lp.bugs_parent, lp.source_root)
 
@@ -375,13 +372,13 @@ def main():
         popd
         """.format(
             bugs_build=bd,
-            make_clean = project["clean"] if "clean" in project.keys() else "",
+            make_clean=project["clean"] if "clean" in project.keys() else "",
             configure=project['configure'] if "configure" in project.keys() else "",
-            log_make = log_make,
-            internal_builddir = internal_builddir,
-            install = project['install'].format(install_dir=lava_installdir),
-            post_install = project['post_install'] if 'post_install' in project.keys() else "",
-            ))
+            log_make=log_make,
+            internal_builddir=internal_builddir,
+            install=project['install'].format(install_dir=lava_installdir),
+            post_install=project['post_install'] if 'post_install' in project.keys() else "",
+        ))
     run_builds([log_build_sh])
 
     # diversify
@@ -411,7 +408,7 @@ def main():
             print(o)
         if rv == 0:
             print('build succeeded')
-            subprocess32.check_call(project['install'], cwd=lp.bugs_build, shell=True)
+            subprocess.check_call(project['install'], cwd=lp.bugs_build, shell=True)
             if 'post_install' in project:
                 check_call(project['post_install'], cwd=lp.bugs_build, shell=True)
         else:
@@ -437,7 +434,7 @@ def main():
 
     # subdir with trigger inputs
     inputsdir = join(corpdir, "inputs")
-    subprocess32.check_call(["mkdir", inputsdir])
+    subprocess.check_call(["mkdir", inputsdir])
     # subdir with src -- note we can't create it or copytree will fail!
     srcdir = join(corpdir, "src")
     # copy src
@@ -454,23 +451,23 @@ def main():
         predictions.append((prediction, fi, bug.type))
         bug_ids.append(bug.id)
 
-    print "Answer key:"
+    print("Answer key:")
     with open(join(corpdir, "ans"), "w") as ans:
         for (prediction, fi, bugtype) in predictions:
-            print "ANSWER  [%s] [%s] [%s]" % (prediction, fi, Bug.type_strings[bugtype])
+            print("ANSWER  [%s] [%s] [%s]" % (prediction, fi, Bug.type_strings[bugtype]))
             ans.write("%s %s %s\n" % (prediction, fi, Bug.type_strings[bugtype]))
 
     with open(join(corpdir, "add_bugs.sql"), "w") as f:
         f.write("/* This file will add all the generated lava_id values to the DB, you must update binary_id */\n")
         f.write("\set binary_id 0\n")
         for bug_id in bug_ids:
-            f.write("insert into \"bug\" (\"lava_id\", \"binary\") VALUES (%d, :binary_id); \n" % (bug_id))
+            f.write("insert into \"bug\" (\"lava_id\", \"binary\") VALUES (%d, :binary_id); \n" % bug_id)
 
     # clean up srcdir before tar
     os.chdir(srcdir)
     try:
         # Unconfigure
-        subprocess32.check_call(["make", "distclean"])
+        subprocess.check_call(["make", "distclean"])
     except:
         pass
 
@@ -486,16 +483,16 @@ def main():
             os.remove(fname)
 
     # build source tar
-    #tarball = join(srcdir + ".tgz")
-    #os.chdir(corpdir)
-    #cmd = "/bin/tar czvf " + tarball + " src"
-    #subprocess32.check_call(cmd.split())
-    #print "created corpus tarball " + tarball + "\n";
+    # tarball = join(srcdir + ".tgz")
+    # os.chdir(corpdir)
+    # cmd = "/bin/tar czvf " + tarball + " src"
+    # subprocess.check_call(cmd.split())
+    # print "created corpus tarball " + tarball + "\n";
 
-    #lp.bugs_install = join(corpdir,"lava-install") # Change to be in our corpdir
+    # lp.bugs_install = join(corpdir,"lava-install") # Change to be in our corpdir
 
     # Save the commands we use into files so we can rerun later
-    public_build_sh = join(corpdir, "public_build.sh") # Simple
+    public_build_sh = join(corpdir, "public_build.sh")  # Simple
     public_builddir = join(corpdir, "lava-install-public")
     lava_installdir = join(bd, "lava-install")
     with open(public_build_sh, "w") as build:
@@ -515,13 +512,13 @@ def main():
         popd
         """.format(
             bugs_build=bd,
-            make_clean = project["clean"] if "clean" in project.keys() else "",
+            make_clean=project["clean"] if "clean" in project.keys() else "",
             configure=project['configure'] if "configure" in project.keys() else "",
-            make = project['make'],
-            public_builddir = public_builddir,
-            install = project['install'].format(install_dir=lava_installdir),
+            make=project['make'],
+            public_builddir=public_builddir,
+            install=project['install'].format(install_dir=lava_installdir),
             post_install=project['post_install'] if "post_install" in project.keys() else ""
-            ))
+        ))
 
     trigger_all_crashes = join(corpdir, "trigger_crashes.sh")
     with open(trigger_all_crashes, "w") as build:
@@ -558,25 +555,27 @@ for fname in {inputdir}; do
             fi
         fi
     fi
-done""".format(command = project['command'].format(**{"install_dir": "./lava-install-internal", "input_file": "$fname"}), # This syntax is weird but only thing that works?
-            corpdir = corpdir,
-            librarydir = join("./lava-install-internal", "lib"),
-            librarydir2 = join("./lava-install-public", "lib"),
-            command2 = project['command'].format(**{"install_dir": "./lava-install-public", "input_file": "$fname"}), # This syntax is weird but only thing that works?
-            inputdir = "./inputs/*-fuzzed-*"
-            ))
+done""".format(command=project['command'].format(**{"install_dir": "./lava-install-internal", "input_file": "$fname"}),
+               # This syntax is weird but only thing that works?
+               corpdir=corpdir,
+               librarydir=join("./lava-install-internal", "lib"),
+               librarydir2=join("./lava-install-public", "lib"),
+               command2=project['command'].format(**{"install_dir": "./lava-install-public", "input_file": "$fname"}),
+               # This syntax is weird but only thing that works?
+               inputdir="./inputs/*-fuzzed-*"
+               ))
     os.chmod(trigger_all_crashes, (stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IROTH | stat.S_IXOTH))
     # Build a version to ship in src
     run_builds([log_build_sh, public_build_sh])
     print("Injected {} bugs".format(len(real_bug_list)))
 
     print("Counting how many crashes competition infrastructure identifies...")
-    run_cmd(trigger_all_crashes, cwd=corpdir) # Prints about segfaults
+    run_cmd(trigger_all_crashes, cwd=corpdir)  # Prints about segfaults
     (rv, outp) = run_cmd("wc -l {}".format(join(corpdir, "validated_bugs.txt")))
     if rv != 0:
         raise RuntimeError("Validated bugs file does not exist. Something went wrong")
 
-    (a,b) = outp[0].split()
+    (a, b) = outp[0].split()
     n = int(a)
     print("\tCompetition infrastructure found: %d of %d injected bugs" % (n, len(real_bug_list)))
 

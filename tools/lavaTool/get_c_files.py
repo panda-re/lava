@@ -47,12 +47,12 @@ def processCompileCommands(srcPath):
 
 def getCFiles(compileCommands):
     for d in compileCommands:
-        print os.path.join(d['directory'], d['file'])
+        print(os.path.join(d['directory'], d['file']))
 
 
 def main():
     if (len(sys.argv) < 2):
-        print 'Usage: ./get_c_files.py <src dir>'
+        print('Usage: ./get_c_files.py <src dir>')
         sys.exit(1)
     newCompileCommands = processCompileCommands(sys.argv[1])
     getCFiles(newCompileCommands)

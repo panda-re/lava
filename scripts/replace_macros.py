@@ -2,24 +2,26 @@ import sys
 import os
 import shutil
 
+
 def find_end(line, start_idx_off):
     open_parens = 1
     end_idx = 0
     for idx, char in enumerate(line[start_idx_off:]):
         if char == "(":
-            open_parens+=1
+            open_parens += 1
         elif char == ")":
-            open_parens-=1
+            open_parens -= 1
 
-        if open_parens == 0: # At end of lavalog
+        if open_parens == 0:  # At the end of lava log
             end_idx = idx
             break
     return end_idx
 
+
 def cleanup(line):
     while "LAVALOG(" in line:
-        start_idx = line.index("LAVALOG(") # start of LAVALOG
-        start_idx_off = start_idx + len("LAVALOG(") # After the LAVALOG(
+        start_idx = line.index("LAVALOG(")  # start of LAVALOG
+        start_idx_off = start_idx + len("LAVALOG(")  # After the LAVALOG(
 
         # asdf *LAVALOG(1234, LAVALOG(1234, value+valu+value, trigger1), trigger2) bsdf
         # asdf *LAVALOG(1234, value+valu+value, trigger1) bsdf
@@ -29,26 +31,27 @@ def cleanup(line):
         contents = line[start_idx_off:][:end_idx]
 
         # Now we have A, VAL...VAL, C
-        first = contents.index(", ")+2
+        first = contents.index(", ") + 2
         last = contents.rindex(", ")
 
-        line = line[:start_idx] + contents[first:last] + line[start_idx_off+end_idx+1:]
+        line = line[:start_idx] + contents[first:last] + line[start_idx_off + end_idx + 1:]
 
     while "DFLOG" in line:
-        #DFLOG(115, *(const unsigned int *)ubuf);
-        #data_flow[115] = *(const...;
+        # DFLOG(115, *(const unsigned int *)ubuf);
+        # data_flow[115] = *(const...;
         start_idx = line.index("DFLOG(")
         start_idx_off = start_idx + len("DFLOG(")
         end_idx = find_end(line, start_idx_off)
 
         contents = line[start_idx_off:][:end_idx]
         parts = contents.split(", ")
-        assert(len(parts) == 2)
+        assert (len(parts) == 2)
         contents = "data_flow[{}] = {}".format(parts[0], parts[1])
 
-        line = line[:start_idx] + contents + line[start_idx_off+end_idx+1:]
+        line = line[:start_idx] + contents + line[start_idx_off + end_idx + 1:]
 
     return line
+
 
 lava_macros = ["#ifdef LAVA_LOGGING", "#ifdef FULL_LAVA_LOGGING", "#ifndef LAVALOG", "#ifdef DUA_LOGGING"]
 for filename in sys.argv[1:]:
@@ -57,7 +60,7 @@ for filename in sys.argv[1:]:
         lines = infile.readlines()
         if not (len(lines) > 1 and lines[0] == "#ifdef LAVA_LOGGING\n"):
             print("{} is not a LAVALOG'd file".format(infile))
-            continue # No lavalogging here
+            continue  # No lavalogging here
 
         with open(scratch, "w") as outfile:
             # Skip past our definitions
@@ -66,7 +69,7 @@ for filename in sys.argv[1:]:
                 for macro in lava_macros:
                     if macro in line:
                         in_lava_macro = True
-                        break # Break the macro loop, the in_lava_macro bool will continue
+                        break  # Break the macro loop, the in_lava_macro bool will continue
 
                 if in_lava_macro:
                     if "#endif" in line:
@@ -78,5 +81,5 @@ for filename in sys.argv[1:]:
                 else:
                     outfile.write(cleanup(line))
 
-    #os.rename(filename, filename+".bak")
+    # os.rename(filename, filename+".bak")
     shutil.copy(scratch, filename)

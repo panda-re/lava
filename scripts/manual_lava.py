@@ -7,7 +7,7 @@ import sys
 # ok this is gross
 sys.path.append("/home/tleek/git/panda-leet/panda/scripts")
 
-from plog_reader import PLogReader
+from pandare.plog_reader import PLogReader
 
 #
 # manual_lava.py
@@ -67,20 +67,20 @@ plog = sys.argv[1]
 max_tcn = int(sys.argv[2])
 
 # this is where the *exact* binaries that were used to create the slash-sci replay are...
-libxml  = "install/libxml2/.libs/libxml2.so"
+libxml = "install/libxml2/.libs/libxml2.so"
 xmllint = "install/libxml2/.libs/xmllint"
 
 # NB: You will need to fiddle with this script wherever those two variables are used
 # in order to specialize it to your program + libs. Sorry no time to make it great.
 
 
-# first go thru plog to get a reasonable mapping
+# first go through plog to get a reasonable mapping
 libs_for_thread = {}
 with PLogReader(plog) as plr:
-    for i,m in enumerate(plr):
+    for i, m in enumerate(plr):
         if m.HasField("asid_libraries"):
             al = m.asid_libraries
-            thread = m.asid # (al.tid, al.create_time)
+            thread = m.asid  # (al.tid, al.create_time)
             these_libs = []
             for lib in al.modules:
                 if "xml" in lib.name:
@@ -90,7 +90,6 @@ with PLogReader(plog) as plr:
                     libs_for_thread[thread] = []
                 libs_for_thread[thread].append(these_libs)
 
-
 threads = list(libs_for_thread.keys())
 # ok this is also WRONG.
 # it is assuming the 1st thread is the one you care about (which might be true if you scissored carefully)
@@ -98,19 +97,21 @@ thread = threads[0]
 n = int(len(libs_for_thread[thread]) / 2)
 libs = libs_for_thread[thread][n]
 
-
 tls = {}
+
+
 def update_tls(tq):
     if tq.HasField("unique_label_set"):
         uls = tq.unique_label_set
         tls[uls.ptr] = set([])
         for l in uls.label:
             tls[uls.ptr].add(l)
-        
+
+
 def get_module_offset(pc):
     for lib in libs:
         if pc >= lib.base_addr and pc < (lib.base_addr + lib.size):
-            return (lib.name, pc - lib.base_addr)
+            return lib.name, pc - lib.base_addr
     return None
 
 
@@ -126,8 +127,7 @@ def get_src_line(pc):
         if not (outp == "??:0"):
             return outp.decode().rstrip()
     return None
-                        
-                        
+
 
 def get_fn_offset(a2s, mod_offs):
     last_possible = None
@@ -138,14 +138,14 @@ def get_fn_offset(a2s, mod_offs):
             break
     return last_possible
 
+
 tis = set([])
 last = None
-
 
 num_opportunities = 0
 label_liveness = {}
 with PLogReader(sys.argv[1]) as plr:
-    for i,m in enumerate(plr):
+    for i, m in enumerate(plr):
         if m.HasField("tainted_branch"):
             tb = m.tainted_branch
             for tq in tb.taint_query:
@@ -155,7 +155,7 @@ with PLogReader(sys.argv[1]) as plr:
                     label_liveness[l] += 1
         if m.HasField("tainted_instr"):
             ti = m.tainted_instr
-            num_copies=0            
+            num_copies = 0
             labels = set([])
             for tq in ti.taint_query:
                 update_tls(tq)
@@ -171,10 +171,9 @@ with PLogReader(sys.argv[1]) as plr:
                     outp += " -- labels [" + (str(labels)) + "]"
                     ml = 0
                     for l in labels:
-                        ml = max(ml,label_liveness[l])
+                        ml = max(ml, label_liveness[l])
                     outp += " -- ml=%d" % ml
-                    print ("trace: instr=%d pc=%x -- %s" % (m.instr, m.pc, outp))
+                    print("trace: instr=%d pc=%x -- %s" % (m.instr, m.pc, outp))
                     last = outp
 
 print("total of %d injection opportunities" % num_opportunities)
-

@@ -10,13 +10,13 @@ except:
 try:
     import gdb
 except:
-    print "Either your gdb is not > gdb 7"
-    print "Or you are trying to run this without gdb"
-    print "Exiting . . ."
+    print("Either your gdb is not > gdb 7")
+    print("Or you are trying to run this without gdb")
+    print("Exiting . . .")
     sys.exit(1)
 
 if not ("DUA" in os.environ and "ATP" in os.environ):
-    print "Must define DUA and ATP breakpoint locations. Exiting . . ."
+    print("Must define DUA and ATP breakpoint locations. Exiting . . .")
     sys.exit(1)
 
 # bp_num is int
@@ -79,31 +79,31 @@ def event_handler (event):
         b = event.breakpoints[0]
         if b.number == 1:
             # we are at the dua
-            print "== HIT DUA, ENABLING ATP == . . ."
+            print("== HIT DUA, ENABLING ATP == . . .")
             gdb.execute("disable 1")
             gdb.execute("enable 2")
         elif b.number == 2:
             # we are at the attack point
-            print "== HIT DUA-ATP SEQUENCE, SUCCESS! =="
+            print("== HIT DUA-ATP SEQUENCE, SUCCESS! ==")
             gdb.execute("disable 2")
         elif b.location == EXIT_LOC:
-            print "At program exit normal with status:"
+            print("At program exit normal with status:")
             # status will usually be in eax variable for 32 bit systems
             # or maybe it's in $esp + 4
             gdb.execute("p $eax")
             gdb.execute("x/xw $esp+4")
-            print "DUA HITS: {}".format(get_bp_hits(1))
-            print "ATP HITS: {}".format(get_bp_hits(2))
+            print("DUA HITS: {}".format(get_bp_hits(1)))
+            print("ATP HITS: {}".format(get_bp_hits(2)))
             gdb.execute("q")
 
     def handle_sig_event ():
         if -11 == event.stop_signal:
-            print "Found a seg fault"
-            print "DUA HITS: {}".format(get_bp_hits(1))
-            print "ATP HITS: {}".format(get_bp_hits(2))
+            print("Found a seg fault")
+            print("DUA HITS: {}".format(get_bp_hits(1)))
+            print("ATP HITS: {}".format(get_bp_hits(2)))
             gdb.execute("q")
         else:
-            print "Reached unhandled signal event: {}".format(event.stop_signal)
+            print("Reached unhandled signal event: {}".format(event.stop_signal))
     # print "event handler type: stop with signal{}".format(event.stop_signal)
     # print event.breakpoints
     #launch_debug_using_ipython()

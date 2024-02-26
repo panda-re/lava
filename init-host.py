@@ -86,7 +86,7 @@ def main():
 
     # summon tar and qcow files
     if not isfile(join(TAR_DIR, basename(TAR_URL))):
-        progress("Downloading %s".format(basename(TAR_URL)))
+        progress("Downloading {}".format(basename(TAR_URL)))
         os.chdir(TAR_DIR)
         run(["wget", TAR_URL])
         os.chdir(LAVA_DIR)

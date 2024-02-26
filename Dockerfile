@@ -1,57 +1,60 @@
-ARG BASE_REPO=pandare/panda
-ARG TAG=latest
+FROM ubuntu:20.04 as builder
 
-FROM ${BASE_REPO}:${TAG}
+ENV DEBIAN_FRONTEND=noninteractive
 
-# From this point, I can imagine, everything up to 'install_ubuntu.sh' is already done.
+RUN apt-get update && apt-get install -qq -y \
+    bc \
+    build-essential \
+    cmake \
+    git \
+    inotify-tools \
+    jq \
+    libfdt-dev \
+    libjsoncpp-dev \
+    libjsoncpp1 \
+    libpq-dev \
+    postgresql \
+    python3-psycopg2 \
+    python3-sqlalchemy \
+    socat
 
-# Copy dependencies lists into container. We copy them all and then do a mv because
-# we need to transform base_image into a windows compatible filename which we can't
-# do in a COPY command.
-COPY ./dependencies/* /tmp
-COPY ./requirements.txt /tmp
+RUN apt-get update && apt-get install -qq -y \
+    wget
 
-RUN mv /tmp/$(echo "$BASE_IMAGE" | sed 's/:/_/g')_build.txt /tmp/build_dep.txt && \
-    mv /tmp/$(echo "$BASE_IMAGE" | sed 's/:/_/g')_base.txt /tmp/base_dep.txt
 
-RUN apt-get -qq -y update
+# Libodb
+RUN cd /tmp && \
+    wget http://codesynthesis.com/download/odb/2.4/odb_2.4.0-1_amd64.deb && \
+    wget http://codesynthesis.com/download/odb/2.4/libodb-2.4.0.tar.gz && \
+    wget http://codesynthesis.com/download/odb/2.4/libodb-pgsql-2.4.0.tar.gz && \
+    dpkg -i odb_2.4.0-1_amd64.deb && \
+    tar xf libodb-pgsql-2.4.0.tar.gz && \
+    tar xf libodb-2.4.0.tar.gz && \
+    cd /tmp/libodb-2.4.0 && \
+    CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' ./configure --enable-shared && \
+    make -j $(nproc) && \
+    make install && \
+    cd /tmp/libodb-pgsql-2.4.0 && \
+    CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' ./configure --enable-shared && \
+    make -j $(nproc) && \
+    make install
+# TODO in main container
+#RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/usr-local-lib.conf
+#RUN ldconfig
 
-# Base image just needs runtime dependencies
-RUN [ -e /tmp/base_dep.txt ] && \
-    apt-get -qq install -y --no-install-recommends curl $(cat /tmp/base_dep.txt | grep -o '^[^#]*') && \
-    apt-get clean
+# Build btrace
+COPY tools/btrace /tools/btrace
+RUN cd /tools/btrace && \
+    bash compile.sh
 
-# Finally: Install panda debian package, you need a version that has the Dwarf2 Plugin
-RUN curl -LJO https://github.com/panda-re/panda/releases/download/v1.8.23/pandare_22.04.deb
-RUN apt install -qq -y ./pandare_22.04.deb
-RUN pip install -r /tmp/requirements.txt
+# Build lavaTool. Depends on headers in lavaODB
+COPY tools/lavaODB /tools/lavaODB
+COPY tools/lavaTool /tools/lavaTool
+ENV LLVM_VERSION=11
+RUN cd /tools/lavaTool && \
+    echo "LLVM_VERSION=${LLVM_VERSION}" > config.mak && \
+    cmake -Bbuild -H. -DCMAKE_INSTALL_PREFIX=/tools/install
 
-### BUILD IMAGE - STAGE 2
-FROM base AS builder
-ARG BASE_IMAGE
-
-RUN apt-get -qq -y update
-RUN [ -e /tmp/build_dep.txt ] && \
-    apt-get install -y --no-install-recommends $(cat /tmp/build_dep.txt | grep -o '^[^#]*') && \
-    apt-get clean
-
-#### Develop setup: panda built + pypanda installed (in develop mode) - Stage 3
-FROM builder as developer
-
-COPY ./tools/ /tools
-COPY ./scripts /scripts
-COPY setup_container.sh /setup_container.sh
-
-# Effectively the same as setup_container.sh
-RUN cd /tools/btrace && ./compile.sh
-
-RUN rm -rf /tools/build
-RUN mkdir -p /tools/build
-RUN mkdir -p /tools/install
-
-RUN cmake -B"/tools/build" -H"/tools" -DCMAKE_INSTALL_PREFIX="/tools/install"
-RUN make --no-print-directory -j4 install -C "/tools/build/lavaTool"
-
-RUN make --no-print-directory -j4 install -C "/tools/build/fbi"
-
-# Outside your container, you need to setup your postgres and init-host settings
+RUN cd /tools/lavaTool/build && \
+    make && \
+    make install V=1
