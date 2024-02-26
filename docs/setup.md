@@ -15,3 +15,10 @@ The following install steps worked on 6/29/2019 with LAVA commit [c55bf1826ef985
 - `git clone https://github.com/panda-re/lava.git`
 - `cd ~/Desktop/lava`
 - `python2 setup.py`
+
+## Updated
+
+- build Docker container with `docker/Dockerfile`
+- use `scripts/docker-shell.sh` to enter docker container
+- inside Docker container, run `python setup_container.py` to build lavaTools
+- exit Docker container, and run `python setup_postgres.py` and `init-host.py`
