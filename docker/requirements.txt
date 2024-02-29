@@ -8,6 +8,6 @@ pexpect==3.2
 psutil==5.6.6
 ipython==2.3.0
 colorama==0.3.2
-numpy==1.8.2
+numpy==1.22.0
 argparse==1.2.1
 subprocess32==3.2.6
