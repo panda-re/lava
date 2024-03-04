@@ -102,13 +102,13 @@ def run_modified_program(install_dir, input_file, timeout, rr=False, rr_dir=""):
             print "cmd: [{} {} {}]".format(rr_env, libpath_env, cmd)
             print "{} ps {}".format(RR, rr_dir)
             sys.exit(1)
-        return (rc, outp[1:])
+        return rc, outp[1:]
     else:
-        return (rc, outp)
+        return rc, outp
 
 def confirm_bug_in_executable(install_dir):
     cmd = project['command'].format(install_dir=install_dir,input_file="foo")
-    nm_cmd = ('nm {}').format(cmd.split()[0])
+    nm_cmd = 'nm {}'.format(cmd.split()[0])
 
     (exitcode, output) = run_cmd_notimeout(nm_cmd, None, {})
     if exitcode != 0:

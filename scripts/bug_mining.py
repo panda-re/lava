@@ -1,10 +1,10 @@
-'''
+"""
 This script assumes you have already done src-to-src transformation with
 lavaTool to add taint and attack point queries to a program, AND managed to
 json project file.
 
-Second arg is input file you want to run, under panda, to get taint info.
-'''
+Second arg is an input file you want to run, under panda, to get taint info.
+"""
 
 from __future__ import print_function
 
@@ -33,13 +33,13 @@ from lava import LavaDatabase
 
 from vars import parse_vars
 
-
 debug = True
 qemu_use_rr = False
 
 start_time = 0
-version="2.0.0"
-curtail=0
+version = "2.0.0"
+curtail = 0
+
 
 def tick():
     global start_time
@@ -66,7 +66,7 @@ def progress(msg):
 
 
 if len(sys.argv) < 4:
-    print ("Bug mining script version {}".format(version))
+    print("Bug mining script version {}".format(version))
     print("Usage: python bug_mining.py host.json project_name inputfile",
           file=sys.stderr)
     sys.exit(1)
@@ -83,14 +83,14 @@ input_file_base = os.path.basename(input_file)
 print("bug_mining.py %s %s" % (project_name, input_file))
 
 if len(sys.argv) > 4:
-    #global curtail
+    # global curtail
     curtail = int(sys.argv[4])
 
 qemu_path = project['qemu']
 qemu_build_dir = dirname(dirname(abspath(qemu_path)))
 src_path = None
 
-print ("{}".format(join(qemu_build_dir, 'config-host.mak')))
+print("{}".format(join(qemu_build_dir, 'config-host.mak')))
 
 with open(join(qemu_build_dir, 'config-host.mak')) as config_host:
     for line in config_host:
@@ -190,12 +190,12 @@ qemu_args = [
     '-pandalog', pandalog, '-os', panda_os_string
 ]
 
-for plugin, plugin_args in panda_args.iteritems():
+for plugin, plugin_args in panda_args.items():
     qemu_args.append('-panda')
     arg_string = ",".join(["{}={}".format(arg, val)
-                           for arg, val in plugin_args.iteritems()])
+                           for arg, val in plugin_args.items()])
     qemu_args.append('{}{}{}'.format(plugin, ':'
-                                     if arg_string else '', arg_string))
+    if arg_string else '', arg_string))
 
 # Use -panda-plugin-arg to account for commas and colons in filename.
 qemu_args.extend(['-panda-arg', 'file_taint:filename=' + input_file_guest])
@@ -220,7 +220,7 @@ tick()
 progress("Trying to create database {}...".format(project['name']))
 createdb_args = ['createdb', '-U', 'postgres', '-h', 'database', project['db']]
 createdb_result = subprocess.call(createdb_args,
-                                    stdout=sys.stdout, stderr=sys.stderr)
+                                  stdout=sys.stdout, stderr=sys.stderr)
 
 print()
 if createdb_result == 0:  # Created new DB; now populate
@@ -242,8 +242,8 @@ fbi_args = [join(lavadir, 'tools', 'install', 'bin', 'fbi'), host_json,
             project_name, pandalog, input_file_base]
 
 # Command line curtial argument takes priority, otherwise use project specific one
-#global curtail
-if curtail !=0 :
+# global curtail
+if curtail != 0:
     fbi_args.append(str(curtail))
 elif "curtail" in project:
     fbi_args.append(str(project.get("curtail", 0)))
@@ -253,13 +253,12 @@ sys.stdout.flush()
 try:
     subprocess.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
 except subprocess.CalledProcessError as e:
-    print("FBI Failed. Possible causes: \n"+
-        "\tNo DUAs found because taint analysis failed: \n"
-        "\t\t Ensure PANDA 'saw open of file we want to taint'\n"
-        "\t\t Make sure target has debug symbols (version2): No 'failed DWARF loading' messages\n"
-        "\tFBI crashed (bad arguments, config, or other untested code)")
+    print("FBI Failed. Possible causes: \n" +
+          "\tNo DUAs found because taint analysis failed: \n"
+          "\t\t Ensure PANDA 'saw open of file we want to taint'\n"
+          "\t\t Make sure target has debug symbols (version2): No 'failed DWARF loading' messages\n"
+          "\tFBI crashed (bad arguments, config, or other untested code)")
     raise e
-
 
 print()
 progress("Found Bugs, Injectable!!")
@@ -274,7 +273,6 @@ print("Count\tBug Type Num\tName")
 for i in range(len(Bug.type_strings)):
     n = db.session.query(Bug).filter(Bug.type == i).count()
     print("%d\t%d\t%s" % (n, i, Bug.type_strings[i]))
-
 
 print("total dua:", db.session.query(Dua).count())
 print("total atp:", db.session.query(AttackPoint).count())

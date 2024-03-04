@@ -4,6 +4,7 @@ import sys
 import shutil
 import tempfile
 
+
 def modify_sources_list():
     def replacer_fn(line):
         return line.replace("# deb-src", "deb-src").replace("#deb-src", "deb-src")
@@ -17,8 +18,9 @@ def modify_sources_list():
     shutil.copy(t, "/etc/apt/sources.list")
     os.remove(t)
 
+
 if __name__ == "__main__":
     if os.getuid() != 0:
-        print "Must run {} as sudo or root".format(sys.argv[0])
+        print("Must run {} as sudo or root".format(sys.argv[0]))
         exit(1)
     modify_sources_list()

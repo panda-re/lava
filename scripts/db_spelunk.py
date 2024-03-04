@@ -135,7 +135,7 @@ for i in range(1+len(tcns)):
     for j in range(1+len(livs)):
         liv_interval = get_interval(j, livs)
         ys = "y=u"
-        if (totals[i][j] > 0):
+        if totals[i][j] > 0:
             nsf = 0
             if -11 in counts[i][j]:
                 nsf = counts[i][j][-11]

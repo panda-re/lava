@@ -215,13 +215,13 @@ def main():
     parser.add_argument('-l', '--buglist', action="store", default=False,
             help = 'Inject this list of bugs')
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
-            help = ('Expected exit code when program exits without crashing. Default 0'))
+                        help ='Expected exit code when program exits without crashing. Default 0')
     #parser.add_argument('-i', '--diversify', action="store_true", default=False,
             #help = ('Diversify source code. Default false.'))
-    parser.add_argument('-c', '--chaff', action="store_true", default=False, # TODO chaf and unvalided bugs aren't always the same thing
-            help = ('Leave unvalidated bugs in the binary'))
+    parser.add_argument('-c', '--chaff', action="store_true", default=False,  # TODO chaf and unvalided bugs aren't always the same thing
+                        help ='Leave unvalidated bugs in the binary')
     parser.add_argument('-t', '--bugtypes', action="store", default="rel_write",
-                        help = ('bug types to inject'))
+                        help ='bug types to inject')
     parser.add_argument('--version', action="version", version="%(prog)s {}".format(version))
 
     args = parser.parse_args()

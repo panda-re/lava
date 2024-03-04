@@ -11,8 +11,8 @@ debug = False
 def run_cmd(args, cw_dir):
     if debug:
         if not (cw_dir is None):
-            print "cwd " + (str(cw_dir))
-        print "run_cmd " + (str(args))
+            print("cwd " + (str(cw_dir)))
+        print("run_cmd " + (str(args)))
     p = subprocess.Popen(args, cwd=cw_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return p.communicate()
 

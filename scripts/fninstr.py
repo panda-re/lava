@@ -36,7 +36,7 @@ def parse_fundecl(fd):
         ext = fd['extern']
     else:
         ext = None
-    return (ext, ret_type, params)
+    return ext, ret_type, params
 
 
 def check_start_end(x):
@@ -45,7 +45,7 @@ def check_start_end(x):
     f1 = start.split(":")[0]
     f2 = end.split(":")[0]
     assert (f1 == f2)
-    return (f1, start, end, start==end)
+    return f1, start, end, start == end
 
 
 class Function:
