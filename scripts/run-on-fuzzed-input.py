@@ -5,7 +5,7 @@ import json
 import lockfile
 import os
 import string
-import subprocess32
+import subprocess
 import sys
 import time
 import difflib
@@ -64,7 +64,7 @@ def get_suffix(fn):
 
 def run(args, **kwargs):
     print "run(", " ".join(args), ")"
-    subprocess32.check_call(args, cwd=bugs_build,
+    subprocess.check_call(args, cwd=bugs_build,
             stdout=sys.stdout, stderr=sys.stderr, **kwargs)
 
 def exit_error(msg):
@@ -385,7 +385,7 @@ if __name__ == "__main__":
     if 'source_root' in project:
         source_root = project['source_root']
     else:
-        tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
+        tar_files = subprocess.check_output(['tar', 'tf', project['tarfile']], stderr=sys.stderr)
         source_root = tar_files.splitlines()[0].split(os.path.sep)[0]
 
     queries_build = join(top_dir, source_root)

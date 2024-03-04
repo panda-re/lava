@@ -1,7 +1,7 @@
 import os 
 import re
 import glob
-import subprocess32
+import subprocess
 
 # analyze klocwork results
 # to determine if it is ever actually finding any of the LAVA bugs
@@ -13,7 +13,7 @@ def run_cmd(args, cw_dir):
         if not (cw_dir is None):
             print "cwd " + (str(cw_dir))
         print "run_cmd " + (str(args))
-    p = subprocess32.Popen(args, cwd=cw_dir, stdout=subprocess32.PIPE, stderr=subprocess32.PIPE)
+    p = subprocess.Popen(args, cwd=cw_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return p.communicate()
 
 

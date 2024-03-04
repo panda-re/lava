@@ -13,7 +13,7 @@ import shutil
 import signal
 import string
 import stat
-import subprocess32
+import subprocess
 import sys
 import time
 import random
@@ -336,13 +336,13 @@ def main():
 
 
     corpus_dir = join(compdir, "corpora")
-    subprocess32.check_call(["mkdir", "-p", corpus_dir])
+    subprocess.check_call(["mkdir", "-p", corpus_dir])
 
     # original bugs src dir
     # directory for this corpus
     corpname = "lava-corpus-" + ((datetime.datetime.now()).strftime("%Y-%m-%d-%H-%M-%S"))
     corpdir = join(corpus_dir,corpname)
-    subprocess32.check_call(["mkdir", corpdir])
+    subprocess.check_call(["mkdir", corpdir])
 
     lava_bd = join(lp.bugs_parent, lp.source_root)
 
@@ -411,7 +411,7 @@ def main():
             print(o)
         if rv == 0:
             print('build succeeded')
-            subprocess32.check_call(project['install'], cwd=lp.bugs_build, shell=True)
+            subprocess.check_call(project['install'], cwd=lp.bugs_build, shell=True)
             if 'post_install' in project:
                 check_call(project['post_install'], cwd=lp.bugs_build, shell=True)
         else:
@@ -437,7 +437,7 @@ def main():
 
     # subdir with trigger inputs
     inputsdir = join(corpdir, "inputs")
-    subprocess32.check_call(["mkdir", inputsdir])
+    subprocess.check_call(["mkdir", inputsdir])
     # subdir with src -- note we can't create it or copytree will fail!
     srcdir = join(corpdir, "src")
     # copy src
@@ -470,7 +470,7 @@ def main():
     os.chdir(srcdir)
     try:
         # Unconfigure
-        subprocess32.check_call(["make", "distclean"])
+        subprocess.check_call(["make", "distclean"])
     except:
         pass
 
@@ -489,7 +489,7 @@ def main():
     #tarball = join(srcdir + ".tgz")
     #os.chdir(corpdir)
     #cmd = "/bin/tar czvf " + tarball + " src"
-    #subprocess32.check_call(cmd.split())
+    #subprocess.check_call(cmd.split())
     #print "created corpus tarball " + tarball + "\n";
 
     #lp.bugs_install = join(corpdir,"lava-install") # Change to be in our corpdir

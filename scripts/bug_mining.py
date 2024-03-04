@@ -14,7 +14,7 @@ import time
 import pipes
 import shlex
 import shutil
-import subprocess32
+import subprocess
 
 from colorama import Fore
 from colorama import Style
@@ -115,7 +115,7 @@ progress("Entering {}".format(project['output_dir']))
 
 os.chdir(os.path.join(project['output_dir']))
 
-tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']])
+tar_files = subprocess.check_output(['tar', 'tf', project['tarfile']])
 sourcedir = tar_files.splitlines()[0].split(os.path.sep)[0]
 sourcedir = abspath(sourcedir)
 
@@ -200,14 +200,14 @@ for plugin, plugin_args in panda_args.iteritems():
 # Use -panda-plugin-arg to account for commas and colons in filename.
 qemu_args.extend(['-panda-arg', 'file_taint:filename=' + input_file_guest])
 
-dprint("qemu args: [{}]".format(subprocess32.list2cmdline(qemu_args)))
+dprint("qemu args: [{}]".format(subprocess.list2cmdline(qemu_args)))
 sys.stdout.flush()
 try:
-    subprocess32.check_call(qemu_args, stderr=subprocess32.STDOUT)
-except subprocess32.CalledProcessError:
+    subprocess.check_call(qemu_args, stderr=subprocess.STDOUT)
+except subprocess.CalledProcessError:
     if qemu_use_rr:
         qemu_args = ['rr', 'record', project['qemu'], '-replay', isoname]
-        subprocess32.check_call(qemu_args)
+        subprocess.check_call(qemu_args)
     else:
         raise
 
@@ -219,7 +219,7 @@ tick()
 
 progress("Trying to create database {}...".format(project['name']))
 createdb_args = ['createdb', '-U', 'postgres', '-h', 'database', project['db']]
-createdb_result = subprocess32.call(createdb_args,
+createdb_result = subprocess.call(createdb_args,
                                     stdout=sys.stdout, stderr=sys.stderr)
 
 print()
@@ -230,7 +230,7 @@ if createdb_result == 0:  # Created new DB; now populate
     psql_args = ['psql', '-U', 'postgres', '-h', 'database', '-d', project['db'],
                  '-f', join(join(lavadir, 'fbi'), 'lava.sql')]
     dprint("psql invocation: [%s]" % (" ".join(psql_args)))
-    subprocess32.check_call(psql_args, stdout=sys.stdout, stderr=sys.stderr)
+    subprocess.check_call(psql_args, stdout=sys.stdout, stderr=sys.stderr)
 else:
     progress("Database already exists.")
 
@@ -248,11 +248,11 @@ if curtail !=0 :
 elif "curtail" in project:
     fbi_args.append(str(project.get("curtail", 0)))
 
-dprint("fbi invocation: [%s]" % (subprocess32.list2cmdline(fbi_args)))
+dprint("fbi invocation: [%s]" % (subprocess.list2cmdline(fbi_args)))
 sys.stdout.flush()
 try:
-    subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
-except subprocess32.CalledProcessError as e:
+    subprocess.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
+except subprocess.CalledProcessError as e:
     print("FBI Failed. Possible causes: \n"+
         "\tNo DUAs found because taint analysis failed: \n"
         "\t\t Ensure PANDA 'saw open of file we want to taint'\n"

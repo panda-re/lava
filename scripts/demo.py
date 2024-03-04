@@ -5,7 +5,7 @@ import time
 import json
 import sys
 import curses
-import subprocess32 as sb
+import subprocess as sb
 
 from os.path import basename, join
 from random import random, randrange

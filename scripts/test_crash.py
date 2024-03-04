@@ -1,6 +1,6 @@
 import argparse
 import json
-import subprocess32
+import subprocess
 from os import system
 
 def process_crash(buf):
@@ -34,11 +34,11 @@ def main(args):
 
     command = project["command"].format(install_dir=args.install_dir, input_file = args.input)
 
-    p = subprocess32.Popen(command, cwd=None, env=None, stdout=subprocess32.PIPE, stderr=subprocess32.PIPE, shell=True)
+    p = subprocess.Popen(command, cwd=None, env=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     timeout=10
     try:
         stdout, stderr = p.communicate(timeout=timeout) # returns tuple (stdout, stderr)
-    except subprocess32.TimeoutExpired:
+    except subprocess.TimeoutExpired:
         print("Killing process due to timeout expiration.")
         p.terminate()
 

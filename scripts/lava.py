@@ -7,7 +7,7 @@ import math
 import shlex
 import struct
 import random
-import subprocess32
+import subprocess
 
 from os.path import join
 from os.path import dirname
@@ -35,8 +35,8 @@ from sqlalchemy.ext.declarative import declarative_base
 
 from time import sleep
 
-from subprocess32 import PIPE
-from subprocess32 import check_call
+from subprocess import PIPE
+from subprocess import check_call
 
 from composite import Composite
 
@@ -387,7 +387,7 @@ def run_cmd(cmd, envv=None, timeout=30, cwd=None, rr=False, shell=False):
                                    for k, v in envv.iteritems()])
         if type(cmd) == list:
             print("run_cmd(" + env_string + " " +
-                  subprocess32.list2cmdline(cmd) + ")")
+                  subprocess.list2cmdline(cmd) + ")")
         else:
             print("run_cmd(" + env_string + " " +
                     cmd + ")")
@@ -397,14 +397,14 @@ def run_cmd(cmd, envv=None, timeout=30, cwd=None, rr=False, shell=False):
         for k, v in envv.items():
             merged_env[k] = v
 
-    p = subprocess32.Popen(cmd, cwd=cwd, env=merged_env, stdout=PIPE,
+    p = subprocess.Popen(cmd, cwd=cwd, env=merged_env, stdout=PIPE,
                            stderr=PIPE, shell=shell)
     try:
         # returns tuple (stdout, stderr)
         output = p.communicate(timeout=timeout)
         if debugging:
             print("Run_cmd output: {}".format(repr(output[1])))
-    except subprocess32.TimeoutExpired:
+    except subprocess.TimeoutExpired:
         print("Killing process due to timeout expiration.")
         p.terminate()
         return (-9, ("", "timeout expired"))
@@ -577,7 +577,7 @@ class LavaPaths(object):
         if 'source_root' in project:
             self.source_root = project['source_root']
         else:
-            tar_files = subprocess32.check_output(['tar', 'tf',
+            tar_files = subprocess.check_output(['tar', 'tf',
                                                    project['tarfile']],
                                                   stderr=sys.stderr)
             self.source_root = tar_files.splitlines()[0].split(os.path.sep)[0]
@@ -684,7 +684,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
     # Make sure directories and btrace is ready for bug injection.
     def run(args, **kwargs):
-        print("run(", subprocess32.list2cmdline(args), ")")
+        print("run(", subprocess.list2cmdline(args), ")")
         check_call(args, cwd=lp.bugs_build, **kwargs)
     if not os.path.isdir(lp.bugs_build):
         print("Untarring...")
@@ -769,7 +769,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
             run(['find', '.', '-name', '*.[ch]', '-exec',
                  'git', 'add', '-f', '{}', ';'])
             run(['git', 'commit', '-m', 'Adding source files'])
-        except subprocess32.CalledProcessError:
+        except subprocess.CalledProcessError:
             pass
 
         # Here we run make install but it may also run again later
@@ -784,7 +784,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         try:
             run(['git', 'commit', '-m',
                  'Adding any make-generated source files'])
-        except subprocess32.CalledProcessError:
+        except subprocess.CalledProcessError:
             pass
 
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
