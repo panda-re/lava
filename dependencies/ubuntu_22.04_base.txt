@@ -1,1 +1,1 @@
-# lava dependencies
+# lava dependencies, needed to run LAVA
