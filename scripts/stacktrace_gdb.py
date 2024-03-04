@@ -2,8 +2,10 @@ import sys
 import os
 import re
 from threading import Thread
+
 try:
     from IPython.kernel.zmq.kernelapp import IPKernelApp
+
     ZMQ = True
 except:
     # had trouble finding kernel.zmq.  Try:
@@ -12,10 +14,11 @@ except:
 try:
     import gdb
 except:
-    print "Either your gdb is not > gdb 7"
-    print "Or you are trying to run this without gdb"
-    print "Exiting . . ."
+    print("Either your gdb is not > gdb 7")
+    print("Or you are trying to run this without gdb")
+    print("Exiting . . .")
     sys.exit(1)
+
 
 def launch_debug_using_ipython():
     # run this from a gdb session in order to create a 
@@ -49,37 +52,40 @@ def launch_debug_using_ipython():
         of the gdb session
         """
 
+
 class Exit_Breakpoint(gdb.Breakpoint):
     def stop(self):
         ret_data = gdb.execute("info arg", to_string=True)
         ret_code = int(ret_data.split(" = ")[1])
-        print "Program exited normal with status: {}".format(ret_code)
+        print("Program exited normal with status: {}".format(ret_code))
         gdb.execute("q")
 
-def event_handler (event):
-    def handle_sig_event (event):
+
+def event_handler(event):
+    def handle_sig_event(event):
         if isinstance(event, gdb.SignalEvent):
             if event.stop_signal in ["SIGSEGV", "SIGABRT"]:
-                print "Found a SIG {}".format(event.stop_signal)
-                #print gdb.execute("p $_siginfo._sifields._sigfault.si_addr",
+                print("Found a SIG {}".format(event.stop_signal))
+                # print gdb.execute("p $_siginfo._sifields._sigfault.si_addr",
                 #            to_string=True)
-                #print gdb.execute("info proc mappings", to_string=True)
+                # print gdb.execute("info proc mappings", to_string=True)
                 gdb.execute("bt")
                 gdb.execute("p/x $eip")
                 gdb.execute("q")
             else:
                 # print "Instruction Count = {}".format(get_instr_count())
-                print "Reached unhandled signal event: {}".format(event.stop_signal)
-                print "Exiting . . ."
+                print("Reached unhandled signal event: {}".format(event.stop_signal))
+                print("Exiting . . .")
                 gdb.execute("q")
 
     if isinstance(event, gdb.SignalEvent):
         handle_sig_event(event)
     # assume we get here from beginning of rr thread stop point
     elif isinstance(event, gdb.StopEvent):
-        print "Reached unhandled stop event: {}".format(event)
-        print "Exiting . . ."
+        print("Reached unhandled stop event: {}".format(event))
+        print("Exiting . . .")
         gdb.execute("q")
+
 
 gdb.execute("set breakpoint pending on", to_string=True)
 gdb.execute("set pagination off", to_string=True)
