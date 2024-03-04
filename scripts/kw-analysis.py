@@ -33,10 +33,10 @@ for branch_name in branch_names:
     if foo:
         bugs.append(foo.groups()[0])
 
-print "found %d bugs in repo" % (len(bugs))
+print("found %d bugs in repo" % (len(bugs)))
 
 for bug in bugs:
-    print "bug %s: " % bug, 
+    print("bug %s: " % bug)
     run_cmd(['git', 'checkout', bug], gitdir)
     # check out that bug and find file / line for lava_get
     srcfiles = glob.glob("%s/src/*.[ch]" % gitdir)
@@ -44,7 +44,7 @@ for bug in bugs:
         (output, bar) = run_cmd(['grep', '-n', 'lava_get()', srcfile], None)
         if output:
             line = int(output.split(':')[0])
-            print "truth: %d: %s" % (line, srcfile)
+            print("truth: %d: %s" % (line, srcfile))
             (p,fn) = os.path.split(srcfile)
             (out2, bar) = run_cmd(['grep', fn, "%s/bug-%s-kw.out" % (kwd, bug)], kwd)
 #            print out2
@@ -52,7 +52,7 @@ for bug in bugs:
             for o in out2.split("\n"):
                 foo2 = re.search("^[0-9]+ \(Local\) [^:]+:([0-9]+) (.*)$", o)
                 if foo2:
-                    print "  kw: " + o
+                    print("  kw: " + o)
                     kw_line = int(foo2.groups()[0])
                     kw_reason = foo2.groups()[1]
 #                    print "kwres: %d: %s" % (kw_line, kw_reason)
@@ -60,9 +60,6 @@ for bug in bugs:
                         correct = True
                         break
             if correct:
-                print "SUCCESS"
+                print("SUCCESS")
             else:
-                print "FAILURE"
-
-
-
+                print("FAILURE")

@@ -71,8 +71,8 @@ with open(trigger_all_crashes, "w") as build:
     popd
     """.format(command=project['command'].format(
         **{"install_dir": join(corpdir, "lava-install-internal"), "input_file": "$fname"}),
-               # This syntax is weird but only thing that works?
-               corpdir=corpdir,
-               librarydir=join(corpdir, "lava-install-internal", "lib"),
-               inputdir=join(corpdir, "inputs")
-               ))
+        # This syntax is weird but only thing that works?
+        corpdir=corpdir,
+        librarydir=join(corpdir, "lava-install-internal", "lib"),
+        inputdir=join(corpdir, "inputs")
+    ))
