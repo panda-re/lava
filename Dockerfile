@@ -1,62 +1,45 @@
-FROM ubuntu:20.04 as builder
+ARG BASE_IMAGE="ubuntu:20.04"
+
+### BASE IMAGE
+FROM $BASE_IMAGE as base
+ARG BASE_IMAGE
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV LLVM_DIR=/usr/lib/llvm-11
 
-RUN apt-get update && apt-get install -qq -y \
-    bc \
-    build-essential \
-    clang-tools-11 \
-    cmake \
-    git \
-    inotify-tools \
-    jq \
-    libclang-11-dev \
-    libfdt-dev \
-    libjsoncpp-dev \
-    libjsoncpp1 \
-    libpq-dev \
-    llvm-11-dev \
-    postgresql \
-    python3-psycopg2 \
-    python3-sqlalchemy \
-    socat \
-    wget
+# Copy dependencies lists into container. We copy them all and then do a mv because
+# we need to transform base_image into a windows compatible filename which we can't
+# do in a COPY command.
+COPY ./dependencies/* /tmp
+RUN mv /tmp/$(echo "$BASE_IMAGE" | sed 's/:/_/g')_build.txt /tmp/build_dep.txt && \
+    mv /tmp/$(echo "$BASE_IMAGE" | sed 's/:/_/g')_base.txt /tmp/base_dep.txt
 
-# Step 1: Install panda debian package, you need a version that has Dwarf2 Plugin
+# Base image just needs runtime dependencies
+RUN [ -e /tmp/base_dep.txt ] && \
+    apt-get -qq update && \
+    apt-get -qq install -y --no-install-recommends curl $(cat /tmp/base_dep.txt | grep -o '^[^#]*') && \
+    apt-get clean
+
+# Finally: Install panda debian package, you need a version that has the Dwarf2 Plugin
 RUN wget https://github.com/panda-re/panda/releases/download/v1.8.23/pandare_20.04.deb
 RUN command apt install -qq -y ./pandare_20.04.deb
 RUN pip install pandare
 
-# Libodb
-RUN cd /tmp && \
-    wget http://codesynthesis.com/download/odb/2.4/odb_2.4.0-1_amd64.deb && \
-    wget http://codesynthesis.com/download/odb/2.4/libodb-2.4.0.tar.gz && \
-    wget http://codesynthesis.com/download/odb/2.4/libodb-pgsql-2.4.0.tar.gz && \
-    dpkg -i odb_2.4.0-1_amd64.deb && \
-    tar xf libodb-pgsql-2.4.0.tar.gz && \
-    tar xf libodb-2.4.0.tar.gz && \
-    cd /tmp/libodb-2.4.0 && \
-    CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' ./configure --enable-shared && \
-    make -j $(nproc) && \
-    make install && \
-    cd /tmp/libodb-pgsql-2.4.0 && \
-    CXXFLAGS='-D_GLIBCXX_USE_CXX11_ABI=0' ./configure --enable-shared && \
-    make -j $(nproc) && \
-    make install
-# TODO in main container
-#RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/usr-local-lib.conf
-#RUN ldconfig
+### BUILD IMAGE - STAGE 2
+FROM base AS builder
+ARG BASE_IMAGE
 
-# Build btrace
-COPY tools/btrace /tools/btrace
-RUN cd /tools/btrace && \
-    bash compile.sh
+RUN [ -e /tmp/build_dep.txt ] && \
+    apt-get -qq update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $(cat /tmp/build_dep.txt | grep -o '^[^#]*') && \
+    apt-get clean
 
-# Build lavaTool. Depends on headers in lavaODB and tools/lavaDB
-#COPY tools/lavaODB/ tools/lavaDB/ tools/lavaTool/ /tools/
-COPY tools/ /tools
+#### Develop setup: panda built + pypanda installed (in develop mode) - Stage 3
+FROM builder as developer
+
+COPY ./tools/ /tools
 COPY setup_container.py /
-ENV LLVM_DIR=/usr/lib/llvm-11
+
 RUN python3 setup_container.py
 
 # RUN cd /tools && \

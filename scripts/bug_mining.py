@@ -32,6 +32,18 @@ from lava import AttackPoint
 from lava import LavaDatabase
 
 from vars import parse_vars
+from os.path import abspath, join
+from pandare import Panda
+
+host_json = abspath(sys.argv[1])
+project_name = sys.argv[2]
+
+project = parse_vars(host_json, project_name)
+qemu_path = project['qemu']
+
+panda = Panda(arch=qemu_path.split('-')[-1],
+              generic=qemu_path.split('-')[-1],
+              expect_prompt=project['expect_prompt'])
 
 debug = True
 qemu_use_rr = False
@@ -40,17 +52,26 @@ start_time = 0
 version = "2.0.0"
 curtail = 0
 
+installdir = None
+isoname = None
+command_args = None
 
-# Replace
-# https://github.com/panda-re/panda/blob/dev/panda/scripts/run_guest.py
+# Replace create_recording in first link
+# https://github.com/panda-re/panda/blob/dev/panda/scripts/run_guest.py#L151-L189
 # https://docs.panda.re/#recordings
 # https://github.com/panda-re/panda/blob/dev/panda/python/core/pandare/panda.py#L2595-L2645
-def create_recording(qemu_path_name, command, copy_directory, iso_name):
-    # I assume qemu_path is just 'panda-system-i386', `panda-system-x86_64`, etc.
-    from pandare import Panda
-    panda = Panda(arch=qemu_path_name.split('-')[-1])
-    guest_command = subprocess.list2cmdline(command)
-    panda.record_cmd(guest_command=guest_command, copy_directory=copy_directory, iso_name=iso_name)
+@panda.queue_blocking
+def create_recording():
+    # I assume qemu_path is just 'panda-system-i386', `panda-system-x86_64`, etc
+    global command_args 
+    global installdir
+    global isoname
+    print("args", command_args)
+    print("install dir", installdir)
+    print("isoname", isoname)
+    guest_command = subprocess.list2cmdline(command_args)
+    panda.record_cmd(guest_command=guest_command, copy_directory=installdir, iso_name=isoname)
+    panda.stop_run()
 
 
 def tick():
@@ -85,37 +106,15 @@ if len(sys.argv) < 4:
 
 tick()
 
-host_json = abspath(sys.argv[1])
-project_name = sys.argv[2]
 
-project = parse_vars(host_json, project_name)
 
 input_file = abspath(project["config_dir"] + "/" + sys.argv[3])
 input_file_base = os.path.basename(input_file)
 print("bug_mining.py %s %s" % (project_name, input_file))
 
 if len(sys.argv) > 4:
-    #global curtail
+    # global curtail
     curtail = int(sys.argv[4])
-
-qemu_path = project['qemu']
-qemu_build_dir = dirname(dirname(abspath(qemu_path)))
-src_path = None
-
-print("{}".format(join(qemu_build_dir, 'config-host.mak')))
-
-with open(join(qemu_build_dir, 'config-host.mak')) as config_host:
-    for line in config_host:
-        var, sep, value = line.strip().partition('=')
-        if var == 'SRC_PATH':
-            src_path = value
-            break
-assert src_path
-panda_scripts_dir = join(src_path, 'panda', 'scripts')
-sys.path.append(panda_scripts_dir)
-
-
-from os.path import abspath, join
 
 chaff = project.get('chaff', False)
 
@@ -128,7 +127,7 @@ progress("Entering {}".format(project['output_dir']))
 
 os.chdir(os.path.join(project['output_dir']))
 
-tar_files = subprocess.check_output(['tar', 'tf', project['tarfile']])
+tar_files = subprocess.check_output(['tar', 'tf', project['tarfile']]).decode('utf-8')
 sourcedir = tar_files.splitlines()[0].split(os.path.sep)[0]
 sourcedir = abspath(sourcedir)
 
@@ -142,7 +141,7 @@ command_args = shlex.split(project['command'].format(
     input_file=input_file_guest))
 shutil.copy(input_file, installdir)
 
-create_recording(qemu_path, command_args, copy_directory=installdir, iso_name=isoname)
+panda.run()
 
 try:
     os.mkdir('inputs')
@@ -166,8 +165,8 @@ if command_args[0].startswith('LD_PRELOAD'):
 else:
     proc_name = basename(command_args[0])
 
-pandalog = "{}/queries-{}.plog".format(project['output_dir'],
-                                       os.path.basename(isoname))
+pandalog = "{}/queries-{}.plog".format(project['output_dir'], os.path.basename(isoname))
+pandalog_json = "{}/queries-{}.json".format(project['output_dir'], os.path.basename(isoname))
 
 print("pandalog = [%s] " % pandalog)
 
@@ -201,10 +200,10 @@ qemu_args = [
     '-pandalog', pandalog, '-os', panda_os_string
 ]
 
-for plugin, plugin_args in panda_args.iteritems():
+for plugin, plugin_args in panda_args.items():
     qemu_args.append('-panda')
     arg_string = ",".join(["{}={}".format(arg, val)
-                           for arg, val in plugin_args.iteritems()])
+                           for arg, val in plugin_args.items()])
     qemu_args.append('{}{}{}'.format(plugin, ':'
     if arg_string else '', arg_string))
 
@@ -228,33 +227,24 @@ sys.stdout.flush()
 
 tick()
 
-progress("Trying to create database {}...".format(project['name']))
-createdb_args = ['createdb', '-U', 'postgres', '-h', 'database', project['db']]
-createdb_result = subprocess.call(createdb_args,
-                                  stdout=sys.stdout, stderr=sys.stderr)
-
-print()
-if createdb_result == 0:  # Created new DB; now populate
-    progress("Database created. Initializing...")
-    # psql_args = ['psql', '-U', 'postgres', '-d', project['db'],
-    # '-f', join(join(lavadir, 'include'), 'lava.sql')]
-    psql_args = ['psql', '-U', 'postgres', '-h', 'database', '-d', project['db'],
-                 '-f', join(join(lavadir, 'fbi'), 'lava.sql')]
-    dprint("psql invocation: [%s]" % (" ".join(psql_args)))
-    subprocess.check_call(psql_args, stdout=sys.stdout, stderr=sys.stderr)
-else:
-    progress("Database already exists.")
-
-print()
 progress("Calling the FBI on queries.plog...")
+convert_json_args = ['python3', '-m', 'pandare.plog_reader', pandalog]
+print("panda log JSON invocation: [%s]" % (subprocess.list2cmdline(convert_json_args)))
+try:
+    with open(pandalog_json, 'wb') as fd:
+        subprocess.check_call(convert_json_args, stdout=fd, stderr=sys.stderr)
+except subprocess.CalledProcessError as e:
+    print("The script to convert the panda log into JSON has failed")
+    raise e
+
 # fbi_args = [join(lavadir, 'fbi', 'fbi'),
 # project_file, pandalog, input_file_base]
 fbi_args = [join(lavadir, 'tools', 'install', 'bin', 'fbi'), host_json,
-            project_name, pandalog, input_file_base]
+            project_name, pandalog_json, input_file_base]
 
 # Command line curtial argument takes priority, otherwise use project specific one
-#global curtail
-if curtail !=0 :
+# global curtail
+if curtail != 0:
     fbi_args.append(str(curtail))
 elif "curtail" in project:
     fbi_args.append(str(project.get("curtail", 0)))

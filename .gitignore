@@ -1,4 +1,5 @@
 # ignore IDE and any panda wheel/debian packages
+.vscode
 .idea
 *.deb
 *.whl

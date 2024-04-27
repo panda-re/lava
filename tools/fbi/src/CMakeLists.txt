@@ -3,15 +3,14 @@ project (FBI LANGUAGES CXX)
 
 # fbi target
 add_executable(fbi find_bug_inj.cpp)
-set_property(TARGET fbi PROPERTY CXX_STANDARD 14)
+set_property(TARGET fbi PROPERTY CXX_STANDARD 17)
 
-target_compile_options(fbi PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
-if (${DEBUG})
+#if (${DEBUG})
     target_compile_options(fbi PRIVATE -fno-omit-frame-pointer -g -O0)
-else()
-    target_compile_options(fbi PRIVATE -flto -O3)
-    set_target_properties(fbi PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
-endif()
+#else()
+#    target_compile_options(fbi PRIVATE -flto -O3)
+#    set_target_properties(fbi PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
+#endif()
 
 target_include_directories(fbi BEFORE
         PUBLIC
@@ -21,7 +20,9 @@ target_include_directories(fbi BEFORE
         ${CMAKE_CURRENT_SOURCE_DIR}/../../include
         /usr/lib/odb/x86_64-linux-gnu/include
         /usr/local/include 
-    )
+        /usr/include/jsoncpp
+)
+
 add_dependencies(fbi lava-odb_x64)
 set_target_properties(fbi PROPERTIES LINK_FLAGS "-L/usr/local/lib")
 target_link_libraries(fbi
@@ -31,10 +32,10 @@ target_link_libraries(fbi
     z
     odb
     odb-pgsql
-    jsoncpp
-    pq
     protobuf
+    jsoncpp
 )
+
 install (TARGETS fbi
          RUNTIME DESTINATION bin
          LIBRARY DESTINATION lib
