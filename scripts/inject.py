@@ -13,19 +13,20 @@ from os.path import join
 
 from vars import parse_vars
 from lava import LavaDatabase, Run, Bug, \
-                 inject_bugs, LavaPaths, validate_bugs, \
-                 get_bugs, run_cmd, get_allowed_bugtype_num
+    inject_bugs, LavaPaths, validate_bugs, \
+    get_bugs, run_cmd, get_allowed_bugtype_num
 
 start_time = time.time()
 
 debugging = False
 
-version="2.0.0"
+version = "2.0.0"
+
 
 # get list of bugs either from cmd line or db
 def get_bug_list(args, db, allowed_bugtypes):
     update_db = False
-    print "Picking bugs to inject."
+    print("Picking bugs to inject.")
     sys.stdout.flush()
 
     bug_list = []
@@ -33,20 +34,20 @@ def get_bug_list(args, db, allowed_bugtypes):
         bug_id = int(args.bugid)
         bug_list.append(bug_id)
     elif args.randomize:
-        print "Remaining to inj:", db.uninjected().count()
-        print "Using strategy: random"
+        print("Remaining to inj:", db.uninjected().count())
+        print("Using strategy: random")
         bug = db.next_bug_random(False)
         bug_list.append(bug.id)
         update_db = True
     elif args.buglist:
-        bug_list = eval(args.buglist) # TODO
+        bug_list = eval(args.buglist)  # TODO
         update_db = False
     elif args.many:
         num_bugs_to_inject = int(args.many)
         huge = db.huge()
 
-        available = "tons" if huge else db.uninjected().count() # Only count if not huge
-        print "Selecting %d bugs for injection of %s available" % (num_bugs_to_inject, str(available))
+        available = "tons" if huge else db.uninjected().count()  # Only count if not huge
+        print("Selecting %d bugs for injection of %s available" % (num_bugs_to_inject, str(available)))
 
         if not huge:
             assert available >= num_bugs_to_inject
@@ -57,7 +58,7 @@ def get_bug_list(args, db, allowed_bugtypes):
             bugs_to_inject = db.uninjected_random_limit(allowed_bugtypes=allowed_bugtypes, count=num_bugs_to_inject)
 
         bug_list = [b.id for b in bugs_to_inject]
-        print "%d is size of bug_list" % (len(bug_list))
+        print("%d is size of bug_list" % (len(bug_list)))
         update_db = True
     else:
         assert False
@@ -72,7 +73,7 @@ def get_bugs_parent(lp):
     bugs_parent = ""
     candidate = 0
     bugs_lock = None
-    print "Getting locked bugs directory..."
+    print("Getting locked bugs directory...")
     sys.stdout.flush()
 
     while bugs_parent == "":
@@ -94,45 +95,45 @@ def get_bugs_parent(lp):
         for sig in [signal.SIGINT, signal.SIGTERM]:
             signal.signal(sig, lambda s, f: sys.exit(0))
 
-    print "Using dir", bugs_parent
+    print("Using dir", bugs_parent)
     lp.set_bugs_parent(bugs_parent)
     return bugs_parent
+
 
 if __name__ == "__main__":
     update_db = False
     parser = argparse.ArgumentParser(description='Inject and test LAVA bugs.')
-    parser.add_argument('host_json', help = 'Host JSON file')
-    parser.add_argument('project', help = 'Project name')
+    parser.add_argument('host_json', help='Host JSON file')
+    parser.add_argument('project', help='Project name')
     parser.add_argument('-b', '--bugid', action="store", default=-1,
-            help = 'Bug id (otherwise, highest scored will be chosen)')
-    parser.add_argument('-r', '--randomize', action='store_true', default = False,
-            help = 'Choose the next bug randomly rather than by score')
+                        help='Bug id (otherwise, highest scored will be chosen)')
+    parser.add_argument('-r', '--randomize', action='store_true', default=False,
+                        help='Choose the next bug randomly rather than by score')
     parser.add_argument('-m', '--many', action="store", default=-1,
-            help = 'Inject this many bugs (chosen randomly)')
+                        help='Inject this many bugs (chosen randomly)')
     parser.add_argument('-l', '--buglist', action="store", default=False,
-            help = 'Inject this list of bugs')
+                        help='Inject this list of bugs')
     parser.add_argument('-k', '--knobTrigger', metavar='int', type=int, action="store", default=0,
-            help = 'specify a knob trigger style bug, eg -k [sizeof knob offset]')
+                        help='specify a knob trigger style bug, eg -k [sizeof knob offset]')
     parser.add_argument('-s', '--skipInject', action="store", default=False,
-            help = 'skip the inject phase and just run the bugged binary on fuzzed inputs')
+                        help='skip the inject phase and just run the bugged binary on fuzzed inputs')
     parser.add_argument('-nl', '--noLock', action="store_true", default=False,
-            help = ('No need to take lock on bugs dir'))
+                        help='No need to take lock on bugs dir')
     parser.add_argument('-c', '--checkStacktrace', action="store_true", default=False,
-            help = ('When validating a bug, make sure it manifests at same line as lava-inserted trigger'))
+                        help='When validating a bug, make sure it manifests at same line as lava-inserted trigger')
     parser.add_argument('-e', '--exitCode', action="store", default=0, type=int,
-            help = ('Expected exit code when program exits without crashing. Default 0'))
+                        help='Expected exit code when program exits without crashing. Default 0')
     parser.add_argument('-bb', '--balancebugtype', action="store_true", default=False,
-            help = ('Attempt to balance bug types, i.e. inject as many of each type'))
+                        help='Attempt to balance bug types, i.e. inject as many of each type')
     parser.add_argument('-competition', '--competition', action="store_true", default=False,
-            help = ('Inject in competition mode where logging will be added in #IFDEFs'))
+                        help='Inject in competition mode where logging will be added in #IFDEFs')
     parser.add_argument("-fixups", "--fixupsscript", action="store", default=False,
-                        help = ("script to run after injecting bugs into source to fixup before make"))
-#    parser.add_argument('-wl', '--whitelist', action="store", default=None,
-#                        help = ('White list file of functions to bug and data flow'))
+                        help="script to run after injecting bugs into source to fixup before make")
+    #    parser.add_argument('-wl', '--whitelist', action="store", default=None,
+    #                        help = ('White list file of functions to bug and data flow'))
     parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
-                        help = ('bug types to inject'))
+                        help='bug types to inject')
     parser.add_argument('--version', action="version", version="%(prog)s {}".format(version))
-
 
     args = parser.parse_args()
     global project
@@ -141,7 +142,7 @@ if __name__ == "__main__":
 
     allowed_bugtypes = get_allowed_bugtype_num(args)
 
-    print "allowed bug types: " + (str(allowed_bugtypes))
+    print("allowed bug types: " + (str(allowed_bugtypes)))
 
     # Set various paths
     lp = LavaPaths(project)
@@ -150,7 +151,8 @@ if __name__ == "__main__":
 
     try:
         os.makedirs(lp.bugs_top_dir)
-    except Exception: pass
+    except Exception:
+        pass
 
     # this is where buggy source code will be
     bugs_parent = get_bugs_parent(lp)
@@ -158,14 +160,14 @@ if __name__ == "__main__":
     # Remove all old YAML files
     run_cmd(["rm -f {}/*.yaml".format(lp.bugs_build)], None, 10, cwd="/", shell=True)
 
-
     # obtain list of bugs to inject based on cmd-line args and consulting db
     (update_db, bug_list) = get_bug_list(args, db, allowed_bugtypes)
 
     # add all those bugs to the source code and check that it compiles
-        # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
+    # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
     (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json,
-                                       project, args, update_db, dataflow=dataflow, competition=args.competition)
+                                                      project, args, update_db, dataflow=dataflow,
+                                                      competition=args.competition)
     if build is None:
         raise RuntimeError("LavaTool failed to build target binary")
 
@@ -188,19 +190,20 @@ if __name__ == "__main__":
                 print("%d c(%s)=%d" % (t, Bug.type_strings[t], tcount[t]))
                 print(str(buglist[t]))
 
-        print "\nBug types in original, potential set"
+
+        print("\nBug types in original, potential set")
         count_bug_types(bug_list)
 
-        print "\nBug types in validated set"
+        print("\nBug types in validated set")
         count_bug_types(real_bug_list)
 
 
     except Exception as e:
-        print "TESTING FAIL"
+        print("TESTING FAIL")
         if update_db:
             db.session.add(Run(build=build, fuzzed=None, exitcode=-22,
                                output=str(e), success=False, validated=False))
             db.session.commit()
         raise
 
-    print "inject complete %.2f seconds" % (time.time() - start_time)
+    print("inject complete %.2f seconds" % (time.time() - start_time))

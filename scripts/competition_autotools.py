@@ -16,11 +16,11 @@ with open(build_sh, "w") as build:
     {install}
     popd
     """.format(configure=project['configure'],
-        bugs_install=lp.bugs_install,
-        bugs_build=bd,
-        make=project['make'],
-        install=project['install'].format(install_dir=join(corpdir, 'lava-install')),
-        outdir=join(corpdir, "lava-install")))
+               bugs_install=lp.bugs_install,
+               bugs_build=bd,
+               make=project['make'],
+               install=project['install'].format(install_dir=join(corpdir, 'lava-install')),
+               outdir=join(corpdir, "lava-install")))
 
 log_build_sh = join(corpdir, "log_build.sh")
 makes = project['make'].split('&&')
@@ -49,14 +49,14 @@ with open(log_build_sh, "w") as build:
 
     popd
     """.format(configure=project['configure'],
-        bugs_install = lp.bugs_install,
-        bugs_build=bd,
-        log_make = log_make,
-        install_int = project['install'].format(install_dir=internal_builddir),
-        intsall_pub = project['install'].format(install_dir=public_builddir),
-        internal_builddir = internal_builddir,
-        public_builddir = public_builddir
-        ))
+               bugs_install=lp.bugs_install,
+               bugs_build=bd,
+               log_make=log_make,
+               install_int=project['install'].format(install_dir=internal_builddir),
+               intsall_pub=project['install'].format(install_dir=public_builddir),
+               internal_builddir=internal_builddir,
+               public_builddir=public_builddir
+               ))
 
 trigger_all_crashes = join(corpdir, "trigger_crashes.sh")
 with open(trigger_all_crashes, "w") as build:
@@ -69,8 +69,10 @@ with open(trigger_all_crashes, "w") as build:
     done
 
     popd
-    """.format(command = project['command'].format(**{"install_dir": join(corpdir, "lava-install-internal"), "input_file": "$fname"}), # This syntax is weird but only thing that works?
-        corpdir = corpdir,
-        librarydir = join(corpdir, "lava-install-internal", "lib"),
-        inputdir = join(corpdir, "inputs")
-        ))
+    """.format(command=project['command'].format(
+        **{"install_dir": join(corpdir, "lava-install-internal"), "input_file": "$fname"}),
+        # This syntax is weird but only thing that works?
+        corpdir=corpdir,
+        librarydir=join(corpdir, "lava-install-internal", "lib"),
+        inputdir=join(corpdir, "inputs")
+    ))

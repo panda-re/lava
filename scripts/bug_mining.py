@@ -1,10 +1,10 @@
-'''
+"""
 This script assumes you have already done src-to-src transformation with
 lavaTool to add taint and attack point queries to a program, AND managed to
 json project file.
 
-Second arg is input file you want to run, under panda, to get taint info.
-'''
+Second arg is an input file you want to run, under panda, to get taint info.
+"""
 
 from __future__ import print_function
 
@@ -14,7 +14,7 @@ import time
 import pipes
 import shlex
 import shutil
-import subprocess32
+import subprocess
 
 from colorama import Fore
 from colorama import Style
@@ -33,13 +33,13 @@ from lava import LavaDatabase
 
 from vars import parse_vars
 
-
 debug = True
 qemu_use_rr = False
 
 start_time = 0
-version="2.0.0"
-curtail=0
+version = "2.0.0"
+curtail = 0
+
 
 def tick():
     global start_time
@@ -66,7 +66,7 @@ def progress(msg):
 
 
 if len(sys.argv) < 4:
-    print ("Bug mining script version {}".format(version))
+    print("Bug mining script version {}".format(version))
     print("Usage: python bug_mining.py host.json project_name inputfile",
           file=sys.stderr)
     sys.exit(1)
@@ -90,7 +90,7 @@ qemu_path = project['qemu']
 qemu_build_dir = dirname(dirname(abspath(qemu_path)))
 src_path = None
 
-print ("{}".format(join(qemu_build_dir, 'config-host.mak')))
+print("{}".format(join(qemu_build_dir, 'config-host.mak')))
 
 with open(join(qemu_build_dir, 'config-host.mak')) as config_host:
     for line in config_host:
@@ -115,7 +115,7 @@ progress("Entering {}".format(project['output_dir']))
 
 os.chdir(os.path.join(project['output_dir']))
 
-tar_files = subprocess32.check_output(['tar', 'tf', project['tarfile']])
+tar_files = subprocess.check_output(['tar', 'tf', project['tarfile']])
 sourcedir = tar_files.splitlines()[0].split(os.path.sep)[0]
 sourcedir = abspath(sourcedir)
 
@@ -195,19 +195,19 @@ for plugin, plugin_args in panda_args.items():
     arg_string = ",".join(["{}={}".format(arg, val)
                            for arg, val in plugin_args.items()])
     qemu_args.append('{}{}{}'.format(plugin, ':'
-                                     if arg_string else '', arg_string))
+    if arg_string else '', arg_string))
 
 # Use -panda-plugin-arg to account for commas and colons in filename.
 qemu_args.extend(['-panda-arg', 'file_taint:filename=' + input_file_guest])
 
-dprint("qemu args: [{}]".format(subprocess32.list2cmdline(qemu_args)))
+dprint("qemu args: [{}]".format(subprocess.list2cmdline(qemu_args)))
 sys.stdout.flush()
 try:
-    subprocess32.check_call(qemu_args, stderr=subprocess32.STDOUT)
-except subprocess32.CalledProcessError:
+    subprocess.check_call(qemu_args, stderr=subprocess.STDOUT)
+except subprocess.CalledProcessError:
     if qemu_use_rr:
         qemu_args = ['rr', 'record', project['qemu'], '-replay', isoname]
-        subprocess32.check_call(qemu_args)
+        subprocess.check_call(qemu_args)
     else:
         raise
 
@@ -219,8 +219,8 @@ tick()
 
 progress("Trying to create database {}...".format(project['name']))
 createdb_args = ['createdb', '-U', 'postgres', '-h', 'database', project['db']]
-createdb_result = subprocess32.call(createdb_args,
-                                    stdout=sys.stdout, stderr=sys.stderr)
+createdb_result = subprocess.call(createdb_args,
+                                  stdout=sys.stdout, stderr=sys.stderr)
 
 print()
 if createdb_result == 0:  # Created new DB; now populate
@@ -230,7 +230,7 @@ if createdb_result == 0:  # Created new DB; now populate
     psql_args = ['psql', '-U', 'postgres', '-h', 'database', '-d', project['db'],
                  '-f', join(join(lavadir, 'fbi'), 'lava.sql')]
     dprint("psql invocation: [%s]" % (" ".join(psql_args)))
-    subprocess32.check_call(psql_args, stdout=sys.stdout, stderr=sys.stderr)
+    subprocess.check_call(psql_args, stdout=sys.stdout, stderr=sys.stderr)
 else:
     progress("Database already exists.")
 
@@ -258,18 +258,17 @@ if curtail != 0:
 elif "curtail" in project:
     fbi_args.append(str(project.get("curtail", 0)))
 
-dprint("fbi invocation: [%s]" % (subprocess32.list2cmdline(fbi_args)))
+dprint("fbi invocation: [%s]" % (subprocess.list2cmdline(fbi_args)))
 sys.stdout.flush()
 try:
-    subprocess32.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
-except subprocess32.CalledProcessError as e:
-    print("FBI Failed. Possible causes: \n"+
-        "\tNo DUAs found because taint analysis failed: \n"
-        "\t\t Ensure PANDA 'saw open of file we want to taint'\n"
-        "\t\t Make sure target has debug symbols (version2): No 'failed DWARF loading' messages\n"
-        "\tFBI crashed (bad arguments, config, or other untested code)")
+    subprocess.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
+except subprocess.CalledProcessError as e:
+    print("FBI Failed. Possible causes: \n" +
+          "\tNo DUAs found because taint analysis failed: \n"
+          "\t\t Ensure PANDA 'saw open of file we want to taint'\n"
+          "\t\t Make sure target has debug symbols (version2): No 'failed DWARF loading' messages\n"
+          "\tFBI crashed (bad arguments, config, or other untested code)")
     raise e
-
 
 print()
 progress("Found Bugs, Injectable!!")
@@ -284,7 +283,6 @@ print("Count\tBug Type Num\tName")
 for i in range(len(Bug.type_strings)):
     n = db.session.query(Bug).filter(Bug.type == i).count()
     print("%d\t%d\t%s" % (n, i, Bug.type_strings[i]))
-
 
 print("total dua:", db.session.query(Dua).count())
 print("total atp:", db.session.query(AttackPoint).count())
