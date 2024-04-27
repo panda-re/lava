@@ -245,7 +245,7 @@ void update_unique_taint_sets(Json::Value& tquls) {
 	printf("\n");
     }
     // maintain mapping from ptr (uint64_t) to actual set of taint labels
-    Ptr p = tquls["ptr"].asUInt64();
+    Ptr p = strtoull(tquls["ptr"].asString(), c_str(), 0, 0);
     auto it = ptr_to_labelset.lower_bound(p);
     int max_index = tquls["label"].size() - 1;
     if (it == ptr_to_labelset.end() || p < it->first) {
@@ -253,7 +253,7 @@ void update_unique_taint_sets(Json::Value& tquls) {
 	std::vector<uint32_t> vec;
 	// Populate contents of vector with that of "label"
 	for (Json::Value& element : tquls["label"]) {
-		vec.push_back(element.asUInt());
+		vec.push_back(strtoul(element.asString(), c_str(), 0, 0));
 	}
     
 	const LabelSet *ls = create(LabelSet{0, p, inputfile, vec});
@@ -411,8 +411,8 @@ void taint_query_pri(Json::Value& ple) {
     assert (tqh != NULL);
     // size of query in bytes & num tainted bytes found
     // bdg: don't try handle lvals that are bigger than our max lval
-    uint32_t len = std::min(tqh["len"].asUInt(), max_lval);
-    uint32_t num_tainted = tqh["numTainted"].asUInt();
+    uint32_t len = std::min(strtoul(tqh["len"].asString(), c_str(), 0, 0), max_lval);
+    uint32_t num_tainted = strtoul(tqh["numTainted"].asString(), c_str(), 0, 0);
     // entry 1 is source info
     Json::Value si = tqh["srcInfo"];
     // ignore duas in header files
@@ -423,7 +423,7 @@ void taint_query_pri(Json::Value& ple) {
     // entry 2 is callstack -- ignore
     Json::Value cs = tqh["callStack"];
     assert (cs != NULL);
-    uint64_t instr = ple["instr"].asUInt();
+    uint64_t instr = strtoull(ple["instr"].asString(), c_str(), 0, 0);
     dprintf("TAINT QUERY HYPERCALL len=%d num_tainted=%d\n", len, num_tainted);
 
     // collects set (as sorted vec) of labels on all viable bytes
@@ -453,7 +453,7 @@ void taint_query_pri(Json::Value& ple) {
     std::vector<const LabelSet*> viable_byte(len, nullptr);
     std::vector<uint32_t> byte_tcn(len, 0);
 
-    dprintf("considering taint queries on %lu bytes\n", tqh["num_tainted"].asUInt64());
+    dprintf("considering taint queries on %lu bytes\n", strtoull(tqh["num_tainted"].asString(), c_str(), 0, 0));
 
     bool is_dua = false;
     bool is_fake_dua = false;
@@ -461,19 +461,19 @@ void taint_query_pri(Json::Value& ple) {
     // optimization. don't need to check each byte if we don't have enough.
     if (num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
         for (const auto& tq : tqh["taintQuery"]) {
-            uint32_t offset = tq["offset"].asUInt();
+            uint32_t offset = strtoul(tq["offset"].asString(), c_str(), 0, 0);
             if (offset >= len) {
 		continue;
 	    }
 	    dprintf("considering offset = %d\n", offset);
-            const LabelSet *ls = ptr_to_labelset.at(tq["ptr"].asUInt64());
-            byte_tcn[offset] = tq["tcn"].asUInt();
+            const LabelSet *ls = ptr_to_labelset.at(strtoull(tq["ptr"].asString(), c_str(), 0, 0));
+            byte_tcn[offset] = strtoul(tq["tcn"].asString(), c_str(), 0, 0);
 
             // flag for tracking *why* we discarded a byte
             // check tcn and cardinality of taint set first
             uint32_t current_byte_not_ok = 0;
-            current_byte_not_ok |= (tq["tcn"].asUInt() > max_tcn) << CBNO_TCN_BIT;
-	    current_byte_not_ok |= (ls->labels.size() > max_card) << CBNO_CRD_BIT;
+            current_byte_not_ok |= (strtoul(tq["tcn"].asString(), c_str(), 0, 0) > max_tcn) << CBNO_TCN_BIT;
+	    current_byte_not_ok |= (ls->labels.size() > max_card) << CBNO_CRD_BIT
             if (current_byte_not_ok && debug) {
                 // discard this byte
                 dprintf("discarding byte -- here's why: %x\n", current_byte_not_ok);
@@ -485,7 +485,7 @@ void taint_query_pri(Json::Value& ple) {
                 dprintf("retaining byte\n");
                 // this byte is ok to retain.
                 // keep track of highest tcn, liveness, and card for any viable byte for this lval
-                c_max_tcn = std::max(tq["tcn"].asUInt(), c_max_tcn);
+                c_max_tcn = std::max(strtoul(tq["tcn"].asString(), c_str(), 0, 0), c_max_tcn);
                 c_max_card = std::max((uint32_t) ls->labels.size(), c_max_card);
 
                 merge_into(ls->labels.begin(), ls->labels.end(), all_labels);
@@ -512,7 +512,7 @@ void taint_query_pri(Json::Value& ple) {
 
     // create a fake dua if we can
     if (chaff_bugs && !is_dua
-            && tqh["len"].asUInt() - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
+            && strtoul(tqh["len"].asString(), c_str(), 0, 0) - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
         dprintf("not enough taint -- what about non-taint?\n");
         dprintf("len=%d num_tainted=%d\n", len, num_tainted);
         viable_byte.assign(viable_byte.size(), nullptr);
@@ -523,7 +523,7 @@ void taint_query_pri(Json::Value& ple) {
             // Assume these are sorted by offset.
             // Keep two iterators, one in viable_byte, one in tqh->taint_query.
             // Iterate over both and fill gaps in tqh into viable_byte.
-            if (tq["offset"].asUInt() > i) {	    
+            if (strtoul(tq["offset"].asString(), c_str(), 0, 0) > i) {	    
                 // if untainted, we can guarantee that we can use the untainted
                 // bytes to produce a bug that definitely won't trigger.
                 // so we create a fake, empty labelset.
@@ -557,7 +557,7 @@ void taint_query_pri(Json::Value& ple) {
 
         const Dua *dua = create(Dua(lval, std::move(viable_byte),
                 std::move(byte_tcn), std::move(all_labels), inputfile,
-                c_max_tcn, c_max_card, ple["instr"].asUInt64(), is_fake_dua));
+                c_max_tcn, c_max_card, strtoull(ple["instr"].asString(), c_str(), 0, 0), is_fake_dua));
 
         if (is_dua) {
             // Only track liveness for non-fake duas.
@@ -624,7 +624,7 @@ void taint_query_pri(Json::Value& ple) {
         if (is_fake_dua) num_fake_duas++;
     } else {
         dprintf("discarded %u viable bytes %lu labels %s:%u %s",
-                num_viable_bytes, all_labels.size(), si["filename"].asString(), si["linenum"].asUInt(),
+                num_viable_bytes, all_labels.size(), si["filename"].asString(), strtoul(si["linenum"].asString(), c_str(), 0, 0)
                 si["astnodename"].asString());
     }
     t.commit();
@@ -650,7 +650,7 @@ void update_liveness(const Json::Value& ple) {
         // This should be O(mn) for m sets, n elems each.
         // though we should have n >> m in our worst case.
         const std::vector<uint32_t> &cur_labels =
-            ptr_to_labelset.at(tq["ptr"].asUInt())->labels;
+            ptr_to_labelset.at(strtoul(tq["ptr"].asString(), c_str(), 0, 0)) -> labels;
         merge_into(cur_labels.begin(), cur_labels.end(), all_labels);
     }
     t.commit();
@@ -890,11 +890,11 @@ void attack_point_lval_usage(Json::Value ple) {
     const AttackPoint *atp;
     bool is_new_atp;
     std::tie(atp, is_new_atp) = create_full(AttackPoint{0,
-            ast_loc, (AttackPoint::Type)pleatp["info"].asUInt()});
+            ast_loc, (AttackPoint::Type) strtoul(pleatp["info"].asString(), c_str(), 0, 0)});
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
 
     // Don't decimate PTR_ADD bugs.
-    switch ((AttackPoint::Type)pleatp["info"].asUInt()) {
+    switch ((AttackPoint::Type) strtoul(pleatp["info"].asString(), c_str(), 0, 0)) {
     case AttackPoint::POINTER_WRITE:
         record_injectable_bugs_at<Bug::REL_WRITE>(atp, is_new_atp, { });
         // fall through
@@ -968,7 +968,7 @@ int main (int argc, char **argv) {
     if (!project["max_liveness"].isUInt()) {
         throw std::runtime_error("Could not parse max_liveness");
     }
-    max_liveness = project["max_liveness"].asUInt();
+    max_liveness = strtoul(project["max_liveness"].asString(), c_str(), 0, 0);
     printf("maximum liveness score of %lu\n", max_liveness);
 
     if (!project.isMember("max_cardinality")) {
@@ -978,7 +978,7 @@ int main (int argc, char **argv) {
     if (!project["max_cardinality"].isUInt()) {
         throw std::runtime_error("Could not parse max_cardinality");
     }
-    max_card = project["max_cardinality"].asUInt();
+    max_card = strtoul(project["max_cardinality"].asString(), c_str(), 0, 0);
     printf("max card of taint set returned by query = %d\n", max_card);
 
     if (!project.isMember("max_tcn")) {
@@ -988,7 +988,7 @@ int main (int argc, char **argv) {
     if (!project["max_tcn"].isUInt()) {
         throw std::runtime_error("Could not parse max_tcn");
     }
-    max_tcn = project["max_tcn"].asUInt();
+    max_tcn = strtoul(project["max_tcn"].asString(), c_str(), 0, 0);
     printf("max tcn for addr = %d\n", max_tcn);
 
     if (!project.isMember("max_lval_size")) {
@@ -998,7 +998,7 @@ int main (int argc, char **argv) {
     if (!project["max_lval_size"].isUInt()) {
         throw std::runtime_error("Could not parse max_lval_size");
     }
-    max_lval = project["max_lval_size"].asUInt();
+    max_lval = strtoul(project["max_lval_size"].asString(), c_str(), 0, 0);
     printf("max lval size = %d\n", max_lval);
 
     /* Unsupported for now (why?)
@@ -1017,7 +1017,7 @@ int main (int argc, char **argv) {
             curtail = 0;
         }else{
             // null should never happen, if it does we'll violate an assert in the asUInt
-            curtail = project.get("curtail_fbi", Json::Value::null).asUInt();
+            curtail = strtoul(project.get("curtail_fbi", Json::Value::null).asString(), c_str(), 0, 0);
         }
     }
     printf("Curtail is %d\n", curtail);
