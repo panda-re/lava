@@ -83,7 +83,7 @@ input_file_base = os.path.basename(input_file)
 print("bug_mining.py %s %s" % (project_name, input_file))
 
 if len(sys.argv) > 4:
-    #global curtail
+    # global curtail
     curtail = int(sys.argv[4])
 
 qemu_path = project['qemu']
@@ -131,7 +131,7 @@ shutil.copy(input_file, installdir)
 
 create_recording(qemu_path, project['qcow'], project['snapshot'],
                  command_args, installdir, isoname,
-                 project["expect_prompt"], "ide1-cd0", rr=qemu_use_rr)
+                 project["expect_prompt"], 'ide1-cd0', rr=qemu_use_rr)
 
 try:
     os.mkdir('inputs')
@@ -155,8 +155,8 @@ if command_args[0].startswith('LD_PRELOAD'):
 else:
     proc_name = basename(command_args[0])
 
-pandalog = "{}/queries-{}.plog".format(project['output_dir'],
-                                       os.path.basename(isoname))
+pandalog = "{}/queries-{}.plog".format(project['output_dir'], os.path.basename(isoname))
+pandalog_json = "{}/queries-{}.json".format(project['output_dir'], os.path.basename(isoname))
 
 print("pandalog = [%s] " % pandalog)
 
@@ -190,10 +190,10 @@ qemu_args = [
     '-pandalog', pandalog, '-os', panda_os_string
 ]
 
-for plugin, plugin_args in panda_args.iteritems():
+for plugin, plugin_args in panda_args.items():
     qemu_args.append('-panda')
     arg_string = ",".join(["{}={}".format(arg, val)
-                           for arg, val in plugin_args.iteritems()])
+                           for arg, val in plugin_args.items()])
     qemu_args.append('{}{}{}'.format(plugin, ':'
                                      if arg_string else '', arg_string))
 
@@ -236,14 +236,24 @@ else:
 
 print()
 progress("Calling the FBI on queries.plog...")
+
+convert_json_args = ['python', '-m', 'pandare.plog_reader', pandalog]
+print("panda log JSON invocation: [%s]" % (subprocess.list2cmdline(convert_json_args)))
+try:
+    with open(pandalog_json, 'wb') as fd:
+        subprocess.check_call(convert_json_args, stdout=fd, stderr=sys.stderr)
+except subprocess.CalledProcessError as e:
+    print("The script to convert panda log into JSON has failed")
+    raise e
+
 # fbi_args = [join(lavadir, 'fbi', 'fbi'),
 # project_file, pandalog, input_file_base]
 fbi_args = [join(lavadir, 'tools', 'install', 'bin', 'fbi'), host_json,
-            project_name, pandalog, input_file_base]
+            project_name, pandalog_json, input_file_base]
 
 # Command line curtial argument takes priority, otherwise use project specific one
-#global curtail
-if curtail !=0 :
+# global curtail
+if curtail != 0:
     fbi_args.append(str(curtail))
 elif "curtail" in project:
     fbi_args.append(str(project.get("curtail", 0)))

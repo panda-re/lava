@@ -24,7 +24,7 @@ extern "C" {
 #include "panda/plog_print.h"
 }
 
-#include <json/json.h>
+#include <jsoncpp/json/json.h>
 
 #include <iostream>
 #include <fstream>
@@ -235,19 +235,28 @@ std::vector<std::string> LoadIDB(std::string fn) {
     return InvertDB(x);
 }
 
-void update_unique_taint_sets(const Panda__TaintQueryUniqueLabelSet *tquls) {
+void update_unique_taint_sets(Json::Value& tquls) {
     if (debug) {
         printf("UNIQUE TAINT SET\n");
-        spit_tquls(tquls);
-        printf("\n");
+	Json::StyledWriter writer;
+	std::string jsonString = writer.write(tquls);
+	// spit_tquls(tquls);
+	std::cout << jsonString;
+	printf("\n");
     }
     // maintain mapping from ptr (uint64_t) to actual set of taint labels
-    Ptr p = tquls->ptr;
+    Ptr p = tquls["ptr"].asUInt64();
     auto it = ptr_to_labelset.lower_bound(p);
+    int max_index = tquls["label"].size() - 1;
     if (it == ptr_to_labelset.end() || p < it->first) {
-        const LabelSet *ls = create(LabelSet{0, p, inputfile,
-                std::vector<uint32_t>(tquls->label,
-                        tquls->label + tquls->n_label)});
+        
+	std::vector<uint32_t> vec;
+	// Populate contents of vector with that of "label"
+	for (Json::Value& element : tquls["label"]) {
+		vec.push_back(element.asUInt());
+	}
+    
+	const LabelSet *ls = create(LabelSet{0, p, inputfile, vec});
         ptr_to_labelset.insert(it, std::make_pair(p, ls));
 
         auto &labels = ls->labels;
@@ -396,23 +405,25 @@ template<Bug::Type bug_type>
 void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         std::initializer_list<const DuaBytes *> extra_duas);
 
-void taint_query_pri(Panda__LogEntry *ple) {
+void taint_query_pri(Json::Value& ple) {
     assert (ple != NULL);
-    Panda__TaintQueryPri *tqh = ple->taint_query_pri;
+    Json::Value tqh = ple["taintQueryPri"];
     assert (tqh != NULL);
     // size of query in bytes & num tainted bytes found
     // bdg: don't try handle lvals that are bigger than our max lval
-    uint32_t len = std::min(tqh->len, max_lval);
-    uint32_t num_tainted = tqh->num_tainted;
+    uint32_t len = std::min(tqh["len"].asUInt(), max_lval);
+    uint32_t num_tainted = tqh["numTainted"].asUInt();
     // entry 1 is source info
-    Panda__SrcInfoPri *si = tqh->src_info;
+    Json::Value si = tqh["srcInfo"];
     // ignore duas in header files
-    if (is_header_file(std::string(si->filename))) return;
+    if (is_header_file(std::string(si["filename"].asString()))) {
+	return;
+    }
     assert (si != NULL);
     // entry 2 is callstack -- ignore
-    Panda__CallStack *cs = tqh->call_stack;
+    Json::Value cs = tqh["callStack"];
     assert (cs != NULL);
-    uint64_t instr = ple->instr;
+    uint64_t instr = ple["instr"].asUInt();
     dprintf("TAINT QUERY HYPERCALL len=%d num_tainted=%d\n", len, num_tainted);
 
     // collects set (as sorted vec) of labels on all viable bytes
@@ -427,11 +438,10 @@ void taint_query_pri(Panda__LogEntry *ple) {
     // collect "ok" bytes, which have low enough taint compute num and card,
     // and also aren't tainted by too-live input bytes
     // go through and deal with new unique taint sets first
-    for (uint32_t i=0; i<tqh->n_taint_query; i++) {
-        Panda__TaintQuery *tq = tqh->taint_query[i];
-        if (tq->unique_label_set) {
+    for (Json::Value &tq: tqh["taintQuery"]) {
+        if (tq.isMember("uniqueLabelSet")) {
             // collect new unique taint label sets
-            update_unique_taint_sets(tq->unique_label_set);
+            update_unique_taint_sets(tq["uniqueLabelSet"]);
         }
     }
 
@@ -443,27 +453,27 @@ void taint_query_pri(Panda__LogEntry *ple) {
     std::vector<const LabelSet*> viable_byte(len, nullptr);
     std::vector<uint32_t> byte_tcn(len, 0);
 
-    dprintf("considering taint queries on %lu bytes\n", tqh->n_taint_query);
+    dprintf("considering taint queries on %lu bytes\n", tqh["num_tainted"].asUInt64());
 
     bool is_dua = false;
     bool is_fake_dua = false;
     uint32_t num_viable_bytes = 0;
     // optimization. don't need to check each byte if we don't have enough.
     if (num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
-        for (uint32_t i = 0; i < tqh->n_taint_query; i++) {
-            Panda__TaintQuery *tq = tqh->taint_query[i];
-            uint32_t offset = tq->offset;
-            if (offset >= len) continue;
-            dprintf("considering offset = %d\n", offset);
-            const LabelSet *ls = ptr_to_labelset.at(tq->ptr);
-
-            byte_tcn[offset] = tq->tcn;
+        for (const auto& tq : tqh["taintQuery"]) {
+            uint32_t offset = tq["offset"].asUInt();
+            if (offset >= len) {
+		continue;
+	    }
+	    dprintf("considering offset = %d\n", offset);
+            const LabelSet *ls = ptr_to_labelset.at(tq["ptr"].asUInt64());
+            byte_tcn[offset] = tq["tcn"].asUInt();
 
             // flag for tracking *why* we discarded a byte
             // check tcn and cardinality of taint set first
             uint32_t current_byte_not_ok = 0;
-            current_byte_not_ok |= (tq->tcn > max_tcn) << CBNO_TCN_BIT;
-            current_byte_not_ok |= (ls->labels.size() > max_card) << CBNO_CRD_BIT;
+            current_byte_not_ok |= (tq["tcn"].asUInt() > max_tcn) << CBNO_TCN_BIT;
+	    current_byte_not_ok |= (ls->labels.size() > max_card) << CBNO_CRD_BIT;
             if (current_byte_not_ok && debug) {
                 // discard this byte
                 dprintf("discarding byte -- here's why: %x\n", current_byte_not_ok);
@@ -475,7 +485,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
                 dprintf("retaining byte\n");
                 // this byte is ok to retain.
                 // keep track of highest tcn, liveness, and card for any viable byte for this lval
-                c_max_tcn = std::max(tq->tcn, c_max_tcn);
+                c_max_tcn = std::max(tq["tcn"].asUInt(), c_max_tcn);
                 c_max_card = std::max((uint32_t) ls->labels.size(), c_max_card);
 
                 merge_into(ls->labels.begin(), ls->labels.end(), all_labels);
@@ -502,23 +512,18 @@ void taint_query_pri(Panda__LogEntry *ple) {
 
     // create a fake dua if we can
     if (chaff_bugs && !is_dua
-            && tqh->len - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
+            && tqh["len"].asUInt() - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
         dprintf("not enough taint -- what about non-taint?\n");
         dprintf("len=%d num_tainted=%d\n", len, num_tainted);
         viable_byte.assign(viable_byte.size(), nullptr);
         uint32_t count = 0;
-        Panda__TaintQuery **tqp = tqh->taint_query;
-        Panda__TaintQuery **tqp_end = tqp + tqh->n_taint_query;
-        for (uint32_t i = 0; i < viable_byte.size(); i++) {
+	uint32_t i = 0;
+	// TODO: I suspect issues will arise here...
+        for (Json::Value& tq : tqh["taintQuery"]) {
             // Assume these are sorted by offset.
             // Keep two iterators, one in viable_byte, one in tqh->taint_query.
             // Iterate over both and fill gaps in tqh into viable_byte.
-            if (tqp && tqp < tqp_end && (*tqp)->offset < i) {
-                tqp++;
-            }
-            Panda__TaintQuery *tq = (tqp && tqp < tqp_end) ? *tqp : nullptr;
-            assert(!tq || tq->offset >= i);
-            if (!tq || tq->offset > i || !tq->ptr) {
+            if (tq["offset"].asUInt() > i) {	    
                 // if untainted, we can guarantee that we can use the untainted
                 // bytes to produce a bug that definitely won't trigger.
                 // so we create a fake, empty labelset.
@@ -530,7 +535,10 @@ void taint_query_pri(Panda__LogEntry *ple) {
                 viable_byte[i] = fake_ls;
                 count++;
             }
-            if (count >= LAVA_MAGIC_VALUE_SIZE) break;
+	    ++i;
+            if (count >= LAVA_MAGIC_VALUE_SIZE) {
+		break;
+	    }
         }
         assert(count >= LAVA_MAGIC_VALUE_SIZE);
         is_fake_dua = true;
@@ -541,16 +549,15 @@ void taint_query_pri(Panda__LogEntry *ple) {
     if (is_dua || is_fake_dua) {
         // looks like we can subvert this for either real or fake bug.
         // NB: we don't know liveness info yet. defer byte selection until later.
-        assert(si->has_ast_loc_id);
-        LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
+        assert(si.isMember("astLocId"));
+        LavaASTLoc ast_loc(si["astLocId"].asString());
         assert(ast_loc.filename.size() > 0);
 
-        const SourceLval *lval = create(SourceLval{0,
-                ast_loc, si->astnodename, len});
+        const SourceLval *lval = create(SourceLval{0, ast_loc, si["astnodename"].asString(), len});
 
         const Dua *dua = create(Dua(lval, std::move(viable_byte),
                 std::move(byte_tcn), std::move(all_labels), inputfile,
-                c_max_tcn, c_max_card, ple->instr, is_fake_dua));
+                c_max_tcn, c_max_card, ple["instr"].asUInt64(), is_fake_dua));
 
         if (is_dua) {
             // Only track liveness for non-fake duas.
@@ -576,7 +583,7 @@ void taint_query_pri(Panda__LogEntry *ple) {
         // Update recent_dead_duas + recent_duas_by_instr:
         // 1) erase at most one in r_d_by_instr w/ same lval_id.
         // 2) insert/update in recent_dead_duas
-        // 2) insert new dua into r_d_by_instr, probably at end.
+        // 3) insert new dua into r_d_by_instr, probably at end.
         unsigned long lval_id = lval->id;
         auto it_lval = recent_dead_duas.lower_bound(lval_id);
         if (it_lval == recent_dead_duas.end() || lval_id < it_lval->first) {
@@ -617,34 +624,33 @@ void taint_query_pri(Panda__LogEntry *ple) {
         if (is_fake_dua) num_fake_duas++;
     } else {
         dprintf("discarded %u viable bytes %lu labels %s:%u %s",
-                num_viable_bytes, all_labels.size(), si->filename, si->linenum,
-                si->astnodename);
+                num_viable_bytes, all_labels.size(), si["filename"].asString(), si["linenum"].asUInt(),
+                si["astnodename"].asString());
     }
     t.commit();
 }
 
 // update liveness measure for each of taint labels (file bytes) associated with a byte in lval that was queried
-void update_liveness(Panda__LogEntry *ple) {
+void update_liveness(const Json::Value& ple) {
     assert (ple != NULL);
-    Panda__TaintedBranch *tb = ple->tainted_branch;
+    Json::Value tb = ple["taintedBranch"];
     assert (tb != NULL);
     dprintf("TAINTED BRANCH\n");
 
     transaction t(db->begin());
     std::vector<uint32_t> all_labels;
-    for (uint32_t i=0; i<tb->n_taint_query; i++) {
-        Panda__TaintQuery *tq = tb->taint_query[i];
+    for (Json::Value& tq: tb["taintQuery"]) {
         assert (tq);
-        if (tq->unique_label_set) {
+        if (tq.isMember("uniqueLabelSet")) {
             // keep track of unique taint label sets
-            update_unique_taint_sets(tq->unique_label_set);
+            update_unique_taint_sets(tq["uniqueLabelSet"]);
         }
 //        if (debug) { spit_tq(tq); printf("\n"); }
 
         // This should be O(mn) for m sets, n elems each.
         // though we should have n >> m in our worst case.
         const std::vector<uint32_t> &cur_labels =
-            ptr_to_labelset.at(tq->ptr)->labels;
+            ptr_to_labelset.at(tq["ptr"].asUInt())->labels;
         merge_into(cur_labels.begin(), cur_labels.end(), all_labels);
     }
     t.commit();
@@ -857,18 +863,19 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
     }
 }
 
-void attack_point_lval_usage(Panda__LogEntry *ple) {
+void attack_point_lval_usage(Json::Value ple) {
     assert (ple != NULL);
-    Panda__AttackPoint *pleatp = ple->attack_point;
-    if (pleatp->src_info->has_ast_loc_id)
-        dprintf ("attack point id = %d\n", pleatp->src_info->ast_loc_id);
-
+    Json::Value pleatp = ple["attackPoint"];
+    if (pleatp["src_info"].isMember("astLocId")) {
+        dprintf ("attack point id = %d\n", pleatp["srcInfo"]["astLocId"]);
+    }
     assert (pleatp != NULL);
-    Panda__SrcInfo *si = pleatp->src_info;
+    Json::Value si = pleatp["srcInfo"];
     // ignore duas in header files
-    if (is_header_file(ind2str[si->filename])) return;
-
-    assert (si != NULL);
+    if (is_header_file(si["filename"].asString())) {
+	return;
+    }
+    // assert (si.isMember("srcInfo");
     dprintf("ATTACK POINT\n");
     if (recent_dead_duas.size() == 0) {
         dprintf("no duas yet -- discarding attack point\n");
@@ -876,18 +883,18 @@ void attack_point_lval_usage(Panda__LogEntry *ple) {
     }
 
     dprintf("%lu viable duas remain\n", recent_dead_duas.size());
-    assert(si->has_ast_loc_id);
-    LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
+    assert(si.isMember("astLocId"));
+    LavaASTLoc ast_loc(si["astLocId"].asString());
     assert(ast_loc.filename.size() > 0);
     transaction t(db->begin());
     const AttackPoint *atp;
     bool is_new_atp;
     std::tie(atp, is_new_atp) = create_full(AttackPoint{0,
-            ast_loc, (AttackPoint::Type)pleatp->info});
+            ast_loc, (AttackPoint::Type)pleatp["info"].asUInt()});
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
 
     // Don't decimate PTR_ADD bugs.
-    switch ((AttackPoint::Type)pleatp->info) {
+    switch ((AttackPoint::Type)pleatp["info"].asUInt()) {
     case AttackPoint::POINTER_WRITE:
         record_injectable_bugs_at<Bug::REL_WRITE>(atp, is_new_atp, { });
         // fall through
@@ -905,9 +912,9 @@ void attack_point_lval_usage(Panda__LogEntry *ple) {
     t.commit();
 }
 
-void record_call(Panda__LogEntry *ple) { }
+void record_call(Json::Value ple) { }
 
-void record_ret(Panda__LogEntry *ple) { }
+void record_ret(Json::Value ple) { }
 
 int main (int argc, char **argv) {
     if (argc != 5 && argc !=6 ) {
@@ -1018,24 +1025,31 @@ int main (int argc, char **argv) {
     inputfile = std::string(argv[4]);
 
     std::string db_name = project["db"].asString() + host.get("db_suffix", "").asString();
-    std::string DBHost("database");
-    int DBPort = 5432;
     db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
-                db_name, DBHost, DBPort));
+                db_name, "localhost"));
     /*
      re-read pandalog, this time focusing on taint queries.  Look for
      dead available data, attack points, and thus bug injection oppotunities
     */
-    pandalog_open(plog.c_str(), "r");
+    // pandalog_open(plog.c_str(), "r");
+    // See line 949
+    std::ifstream plog_json(plog.c_str());
+    Json::Value plog_file;
+    plog_json >> plog_file;
+    
     uint64_t num_entries_read = 0;
 
-    while (1) {
+
+    for (Json::Value& ple: plog_file) {
         // collect log entries that have same instr count (and pc).
         // these are to be considered together.
-        Panda__LogEntry *ple;
-        ple = pandalog_read_entry();
-        if (ple == NULL)  break;
-        num_entries_read++;
+        // Panda__LogEntry *ple;
+	//ple = pandalog_read_entry();
+        //if (ple == NULL) {
+	//	break;
+	//}
+
+	num_entries_read++;
         if ((num_entries_read % 10000) == 0) {
             printf("processed %lu pandalog entries \n", num_entries_read);
             std::cout << num_bugs_added_to_db << " added to db "
@@ -1044,26 +1058,26 @@ int main (int argc, char **argv) {
                 << num_fake_duas << " fake duas\n";
         }
 
-        if (ple->taint_query_pri) {
+        if (ple.isMember("taintQueryPri")) {
             taint_query_pri(ple);
-        } else if (ple->tainted_branch) {
+        } else if (ple.isMember("taintedBranch")) {
             update_liveness(ple);
-        } else if (ple->attack_point) {
+        } else if (ple.isMember("attackPoint")) {
             attack_point_lval_usage(ple);
-        } else if (ple->dwarf_call) {
+        } else if (ple.isMember("dwarfCall")) {
             record_call(ple);
-        } else if (ple->dwarf_ret) {
+        } else if (ple.isMember("dwarfRet")) {
             record_ret(ple);
         }
-        pandalog_free_entry(ple);
+        // pandalog_free_entry(ple);
 
         if (curtail > 0 && num_real_duas > curtail) {
             std::cout << "*** Curtailing output of fbi at " << num_real_duas << "\n";
             break;
         }
-    }
+    } // for
     std::cout << num_bugs_added_to_db << " added to db ";
-    pandalog_close();
+    // pandalog_close();
 
     std::cout << num_potential_bugs << " potential bugs\n";
     std::cout << num_potential_nonbugs << " potential non bugs\n";

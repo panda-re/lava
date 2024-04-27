@@ -1,3 +1,0 @@
-[submodule "panda/src"]
-	path = panda/src
-	url = https://github.com/panda-re/panda.git
