@@ -7,20 +7,14 @@ if(DEFINED ENV{LLVM_DIR})
     find_package(Clang REQUIRED CONFIG)
 endif()
 
-# Define LLVM and Clang libraries
-set(LLVM_CLANG_LINK_LIBRARIES
-    clangAST
-    clangASTMatchers
-    clangBasic
-    clangFrontend
-    clangLex
-    clangToolingCore
-    clangTooling
-    LLVMSupport
-)
+# Print the include directories for debugging
+#message(STATUS "LLVM include dirs: ${LLVM_INCLUDE_DIRS}")
+#message(STATUS "Clang include dirs: ${CLANG_INCLUDE_DIRS}")
 
 # Add LLVM and Clang include directories
-include_directories(SYSTEM ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
+include_directories(SYSTEM ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS} /usr/lib/llvm-11/include)
+
+# Add LLVM library directories
 link_directories(${LLVM_LIBRARY_DIRS})
 
 # Create OMG static library

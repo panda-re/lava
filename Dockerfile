@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -qq -y \
     python3-sqlalchemy \
     socat
 
+# TODO: move up
 RUN apt-get update && apt-get install -qq -y \
     wget
 
@@ -48,6 +49,11 @@ RUN cd /tools/btrace && \
     bash compile.sh
 
 # Build lavaTool. Depends on headers in lavaODB
+
+# TODO: move up
+RUN apt-get update && apt-get install -qq -y \
+    llvm-11-dev clang-tools-11 libclang-11-dev
+
 COPY tools/lavaODB /tools/lavaODB
 COPY tools/lavaTool /tools/lavaTool
 ENV LLVM_VERSION=11
