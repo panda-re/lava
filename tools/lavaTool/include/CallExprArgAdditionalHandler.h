@@ -6,10 +6,10 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
 
     void CAddArg(const CallExpr *call) {
-        SourceLocation l1 = call->getLocStart();
-        SourceLocation l2 = call->getLocEnd();
-        debug(FNARG) << "call->getLocStart = " << Mod.sm->getFileOffset(l1) << "\n";
-        debug(FNARG) << "call->getLocEnd = " << Mod.sm->getFileOffset(l2) << "\n";
+        SourceLocation l1 = call->getBeginLoc();
+        SourceLocation l2 = call->getEndLoc();
+        debug(FNARG) << "call->getBeginLoc = " << Mod.sm->getFileOffset(l1) << "\n";
+        debug(FNARG) << "call->getEndLoc = " << Mod.sm->getFileOffset(l2) << "\n";
         bool inv=false;
         debug(FNARG) << "call : [" << getStringBetweenRange(*Mod.sm, call->getSourceRange(), &inv) << "]\n";
         assert(!inv);
@@ -21,14 +21,14 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         debug(FNARG) << "CallExprArgAdditionHandler\n";
 
         bool inv;
-        SourceLocation l1 = call->getLocStart();
-        SourceLocation l2 = call->getLocEnd();
+        SourceLocation l1 = call->getBeginLoc();
+        SourceLocation l2 = call->getEndLoc();
         std::string cestr = getStringBetweenRange(*Mod.sm, call->getSourceRange(), &inv);
         assert (!inv);
         debug(FNARG) << "callexpr: [" << cestr << "\n";
 
         SourceLocation loc = clang::Lexer::findLocationAfterToken(
-                call->getLocStart(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
+                call->getBeginLoc(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
 
         // No need to check for ArgDataflow, since matcher only called then
         auto fnname = get_containing_function_name(Result, *call);
@@ -60,10 +60,10 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         if (func == nullptr || func->getLocation().isInvalid()) {
             // Function Pointer
             debug(FNARG) << "function pointer use\n";
-            call->getLocStart().print(debug(FNARG), *Mod.sm);
+            call->getBeginLoc().print(debug(FNARG), *Mod.sm);
             debug(FNARG) << "\n";
             //debug(FNARG) << " argcount=" << call->getNumArgs() << "\n";
-            //loc = call->getArg(0)->getLocStart();
+            //loc = call->getArg(0)->getBeginLoc();
         } else if (Mod.sm->isInSystemHeader(func->getLocation())) {
             debug(FNARG) << "in system header\n";
             return;

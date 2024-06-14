@@ -18,10 +18,6 @@ extern "C" {
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
-#include "panda/plog.h"
-#include "panda/plog-cc-bridge.h"
-#include "panda/plog_print.h"
 }
 
 #include <json/json.h>

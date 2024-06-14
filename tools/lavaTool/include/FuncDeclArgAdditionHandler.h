@@ -5,10 +5,10 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
 
     void AddArg(const FunctionDecl *func) {
-        SourceLocation l1 = func->getLocStart();
-        SourceLocation l2 = func->getLocEnd();
-        debug(FNARG) << "func->getLocStart = " << Mod.sm->getFileOffset(l1) << "\n";
-        debug(FNARG) << "func->getLocEnd = " << Mod.sm->getFileOffset(l2) << "\n";
+        SourceLocation l1 = func->getBeginLoc();
+        SourceLocation l2 = func->getEndLoc();
+        debug(FNARG) << "func->getBeginLoc = " << Mod.sm->getFileOffset(l1) << "\n";
+        debug(FNARG) << "func->getEndLoc = " << Mod.sm->getFileOffset(l2) << "\n";
         bool inv;
         debug(FNARG) << "func : [" << getStringBetweenRange(*Mod.sm, func->getSourceRange(), &inv) << "]\n";
 
@@ -102,7 +102,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
                 int data_slots_size = (data_slots.size() > 0) ? data_slots.size() : 1;
                 data_array << "int data[" << data_slots_size << "] = {0};\n";
                 data_array << "int *" ARG_NAME << "= &data;\n";
-                Mod.InsertAt(first->getLocStart(), data_array.str());
+                Mod.InsertAt(first->getBeginLoc(), data_array.str());
             }
         } else {
             const FunctionDecl *bodyDecl = nullptr;
