@@ -5,23 +5,22 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -qq -y \
     bc \
     build-essential \
+    clang-tools-11 \
     cmake \
     git \
     inotify-tools \
     jq \
+    libclang-11-dev \
     libfdt-dev \
     libjsoncpp-dev \
     libjsoncpp1 \
     libpq-dev \
+    llvm-11-dev \
     postgresql \
     python3-psycopg2 \
     python3-sqlalchemy \
-    socat
-
-# TODO: move up
-RUN apt-get update && apt-get install -qq -y \
+    socat \
     wget
-
 
 # Libodb
 RUN cd /tmp && \
@@ -48,19 +47,13 @@ COPY tools/btrace /tools/btrace
 RUN cd /tools/btrace && \
     bash compile.sh
 
-# Build lavaTool. Depends on headers in lavaODB
+# Build lavaTool. Depends on headers in lavaODB and tools/lavaDB
+#COPY tools/lavaODB/ tools/lavaDB/ tools/lavaTool/ /tools/
+COPY tools/ /tools
+ENV LLVM_DIR=/usr/lib/llvm-11
+RUN cd /tools && \
+    cmake -Bbuild -H. -DLLVM_DIR=$LLVM_DIR/lib/cmake/llvm -DClang_DIR=$LLVM_DIR/lib/cmake/clang -DCMAKE_INSTALL_PREFIX=/tools/install
 
-# TODO: move up
-RUN apt-get update && apt-get install -qq -y \
-    llvm-11-dev clang-tools-11 libclang-11-dev
-
-COPY tools/lavaODB /tools/lavaODB
-COPY tools/lavaTool /tools/lavaTool
-ENV LLVM_VERSION=11
-RUN cd /tools/lavaTool && \
-    echo "LLVM_VERSION=${LLVM_VERSION}" > config.mak && \
-    cmake -Bbuild -H. -DCMAKE_INSTALL_PREFIX=/tools/install
-
-RUN cd /tools/lavaTool/build && \
+RUN cd /tools/build && \
     make && \
     make install V=1
