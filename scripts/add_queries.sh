@@ -86,8 +86,8 @@ progress "queries" 0  "Configuring..."
 mkdir -p lava-install
 configure_file=${configure_cmd%% *}
 if [ -e "$configure_file" ]; then
-    CC=/llvm-3.6.2/Release/bin/clang \
-        CXX=/llvm-3.6.2/Release/bin/clang++ \
+    CC=/usr/lib/llvm-11/bin/clang \
+        CXX=/usr/lib/llvm-11/bin/clang++ \
         CFLAGS="-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
         $configure_cmd --prefix=$(pwd)/lava-install
 fi
@@ -103,8 +103,8 @@ for i in ${MAKES[@]}; do
     IFS=' '
     read -ra ARGS <<< $i
     echo "$lava/tools/btrace/sw-btrace ${ARGS[@]}"
-    CC=/llvm-3.6.2/Release/bin/clang \
-        CXX=/llvm-3.6.2/Release/bin/clang++ \
+    CC=/usr/lib/llvm-11/bin/clang \
+        CXX=/usr/lib/llvm-11/bin/clang++ \
         CFLAGS="-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
     $lava/tools/btrace/sw-btrace ${ARGS[@]}
     IFS='&&'
@@ -116,14 +116,10 @@ progress "queries" 0  "Installing..."
 bash -c $install
 
 
-# figure out where llvm is
-llvm_src=$(grep LLVM_SRC_PATH $lava/tools/lavaTool/config.mak | cut -d' ' -f3)
-
-
 progress "queries" 0  "Creating compile_commands.json..."
 # Delete any pre-existing compile commands.json (could be in archive by mistake)
 rm -f compile_commands.json
-$lava/tools/btrace/sw-btrace-to-compiledb $llvm_src/Release/lib/clang/3.6.2/include
+$lava/tools/btrace/sw-btrace-to-compiledb /usr/lib/llvm-11/lib/clang/11/include
 if [ -e "$directory/$name/extra_compile_commands.json" ]; then
     sed -i '$d' compile_commands.json
     echo "," >> compile_commands.json

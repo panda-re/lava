@@ -395,7 +395,7 @@ def main():
             #           ' '.join([
             #           'gcc', '-E', '-std=gnu99',
             #           '-I.', '-I..',
-            #           '-I/llvm-3.6.2/Release/lib/clang/3.6.2/include',
+            #           '-I/usr/lib/llvm-11/lib/clang/11/include',
             #           '-o',
             #           '{}.pre'.format(c_file),
             #           c_file]))

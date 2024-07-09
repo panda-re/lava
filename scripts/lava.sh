@@ -183,7 +183,7 @@ if [ $make -eq 1 ]; then
     progress "everything" 1 "Make step -- making 32-bit version with queries"
     lf="$logs/make.log"
     truncate "$lf"
-    run_remote "$buildhost" "cd $sourcedir && CC=/llvm-3.6.2/Release/bin/clang CXX=/llvm-3.6.2/Release/bin/clang++ CFLAGS='-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/' $makecmd" "$lf"
+    run_remote "$buildhost" "cd $sourcedir && CC=/usr/lib/llvm-11/bin/clang CXX=/usr/lib/llvm-11/bin/clang++ CFLAGS='-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/' $makecmd" "$lf"
     
     run_remote "$buildhost" "cd $sourcedir && rm -rf lava-install" "$lf"
     if [ "$install_simple" == "null" ]; then

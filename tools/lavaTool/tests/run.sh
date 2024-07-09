@@ -34,7 +34,7 @@ runtest() {
     ../../../install/bin/lavaTool -debug -lava-wl ./$1.fnwl -arg_dataflow -src-prefix=`pwd`  -action=inject $1.c &> lavaTool.log
 
     cp $1.c{,.bak}
-    /llvm-3.6.2/Release/bin/clang-apply-replacements .
+    /usr/lib/llvm-11/bin/clang-apply-replacements .
     make clean
     make &> cc.log
 

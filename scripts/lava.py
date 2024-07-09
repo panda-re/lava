@@ -699,8 +699,8 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
             and 'configure' in project.keys():
         print('Re-configuring...')
         run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
-        envv = {'CC': '/llvm-3.6.2/Release/bin/clang',
-                'CXX': '/llvm-3.6.2/Release/bin/clang++',
+        envv = {'CC': '/usr/lib/llvm-11/bin/clang',
+                'CXX': '/usr/lib/llvm-11/bin/clang++',
                 'CFLAGS': '-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
         if project['configure']:
             run_cmd(' '.join(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]),
@@ -714,8 +714,8 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
         # Silence warnings related to adding integers to pointers since we already
         # know that it's unsafe.
-        envv = {'CC': '/llvm-3.6.2/Release/bin/clang',
-                'CXX': '/llvm-3.6.2/Release/bin/clang++',
+        envv = {'CC': '/usr/lib/llvm-11/bin/clang',
+                'CXX': '/usr/lib/llvm-11/bin/clang++',
                 'CFLAGS': '-Wno-int-conversion -O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
         if competition:
             envv["CFLAGS"] += " -DLAVA_LOGGING"
@@ -736,21 +736,10 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     except Exception:  # arg_dataflow missing from args which is okay
         pass
 
-    llvm_src = None
-    # find llvm_src dir so we can figure out where clang #includes are for btrace
-    config_mak = join(lp.lava_dir, 'tools', 'lavaTool', 'config.mak')
-    print("config.mak = [%s]" % config_mak)
-    for line in open(config_mak):
-        llvm_regex_match = re.search("LLVM_SRC_PATH := (.*)$", line)
-        if llvm_regex_match:
-            llvm_src = llvm_regex_match.groups()[0]
-            break
-    assert llvm_src is not None
-    print("llvm_src = [%s]" % llvm_src)
-
+    
     if not os.path.exists(join(lp.bugs_build, 'compile_commands.json')):
         run([join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace-to-compiledb'),
-             llvm_src + "/Release/lib/clang/3.6.2/include"])
+             "/usr/lib/llvm-11/lib/clang/11/include"])
         # also insert instr for main() fn in all files that need it
 
         process_compile_commands(
@@ -825,7 +814,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
     def modify_source(dirname):
         return run_lavatool(bugs_to_inject, lp, host_file, project,
-                            llvm_src, dirname, knobTrigger=args.knobTrigger,
+                            '/usr/lib/llvm-11', dirname, knobTrigger=args.knobTrigger,
                             dataflow=dataflow, competition=competition, randseed=lavatoolseed)
 
     bug_solutions = {}  # Returned by lavaTool
@@ -839,7 +828,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     # with results instead of single-thread
     # if pool:
     # pool.map(modify_source, all_files)
-    clang_apply = join(llvm_src, 'Release', 'bin',
+    clang_apply = join('/usr/lib/llvm-11', 'bin',
                        'clang-apply-replacements')
 
     src_dirs = set()
@@ -905,8 +894,8 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     # Silence warnings related to adding integers to pointers since we already
     # know that it's unsafe.
     make_cmd = project["make"]
-    envv = {'CC': '/llvm-3.6.2/Release/bin/clang',
-            'CXX': '/llvm-3.6.2/Release/bin/clang++',
+    envv = {'CC': '/usr/lib/llvm-11/bin/clang',
+            'CXX': '/usr/lib/llvm-11/bin/clang++',
             'CFLAGS': '-Wno-int-conversion -O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
     if competition:
         envv["CFLAGS"] += " -DLAVA_LOGGING"
