@@ -1,12 +1,6 @@
-import re
 import sys
-import random
 import subprocess as sp
 import sys
-
-# ok this is gross
-sys.path.append("/home/tleek/git/panda-leet/panda/scripts")
-
 from pandare.plog_reader import PLogReader
 
 #

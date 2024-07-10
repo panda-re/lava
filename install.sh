@@ -13,15 +13,6 @@ progress() {
   echo -e "\e[32m[lava_install]\e[0m \e[1m$1\e[0m"
 }
 
-# Step 1: Install panda debian package
-wget https://github.com/panda-re/panda/releases/download/v1.8.23/pandare_22.04.deb
-$SUDO apt install ./pandare_22.04.deb
-
-# Remove the comment to update all debian stuff from sources.list
-$SUDO cp /etc/apt/sources.list /etc/apt/sources.list~
-$SUDO sed -Ei 's/^# deb-src /deb-src /' /etc/apt/sources.list
-$SUDO apt-get update
-
 progress "Updates complete"
 
 # This was originally in the docs/setup.md, I removed things starting with 'python-' as that should be installed via pip
@@ -53,12 +44,10 @@ $SUDO apt install ./pandare_22.04.deb
 
 progress "Installed build dependencies"
 
-$SUDO pip3 install --upgrade pip
-
-# This seems to be the better replacement to have all python packages
-$SUDO pip3 install -r docker/requirements.txt
+pip3 install --upgrade pip
+pip3 install -r requirements.txt
 progress "Installed Python requirements"
 
-$SUDO python3 setup_container.py
+$SUDO bash ./setup_container.sh
 
 progress "Installed LAVA"
