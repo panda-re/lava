@@ -40,7 +40,9 @@ else
 fi
 
 curl -LJO https://github.com/panda-re/panda/releases/download/v1.8.23/pandare_22.04.deb
-$SUDO apt install ./pandare_22.04.deb
+mv *.deb /tmp
+$SUDO apt-get -y install /tmp/pandare_22.04.deb
+rm /tmp/*.deb
 
 progress "Installed build dependencies"
 
@@ -48,6 +50,6 @@ pip3 install --upgrade pip
 pip3 install -r requirements.txt
 progress "Installed Python requirements"
 
-$SUDO bash ./setup_container.sh
+bash ./setup_container.sh
 
 progress "Installed LAVA"

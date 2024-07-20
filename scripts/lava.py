@@ -1,9 +1,6 @@
-from __future__ import print_function
-
 import math
 import os
 import random
-import re
 import shlex
 import struct
 import subprocess
@@ -373,7 +370,7 @@ class LavaDatabase(object):
 
 
 def run_cmd(cmd, envv=None, timeout=30, cwd=None, rr=False, shell=False):
-    if type(cmd) in [str, unicode] and not shell:
+    if type(cmd) in [str] and not shell:
         cmd = shlex.split(cmd)
 
     if debugging:
@@ -445,21 +442,21 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug,
         else:
             # If we don't have solutions from lavaTool, hope this code matches
             # lavaTool and generate non-ascii solutions here
-            if (m % NUM_BUGTYPES == 0):  # A + B = M * C
+            if m % NUM_BUGTYPES == 0:  # A + B = M * C
                 b = m
                 c = 1
                 a = 0
 
-            if (m % NUM_BUGTYPES == 1):  # B = A*(C+M)
+            if m % NUM_BUGTYPES == 1:  # B = A*(C+M)
                 a = 1
                 c = 0
                 b = m
             # C % M == M - A*2 NOT USING B, just a 2-dua
-            if (m % NUM_BUGTYPES == 2):
+            if m % NUM_BUGTYPES == 2:
                 a = 5
                 c = m - 10
             # Intentional chaff bug - don't even bother
-            if (m % NUM_BUGTYPES == 3):
+            if m % NUM_BUGTYPES == 3:
                 pass
 
             a_val = struct.pack("<I", a)
@@ -480,7 +477,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug,
             for (i, offset) in zip(range(4), fuzz_labels):
                 file_bytes[offset] = magic_val[i]
 
-    with open(new_filename, 'w') as fuzzed_f:
+    with open(new_filename, 'wb') as fuzzed_f:
         fuzzed_f.write(file_bytes)
 
 
@@ -576,7 +573,7 @@ class LavaPaths(object):
             tar_files = subprocess.check_output(['tar', 'tf',
                                                  project['tarfile']],
                                                 stderr=sys.stderr)
-            self.source_root = tar_files.splitlines()[0].split(os.path.sep)[0]
+            self.source_root = tar_files.decode().splitlines()[0].split(os.path.sep)[0]
         self.queries_build = join(self.top_dir, self.source_root)
         self.bugs_top_dir = join(self.top_dir, 'bugs')
 

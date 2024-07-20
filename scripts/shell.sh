@@ -21,6 +21,7 @@ fi
 #docker_map_args="$docker_map_args -v $pb_head_dir:$pb_head_dir -v $google_head_dir:$google_head_dir"
 
 command=bash
+DOCKER_IP=$(ifconfig docker0 | grep 'inet ' | awk '{print $2}')
 
 docker run --rm -it \
     -e "HTTP_PROXY=$HTTP_PROXY" \
@@ -34,7 +35,7 @@ docker run --rm -it \
     -v /etc/shadow:/etc/shadow:ro \
     -v /etc/gshadow:/etc/gshadow:ro \
     -v /home:/home:ro \
-    --add-host=database:172.17.0.1 \
+    --add-host=database:$DOCKER_IP \
     $docker_map_args \
     $1 sh -c "trap '' PIPE; su -l $(whoami) -c \"export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/llvm-11/lib; $command\"" \
 

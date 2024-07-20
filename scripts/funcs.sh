@@ -69,6 +69,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
             bash -c "$command" >> "$logfile" 2>&1
         elif [ "$remote_machine" == "docker" ]; then
             echo docker run $dockername sh -c "$command"
+            DOCKER_IP=$(ifconfig docker0 | grep 'inet ' | awk '{print $2}')
             docker run --rm -it \
                 -e "HTTP_PROXY=$HTTP_PROXY" \
                 -e "HTTPS_PROXY=$HTTPS_PROXY" \
@@ -81,7 +82,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
                 -v /etc/shadow:/etc/shadow:ro \
                 -v /etc/gshadow:/etc/gshadow:ro \
                 -v /home:/home:ro \
-                --add-host=database:172.17.0.1 \
+                --add-host=database:$DOCKER_IP \
                 $docker_map_args \
                 $extradockerargs \
                 $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"$command\"" \

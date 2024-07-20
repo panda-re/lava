@@ -25,6 +25,15 @@ output_dir="$(jq -r '.output_dir // ""' $hostjson)"
 config_dir="$(jq -r '.config_dir // ""' $hostjson)/$project_name"
 tar_dir="$(jq -r '.tar_dir // ""' $hostjson)"
 db_suffix="$(jq -r '.db_suffix // ""' $hostjson)"
+buildhost="$(jq -r '.buildhost // "localhost"' $hostjson)"
+dockername="$(jq -r '.docker // "lava32"' $hostjson)"
+pguser="$(jq -r '.pguser // "postgres"' $hostjson)"
+pgpass="$(jq -r '.pgpass // "postgrespostgres"' $hostjson)"
+dbhost="$(jq -r '.host // "database"' $hostjson)"
+
+export PGUSER=$pguser
+export PGPASS=$pgpass
+
 json="${config_dir}/$project_name.json"
 
 if [ ! -f $json ]; then
@@ -38,6 +47,7 @@ db="$(jq -r .db $json)$db_suffix"
 extradockerargs="$(jq -r .extra_docker_args $json)"
 exitCode="$(jq -r .expected_exit_code $json)"
 dataflow="$(jq -r '.dataflow // "false"' $json)" # TODO use everywhere, stop passing as argument
+llvm="/usr/lib/llvm-11"
 
 # List of function names to blacklist for data_flow injection, merged as fn1\|fn2\|fn3 so we can use sed
 # Or an empty string if not present
@@ -65,9 +75,6 @@ if [ "$(jq -r .injfixupsscript $json)" != "null" ]; then
     injfixupsscript="${injfixupsscript/\{bug_build\}/$bug_build}"
 fi
 
-buildhost="$(jq -r '.buildhost // "docker"' $json)"
-pandahost="$(jq -r '.pandahost // "docker"' $json)"
-testinghost="$(jq -r '.testinghost // "docker"' $json)"
 logs="$output_dir/$name/logs"
 
 makecmd="$(jq -r .make $json)"
@@ -76,10 +83,8 @@ install="${install/\{config_dir\}/$config_dir}" # Format string replacement for 
 post_install="$(jq -r .post_install $json)"
 install_simple=$(jq -r .install_simple $json)
 configure_cmd=$(jq -r '.configure // "/bin/true"' $json)
-container="$(jq -r '.docker // "lava32"' $json)"
 
 # Constants
 scripts="$lava/scripts"
-python="/usr/bin/python"
-pdb="/usr/bin/python -m pdb "
-dockername="lava32"
+python="python3"
+pdb="python3 -m pdb "

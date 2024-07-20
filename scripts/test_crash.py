@@ -1,7 +1,6 @@
 import argparse
 import json
 import subprocess
-from os import system
 
 
 def process_crash(buf):

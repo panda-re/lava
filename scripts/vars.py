@@ -87,7 +87,8 @@ def parse_vars(host_json, project_name):
         project["inputs"] = target_val
 
     for field in ["injfixupsscript", "fixupsscript"]:
-        if field not in project.keys(): continue
+        if field not in project.keys():
+            continue
         project[field] = ("{config_dir}/{name}/{field}".format(config_dir=host["config_dir"],
                                                                name=project["name"], field=project[field]))
 

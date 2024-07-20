@@ -3,6 +3,7 @@
 .idea
 *.deb
 *.whl
+.env
 
 # this existed before
 .gdb_history

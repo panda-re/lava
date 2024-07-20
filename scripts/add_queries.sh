@@ -38,7 +38,7 @@ USAGE() {
 }
 
 set -e # Exit on error
-#set -x # Debug mode
+set -x # Debug mode
 
 if [ $# -lt 1 ]; then
     USAGE $0
@@ -86,8 +86,8 @@ progress "queries" 0  "Configuring..."
 mkdir -p lava-install
 configure_file=${configure_cmd%% *}
 if [ -e "$configure_file" ]; then
-    CC=/usr/lib/llvm-11/bin/clang \
-        CXX=/usr/lib/llvm-11/bin/clang++ \
+    CC=$llvm/bin/clang \
+        CXX=$llvm/bin/clang++ \
         CFLAGS="-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
         $configure_cmd --prefix=$(pwd)/lava-install
 fi
@@ -103,8 +103,8 @@ for i in ${MAKES[@]}; do
     IFS=' '
     read -ra ARGS <<< $i
     echo "$lava/tools/btrace/sw-btrace ${ARGS[@]}"
-    CC=/usr/lib/llvm-11/bin/clang \
-        CXX=/usr/lib/llvm-11/bin/clang++ \
+    CC=$llvm/bin/clang \
+        CXX=$llvm/bin/clang++ \
         CFLAGS="-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
     $lava/tools/btrace/sw-btrace ${ARGS[@]}
     IFS='&&'
@@ -119,7 +119,7 @@ bash -c $install
 progress "queries" 0  "Creating compile_commands.json..."
 # Delete any pre-existing compile commands.json (could be in archive by mistake)
 rm -f compile_commands.json
-$lava/tools/btrace/sw-btrace-to-compiledb /usr/lib/llvm-11/lib/clang/11/include
+$lava/tools/btrace/sw-btrace-to-compiledb $llvm/lib/clang/11/include
 if [ -e "$directory/$name/extra_compile_commands.json" ]; then
     sed -i '$d' compile_commands.json
     echo "," >> compile_commands.json
@@ -130,7 +130,7 @@ git commit -m 'Add compile_commands.json.'
 
 cd ..
 
-c_files=$(python $lava/tools/lavaTool/get_c_files.py $source)
+c_files=$($python $lava/tools/lavaTool/get_c_files.py $source)
 c_dirs=$(for i in $c_files; do dirname $i; done | sort | uniq)
 
 progress "queries" 0  "Copying include files..."
@@ -151,7 +151,7 @@ done
 
 #progress "queries" 0  "Initialize variables..."
 #for i in $c_files; do
-#    $lava/src_clang/build/lavaTool -action=init \
+#    /src_clang/build/lavaTool -action=init \
 #    -p="$source/compile_commands.json" \
 #    -src-prefix=$(readlink -f "$source") \
 #    $i
@@ -167,7 +167,7 @@ fninstr=$directory/$name/fninstr
 
 echo "Creating fninstr [$fninstr]"
 echo -e "\twith command: \"python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles\""
-python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles
+$python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles
 
 if [[ ! -z "$df_fn_blacklist" ]]; then
     cmd=$(echo "sed -i /${df_fn_blacklist}/d $fninstr")
@@ -209,13 +209,13 @@ fi
 # Do we need to explicitly apply replacements in the root source directory
 # This causes clang-apply-replacements to segfault when run a 2nd time
 #pushd "$directory/$name/$source"
-#$llvm_src/Release/bin/clang-apply-replacements .
+#/usr/lib/llvm-11/bin/clang-apply-replacements .
 #popd
 
 for i in $c_dirs; do
     echo "Applying replacements to $i"
     pushd $i
-    $llvm_src/Release/bin/clang-apply-replacements .
+    $llvm/bin/clang-apply-replacements .
     popd
 done
 

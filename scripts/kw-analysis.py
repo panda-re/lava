@@ -8,6 +8,7 @@ import subprocess
 
 debug = False
 
+
 def run_cmd(args, cw_dir):
     if debug:
         if not (cw_dir is None):

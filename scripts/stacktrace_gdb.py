@@ -1,11 +1,8 @@
 import sys
-import os
-import re
-from threading import Thread
+
 
 try:
     from IPython.kernel.zmq.kernelapp import IPKernelApp
-
     ZMQ = True
 except:
     # had trouble finding kernel.zmq.  Try:

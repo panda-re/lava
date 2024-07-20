@@ -41,3 +41,6 @@ libzmq3-dev
 
 # I need this for making LavaTool
 g++-10
+
+# Install dwarf dump, you need this for 64-bit bugs
+dwarfdump

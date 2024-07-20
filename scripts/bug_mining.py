@@ -6,12 +6,9 @@ json project file.
 Second arg is an input file you want to run, under panda, to get taint info.
 """
 
-from __future__ import print_function
-
 import os
 import sys
 import time
-import pipes
 import shlex
 import shutil
 import subprocess
@@ -21,8 +18,6 @@ from colorama import Style
 
 from errno import EEXIST
 
-from os.path import join
-from os.path import abspath
 from os.path import dirname
 from os.path import basename
 
@@ -34,6 +29,7 @@ from lava import LavaDatabase
 from vars import parse_vars
 from os.path import abspath, join
 from pandare import Panda
+from pandare.extras import dwarfdump
 
 host_json = abspath(sys.argv[1])
 project_name = sys.argv[2]
@@ -41,8 +37,7 @@ project_name = sys.argv[2]
 project = parse_vars(host_json, project_name)
 qemu_path = project['qemu']
 
-panda = Panda(arch=qemu_path.split('-')[-1],
-              generic=qemu_path.split('-')[-1],
+panda = Panda(generic=qemu_path.split('-')[-1],
               expect_prompt=project['expect_prompt'])
 
 debug = True
@@ -53,24 +48,26 @@ version = "2.0.0"
 curtail = 0
 
 installdir = None
-isoname = None
 command_args = None
+
 
 # Replace create_recording in first link
 # https://github.com/panda-re/panda/blob/dev/panda/scripts/run_guest.py#L151-L189
-# https://docs.panda.re/#recordings
 # https://github.com/panda-re/panda/blob/dev/panda/python/core/pandare/panda.py#L2595-L2645
 @panda.queue_blocking
 def create_recording():
-    # I assume qemu_path is just 'panda-system-i386', `panda-system-x86_64`, etc
-    global command_args 
+    global command_args
     global installdir
-    global isoname
     print("args", command_args)
     print("install dir", installdir)
-    print("isoname", isoname)
     guest_command = subprocess.list2cmdline(command_args)
-    panda.record_cmd(guest_command=guest_command, copy_directory=installdir, iso_name=isoname)
+    # Technically the first two steps of record_cmd
+    # but running executable ONLY works with absolute paths
+    panda.revert_sync('root')
+    panda.copy_to_guest(installdir, absolute_paths=True)
+
+    # Pass in None for snap_name since I already did the revert_sync already
+    panda.record_cmd(guest_command=guest_command, snap_name=None)
     panda.stop_run()
 
 
@@ -106,8 +103,6 @@ if len(sys.argv) < 4:
 
 tick()
 
-
-
 input_file = abspath(project["config_dir"] + "/" + sys.argv[3])
 input_file_base = os.path.basename(input_file)
 print("bug_mining.py %s %s" % (project_name, input_file))
@@ -115,11 +110,6 @@ print("bug_mining.py %s %s" % (project_name, input_file))
 if len(sys.argv) > 4:
     # global curtail
     curtail = int(sys.argv[4])
-
-chaff = project.get('chaff', False)
-
-panda_os_string = project.get('panda_os_string',
-                              'linux-32-debian:3.2.0-4-686-pae')
 
 lavadir = dirname(dirname(abspath(sys.argv[0])))
 
@@ -135,10 +125,10 @@ print()
 # e.g. file-5.22-true.iso
 installdir = join(sourcedir, 'lava-install')
 input_file_guest = join(installdir, input_file_base)
-isoname = '{}-{}.iso'.format(sourcedir, input_file_base)
-command_args = shlex.split(project['command'].format(
-    install_dir=pipes.quote(installdir),
-    input_file=input_file_guest))
+command_args = shlex.split(
+    project['command'].format(
+        install_dir=shlex.quote(installdir),
+        input_file=input_file_guest))
 shutil.copy(input_file, installdir)
 
 panda.run()
@@ -159,67 +149,76 @@ print()
 progress("Starting first and only replay, tainting on file open...")
 
 # process name
-
 if command_args[0].startswith('LD_PRELOAD'):
+    cmdpath = command_args[1]
     proc_name = basename(command_args[1])
 else:
+    cmdpath = command_args[0]
     proc_name = basename(command_args[0])
 
-pandalog = "{}/queries-{}.plog".format(project['output_dir'], os.path.basename(isoname))
-pandalog_json = "{}/queries-{}.json".format(project['output_dir'], os.path.basename(isoname))
+binpath = os.path.join(installdir, "bin", proc_name)
+if not os.path.exists(binpath):
+    binpath = os.path.join(installdir, "lib", proc_name)
+    if not os.path.exists(binpath):
+        binpath = os.path.join(installdir, proc_name)
+
+pandalog = "{}/queries-{}.plog".format(project['output_dir'], input_file_base)
+pandalog_json = "{}/queries-{}.json".format(project['output_dir'], input_file_base)
 
 print("pandalog = [%s] " % pandalog)
 
-panda_args = {
-    'pri': {},
-    'pri_dwarf': {
-        'proc': proc_name,
-        'g_debugpath': installdir,
-        'h_debugpath': installdir
-    },
-    'pri_taint': {
-        'hypercall': True,
-        'chaff': chaff
-    },
-    'taint2': {'no_tp': True},
-    'tainted_branch': {},
-    'file_taint': {
-        'pos': True,
-        'cache_process_details_on_basic_block': True,
-    }
-}
+dwarf_cmd = ["dwarfdump", "-dil", cmdpath]
+dwarfout = subprocess.check_output(dwarf_cmd)
+dwarfdump.parse_dwarfdump(dwarfout, binpath)
+
+# Based on this example:
+# https://github.com/panda-re/panda/blob/dev/panda/python/examples/file_taint/file_taint.py
+panda.set_pandalog(pandalog)
+panda.load_plugin("pri")
+panda.load_plugin("taint2",
+                  args={
+                      'no_tp': True
+                  })
+panda.load_plugin("tainted_branch")
+
+panda.load_plugin("dwarf2",
+                  args={
+                      'proc': proc_name,
+                      'g_debugpath': installdir,
+                      'h_debugpath': installdir
+                  })
 
 if 'use_stdin' in project and project['use_stdin']:
-    panda_args['file_taint']['first_instr'] = 1
-    panda_args['file_taint']['use_stdin'] = proc_name
+    print("Using stdin for taint analysis")
+    panda.load_plugin("file_taint",
+                      args={
+                          'filename': input_file_guest,
+                          'pos': True,
+                          'cache_process_details_on_basic_block': True,
+                          'first_instr': 1,
+                          'use_stdin': proc_name,
+                          'verbose': True
+                      })
 else:
-    panda_args['file_taint']['enable_taint_on_open'] = True
+    print("Using open for taint analysis")
+    panda.load_plugin("file_taint",
+                      args={
+                          'filename': input_file_guest,
+                          'pos': True,
+                          'cache_process_details_on_basic_block': True,
+                          'enable_taint_on_open': True,
+                          'verbose': True
+                      })
 
-qemu_args = [
-    project['qemu'], '-replay', isoname,
-    '-pandalog', pandalog, '-os', panda_os_string
-]
 
-for plugin, plugin_args in panda_args.items():
-    qemu_args.append('-panda')
-    arg_string = ",".join(["{}={}".format(arg, val)
-                           for arg, val in plugin_args.items()])
-    qemu_args.append('{}{}{}'.format(plugin, ':'
-    if arg_string else '', arg_string))
+panda.load_plugin("pri_taint", args={
+    'hypercall': True,
+    'chaff': False
+})
 
-# Use -panda-plugin-arg to account for commas and colons in filename.
-qemu_args.extend(['-panda-arg', 'file_taint:filename=' + input_file_guest])
-
-dprint("qemu args: [{}]".format(subprocess.list2cmdline(qemu_args)))
-sys.stdout.flush()
-try:
-    subprocess.check_call(qemu_args, stderr=subprocess.STDOUT)
-except subprocess.CalledProcessError:
-    if qemu_use_rr:
-        qemu_args = ['rr', 'record', project['qemu'], '-replay', isoname]
-        subprocess.check_call(qemu_args)
-    else:
-        raise
+# Default name is 'recording'
+# https://github.com/panda-re/panda/blob/dev/panda/python/core/pandare/panda.py#L2595
+panda.run_replay("recording")
 
 replay_time = tock()
 print("taint analysis complete %.2f seconds" % replay_time)
@@ -227,9 +226,14 @@ sys.stdout.flush()
 
 tick()
 
+# I attempted to upgrade the version, but panda had trouble including <protobuf-c/protobuf.h> something
+# for now, we can use the python implementation, although it is slower
+# https://github.com/protocolbuffers/protobuf/releases/tag/v21.0
+# https://stackoverflow.com/questions/52040428/how-to-update-protobuf-runtime-library
+os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 progress("Calling the FBI on queries.plog...")
 convert_json_args = ['python3', '-m', 'pandare.plog_reader', pandalog]
-print("panda log JSON invocation: [%s]" % (subprocess.list2cmdline(convert_json_args)))
+print("panda log JSON invocation: [%s] > %s" % (subprocess.list2cmdline(convert_json_args), pandalog_json))
 try:
     with open(pandalog_json, 'wb') as fd:
         subprocess.check_call(convert_json_args, stdout=fd, stderr=sys.stderr)

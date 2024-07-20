@@ -3,6 +3,8 @@
 #### competition.py is not making this assumption and instead just copying out the lava-install dir
 #####
 
+from os.path import join
+
 build_sh = join(corpdir, "build.sh")
 with open(build_sh, "w") as build:
     build.write("""#!/bin/bash

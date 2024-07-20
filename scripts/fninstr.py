@@ -1,8 +1,6 @@
-import sys
-import yaml
-import re
-import pickle
 import argparse
+import pickle
+import yaml
 
 debug = True
 
@@ -19,6 +17,8 @@ parser = argparse.ArgumentParser(
 # TODO use vars.py to figure this out instead of arguments
 parser.add_argument('-d', '--dataflow', action="store_true", default=False,
                     help="lava is using dataflow")
+parser.add_argument('-r', '--read', action="store_true", default=True,
+                    help="Read the LAVA output YAML file")
 parser.add_argument('-i', '--input', action="store", default=None,
                     help="name of input yaml file from LavaFnTool")
 parser.add_argument('-o', '--output', action="store", default=None,
@@ -104,10 +104,11 @@ def merge(v, vors):
     return vors + v
 
 
-if True:
+if args.read:
     for filename in rest:
         print("FILE [%s] " % filename)
-        y = yaml.load(open(filename))
+        with open(filename, 'r') as file:
+            y = yaml.safe_load(file)
         assert (y is not None), "Missing output file from fninstr"
         for x in y:
             #        print x
@@ -126,19 +127,19 @@ if True:
                 fpa = FnPtrAssign(x['fnPtrAssign'])
                 addtohl(fpas, fpa.name, fpa)
 
-    f = open("getfns.pickle", "wb")
-    pickle.dump(fundefs, f)
-    pickle.dump(prots, f)
-    pickle.dump(calls, f)
-    pickle.dump(fpas, f)
-    f.close()
+    with open("getfns.pickle", "wb") as f:
+        pickle.dump(fundefs, f)
+        pickle.dump(prots, f)
+        pickle.dump(calls, f)
+        pickle.dump(fpas, f)
+
 else:
-    f = open("getfns.pickle", "rb")
-    fundefs = pickle.load(f)
-    prots = pickle.load(f)
-    calls = pickle.load(f)
-    fpas = pickle.load(f)
-    f.close()
+    with open("getfns.pickle", "rb") as f:
+        fundefs = pickle.load(f)
+        prots = pickle.load(f)
+        calls = pickle.load(f)
+        fpas = pickle.load(f)
+
 
 """
 
@@ -303,8 +304,7 @@ for name in instr_judgement.keys():
     if instr_judgement[name] == OKI:
         print("Intrumenting fun [%s]" % name)
 
-f = open(args.output, "w")
-for name in instr_judgement.keys():
-    if instr_judgement[name] == OKI:
-        f.write("NOFILENAME %s\n" % name)
-f.close()
+with open(args.output, "w") as f:
+    for name in instr_judgement.keys():
+        if instr_judgement[name] == OKI:
+            f.write("NOFILENAME %s\n" % name)

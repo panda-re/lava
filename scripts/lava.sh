@@ -26,9 +26,7 @@
 # directory:   where you want source to build
 # name:        a name for this project (used to create directories)
 # inputs:      a list of inputs that will be used to find potential bugs (think coverage)
-# buildhost:   what remote host to build source on
-# pandahost:   what remote host to run panda and postgres on
-# testinghost: what host to test injected bugs on
+# buildhost:   what remote host to build source and test injected bugs on
 # fixupscript: script to run after add_query to fix up src before make
 #
 
@@ -105,7 +103,7 @@ fi
 
 if [[ $demo -eq 1 ]]
 then
-    gnome-terminal --geometry=90x40  -x bash -c "python $(dirname $0)/demo.py $json; read" &
+    gnome-terminal --geometry=90x40  -x bash -c "$python $(dirname $0)/demo.py $json; read" &
 fi
 
 progress "everything" 1 "JSON file is $json"
@@ -132,9 +130,9 @@ RESET_DB() {
     lf="$logs/dbwipe.log"
     truncate "$lf"
     progress "everything" 1  "Resetting lava db -- logging to $lf"
-    run_remote "$buildhost" "dropdb -U postgres -h database $db || true" "$lf"
-    run_remote "$buildhost" "createdb -U postgres -h database $db || true" "$lf"
-    run_remote "$buildhost" "psql -d $db -h database -f $lava/tools/lavaODB/generated/lava.sql -U postgres" "$lf"
+    run_remote "$buildhost" "dropdb -U $pguser -h $dbhost $db || true" "$lf"
+    run_remote "$buildhost" "createdb -U $pguser -h $dbhost $db || true" "$lf"
+    run_remote "$buildhost" "psql -d $db -h $dbhost -f $lava/tools/lavaODB/generated/lava.sql -U $pguser" "$lf"
     run_remote "$buildhost" "echo dbwipe complete" "$lf"
 }
 
@@ -146,6 +144,7 @@ if [ $reset -eq 1 ]; then
     deldir "$directory/$name/"'*rr-*'
     # remove all plog files in the directory
     deldir "$directory/$name/*.plog"
+    deldir "$directory/$name/*.json"
     progress "everything" 0 "Truncating logs..."
     for i in $(ls "$logs" | grep '.log$'); do
         truncate "$logs/$i"
@@ -155,15 +154,12 @@ if [ $reset -eq 1 ]; then
     echo "reset complete $time_diff seconds"
 fi
 
-
-
-
 if [ $add_queries -eq 1 ]; then
     tick
     progress "everything" 1  "Add queries step -- btrace lavatool and fixups"
     lf="$logs/add_queries.log"
     truncate "$lf"
-    progress "everything" 1 "Adding queries to source -- logging to $lf"
+    progress "everything" 1 "Adding queries to source with type $ATP and $project_name -- logging to $lf"
     run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $project_name" "$lf"
     if [ "$fixupscript" != "null" ]; then
         lf="$logs/fixups.log"
@@ -183,7 +179,8 @@ if [ $make -eq 1 ]; then
     progress "everything" 1 "Make step -- making 32-bit version with queries"
     lf="$logs/make.log"
     truncate "$lf"
-    run_remote "$buildhost" "cd $sourcedir && CC=/usr/lib/llvm-11/bin/clang CXX=/usr/lib/llvm-11/bin/clang++ CFLAGS='-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/' $makecmd" "$lf"
+    # Note, adding the static flag is important. We are running the binaries on a PANDA VM, so we have no idea if it will have any libraries we need.
+    run_remote "$buildhost" "cd $sourcedir && CC=$llvm/bin/clang CXX=$llvm/bin/clang++ CFLAGS='-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/ -static' $makecmd" "$lf"
     
     run_remote "$buildhost" "cd $sourcedir && rm -rf lava-install" "$lf"
     if [ "$install_simple" == "null" ]; then
@@ -211,7 +208,7 @@ if [ $taint -eq 1 ]; then
         # If we didn't just reset the DB, we need clear out any existing taint labels before running FBI
         progress "everything" 1 "Clearing taint data from DB"
         lf="$logs/dbwipe_taint.log"
-        run_remote "$buildhost" "psql -U postgres -h database -c \"delete from dua_viable_bytes; delete from labelset;\" $db" "$lf"
+        run_remote "$buildhost" "psql -U $pguser -h $dbhost -c \"delete from dua_viable_bytes; delete from labelset;\" $db" "$lf"
     fi
     progress "everything" 1 "Taint step -- running panda and fbi"
     for input in $inputs
@@ -220,16 +217,16 @@ if [ $taint -eq 1 ]; then
         lf="$logs/bug_mining-$i.log"
         truncate "$lf"
         progress "everything" 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
-        run_remote "$buildhost" "$python $scripts/bug_mining.py $hostjson $project_name $input $curtail" "$lf"
+	run_remote "$buildhost" "$python $scripts/bug_mining.py $hostjson $project_name $input $curtail" "$lf"
         echo -n "Num Bugs in db: "
-        bug_count=$(run_remote "$buildhost" "psql -At $db -U postgres -h database -c 'select count(*) from bug'")
+        bug_count=$(run_remote "$buildhost" "psql -At $db -U $pguser -h $dbhost -c 'select count(*) from bug'")
         if [ "$bug_count" = "0" ]; then
             echo "FATAL ERROR: no bugs found"
             exit 1
         fi
         echo "Found $bug_count bugs"
         echo
-        run_remote "$buildhost" "psql $db -U postgres -h database -c 'select count(*), type from bug group by type order by type'"
+        run_remote "$buildhost" "psql $db -U $pguser -h $dbhost -c 'select count(*), type from bug group by type order by type'"
     done
     tock
     echo "bug_mining complete $time_diff seconds"
@@ -249,7 +246,7 @@ if [ $inject -eq 1 ]; then
         if [ "$injfixupsscript" != "null" ]; then
             fix="--fixupsscript='$injfixupsscript'"
         fi
-        run_remote "$testinghost" "$python $scripts/inject.py -t $bugtypes -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
+        run_remote "$buildhost" "$python $scripts/inject.py -t $bugtypes -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
     grep yield "$lf"  | grep " real bugs "
     done
 fi

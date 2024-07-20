@@ -1,7 +1,7 @@
 import sys
 import os
 import re
-from threading import Thread
+
 
 try:
     from IPython.kernel.zmq.kernelapp import IPKernelApp
@@ -38,7 +38,7 @@ event_regex = re.compile(".*?Current event: ([0-9]+).*", re.MULTILINE)
 def get_instr_count():
     data = gdb.execute("info record", to_string=True)
     m = re.search(record_regex, data)
-    if m == None:
+    if m is None:
         print("coulnd't find instruction count in [info record] command")
         print(data)
     return int(m.groups()[0])
@@ -47,7 +47,7 @@ def get_instr_count():
 def get_event_count():
     data = gdb.execute("when", to_string=True)
     m = re.search(event_regex, data)
-    if m == None:
+    if m is None:
         print("coulnd't find event count in when command")
         print(data)
         assert 0
