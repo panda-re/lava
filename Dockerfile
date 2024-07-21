@@ -1,8 +1,12 @@
 ARG BASE_IMAGE="ubuntu:22.04"
+ARG PANDA_VERSION="v1.8.58"
+ARG CAPSTONE_VERSION="5.0.5"
 
 ### BASE IMAGE
-FROM $BASE_IMAGE as base
+FROM $BASE_IMAGE AS base
 ARG BASE_IMAGE
+ARG PANDA_VERSION
+ARG CAPSTONE_VERSION
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LLVM_DIR=/usr/lib/llvm-11
@@ -14,6 +18,8 @@ ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 # do in a COPY command.
 COPY ./dependencies/* /tmp
 COPY ./requirements.txt /tmp
+COPY ./tools/ /tools
+COPY ./scripts/ /scripts
 
 RUN mv /tmp/$(echo "$BASE_IMAGE" | sed 's/:/_/g')_build.txt /tmp/build_dep.txt && \
     mv /tmp/$(echo "$BASE_IMAGE" | sed 's/:/_/g')_base.txt /tmp/base_dep.txt
@@ -24,27 +30,26 @@ RUN [ -e /tmp/base_dep.txt ] && \
     apt-get -qq install -y --no-install-recommends curl $(cat /tmp/base_dep.txt | grep -o '^[^#]*') && \
     apt-get clean
 
+RUN cd /tmp && \
+    curl -LJO https://github.com/capstone-engine/capstone/releases/download/${CAPSTONE_VERSION}/libcapstone-dev_${CAPSTONE_VERSION}_amd64.deb && \
+    dpkg -i /tmp/libcapstone-dev_${CAPSTONE_VERSION}_amd64.deb && \
+    rm -rf /tmp/libcapstone-dev_${CAPSTONE_VERSION}_amd64.deb
+
 # Finally: Install panda debian package, you need a version that has the Dwarf2 Plugin
-RUN curl -LJO https://github.com/panda-re/panda/releases/download/v1.8.23/pandare_22.04.deb
-RUN apt install -qq -y ./pandare_22.04.deb
+RUN cd /tmp && \
+    UBUNTU_VERSION=$(echo "$BASE_IMAGE" | awk -F':' '{print $2}') && \
+    curl -LJO https://github.com/panda-re/panda/releases/download/${PANDA_VERSION}/pandare_${UBUNTU_VERSION}.deb && \
+    apt-get install -qq -y /tmp/pandare_${UBUNTU_VERSION}.deb
 RUN pip install -r /tmp/requirements.txt
 
 ### BUILD IMAGE - STAGE 2
-FROM base AS builder
-ARG BASE_IMAGE
-
 RUN [ -e /tmp/build_dep.txt ] && \
     apt-get -qq update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $(cat /tmp/build_dep.txt | grep -o '^[^#]*') && \
+    apt-get install -y --no-install-recommends $(cat /tmp/build_dep.txt | grep -o '^[^#]*') && \
     apt-get clean
 
 #### Develop setup: panda built + pypanda installed (in develop mode) - Stage 3
-FROM builder as developer
-
-COPY ./tools/ /tools
-COPY ./scripts /scripts
-
-# Essentially same as setup_container.sh
+#### Essentially same as setup_container.sh
 RUN cd /tools/btrace && ./compile.sh
 
 RUN rm -rf /tools/build
@@ -53,5 +58,9 @@ RUN mkdir -p /tools/install
 
 RUN cmake -B"/tools/build" -H"/tools" -DCMAKE_INSTALL_PREFIX="/tools/install"
 RUN make --no-print-directory -j4 install -C "/tools/build/lavaTool"
-
 RUN make --no-print-directory -j4 install -C "/tools/build/fbi"
+
+# RUN useradd volcana
+# RUN chown -R volcana:volcana /tools/
+# RUN chown -R volcana:volcana /scripts/
+# USER volcana

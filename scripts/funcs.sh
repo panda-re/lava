@@ -82,6 +82,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
                 -v /etc/shadow:/etc/shadow:ro \
                 -v /etc/gshadow:/etc/gshadow:ro \
                 -v /home:/home:ro \
+                -v $HOME/.panda:$HOME/.panda \
                 --add-host=database:$DOCKER_IP \
                 $docker_map_args \
                 $extradockerargs \
