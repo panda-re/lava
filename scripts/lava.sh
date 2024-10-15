@@ -221,7 +221,7 @@ if [ $taint -eq 1 ]; then
         lf="$logs/bug_mining-$i.log"
         truncate "$lf"
         progress "everything" 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
-	    run_remote "$buildhost" "$python $scripts/bug_mining.py $hostjson $project_name $input $curtail" "$lf"
+	    run_remote "$buildhost" "$python \"$scripts/bug_mining.py\" \"$hostjson\" $project_name $input $curtail" "$lf"
         echo -n "Num Bugs in db: "
         bug_count=$(run_remote "$buildhost" "psql -At $db -U $pguser -h $dbhost -c 'select count(*) from bug'")
         if [ "$bug_count" = "0" ]; then
