@@ -4,11 +4,6 @@ import json
 import os
 import sys
 
-if sys.version_info.major >= 3:
-    # Provide aliases for things that Python 3 renamed.
-    unicode = str
-    xrange = range
-
 kDrivers = [
     "cc", "c++", "cc1",
     "gcc", "g++",
@@ -21,7 +16,7 @@ kAssemblyExtensions = [".s", ".S"]
 
 class Command(object):
     def __init__(self, cwd, parent, argv, line):
-        assert isinstance(cwd, unicode)
+        assert isinstance(cwd, str)
         assert parent is None or isinstance(parent, Command)
         self.cwd = cwd
         self.parent = parent
@@ -38,7 +33,7 @@ def readPidList(pidlist):
     """
     assert len(pidlist) % 2 == 0 and len(pidlist) >= 2
     ret = [(pidlist[0], pidlist[1])]
-    for i in xrange(2, len(pidlist), 2):
+    for i in range(2, len(pidlist), 2):
         ret.append((ret[-1][0] + pidlist[i], ret[-1][1] + pidlist[i + 1]))
     return ret
 
@@ -46,23 +41,19 @@ def readPidList(pidlist):
 def readFile(path):
     commandList = []
     commandIDToCommand = {}
-    fp = open(path)
     line = 0
 
-    while True:
-        recordString = unicode(fp.readline())
-        if recordString == "":
-            break
-        line += 1
-        record = json.loads(recordString)
-        parent = None
-        procList = readPidList(record["pidlist"])
-        for procID in procList[:-1]:
-            parent = commandIDToCommand.get(procID, parent)
-        command = Command(record["cwd"], parent, record["argv"], line)
-        commandList.append(command)
-        commandIDToCommand[procList[-1]] = command
-
+    with open(path) as fp:
+        for recordString in fp:
+            line += 1
+            record = json.loads(recordString)
+            parent = None
+            procList = readPidList(record["pidlist"])
+            for procID in procList[:-1]:
+                parent = commandIDToCommand.get(procID, parent)
+            command = Command(record["cwd"], parent, record["argv"], line)
+            commandList.append(command)
+            commandIDToCommand[procList[-1]] = command
     return commandList
 
 

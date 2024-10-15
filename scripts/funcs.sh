@@ -53,7 +53,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
         if [ -z "$logfile" ]; then
             logfile=/dev/stdout
         fi
-        echo $command >> $logfile;
+        echo "$command" >> "$logfile";
         set +e
         docker_map_args="-v $lava:$lava -v $tarfiledir:$tarfiledir"
 
@@ -61,7 +61,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
             extradockerargs="";
         fi
 
-        if [[ "$directory" = "$tarfiledir"* ]]; then true; else
+        if [[ "$directory" = $tarfiledir* ]]; then true; else
             docker_map_args="$docker_map_args -v $directory:$directory"
         fi
         if [ "$remote_machine" == "localhost" ]; then
