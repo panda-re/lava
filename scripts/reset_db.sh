@@ -1,7 +1,10 @@
 
 # Load lava-functions
 . `dirname $0`/funcs.sh
-lava=$(dirname $(dirname $(readlink -f "$0")))
+absolute_path=$(readlink -f "$0")
+scripts_path=$(dirname "$absolute_path")
+lava=$(dirname "$scripts_path")
+sql="$lava/tools/lavaODB/generated/lava.sql"
 
 # defaults
 ok=0
@@ -36,7 +39,7 @@ RESET_DB() {
     progress "everything" 1  "Resetting lava db -- logging to $lf"
     run_remote "$buildhost" "dropdb -U $pguser -h $dbhost $db || true" "$lf"
     run_remote "$buildhost" "createdb -U $pguser -h $dbhost $db || true" "$lf"
-    run_remote "$buildhost" "psql -d $db -h $dbhost -f $lava/tools/lavaODB/generated/lava.sql -U $pguser" "$lf"
+    run_remote "$buildhost" "psql -d $db -h $dbhost -f \"$sql\" -U $pguser" "$lf"
     run_remote "$buildhost" "echo dbwipe complete" "$lf"
 }
 

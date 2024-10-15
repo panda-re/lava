@@ -32,7 +32,7 @@
 
 version="2.0.0"
 trap '' PIPE
-set -e # Exit on error
+set -ex # Exit on error
 
 USAGE() {
   echo "$0 version $version"
@@ -72,7 +72,10 @@ fi
 
 # Load lava-functions
 . `dirname $0`/funcs.sh
-lava=$(dirname $(dirname $(readlink -f "$0")))
+absolute_path=$(readlink -f "$0")
+scripts_path=$(dirname "$absolute_path")
+lava=$(dirname "$scripts_path")
+sql="$lava/tools/lavaODB/generated/lava.sql"
 
 # defaults
 ok=0
@@ -99,6 +102,7 @@ parse_args $@
 if [ -z "$project_name" ]; then
     USAGE
 fi
+
 . `dirname $0`/vars.sh
 
 if [[ $demo -eq 1 ]]
@@ -132,7 +136,7 @@ RESET_DB() {
     progress "everything" 1  "Resetting lava db -- logging to $lf"
     run_remote "$buildhost" "dropdb -U $pguser -h $dbhost $db || true" "$lf"
     run_remote "$buildhost" "createdb -U $pguser -h $dbhost $db || true" "$lf"
-    run_remote "$buildhost" "psql -d $db -h $dbhost -f $lava/tools/lavaODB/generated/lava.sql -U $pguser" "$lf"
+    run_remote "$buildhost" "psql -d $db -h $dbhost -f \"$sql\" -U $pguser" "$lf"
     run_remote "$buildhost" "echo dbwipe complete" "$lf"
 }
 
@@ -160,7 +164,7 @@ if [ $add_queries -eq 1 ]; then
     lf="$logs/add_queries.log"
     truncate "$lf"
     progress "everything" 1 "Adding queries to source with type $ATP and $project_name -- logging to $lf"
-    run_remote "$buildhost" "$scripts/add_queries.sh $ATP_TYPE $project_name" "$lf"
+    run_remote "$buildhost" "\"$scripts/add_queries.sh\" $ATP_TYPE $project_name" "$lf"
     if [ "$fixupscript" != "null" ]; then
         lf="$logs/fixups.log"
         truncate "$lf"
@@ -180,16 +184,16 @@ if [ $make -eq 1 ]; then
     lf="$logs/make.log"
     truncate "$lf"
     # Note, adding the static flag is important. We are running the binaries on a PANDA VM, so we have no idea if it will have any libraries we need.
-    run_remote "$buildhost" "cd $sourcedir && CC=$llvm/bin/clang CXX=$llvm/bin/clang++ CFLAGS='-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/ -static' $makecmd" "$lf"
+    run_remote "$buildhost" "cd \"$sourcedir\" && CC=$llvm/bin/clang CXX=$llvm/bin/clang++ CFLAGS='-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/ -static' $makecmd" "$lf"
+    run_remote "$buildhost" "cd \"$sourcedir\" && rm -rf lava-install" "$lf"
     
-    run_remote "$buildhost" "cd $sourcedir && rm -rf lava-install" "$lf"
     if [ "$install_simple" == "null" ]; then
-        run_remote "$buildhost" "cd $sourcedir && $install" "$lf"
+        run_remote "$buildhost" "cd \"$sourcedir\" && $install" "$lf"
     else 
-        run_remote "$buildhost" "cd $sourcedir && $install_simple" "$lf"
+        run_remote "$buildhost" "cd \"$sourcedir\" && $install_simple" "$lf"
     fi
     if [ "$post_install" != "null" ]; then
-        run_remote "$buildhost" "cd $sourcedir && $post_install" "$lf"
+        run_remote "$buildhost" "cd \"$sourcedir\" && $post_install" "$lf"
     fi
     tock
     echo "make complete $time_diff seconds"
@@ -217,7 +221,7 @@ if [ $taint -eq 1 ]; then
         lf="$logs/bug_mining-$i.log"
         truncate "$lf"
         progress "everything" 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
-	run_remote "$buildhost" "$python $scripts/bug_mining.py $hostjson $project_name $input $curtail" "$lf"
+	    run_remote "$buildhost" "$python \"$scripts/bug_mining.py\" \"$hostjson\" $project_name $input $curtail" "$lf"
         echo -n "Num Bugs in db: "
         bug_count=$(run_remote "$buildhost" "psql -At $db -U $pguser -h $dbhost -c 'select count(*) from bug'")
         if [ "$bug_count" = "0" ]; then
@@ -246,7 +250,7 @@ if [ $inject -eq 1 ]; then
         if [ "$injfixupsscript" != "null" ]; then
             fix="--fixupsscript='$injfixupsscript'"
         fi
-        run_remote "$buildhost" "$python $scripts/inject.py -t $bugtypes -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
+        run_remote "$buildhost" "$python \"$scripts/inject.py\" -t $bugtypes -m $many -e $exitCode $kt $fix $hostjson $project_name" "$lf"
     grep yield "$lf"  | grep " real bugs "
     done
 fi
