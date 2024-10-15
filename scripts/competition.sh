@@ -4,7 +4,6 @@
 # Json file required params
 #
 # lava:        directory of lava repository
-# pandahost:   what remote host to run panda on
 
 trap '' PIPE
 set -e # Exit on error
@@ -103,7 +102,7 @@ mkdir -p $logs
 lf="$logs/competition.log"
 progress "competition" 1 "Starting -- logging to $lf"
 truncate "$lf"
-run_remote "$testinghost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject --bugtypes=$bugtypes $usechaff $hostjson $project_name" "$lf"
+run_remote "$buildhost" "$python $scripts/competition.py -m $num_bugs -n $min_yield $bug_list -e $exit_code $diversify $skipinject --bugtypes=$bugtypes $usechaff $hostjson $project_name" "$lf"
 progress "competition" 1 "Everything finished."
 
 tail -n3 $lf

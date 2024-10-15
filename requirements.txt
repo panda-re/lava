@@ -1,0 +1,9 @@
+colorama
+db
+ipython
+lockfile
+numpy
+pandare
+PyYAML
+SQLAlchemy
+tabulate

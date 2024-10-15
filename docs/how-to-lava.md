@@ -76,7 +76,7 @@ Fortunately, we've created a tool to help with this process- `lavaInitTool`.
 the preprocessed c files.
 
 2.5.5 In each directory with your source code, run
-`/llvm-3.6.2/Release/bin/clang-apply-replacements .`
+`/usr/lib/llvm-11/bin/clang-apply-replacements .`
 
 2.5.6 If you search through your code for `={0};` you should see variables that were previously
 unitialized now being initialized to null.

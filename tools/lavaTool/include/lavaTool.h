@@ -69,7 +69,7 @@ using clang::tooling::CommonOptionsParser;
 
 #define MAX_STRNLEN 64
 
-static llvm::raw_null_ostream null_ostream;
+static llvm::raw_ostream &null_ostream = llvm::nulls();
 #define debug(flag) ((DEBUG_FLAGS & (flag)) ? llvm::errs() : null_ostream)
 
 enum action { LavaQueries, LavaInjectBugs, LavaInstrumentMain };
@@ -136,8 +136,7 @@ static cl::extrahelp MoreHelp(
 static cl::opt<action> LavaAction("action", cl::desc("LAVA Action"),
     cl::values(
         clEnumValN(LavaQueries, "query", "Add taint queries"),
-        clEnumValN(LavaInjectBugs, "inject", "Inject bugs"),
-        clEnumValEnd),
+        clEnumValN(LavaInjectBugs, "inject", "Inject bugs")),
     cl::cat(LavaCategory),
     cl::Required);
 static cl::opt<std::string> LavaBugList("bug-list",
@@ -204,7 +203,7 @@ namespace {
 }
 
 void my_terminate(void) {
-    static bool tried_throw = false;
+    static int tried_throw = false;
 
     std::cerr << "TEST\n";
 
@@ -284,7 +283,7 @@ std::string StripPrefix(std::string filename, std::string prefix) {
     return filename.substr(prefix_len);
 }
 
-bool QueriableType(const Type *lval_type) {
+bool QueriableType(const clang::Type *lval_type) {
     if ((lval_type->isIncompleteType())
         || (lval_type->isIncompleteArrayType())
         || (lval_type->isVoidType())
@@ -293,23 +292,24 @@ bool QueriableType(const Type *lval_type) {
         return false;
     }
     if (lval_type->isPointerType()) {
-        const Type *pt = lval_type->getPointeeType().getTypePtr();
+        const clang::Type *pt = lval_type->getPointeeType().getTypePtr();
         return QueriableType(pt);
     }
     return true;
 }
 
+
 bool IsArgAttackable(const Expr *arg) {
     debug(MATCHER) << "IsArgAttackable \n";
     if (DEBUG_FLAGS & MATCHER) arg->dump();
 
-    const Type *t = arg->IgnoreParenImpCasts()->getType().getTypePtr();
+    const clang::Type *t = arg->IgnoreParenImpCasts()->getType().getTypePtr();
     if (dyn_cast<OpaqueValueExpr>(arg) || t->isStructureType() || t->isEnumeralType() || t->isIncompleteType()) {
         return false;
     }
     if (QueriableType(t)) {
         if (t->isPointerType()) {
-            const Type *pt = t->getPointeeType().getTypePtr();
+            const clang::Type *pt = t->getPointeeType().getTypePtr();
             // its a pointer to a non-void
             if ( ! (pt->isVoidType() ) ) {
                 return true;
@@ -388,23 +388,23 @@ LExpr threeDuaTest(Bug *bug, LvalBytes x, LvalBytes y) {
 
     auto oldmagic = bug->magic;
 
-    printf("Bug %llu solutions\n", bug->id);
+    printf("Bug %lu solutions\n", bug->id);
     const int NUM_BUGTYPES=3;
     // Todo remove the pring switch or print to a debug output
     switch (oldmagic % NUM_BUGTYPES)  {
         case 0:
             bug->magic = (a_sol + b_sol) * c_sol;
-            printf("SOL 0x%llx == (0x%x + 0x%x) * 0x%x\n", bug->id, a_sol, b_sol, c_sol);
+            printf("SOL 0x%lx == (0x%x + 0x%x) * 0x%x\n", bug->id, a_sol, b_sol, c_sol);
             break;
 
         case 1:
             bug->magic = (a_sol * b_sol) - c_sol;
-            printf("SOL 0x%llx id  == (0x%x * 0x%x) - 0x%x\n", bug->id, a_sol, b_sol, c_sol);
+            printf("SOL 0x%lx id  == (0x%x * 0x%x) - 0x%x\n", bug->id, a_sol, b_sol, c_sol);
             break;
 
         case 2:
             bug->magic = (a_sol+2) * (b_sol+1) * (c_sol+3);
-            printf("SOL 0x%llx id == (0x%x+2) *( 0x%x+1) * (0x%x+3) \n", bug->id, a_sol, b_sol, c_sol);
+            printf("SOL 0x%lx id == (0x%x+2) *( 0x%x+1) * (0x%x+3) \n", bug->id, a_sol, b_sol, c_sol);
             break;
 
     }
@@ -435,9 +435,11 @@ LExpr twoDuaTest(const Bug *bug, LvalBytes x) {
     return (Get(bug->trigger)^Get(x)) == LHex(bug->magic);
 }
 
-static void printVersion() {
-    errs() << "LavaTool Version -- " << LAVA_VER << "\n";
+static void printVersion(llvm::raw_ostream &OS) {
+    OS << "LavaFnTool Version -- " << LAVA_VER << "\n";
 }
+
+
 // returns true iff this fn name is in whitelist to be instrumented
 bool fninstr(std::pair<std::string, std::string> fnname) {
     std::string filename = fnname.first;

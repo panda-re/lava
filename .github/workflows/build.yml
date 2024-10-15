@@ -1,0 +1,54 @@
+name: Test Lava
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - master
+      - next
+      - feature*
+      - fix*
+
+jobs:  
+
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      LLVM_DIR: /usr/lib/llvm-11
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install all requirements
+      run: bash install.sh
+
+  # For now I am pushing LAVA, but eventually this should be just a testing repostiory
+  build_container:
+    runs-on: panda-arc
+    steps:
+    - name: 'Login to Docker Registry'
+      uses: docker/login-action@v3
+      with:
+        username: pandare
+        password: ${{secrets.ALL_PANDARE_DOCKERHUB}}
+
+    - name: Checkout LAVA at current commit
+      uses: actions/checkout@v4
+
+    - name: Build Lava Docker image
+      uses: docker/build-push-action@v5
+      with:
+        push: true
+        context: ${{ github.workspace }}
+        tags: |
+          pandare/lava:latest
+
+    # - name: Update Docker Hub Description
+    #  uses: peter-evans/dockerhub-description@v4
+    #  with:
+    #    username: pandare
+    #    password: ${{secrets.ALL_PANDARE_DOCKERHUB}}
+    #    repository: pandare/lava
+    #    short-description: ${{ github.event.repository.description }}

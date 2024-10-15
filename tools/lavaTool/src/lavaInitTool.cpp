@@ -1,4 +1,4 @@
-// Clang rewriter to initialize all unitialized variables
+// Clang rewriter to initialize all uninitialized variables
 // to '={0}' (AKA null for any type)
 
 // It's a bit messy because it duplicates some classes
@@ -31,7 +31,7 @@
 
 #define LOG (1 << 0)
 #define INI (1 << 1)
-#define DEBUG_FLAGS ( INI | LOG )
+#define DEBUG_FLAGS (INI | LOG)
 
 using namespace clang::tooling;
 using namespace llvm;
@@ -40,7 +40,8 @@ using namespace clang::ast_matchers;
 using namespace std;
 
 static llvm::raw_null_ostream null_ostream;
-#define debug(flag) ((DEBUG_FLAGS & (flag)) ? llvm::errs() : null_ostream)
+#define debug(flag) ((DEBUG_FLAGS & (flag)) ? static_cast<llvm::raw_ostream&>(llvm::errs()) : static_cast<llvm::raw_ostream&>(null_ostream))
+
 
 static cl::OptionCategory LavaInitCategory("LAVA Init Tool");
 static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
@@ -100,17 +101,16 @@ public:
         );
     }
 
-    virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
+    virtual bool handleBeginSource(CompilerInstance &CI) override {
         Insert.clear();
         Mod.Reset(&CI.getLangOpts(), &CI.getSourceManager());
         TUReplace.Replacements.clear();
-        TUReplace.MainSourceFile = Filename;
+        TUReplace.MainSourceFile = CI.getSourceManager().getFileEntryForID(CI.getSourceManager().getMainFileID())->getName().str(); // Convert StringRef to std::string
         CurrentCI = &CI;
 
-        debug(LOG) << "*** handleBeginSource for: " << Filename << "\n";
+        debug(LOG) << "*** handleBeginSource for: " << TUReplace.MainSourceFile << "\n";
 
-        for (auto it = MatchHandlers.begin();
-                it != MatchHandlers.end(); it++) {
+        for (auto it = MatchHandlers.begin(); it != MatchHandlers.end(); it++) {
             (*it)->LangOpts = &CI.getLangOpts();
         }
         return true;
@@ -123,7 +123,7 @@ public:
         Insert.render(CurrentCI->getSourceManager(), TUReplace.Replacements);
         std::error_code EC;
         llvm::raw_fd_ostream YamlFile(TUReplace.MainSourceFile + ".yaml",
-                EC, llvm::sys::fs::F_RW);
+                EC, llvm::sys::fs::OF_None);
         yaml::Output Yaml(YamlFile);
         Yaml << TUReplace;
     }

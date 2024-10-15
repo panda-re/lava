@@ -1,17 +1,22 @@
 #!/bin/bash
 
-# Single argument of project name will get container name
+# Single argument of project name will get Docker name
 # from project config. Then 2nd optional argument is command to run
 # With no arguments, just give us a shell
 
 lava="$(dirname $(dirname $(readlink -f $0)))"
 
-if [ "$#" -eq 0 ]; then
-    container="lava32"
-else
+# This project_name is a dummy value, we just want shell access
+project_name="toy"
+. `dirname $0`/vars.sh
+
+echo "You are connecting to the Docker container: ${dockername}"
+
+if [ "$#" -ne 0 ]; then
     project_name=$1
+    echo "using project ${project_name}"
     cmd="${@:2}"
-#Container name (lava32 or lava32debug) comes from config
+    # Docker name (lava32 or lava32debug) comes from config
     . `dirname $0`/vars.sh
 
     docker_map_args="-v $tarfiledir:$tarfiledir"
@@ -19,13 +24,14 @@ else
       docker_map_args="$docker_map_args -v $directory:$directory"
     fi
 
-    if ! ( docker images ${container} | grep -q ${container} ); then
-        docker build -t ${container} "$(dirname $(dirname $(readlink -f $0)))/docker/debug"
+    if ! ( docker images ${dockername} | grep -q ${dockername} ); then
+        docker build -t ${dockername} "$(dirname $(dirname $(readlink -f $0)))/docker/debug"
     fi
-
-    [ "$extradockerargs" = "null" ] && extradockerargs="";
+else 
+    echo "No extra args"
 fi
 
+[ "$extradockerargs" = "null" ] && extradockerargs="";
 whoami="$(whoami)"
 path=""
 cmd="sudo -u $whoami bash -c -- \"$cmd\""
@@ -57,4 +63,4 @@ docker run --rm -it \
     --cap-add=SYS_PTRACE \
     $docker_map_args \
     $extradockerargs \
-    ${container} sh -c "trap '' PIPE; $cmd"
+    ${dockername} sh -c "trap '' PIPE; $cmd"

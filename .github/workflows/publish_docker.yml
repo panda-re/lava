@@ -1,0 +1,48 @@
+name: Publish Lava Docker Container # Only for main lava repo, not forks
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+jobs:
+  create_release:
+    if: github.repository == 'panda-re/lava' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    outputs:
+      v-version: ${{ steps.version.outputs.v-version }}
+    steps:
+      - name: Get next version
+        uses: reecetech/version-increment@2023.10.2
+        id: version
+        with:
+          release_branch: master
+          use_api: true
+          increment: patch
+
+  build_stable:
+    needs: [create_release]
+    if: github.repository  == 'panda-re/lava' && github.ref == 'refs/heads/master'
+    runs-on: panda-arc
+    steps:
+    - name: 'Login to Docker Registry'
+      uses: docker/login-action@v3
+      with:
+        username: pandare
+        password: ${{secrets.ALL_PANDARE_DOCKERHUB}}
+
+    - name: Checkout LAVA at current commit
+      uses: actions/checkout@v4
+      with:
+          fetch-depth: 0
+
+    - name: Build lava:latest
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ github.workspace }}
+        push: true
+        tags: |
+          pandare/lava:latest
+          pandare/lava:${{ github.sha }}
+          pandare/lava:${{ needs.create_release.outputs.v-version }}

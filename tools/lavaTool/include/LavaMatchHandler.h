@@ -150,8 +150,8 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
     LavaASTLoc GetASTLoc(const SourceManager &sm, const Stmt *s) {
         assert(!SourceDir.empty());
-        FullSourceLoc fullLocStart(sm.getExpansionLoc(s->getLocStart()), sm);
-        FullSourceLoc fullLocEnd(sm.getExpansionLoc(s->getLocEnd()), sm);
+        FullSourceLoc fullLocStart(sm.getExpansionLoc(s->getBeginLoc()), sm);
+        FullSourceLoc fullLocEnd(sm.getExpansionLoc(s->getEndLoc()), sm);
         std::string src_filename = StripPrefix(
                 getAbsolutePath(sm.getFilename(fullLocStart)), SourceDir);
         return LavaASTLoc(src_filename, fullLocStart, fullLocEnd);
@@ -268,11 +268,11 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         for (auto &keyValue : nodesMap) {
             const Stmt *stmt = keyValue.second.get<Stmt>();
             if (stmt) {
-                SourceLocation start = stmt->getLocStart();
+                SourceLocation start = stmt->getBeginLoc();
                 if (!sm.getFilename(start).empty() && sm.isInMainFile(start)
                         && !sm.isMacroArgExpansion(start)) {
                     debug(MATCHER) << keyValue.first << ": " << ExprStr(stmt) << " ";
-                    stmt->getLocStart().print(debug(MATCHER), sm);
+                    stmt->getBeginLoc().print(debug(MATCHER), sm);
                     debug(MATCHER) << "\n";
                     if (DEBUG_FLAGS & MATCHER) stmt->dump();
                 } else return;

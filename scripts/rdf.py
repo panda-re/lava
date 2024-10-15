@@ -1,4 +1,3 @@
-
 # Input is a bug mining log file.  We will determine total # of instr
 # and proceed to normalize every rdf report in the log by dividing by
 
@@ -16,8 +15,4 @@ with open(bml) as f:
         if foo:
             i1 = float(int(foo.groups()[0])) / total_instr
             i2 = float(int(foo.groups()[1])) / total_instr
-            print "%.4f %.4f %.4f" % (i1, i2, i1/i2)
-
-
-
-
+            print("%.4f %.4f %.4f" % (i1, i2, i1 / i2))

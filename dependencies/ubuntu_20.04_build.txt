@@ -1,0 +1,24 @@
+# lava dependencies, to compile LAVA
+
+# Based on original setup.py after panda is installed step
+# https://installati.one/install-odb-ubuntu-20-04/?expand_article=1
+odb
+
+# https://installati.one/install-libodbc2-ubuntu-22-04/?expand_article=1
+libodbc2
+
+# https://installati.one/install-libodb-pgsql-2.4-ubuntu-20-04/
+libodb-pgsql-dev
+
+# Brendan noticed these libraries were needed to compile FBI
+libodb-pgsql-2.4
+
+
+# https://pypi.org/project/pyzmq/
+libzmq3-dev
+
+# libc6 needed for compiling btrace?
+
+# libjsoncpp needed for fbi json parsing?
+
+# I may need g++-10?

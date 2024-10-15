@@ -20,8 +20,8 @@ struct FunctionArgHandler : public LavaMatchHandler {
 
         const SourceManager &sm = *Result.SourceManager;
 
-        auto sl1 = call->getLocStart();
-        auto sl2 = call->getLocEnd();
+        auto sl1 = call->getBeginLoc();
+        auto sl2 = call->getEndLoc();
         debug(FNARG) << "start: " << sl1.printToString(sm) << "\n";
         debug(FNARG) << "end:   " << sl2.printToString(sm) << "\n";
 

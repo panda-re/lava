@@ -2,6 +2,7 @@ from sqlalchemy import Column
 from sqlalchemy.types import TypeEngine
 from sqlalchemy.orm import composite
 
+
 class Composite(object):
     def __init__(self, *args):
         arg_idx = 0

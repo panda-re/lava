@@ -6,26 +6,26 @@ struct FunctionPointerTypedefHandler : public LavaMatchHandler {
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const TypedefDecl *td = Result.Nodes.getNodeAs<TypedefDecl>("typedefdecl");
-        SourceLocation l1 = td->getLocStart();
-        SourceLocation l2 = td->getLocEnd();
+        SourceLocation l1 = td->getBeginLoc();
+        SourceLocation l2 = td->getEndLoc();
         bool inv=false;
         debug(FNARG) << "typedefdecl  : [" << getStringBetweenRange(*Mod.sm, td->getSourceRange(), &inv) << "\n";
         if (inv) {
             debug(FNARG) << "... is invalid\n";
             return;
         }
-        const Type *ft = td->getUnderlyingType().getTypePtr();
+        const clang::Type *ft = td->getUnderlyingType().getTypePtr();
         //assert(ft);
         if (!ft) return;
         if (ft->isFunctionPointerType()) {
             // field is a fn pointer
-            const Type *pt = ft->getPointeeType().IgnoreParens().getTypePtr();
+            const clang::Type *pt = ft->getPointeeType().IgnoreParens().getTypePtr();
             //assert(pt);
             if (!pt) return;
-            const FunctionType *fun_type = dyn_cast<FunctionType>(pt);
+            const clang::FunctionType *fun_type = dyn_cast<clang::FunctionType>(pt);
             //assert(fun_type);
             if (!fun_type) return;
-            const FunctionProtoType *prot = dyn_cast<FunctionProtoType>(fun_type);
+            const clang::FunctionProtoType *prot = dyn_cast<clang::FunctionProtoType>(fun_type);
             // add the data_flow arg
             //assert(prot);
             if (!prot) return;

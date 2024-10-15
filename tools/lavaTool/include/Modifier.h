@@ -29,10 +29,10 @@ public:
         sm = sm_;
     }
 
-    std::pair<SourceLocation, SourceLocation> range() const {
-        auto startRange = sm->getExpansionRange(stmt->getLocStart());
-        auto endRange = sm->getExpansionRange(stmt->getLocEnd());
-        return std::make_pair(startRange.first, endRange.second);
+    std::pair<clang::SourceLocation, clang::SourceLocation> range() const {
+        auto startRange = sm->getExpansionRange(stmt->getBeginLoc());
+        auto endRange = sm->getExpansionRange(stmt->getEndLoc());
+        return std::make_pair(startRange.getBegin(), endRange.getEnd());
     }
 
     SourceLocation before() const {

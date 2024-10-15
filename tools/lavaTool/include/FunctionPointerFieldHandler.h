@@ -15,19 +15,19 @@ struct FunctionPointerFieldHandler : public LavaMatchHandler {
         }
         else {
 
-            const Type *t = fd->getType().getTypePtr();
+            const clang::Type *t = fd->getType().getTypePtr();
             if (t->isPointerType()) { // || t->isArrayType()) {
-                const Type *pt = t->getPointeeType().getTypePtr(); // t->getPointeeOrArrayElementType();
+                const clang::Type *pt = t->getPointeeType().getTypePtr(); // t->getPointeeOrArrayElementType();
                 if (pt->isFunctionType())
                     debug(FNARG) << "Its a fn pointer!\n";
-                auto sl1 = fd->getLocStart();
-                auto sl2 = fd->getLocEnd();
+                auto sl1 = fd->getBeginLoc();
+                auto sl2 = fd->getEndLoc();
                 debug(FNARG) << "start: " << sl1.printToString(*Mod.sm) << "\n";
                 debug(FNARG) << "end:   " << sl2.printToString(*Mod.sm) << "\n";
 
             }
-            //        debug(FNARG) << decl->getLocEnd().printToString(*Mod.sm) << "\n";
-            //        Mod.InsertAt(decl->getLocEnd().getLocWithOffset(-14), "int *" ARG_NAME ", ");
+            //        debug(FNARG) << decl->getEndLoc().printToString(*Mod.sm) << "\n";
+            //        Mod.InsertAt(decl->getEndLoc().getLocWithOffset(-14), "int *" ARG_NAME ", ");
         }
     }
 };

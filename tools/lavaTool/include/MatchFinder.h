@@ -159,10 +159,12 @@ public:
 		makeHandler<MallocOffByOneArgHandler>()
 	);
     }
-    virtual bool handleBeginSource(CompilerInstance &CI, StringRef Filename) override {
+
+    virtual bool handleBeginSource(CompilerInstance &CI) override {
         Insert.clear();
         Mod.Reset(&CI.getLangOpts(), &CI.getSourceManager());
         TUReplace.Replacements.clear();
+        std::string Filename = CI.getSourceManager().getFileEntryForID(CI.getSourceManager().getMainFileID())->getName().str(); // Convert StringRef to std::string
         TUReplace.MainSourceFile = Filename;
         CurrentCI = &CI;
 
@@ -232,7 +234,7 @@ public:
         Insert.render(CurrentCI->getSourceManager(), TUReplace.Replacements);
         std::error_code EC;
         llvm::raw_fd_ostream YamlFile(TUReplace.MainSourceFile + ".yaml",
-                EC, llvm::sys::fs::F_RW);
+                EC, llvm::sys::fs::OF_None);
         yaml::Output Yaml(YamlFile);
         Yaml << TUReplace;
     }

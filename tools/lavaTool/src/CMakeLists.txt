@@ -1,8 +1,31 @@
-project (lavaTool VERSION 2.0.0 LANGUAGES CXX)
-# LLVM variables to compile our clang tool
-set (LLVM_LINK_COMPONENTS support)
+cmake_minimum_required(VERSION 3.15)
+project(lavaTool VERSION 2.0.0 LANGUAGES CXX)
 
-set (CLANG_LIBS
+# Set C++ Standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Find LLVM and Clang
+if(DEFINED ENV{LLVM_DIR})
+    list(APPEND CMAKE_PREFIX_PATH "$ENV{LLVM_DIR}/lib/cmake/llvm")
+    list(APPEND CMAKE_PREFIX_PATH "$ENV{LLVM_DIR}/lib/cmake/clang")
+endif()
+
+find_package(LLVM REQUIRED CONFIG)
+find_package(Clang REQUIRED CONFIG)
+
+# Print the include directories for debugging
+message(STATUS "LLVM include dirs: ${LLVM_INCLUDE_DIRS}")
+message(STATUS "Clang include dirs: ${CLANG_INCLUDE_DIRS}")
+
+# Add LLVM and Clang include directories
+include_directories(SYSTEM ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
+include_directories(/usr/include/jsoncpp)
+link_directories(${LLVM_LIBRARY_DIRS})
+
+# Define LLVM and Clang libraries
+set(LLVM_CLANG_LINK_LIBRARIES
     clangAST
     clangASTMatchers
     clangBasic
@@ -10,115 +33,85 @@ set (CLANG_LIBS
     clangLex
     clangToolingCore
     clangTooling
- )
-
-set (LLVM_LIBS
-    LLVMSupport
 )
 
-if(DEFINED ENV{LLVM_DIR})
-    find_package(LLVM CONFIG)
+include_directories(${PROJECT_SOURCE_DIR}/../include)
+include_directories(${CMAKE_SOURCE_DIR}/include)
+
+message(STATUS "PROJECT_SOURCE_DIR: ${PROJECT_SOURCE_DIR}")
+message(STATUS "CMAKE_SOURCE_DIR: ${CMAKE_SOURCE_DIR}")
+message(STATUS "LLVM_CLANG_LINK_LIBRARIES: ${LLVM_CLANG_LINK_LIBRARIES}")
+
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/include/lava_version.h")
+    message(FATAL_ERROR "Missing lava_version.h")
 endif()
 
-set (LLVM_CLANG_LINK_LIBRARIES
-    ${CLANG_LIBS}
-    ${LLVM_LIBS}
-)
+# Create OMG static library
+add_library(omg STATIC ../src/omg.cpp)
+target_compile_features(omg PRIVATE cxx_std_17)
+target_include_directories(omg PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
+target_link_libraries(omg PRIVATE ${LLVM_CLANG_LINK_LIBRARIES})
 
-message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
-message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
-
-if(LLVM_BUILD_MAIN_SRC_DIR)
-    include_directories(${LLVM_BUILD_MAIN_SRC_DIR}/tools/clang/include)
-    include_directories(${LLVM_BUILD_BINARY_DIR}/tools/clang/include)
-endif()
-
-link_directories(${LLVM_LIBRARY_DIRS})
-add_definitions(${LLVM_DEFINITIONS})
-
-include_directories(${LLVM_INCLUDE_DIRS})
-
-# omg target compiled as static library
-add_library (omg STATIC omg.cpp)
-set_property(TARGET omg PROPERTY CXX_STANDARD 11)
-target_compile_options(omg PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
-#set_target_properties(omg PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
-set_target_properties(omg PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
-target_include_directories(omg BEFORE
-    PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    )
-
-
-# lavaTool target compiled against llvm, omg, odb odb-pgsql and lava odb
+# Create lavaTool executable
 add_executable(lavaTool lavaTool.cpp)
-target_compile_options(lavaTool PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0 -fno-omit-frame-pointer -O3 -fexceptions -frtti)
-#set_target_properties(lavaTool PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
+target_compile_features(lavaTool PRIVATE cxx_std_17)
+target_include_directories(lavaTool PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaDB/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/generated
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${LLVM_INCLUDE_DIRS}
+    ${CLANG_INCLUDE_DIRS}
+)
+target_link_libraries(lavaTool PRIVATE lavaDB_x64 omg odb odb-pgsql lava-odb_x64 ${LLVM_CLANG_LINK_LIBRARIES})
 set_target_properties(lavaTool PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
-set_property(TARGET lavaTool PROPERTY CXX_STANDARD 14)
-target_include_directories(lavaTool BEFORE
-        PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaDB/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/generated
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    )
 
-# lavaFnTool target compiled against llvm, omg, odb odb-pgsql and lava odb
+# Create lavaFnTool executable
 add_executable(lavaFnTool lavaFnTool.cpp)
-target_compile_options(lavaFnTool PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0 -fno-omit-frame-pointer -O3 -fexceptions -frtti)
-#set_target_properties(lavaFnTool PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
+target_compile_features(lavaFnTool PRIVATE cxx_std_17)
+target_include_directories(lavaFnTool PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaDB/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/generated
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${LLVM_INCLUDE_DIRS}
+    ${CLANG_INCLUDE_DIRS}
+)
+target_link_libraries(lavaFnTool PRIVATE lavaDB_x64 omg odb odb-pgsql lava-odb_x64 ${LLVM_CLANG_LINK_LIBRARIES})
 set_target_properties(lavaFnTool PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
-set_property(TARGET lavaFnTool PROPERTY CXX_STANDARD 14)
-target_include_directories(lavaFnTool BEFORE
-        PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaDB/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/generated
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    )
 
+# Create lavaInitTool executable
+add_executable(lavaInitTool lavaInitTool.cpp)
+target_compile_features(lavaInitTool PRIVATE cxx_std_17)
+target_include_directories(lavaInitTool PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${LLVM_INCLUDE_DIRS}
+    ${CLANG_INCLUDE_DIRS}
+)
+target_link_libraries(lavaInitTool PRIVATE ${LLVM_CLANG_LINK_LIBRARIES})
+set_target_properties(lavaInitTool PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
+
+# Add dependencies
 add_dependencies(lavaTool lavaFnTool)
 
-# lavaInitTool target compiled against llvm
-# TODO: this shouldn't depend on ODB but it needs it for lava.hxx?
-add_executable(lavaInitTool lavaInitTool.cpp)
-target_compile_options(lavaInitTool PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0 -fno-omit-frame-pointer -O3 -fexceptions -frtti)
-#set_target_properties(lavaInitTool PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
-set_target_properties(lavaInitTool PROPERTIES  LINK_FLAGS "-flto -fuse-ld=gold")
-set_property(TARGET lavaInitTool PROPERTY CXX_STANDARD 14)
-target_include_directories(lavaInitTool BEFORE
-        PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    )
+# Install targets
+install(TARGETS lavaTool
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib/static
+)
+install(TARGETS lavaFnTool
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib/static
+)
+install(TARGETS lavaInitTool
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib/static
+)
 
-#target_link_libraries(lavaTool lavaDB_x32 omg odb odb-pgsql lava-odb_x32 ${LLVM_CLANG_LINK_LIBRARIES})
-#target_link_libraries(lavaFnTool lavaDB_x32 omg odb odb-pgsql lava-odb_x32 ${LLVM_CLANG_LINK_LIBRARIES})
-target_link_libraries(lavaTool lavaDB_x64 omg odb odb-pgsql lava-odb_x64 ${LLVM_CLANG_LINK_LIBRARIES})
-target_link_libraries(lavaFnTool lavaDB_x64 omg odb odb-pgsql lava-odb_x64 ${LLVM_CLANG_LINK_LIBRARIES})
-target_link_libraries(lavaInitTool ${LLVM_CLANG_LINK_LIBRARIES})
-
-install (TARGETS lavaTool
-         RUNTIME DESTINATION bin
-         LIBRARY DESTINATION lib
-         ARCHIVE DESTINATION lib/static
-         OPTIONAL
-         )
-
-install (TARGETS lavaFnTool
-         RUNTIME DESTINATION bin
-         LIBRARY DESTINATION lib
-         ARCHIVE DESTINATION lib/static
-         OPTIONAL
-         )
-
-install (TARGETS lavaInitTool
-         RUNTIME DESTINATION bin
-         LIBRARY DESTINATION lib
-         ARCHIVE DESTINATION lib/static
-         OPTIONAL
-         )

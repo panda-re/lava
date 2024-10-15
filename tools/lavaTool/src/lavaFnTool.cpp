@@ -18,25 +18,22 @@
 #define DEBUG_FLAGS 0 // ( LOG )
 
 using namespace clang::tooling;
-using namespace llvm;using namespace clang;
+using namespace llvm;
 using namespace clang;
 using namespace clang::ast_matchers;
 
 using namespace std;
 
-
-static llvm::raw_null_ostream null_ostream;
+static llvm::raw_ostream &null_ostream = llvm::nulls();
 #define debug(flag) ((DEBUG_FLAGS & (flag)) ? llvm::errs() : null_ostream)
-
-
 
 static cl::OptionCategory LavaFnCategory("LAVA Function diagnosis");
 static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp(
     "\nIdentify all fn defs, prototypes, calls for later use by LAVA.\n");
 
-static void printVersion() {
-    errs() << "LavaFnTool Version -- " << LAVA_VER << "\n";
+void printVersion(llvm::raw_ostream &OS) {
+    OS << "LavaFnTool Version -- " << LAVA_VER << "\n";
 }
 
 ofstream outfile;
@@ -56,7 +53,7 @@ void spit_fun_decl(const FunctionDecl *fundecl) {
     outfile << "      params: \n";
     for (auto p : fundecl->parameters()) {
         QualType ot = p->getOriginalType();
-        const Type *otp = ot.getTypePtr();
+        const clang::Type *otp = ot.getTypePtr();
         if (otp->isFunctionType() || otp->isFunctionPointerType()) {
             spit_type("         - param: fnptr ", ot);
         }
@@ -68,10 +65,14 @@ void spit_fun_decl(const FunctionDecl *fundecl) {
 
 
 void spit_source_locs(const char *spaces, const Expr *expr, const SourceManager &sm) {
-    auto sl1 = expr->getLocStart();
-    auto sl2 = expr->getLocEnd();
-    outfile << (string(spaces) + "start: ") << sl1.printToString(sm) << "\n";
-    outfile << (string(spaces) + "end: ") << sl2.printToString(sm) << "\n";
+    clang::SourceLocation sl1 = expr->getBeginLoc();
+    clang::SourceLocation sl2 = expr->getEndLoc();
+    if (sl1.isValid()) {
+        outfile << (string(spaces) + "start: ") << sl1.printToString(sm) << "\n";
+    }
+    if (sl2.isValid()) {
+        outfile << (string(spaces) + "end: ") << sl2.printToString(sm) << "\n";
+    }
 }
 
 
@@ -155,14 +156,14 @@ class CallPrinter : public MatchFinder::MatchCallback {
             std::string fun_name = get_containing_function_name(Result, *call);
             outfile << "   containing_function: " << fun_name << "\n";
 
-            QualType rt = call->getCallReturnType();//(Result.Context);
+            QualType rt = call->getCallReturnType(*Result.Context);
             spit_type( "   ret_type: ", rt);
             outfile << "   args: \n";
             for (auto it = call->arg_begin(); it != call->arg_end(); ++it) {
                 const Expr *arg = dyn_cast<Expr>(*it);
                 arg = arg->IgnoreImpCasts();
                 QualType at = arg->IgnoreImpCasts()->getType();
-                const Type *atp = at.getTypePtr();
+                const clang::Type *atp = at.getTypePtr();
                 string expstr, type, info;
                 outfile << "      - arg: \n";
                 if (atp->isFunctionType()) {
@@ -201,7 +202,7 @@ class FnPtrAssignmentPrinter : public MatchFinder::MatchCallback {
     virtual void run(const MatchFinder::MatchResult &Result) {
         const BinaryOperator *bo = Result.Nodes.getNodeAs<BinaryOperator>("bo");
         Expr *rhs = bo->getRHS()->IgnoreImpCasts();
-        const Type *rhst = rhs->getType().getTypePtr();
+        const clang::Type *rhst = rhs->getType().getTypePtr();
         if (rhst->isFunctionType()) {
             outfile << "- fnPtrAssign: \n";
             spit_source_locs("   ", bo, *Result.SourceManager);
@@ -219,16 +220,20 @@ class VarDeclPrinter : public MatchFinder::MatchCallback {
     public :
     virtual void run(const MatchFinder::MatchResult &Result) {
         const VarDecl *vd = Result.Nodes.getNodeAs<VarDecl>("vd");
-        const Type *et = vd->getType().getTypePtr();
+        const clang::Type *et = vd->getType().getTypePtr();
         if (vd->hasInit() && et->isPointerType()) {
             const Expr *init = vd->getInit()->IgnoreImpCasts();
-            const Type *it = init->getType().getTypePtr();
+            const clang::Type *it = init->getType().getTypePtr();
             if (it->isFunctionType()) {
                 outfile << "- fnPtrAssign:\n";
-                auto sl1 = vd->getLocStart();
-                auto sl2 = vd->getLocEnd();
-                outfile << "   start: " << sl1.printToString(*Result.SourceManager) << "\n";
-                outfile << "   end: " << sl2.printToString(*Result.SourceManager) << "\n";
+                clang::SourceLocation sl1 = vd->getBeginLoc();
+                clang::SourceLocation sl2 = vd->getEndLoc();
+                if (sl1.isValid()) {
+                    outfile << "   start: " << sl1.printToString(*Result.SourceManager) << "\n";
+                }
+                if (sl2.isValid()) {
+                    outfile << "   end: " << sl2.printToString(*Result.SourceManager) << "\n";
+                }
                 const DeclRefExpr *dre = llvm::dyn_cast<DeclRefExpr>(init);
                 outfile << "   name: " << dre->getNameInfo().getAsString() << "\n";
                 const FunctionDecl *fndecl = llvm::dyn_cast<FunctionDecl>(dre->getDecl());
@@ -248,10 +253,15 @@ class FunctionPrinter : public MatchFinder::MatchCallback {
 //        if (func->isExternC()) return;
         if (func) {
             outfile << "- fun: \n";
-            auto sl1 = func->getLocStart();
-            auto sl2 = func->getLocEnd();
-            outfile << "   start: " << sl1.printToString(*Result.SourceManager) << "\n";
-            outfile << "   end: " << sl2.printToString(*Result.SourceManager) << "\n";
+            clang::SourceLocation sl1 = func->getBeginLoc();
+            clang::SourceLocation sl2 = func->getEndLoc();
+            if (sl1.isValid()) {
+                outfile << "   start: " << sl1.printToString(*Result.SourceManager) << "\n";
+            }
+            if (sl2.isValid()) {
+                outfile << "   end: " << sl2.printToString(*Result.SourceManager) << "\n";
+            }
+
             outfile << "   name: " << (func->getNameInfo().getAsString()) << "\n";
             if (func->doesThisDeclarationHaveABody())
                 outfile << "   hasbody: true\n";

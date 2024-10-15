@@ -26,9 +26,6 @@
 # and run the bug_mining.py script (which uses PANDA to trace taint).
 #
 
-# Load lava-functions and vars
-. `dirname $0`/funcs.sh
-
 tick
 version="2.0.0"
 
@@ -38,7 +35,7 @@ USAGE() {
 }
 
 set -e # Exit on error
-#set -x # Debug mode
+set -x # Debug mode
 
 if [ $# -lt 1 ]; then
     USAGE $0
@@ -50,13 +47,18 @@ elif [ $# -eq 2 ]; then
   ATP_TYPE="-$1"
   json="$(readlink -f $2)"
 else
-    USAGE $0
+  USAGE $0
   exit 1
 fi
 
-lava="$(dirname $(dirname $(readlink -f $0)))"
+absolute_path=$(readlink -f "$0")
+scripts_path=$(dirname "$absolute_path")
+lava=$(dirname "$scripts_path")
 project_name="$1"
-. `dirname $0`/vars.sh
+
+# Load lava-functions and vars
+source "$scripts_path/funcs.sh"
+source "$scripts_path/vars.sh"
 
 progress "queries" 0  "Entering $directory/$name."
 mkdir -p "$directory/$name"
@@ -86,8 +88,8 @@ progress "queries" 0  "Configuring..."
 mkdir -p lava-install
 configure_file=${configure_cmd%% *}
 if [ -e "$configure_file" ]; then
-    CC=/llvm-3.6.2/Release/bin/clang \
-        CXX=/llvm-3.6.2/Release/bin/clang++ \
+    CC=$llvm/bin/clang \
+        CXX=$llvm/bin/clang++ \
         CFLAGS="-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
         $configure_cmd --prefix=$(pwd)/lava-install
 fi
@@ -98,15 +100,15 @@ progress "queries" 0  "Making with btrace..."
 rm -f btrace.log
 ORIGIN_IFS=$IFS
 IFS='&&'
-read -ra MAKES <<< $makecmd
-for i in ${MAKES[@]}; do
+read -ra MAKES <<< "$makecmd"
+for i in "${MAKES[@]}"; do
     IFS=' '
-    read -ra ARGS <<< $i
+    read -ra ARGS <<< "$i"
     echo "$lava/tools/btrace/sw-btrace ${ARGS[@]}"
-    CC=/llvm-3.6.2/Release/bin/clang \
-        CXX=/llvm-3.6.2/Release/bin/clang++ \
+    CC=$llvm/bin/clang \
+        CXX=$llvm/bin/clang++ \
         CFLAGS="-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
-    $lava/tools/btrace/sw-btrace ${ARGS[@]}
+    "$lava/tools/btrace/sw-btrace" "${ARGS[@]}"
     IFS='&&'
 done
 IFS=$ORIGIN_IFS
@@ -116,14 +118,10 @@ progress "queries" 0  "Installing..."
 bash -c $install
 
 
-# figure out where llvm is
-llvm_src=$(grep LLVM_SRC_PATH $lava/tools/lavaTool/config.mak | cut -d' ' -f3)
-
-
 progress "queries" 0  "Creating compile_commands.json..."
 # Delete any pre-existing compile commands.json (could be in archive by mistake)
 rm -f compile_commands.json
-$lava/tools/btrace/sw-btrace-to-compiledb $llvm_src/Release/lib/clang/3.6.2/include
+"$lava/tools/btrace/sw-btrace-to-compiledb" $llvm/lib/clang/11/include
 if [ -e "$directory/$name/extra_compile_commands.json" ]; then
     sed -i '$d' compile_commands.json
     echo "," >> compile_commands.json
@@ -134,28 +132,29 @@ git commit -m 'Add compile_commands.json.'
 
 cd ..
 
-c_files=$(python $lava/tools/lavaTool/get_c_files.py $source)
-c_dirs=$(for i in $c_files; do dirname $i; done | sort | uniq)
+# Switching IFS to '\n' to support paths with spaces in them.
+c_files=$($python "$lava/tools/lavaTool/get_c_files.py" "$source")
+IFS=$'\n'
+c_dirs=$(for i in $c_files; do dirname "$i"; done | sort | uniq)
 
 progress "queries" 0  "Copying include files..."
 for i in $c_dirs; do
   echo "   $i"
-  if [ -d $i ]; then
-    cp $lava/tools/include/*.h $i/
+  if [ -d "$i" ]; then
+    cp "$lava"/tools/include/*.h "$i"/
   fi
 done
-
 
 # Run another clang tool that provides information about functions,
 # i.e., which have only prototypes, which have bodies.  
 progress "queries" 0 "Figure out functions" 
 for this_c_file in $c_files; do
-    $lava/tools/install/bin/lavaFnTool $this_c_file
+    "$lava/tools/install/bin/lavaFnTool" "$this_c_file"
 done
 
 #progress "queries" 0  "Initialize variables..."
 #for i in $c_files; do
-#    $lava/src_clang/build/lavaTool -action=init \
+#    /src_clang/build/lavaTool -action=init \
 #    -p="$source/compile_commands.json" \
 #    -src-prefix=$(readlink -f "$source") \
 #    $i
@@ -171,7 +170,7 @@ fninstr=$directory/$name/fninstr
 
 echo "Creating fninstr [$fninstr]"
 echo -e "\twith command: \"python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles\""
-python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles
+$python "$lava/scripts/fninstr.py" -d -o $fninstr $fnfiles
 
 if [[ ! -z "$df_fn_blacklist" ]]; then
     cmd=$(echo "sed -i /${df_fn_blacklist}/d $fninstr")
@@ -185,7 +184,7 @@ if [ "$dataflow" = "true" ]; then
     # Since it's okay to pass the whitelist either way
     progress "queries" 0  "Inserting queries for dataflow"
     for i in $c_files; do
-        $lava/tools/install/bin/lavaTool -action=query \
+        "$lava/tools/install/bin/lavaTool" -action=query \
         -lava-db="$directory/$name/lavadb" \
         -p="$directory/$name/$source/compile_commands.json" \
         -arg_dataflow \
@@ -199,7 +198,7 @@ else
     progress "queries" 0  "Inserting queries..."
     # TODO: remove lava-wl here, unless we're using it to limit where we inject
     for i in $c_files; do
-        $lava/tools/install/bin/lavaTool -action=query \
+        "$lava/tools/install/bin/lavaTool" -action=query \
         -lava-db="$directory/$name/lavadb" \
         -lava-wl="$fninstr" \
         -p="$source/compile_commands.json" \
@@ -213,13 +212,13 @@ fi
 # Do we need to explicitly apply replacements in the root source directory
 # This causes clang-apply-replacements to segfault when run a 2nd time
 #pushd "$directory/$name/$source"
-#$llvm_src/Release/bin/clang-apply-replacements .
+#/usr/lib/llvm-11/bin/clang-apply-replacements .
 #popd
 
 for i in $c_dirs; do
     echo "Applying replacements to $i"
     pushd $i
-    $llvm_src/Release/bin/clang-apply-replacements .
+    "$llvm/bin/clang-apply-replacements" .
     popd
 done
 
@@ -231,6 +230,7 @@ for this_c_file in $c_files; do
         exit 1
     fi
 done
+unset IFS
 
 progress "queries" 0  "Done inserting queries. Time to make and run actuate.py on a 64-BIT machine!"
 
