@@ -6,10 +6,6 @@
 
     "tarfile": "tinyexpr-pre.tar.gz",
 
-    "qcow": "wheezy_panda2.qcow2",
-    "snapshot": "root",
-    "expect_prompt": "root@debian-i386:~#",
-
     "make": "make",
     "install": "make install",
     "command": "{install_dir}/bin/math {input_file}",

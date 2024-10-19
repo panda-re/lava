@@ -35,7 +35,7 @@ USAGE() {
 }
 
 set -e # Exit on error
-set -x # Debug mode
+# set -x # Debug mode
 
 if [ $# -lt 1 ]; then
     USAGE $0
@@ -90,7 +90,7 @@ configure_file=${configure_cmd%% *}
 if [ -e "$configure_file" ]; then
     CC=$llvm/bin/clang \
         CXX=$llvm/bin/clang++ \
-        CFLAGS="-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
+        CFLAGS="-O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
         $configure_cmd --prefix=$(pwd)/lava-install
 fi
 
@@ -107,7 +107,7 @@ for i in "${MAKES[@]}"; do
     echo "$lava/tools/btrace/sw-btrace ${ARGS[@]}"
     CC=$llvm/bin/clang \
         CXX=$llvm/bin/clang++ \
-        CFLAGS="-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
+        CFLAGS="-O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
     "$lava/tools/btrace/sw-btrace" "${ARGS[@]}"
     IFS='&&'
 done

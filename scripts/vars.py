@@ -39,10 +39,6 @@ def validate_project(project):
     assert 'name' in project
     # command line to run the target program (already instrumented with taint and attack queries)
     assert 'command' in project
-    # path to guest qcow
-    assert 'qcow' in project
-    # name of snapshot from which to revert which will be booted & logged in as root
-    assert 'snapshot' in project
     # path to tarfile for target (original source)
     assert 'tarfile' in project
     # namespace in db for prospective bugs
@@ -72,8 +68,8 @@ def parse_vars(host_json, project_name):
         print("Your project config file is missing a required field:\n{}".format(e))
         raise
 
-    for field, prefix in [("tarfile", "tar_dir"), ("qcow", "qcow_dir")]:
-        project[field] = host[prefix] + "/" + project[field]
+    for field, prefix in [("tarfile", "tar_dir")]:
+        project[field] = host[prefix] + os.path.sep + project[field]
 
     for field, suffix in [("db", "db_suffix")]:
         project[field] = project[field] + host[suffix]
@@ -93,9 +89,9 @@ def parse_vars(host_json, project_name):
                                                                name=project["name"], field=project[field]))
 
     project["qemu"] = host["qemu"]
-    project["output_dir"] = host["output_dir"] + "/" + project["name"]
+    project["output_dir"] = host["output_dir"] + os.path.sep + project["name"]
     project["directory"] = host["output_dir"]
-    project["config_dir"] = host["config_dir"] + "/" + project["name"]
+    project["config_dir"] = host["config_dir"] + os.path.sep + project["name"]
 
     # Replace format strings in project configs
     project["install"] = project["install"].format(config_dir=project["config_dir"])

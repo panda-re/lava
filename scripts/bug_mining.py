@@ -171,49 +171,32 @@ dwarf_cmd = ["dwarfdump", "-dil", cmdpath]
 dwarfout = subprocess.check_output(dwarf_cmd)
 dwarfdump.parse_dwarfdump(dwarfout, binpath)
 
-# Based on this example:
-# https://github.com/panda-re/panda/blob/dev/panda/python/examples/file_taint/file_taint.py
 panda.set_pandalog(pandalog)
-panda.load_plugin("pri")
+panda.load_plugin("loaded",
+                  args={
+                      'debug': True,
+                  })
 panda.load_plugin("taint2",
                   args={
-                      'no_tp': True
+                      'no_tp': True,
+                      'enable_hypercalls' : False
                   })
 panda.load_plugin("tainted_branch")
-
 panda.load_plugin("dwarf2",
                   args={
                       'proc': proc_name,
                       'g_debugpath': installdir,
-                      'h_debugpath': installdir
+                      'h_debugpath': installdir,
+                      'debug' : True
                   })
-
-if 'use_stdin' in project and project['use_stdin']:
-    print("Using stdin for taint analysis")
-    panda.load_plugin("file_taint",
-                      args={
-                          'filename': input_file_guest,
-                          'pos': True,
-                          'cache_process_details_on_basic_block': True,
-                          'first_instr': 1,
-                          'use_stdin': proc_name,
-                          'verbose': True
-                      })
-else:
-    print("Using open for taint analysis")
-    panda.load_plugin("file_taint",
-                      args={
-                          'filename': input_file_guest,
-                          'pos': True,
-                          'cache_process_details_on_basic_block': True,
-                          'enable_taint_on_open': True,
-                          'verbose': True
-                      })
-
-
+panda.load_plugin("file_taint",
+                    args={
+                        'filename': input_file_guest,
+                        'pos': True,
+                        'verbose': True
+                    })
 panda.load_plugin("pri_taint", args={
-    'hypercall': True,
-    'chaff': False
+    'debug' : True
 })
 
 # Default name is 'recording'
@@ -246,7 +229,7 @@ except subprocess.CalledProcessError as e:
 fbi_args = [join(lavadir, 'tools', 'install', 'bin', 'fbi'), host_json,
             project_name, pandalog_json, input_file_base]
 
-# Command line curtial argument takes priority, otherwise use project specific one
+# Command line curtail argument takes priority, otherwise use project specific one
 # global curtail
 if curtail != 0:
     fbi_args.append(str(curtail))

@@ -79,7 +79,7 @@ def main():
         progress("Building host.json")
         # Build host.json
         json_configs = {}
-        json_configs["qemu"] = "panda-system-i386"
+        json_configs["qemu"] = "panda-system-x86_64"
         json_configs["qcow_dir"] = LAVA_DIR
         json_configs["output_dir"] = join(LAVA_DIR, "target_injections")
         json_configs["config_dir"] = join(LAVA_DIR, "target_configs")

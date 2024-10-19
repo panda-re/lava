@@ -26,9 +26,13 @@ progress "Updates complete"
 # So take our major version, find the first match in dependencies directory and run with it.
 # This will give us "./panda/dependencies/ubuntu:20.04" where ubuntu:20.04_build.txt or 20.04_base.txt exists
 version=$(lsb_release -r | awk '{print $2}' | awk -F'.' '{print $1}')
+ubuntu_version=$(lsb_release -r | awk '{print $2}')
+PANDA_VERSION="v1.8.45"
+
 # shellcheck disable=SC2086
 dep_base=$(find ./dependencies/ubuntu_${version}.* -print -quit | sed  -e "s/_build\.txt\|_base\.txt//")
 
+$SUDO apt-get -qq update
 if [ -e "${dep_base}"_build.txt ] || [ -e "${dep_base}"_base.txt ]; then
   echo "Found dependency file(s) at ${dep_base}*.txt"
   # shellcheck disable=SC2046
@@ -39,10 +43,15 @@ else
   exit 1
 fi
 
-curl -LJO https://github.com/panda-re/panda/releases/download/v1.8.23/pandare_22.04.deb
-mv *.deb /tmp
-$SUDO apt-get -y install /tmp/pandare_22.04.deb
-rm /tmp/*.deb
+# Check if pandare is installed
+if ! dpkg -l | grep -q pandare; then
+    echo "pandare is not installed. Installing now..."
+    curl -LJ -o /tmp/pandare_${ubuntu_version}.deb https://github.com/panda-re/panda/releases/download/${PANDA_VERSION}/pandare_${ubuntu_version}.deb
+    $SUDO apt-get -y install /tmp/pandare_${ubuntu_version}.deb
+    rm /tmp/*.deb
+else
+    echo "pandare is already installed."
+fi
 
 progress "Installed build dependencies"
 

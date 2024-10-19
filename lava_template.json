@@ -1,7 +1,5 @@
 {
     "qemu": "$PANDA_BUILD_DIR/i386-softmmu/qemu-system-i386",
-    "qcow": "$QCOW",
-    "snapshot": "root",
 
     "directory": "$DIRECTORY",
     "name": "$NAME",
@@ -13,7 +11,6 @@
     "clean": "make clean",
     "install": "make install",
     "command": "$CMD",
-    "expect_prompt": "root@debian-i386:~#",
 
     "db": "$DB_NAME",
 

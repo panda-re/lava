@@ -32,7 +32,8 @@
 
 version="2.0.0"
 trap '' PIPE
-set -ex # Exit on error
+set -e # Exit on error
+# set -x # debug mode
 
 USAGE() {
   echo "$0 version $version"
@@ -184,7 +185,7 @@ if [ $make -eq 1 ]; then
     lf="$logs/make.log"
     truncate "$lf"
     # Note, adding the static flag is important. We are running the binaries on a PANDA VM, so we have no idea if it will have any libraries we need.
-    run_remote "$buildhost" "cd \"$sourcedir\" && CC=$llvm/bin/clang CXX=$llvm/bin/clang++ CFLAGS='-O0 -m32 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/ -static' $makecmd" "$lf"
+    run_remote "$buildhost" "cd \"$sourcedir\" && CC=$llvm/bin/clang CXX=$llvm/bin/clang++ CFLAGS='-O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/ -static' $makecmd" "$lf"
     run_remote "$buildhost" "cd \"$sourcedir\" && rm -rf lava-install" "$lf"
     
     if [ "$install_simple" == "null" ]; then

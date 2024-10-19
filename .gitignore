@@ -20,6 +20,8 @@ host.json
 *.qcow*
 *.qcow2
 *.so
+*.log
+*.json
 *~
 ~*
 .*.sw*

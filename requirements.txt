@@ -3,7 +3,7 @@ db
 ipython
 lockfile
 numpy
-pandare
+pandare>=1.8.39
 PyYAML
 SQLAlchemy
 tabulate
