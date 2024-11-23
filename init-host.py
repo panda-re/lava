@@ -18,7 +18,7 @@ from os.path import expandvars
 from colorama import Fore
 from colorama import Style
 
-QCOW_URL = "http://panda.moyix.net/~moyix/wheezy_panda2.qcow2"
+QCOW_URL = "https://panda.moyix.net/~moyix/wheezy_panda2.qcow2"
 # if moyix server is down, this image will also work
 # QCOW_URL = "https://panda.re/qcows/linux/debian/7.3/x86/debian_7.3_x86.qcow"
 QCOW_FILE_NAME = "wheezy_panda2.qcow2"
