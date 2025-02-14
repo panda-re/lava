@@ -161,7 +161,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
     // tell us when an input gets to the attack point.
     LExpr LavaAtpQuery(LavaASTLoc ast_loc, AttackPoint::Type atpType) {
         return LBlock({
-                LFunc("vm_lava_attack_point2",
+                LFunc("vm_lava_attack_point",
                     { LDecimal(GetStringID(StringIDs, ast_loc)), LDecimal(0),
                         LDecimal(atpType) }),
                 LDecimal(0) });
