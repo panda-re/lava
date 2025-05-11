@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=64", "wheel", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = [
+    "pylava",
+    "pylava.*"
+]
+
+[project]
+name = "pyroclast"
+dynamic = ["version"]
+description = "Python Interface for LAVA"
+readme = "README.md"
+authors = [
+    { name = "Andrew Quijano", email = "andrew.quijano@nyu.edu" },
+]
+license = { text = "GPL-2.0" }
+requires-python = ">=3.10"
+dependencies = [
+    "db",
+    "ipython",
+    "lockfile",
+    "numpy",
+    "pandare>=1.8.58",
+    "PyYAML",
+    "SQLAlchemy",
+    "tabulate"
+]
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
+[project.urls]
+Homepage = "https://github.com/panda-re/lava"
+Source = "https://github.com/panda-re/lava"
+Tracker = "https://github.com/panda-re/lava/issues"
