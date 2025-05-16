@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Find the directory containing this script.  This code is intended to be
 # equivalent to $(dirname "$(readlink -f "$0")"), but it works on platforms

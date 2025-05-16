@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-# import argparse
 import os
 import sys
 import json
 import shlex
 import subprocess
+import argparse
 
 from os.path import join
 from os.path import isdir
@@ -17,6 +17,7 @@ from os.path import expandvars
 
 from colorama import Fore
 from colorama import Style
+from pandare.qcows_internal import Qcows
 
 TAR_URL = "ftp://ftp.astron.com/pub/file/file-5.22.tar.gz"
 LAVA_DIR = dirname(abspath(sys.argv[0]))
@@ -52,13 +53,18 @@ def run(cmd):
 
 
 def main():
+    # Download PyPanda 64-bit generic
+    Qcows.get_qcow('x86_64')
 
-    # parser = argparse.ArgumentParser(description='Setup LAVA')
-    # parser.add_argument('-s', '--skip_docker_build', action='store_true',
-    # default = False,
-    # help = 'Whether or not to skip building docker image')
-    # args = parser.parse_args()
-    # IGNORE_DOCKER = args.skip_docker_build
+    parser = argparse.ArgumentParser(description='Arguments to modify host.json for LAVA depending on the environment')
+    parser.add_argument('--docker', '-d', dest='docker', action='store_true',
+                        help='If set, have host.json assume LAVA will be run from Docker environment')
+    parser.add_argument('--container', '-c', dest='container', default='lava64',
+                        help='Set the name of the Docker container with LAVA installed. (default: lava64)')
+    parser.add_argument('--action', '-a', dest='action', action='store_true',
+                        help='Use this flag only for the GitHub Actions environment.')
+    args = parser.parse_args()
+
     progress("In LAVA git dir at {}".format(LAVA_DIR))
 
     # Tars should just be tracked by git now, maybe we can change that later
@@ -85,7 +91,21 @@ def main():
         json_configs["config_dir"] = join(LAVA_DIR, "target_configs")
         json_configs["tar_dir"] = join(LAVA_DIR, "target_bins")
         json_configs["db_suffix"] = "_" + os.environ["USER"]
+        json_configs["port"] = 5432
+        json_configs["pguser"] = "postgres"
+        json_configs["debug"] = True
 
+        if args.docker:
+            json_configs["buildhost"] = "docker" 
+            json_configs["host"] = "database"
+            json_configs["docker"] = args.container
+        else:
+            json_configs["buildhost"] = "localhost"
+            json_configs["host"] = "localhost"
+
+        if args.action:
+            json_configs["host"] = "postgres"
+        
         # write out json file
         out_json = join(LAVA_DIR, "host.json")
 

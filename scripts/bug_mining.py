@@ -37,8 +37,7 @@ project_name = sys.argv[2]
 project = parse_vars(host_json, project_name)
 qemu_path = project['qemu']
 
-panda = Panda(generic=qemu_path.split('-')[-1],
-              expect_prompt=project['expect_prompt'])
+panda = Panda(generic=qemu_path.split('-')[-1])
 
 debug = True
 qemu_use_rr = False
@@ -172,32 +171,31 @@ dwarfout = subprocess.check_output(dwarf_cmd)
 dwarfdump.parse_dwarfdump(dwarfout, binpath)
 
 panda.set_pandalog(pandalog)
-panda.load_plugin("loaded",
-                  args={
-                      'debug': True,
-                  })
-panda.load_plugin("taint2",
-                  args={
-                      'no_tp': True,
-                      'enable_hypercalls' : False
-                  })
-panda.load_plugin("tainted_branch")
+panda.load_plugin("pri")
 panda.load_plugin("dwarf2",
                   args={
                       'proc': proc_name,
                       'g_debugpath': installdir,
                       'h_debugpath': installdir,
-                      'debug' : True
+                      'debug' : False
                   })
+panda.load_plugin("pri_taint", args={
+    'hypercall' : True,
+    'debug' : True
+})
+panda.load_plugin("taint2",
+                  args={
+                      'no_tp': True,
+                      'debug': False
+                  })
+panda.load_plugin('tainted_branch')
 panda.load_plugin("file_taint",
                     args={
                         'filename': input_file_guest,
                         'pos': True,
-                        'verbose': True
+                        'verbose': False
                     })
-panda.load_plugin("pri_taint", args={
-    'debug' : True
-})
+
 
 # Default name is 'recording'
 # https://github.com/panda-re/panda/blob/dev/panda/python/core/pandare/panda.py#L2595
@@ -216,7 +214,7 @@ tick()
 os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 progress("Calling the FBI on queries.plog...")
 convert_json_args = ['python3', '-m', 'pandare.plog_reader', pandalog]
-print("panda log JSON invocation: [%s] > %s" % (subprocess.list2cmdline(convert_json_args), pandalog_json))
+print("panda log JSON invocation: [%s > %s]" % (subprocess.list2cmdline(convert_json_args), pandalog_json))
 try:
     with open(pandalog_json, 'wb') as fd:
         subprocess.check_call(convert_json_args, stdout=fd, stderr=sys.stderr)

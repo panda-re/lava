@@ -104,11 +104,11 @@ read -ra MAKES <<< "$makecmd"
 for i in "${MAKES[@]}"; do
     IFS=' '
     read -ra ARGS <<< "$i"
-    echo "$lava/tools/btrace/sw-btrace ${ARGS[@]}"
+    echo "$scripts_path/sw-btrace ${ARGS[@]}"
     CC=$llvm/bin/clang \
         CXX=$llvm/bin/clang++ \
         CFLAGS="-O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
-    "$lava/tools/btrace/sw-btrace" "${ARGS[@]}"
+    "$scripts_path/sw-btrace" "${ARGS[@]}"
     IFS='&&'
 done
 IFS=$ORIGIN_IFS
@@ -121,7 +121,7 @@ bash -c $install
 progress "queries" 0  "Creating compile_commands.json..."
 # Delete any pre-existing compile commands.json (could be in archive by mistake)
 rm -f compile_commands.json
-"$lava/tools/btrace/sw-btrace-to-compiledb" $llvm/lib/clang/11/include
+"$scripts_path/sw-btrace-to-compiledb" $llvm/lib/clang/11/include
 if [ -e "$directory/$name/extra_compile_commands.json" ]; then
     sed -i '$d' compile_commands.json
     echo "," >> compile_commands.json
@@ -133,7 +133,7 @@ git commit -m 'Add compile_commands.json.'
 cd ..
 
 # Switching IFS to '\n' to support paths with spaces in them.
-c_files=$($python "$lava/tools/lavaTool/get_c_files.py" "$source")
+c_files=$($python "$scripts_path/get_c_files.py" "$source")
 IFS=$'\n'
 c_dirs=$(for i in $c_files; do dirname "$i"; done | sort | uniq)
 
@@ -170,7 +170,7 @@ fninstr=$directory/$name/fninstr
 
 echo "Creating fninstr [$fninstr]"
 echo -e "\twith command: \"python $lava/scripts/fninstr.py -d -o $fninstr $fnfiles\""
-$python "$lava/scripts/fninstr.py" -d -o $fninstr $fnfiles
+$python "$scripts_path/fninstr.py" -d -o $fninstr $fnfiles
 
 if [[ ! -z "$df_fn_blacklist" ]]; then
     cmd=$(echo "sed -i /${df_fn_blacklist}/d $fninstr")

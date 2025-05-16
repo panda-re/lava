@@ -235,8 +235,11 @@ class LavaDatabase(object):
     def __init__(self, project):
         self.project = project
         self.engine = create_engine(
-            "postgresql+psycopg2://{}@database:5432/{}".format(
-                "postgres", project['db']
+            "postgresql+psycopg2://{}@{}:{}/{}".format(
+                project['database_user'],
+                project['database'],
+                project['database_port'],
+                project['db']
             )
         )
         self.Session = sessionmaker(bind=self.engine)
@@ -328,7 +331,7 @@ class LavaDatabase(object):
         # Fast, doesn't support fake bugs, only return IDs of allowed bugtypes
         ret = self.session.query(Bug) \
             .filter(~Bug.builds.any()) \
-            .options(load_only("id"))
+            .options(load_only(Bug.id))
         if allowed_bugtypes:
             ret = ret.filter(Bug.type.in_(allowed_bugtypes))
         return ret.order_by(func.random()).limit(count).all()
@@ -426,7 +429,8 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug,
     else:
         magic_val = struct.pack("<I", bug.magic)
     # collect set of tainted offsets in file.
-    file_bytes = bytearray(open(filename).read())
+    with open(filename, 'rb') as f:
+        file_bytes = bytearray(f.read())
     # change first 4 bytes in dua to magic value
 
     if bug.type == Bug.REL_WRITE:
@@ -486,7 +490,7 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
                  knobTrigger=False, dataflow=False, competition=False,
                  randseed=0):
     print("Running lavaTool on [{}]...".format(filename))
-    lt_debug = False
+    lt_debug = project['debug']
     if (len(bug_list)) == 0:
         print("\nWARNING: Running lavaTool but no bugs \
               selected for injection\n")
@@ -494,14 +498,18 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
         lt_debug = True
 
     db_name = project["db"]
+    db_hostname = project['database']
     bug_list_str = ','.join([str(bug.id) for bug in bug_list])
     main_files = ','.join([join(lp.bugs_build, f)
                            for f in project['main_file']])
 
     cmd = [
         lp.lava_tool, '-action=inject', '-bug-list=' + bug_list_str,
-                                        '-src-prefix=' + lp.bugs_build, '-db=' + db_name,
-                                        '-main-files=' + main_files, join(lp.bugs_build, filename)]
+                                        '-src-prefix=' + lp.bugs_build, 
+                                        '-host=' + db_hostname,
+                                        '-db=' + db_name,
+                                        '-main-files=' + main_files, 
+                                        join(lp.bugs_build, filename)]
 
     # Todo either paramaterize here or hardcode everywhere else
     # For now, lavaTool will only work if it has a whitelist, so we always pass this
@@ -527,23 +535,23 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
 
     with open(join(log_dir, "lavaTool-{}-stdout.log"
             .format(safe_fname)), "w") as f:
-        f.write(ret[1][0])
+        f.write(ret[1][0].decode('utf-8'))
 
     with open(join(log_dir, "lavaTool-{}-stderr.log"
             .format(safe_fname)), "w") as f:
-        f.write(ret[1][1])
+        f.write(ret[1][1].decode('utf-8'))
 
     if ret[0] != 0:
         print("ERROR: " + "=" * 20)
-        print(ret[1][0].replace("\\n", "\n"))
+        print(ret[1][0].decode('utf-8').replace("\\n", "\n"))
         print("=" * 20)
-        print(ret[1][1].replace("\\n", "\n"))
+        print(ret[1][1].decode('utf-8').replace("\\n", "\n"))
         print("\nFatal error: LavaTool crashed\n")
         assert (False)  # LavaTool failed
 
     # Get solutions back from lavaTool, parse and return
     solutions = {}
-    for line in ret[1][0].split("\n"):
+    for line in ret[1][0].decode('utf-8').split("\n"):
         if line.startswith("SOL") and " == " in line:
             bugid = line.split("0x")[1].split(" ")[0]
             bugid = int(bugid, 16)
@@ -717,7 +725,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         if competition:
             envv["CFLAGS"] += " -DLAVA_LOGGING"
         envv = {}
-        btrace = join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace')
+        btrace = join(lp.lava_dir, 'scripts', 'sw-btrace')
         print("Running btrace make command: {} {} with env: {} in {}"
               .format(btrace, project['make'], envv, lp.bugs_build))
 
@@ -735,7 +743,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
     
     if not os.path.exists(join(lp.bugs_build, 'compile_commands.json')):
-        run([join(lp.lava_dir, 'tools', 'btrace', 'sw-btrace-to-compiledb'),
+        run([join(lp.lava_dir, 'scripts', 'sw-btrace-to-compiledb'),
              "/usr/lib/llvm-11/lib/clang/11/include"])
         # also insert instr for main() fn in all files that need it
 
@@ -849,6 +857,9 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
     one_replacement_success = False
     for src_dir in src_dirs:
+        if project['debug']:
+            print("Looking at src_dir: {}".format(src_dir))
+        
         clang_cmd = [clang_apply, '.', '-remove-change-desc-files']
         if debugging:  # Don't remove desc files
             clang_cmd = [clang_apply, '.']
@@ -900,15 +911,15 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
     if rv != 0:
         print("Lava tool returned {}! Error log below:".format(rv))
-        print(outp[1])
+        print(outp[1].decode('utf-8'))
         print()
         print("===================================")
         print("build of injected bug failed!!!!!!!")
         print("LAVA TOOL FAILED")
         print("===================================")
         print()
-        print(outp[0].replace("\\n", "\n"))
-        print(outp[1].replace("\\n", "\n"))
+        print(outp[0].decode('utf-8').replace("\\n", "\n"))
+        print(outp[1].decode('utf-8').replace("\\n", "\n"))
 
         print("Build of injected bugs failed")
         return (None, input_files, bug_solutions)
@@ -920,7 +931,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     if 'post_install' in project.keys():
         check_call(project['post_install'], cwd=lp.bugs_build, shell=True)
 
-    build = Build(compile=(rv == 0), output=(outp[0] + ";" + outp[1]),
+    build = Build(compile=(rv == 0), output=(outp[0].decode('utf-8') + ";" + outp[1].decode('utf-8')),
                   bugs=bugs_to_inject)
 
     # add a row to the build table in the db
@@ -1015,7 +1026,7 @@ def check_stacktrace_bug(lp, project, bug, fuzzed_input):
         .format(install_dir=lp.bugs_install, input_file=fuzzed_input)
     gdb_cmd = "gdb --batch --silent -x {} --args {}".format(gdb_py_script, cmd)
     (rc, (out, err)) = run_cmd(gdb_cmd, cwd=lp.bugs_install, envv=envv)
-    if debugging:
+    if project['debug']:
         for line in out.splitlines():
             print(line)
         for line in err.splitlines():
@@ -1122,8 +1133,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
 
     if update_db:
         db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
-                           output=(outp[0] + '\n' + outp[1])
-                           .decode('ascii', 'ignore'),
+                           output=(outp[0].decode('ascii', 'ignore') + '\n' + outp[1].decode('ascii', 'ignore')),
                            success=True, validated=validated))
 
     return validated
@@ -1150,18 +1160,18 @@ def validate_bugs(bug_list, db, lp, project, input_files, build,
             print("***** buggy program fails on original input - \
                   Exit code {} does not match expected {}"
                   .format(rv, args.exitCode))
-            print(outp[0])
+            print(outp[0].decode('utf-8'))
             print()
-            print(outp[1])
+            print(outp[1].decode('utf-8'))
             assert False  # Fails on original input
         else:
             print("buggy program succeeds on original input {}"
                   "with exit code {}".format(input_file, rv))
         print("output:")
-        lines = outp[0] + " ; " + outp[1]
+        lines = outp[0].decode('ascii') + " ; " + outp[1].decode('ascii')
         if update_db:
             db.session.add(Run(build=build, fuzzed=None, exitcode=rv,
-                               output=lines.decode('ascii', 'ignore'),
+                               output=lines,
                                success=True, validated=False))
     print("ORIG INPUT STILL WORKS\n")
 

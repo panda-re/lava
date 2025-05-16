@@ -67,14 +67,22 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
         if [ "$remote_machine" == "localhost" ]; then
             echo "$command"
             bash -c "$command" >> "$logfile" 2>&1
-        elif [ "$remote_machine" == "docker" ]; then
+        elif [ "$remote_machine" == "docker" ]; then            
+            # Conditionally add --add-host only if not in CI (i.e., local dev)
+            if [ "$CI" != "true" ]; then
+                add_host_arg="--add-host=database:host-gateway"
+            else
+                add_host_arg="--add-host=postgres:$(getent hosts localhost | awk '{ print $1 }')"
+            fi
+
             echo docker run $dockername sh -c "$command"
-            DOCKER_IP=$(ifconfig docker0 | grep 'inet ' | awk '{print $2}')
-            docker run --rm -it \
+            docker run --rm \
                 -e "HTTP_PROXY=$HTTP_PROXY" \
                 -e "HTTPS_PROXY=$HTTPS_PROXY" \
                 -e "http_proxy=$http_proxy" \
                 -e "https_proxy=$https_proxy" \
+                -e "POSTGRES_USER"=$POSTGRES_USER \
+                -e "POSTGRES_PASSWORD"=$POSTGRES_PASSWORD \
                 -v /var/run/postgresql:/var/run/postgresql \
                 -v "$HOME/.pgpass:$HOME/.pgpass" \
                 -v /etc/passwd:/etc/passwd:ro \
@@ -83,7 +91,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
                 -v /etc/gshadow:/etc/gshadow:ro \
                 -v /home:/home:ro \
                 -v $HOME/.panda:$HOME/.panda \
-                --add-host=database:$DOCKER_IP \
+                $add_host_arg \
                 $docker_map_args \
                 $extradockerargs \
                 $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"$command\"" \

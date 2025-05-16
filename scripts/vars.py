@@ -88,10 +88,17 @@ def parse_vars(host_json, project_name):
         project[field] = ("{config_dir}/{name}/{field}".format(config_dir=host["config_dir"],
                                                                name=project["name"], field=project[field]))
 
+    # Database config
+    project["database"] = host.get("host", "database")
+    project["database_port"] = host.get("port", 5432)
+    project["database_user"] = host.get("pguser", "postgres")
+
+    # Other config
     project["qemu"] = host["qemu"]
     project["output_dir"] = host["output_dir"] + os.path.sep + project["name"]
     project["directory"] = host["output_dir"]
     project["config_dir"] = host["config_dir"] + os.path.sep + project["name"]
+    project["debug"] = host.get("debug", False)
 
     # Replace format strings in project configs
     project["install"] = project["install"].format(config_dir=project["config_dir"])
