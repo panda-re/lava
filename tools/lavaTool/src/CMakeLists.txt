@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
-project(lavaTool VERSION 2.0.0 LANGUAGES CXX)
+project(lavaTool LANGUAGES CXX)
+include(GNUInstallDirs)
 
 # Set C++ Standard
 set(CMAKE_CXX_STANDARD 17)
@@ -99,19 +100,8 @@ set_target_properties(lavaInitTool PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
 add_dependencies(lavaTool lavaFnTool)
 
 # Install targets
-install(TARGETS lavaTool
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib/static
+install(TARGETS lavaTool lavaFnTool lavaInitTool
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}  # For shared libraries
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}  # For executables (if applicable)
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}  # For static libraries (if applicable)
 )
-install(TARGETS lavaFnTool
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib/static
-)
-install(TARGETS lavaInitTool
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib/static
-)
-

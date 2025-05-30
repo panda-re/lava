@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 project (FBI LANGUAGES CXX)
+include(GNUInstallDirs)
 
 # fbi target
 add_executable(fbi find_bug_inj.cpp)
@@ -37,8 +38,8 @@ target_link_libraries(fbi
 )
 
 install (TARGETS fbi
-         RUNTIME DESTINATION bin
-         LIBRARY DESTINATION lib
-         ARCHIVE DESTINATION lib/static
-         OPTIONAL
-         )
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}  # For shared libraries
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}  # For executables (if applicable)
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}  # For static libraries (if applicable)
+    OPTIONAL
+)

@@ -49,9 +49,8 @@ RUN [ -e /tmp/build_dep.txt ] && \
     apt-get clean
 
 #### Essentially same as setup_container.sh
-RUN cmake -B"/tools/build" -H"/tools" -DCMAKE_INSTALL_PREFIX="/tools/install"
+RUN cmake -B"/tools/build" -H"/tools" -DCMAKE_INSTALL_PREFIX="/tools/install" -DCMAKE_BUILD_TYPE=Release
 RUN cmake --build "/tools/build" --target install --parallel "$(nproc)" --config Release
-RUN cmake --build "/tools/build/fbi" --target install --parallel "$(nproc)" --config Release
 
 # RUN useradd volcana
 # RUN chown -R volcana:volcana /tools/

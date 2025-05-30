@@ -30,7 +30,7 @@ if test "$system" = "FreeBSD" -o "$system" = "Linux"; then
     # FreeBSD's ld.so man page states that LD_PRELOAD is either colon or
     # whitespace delimited.  Linux's ld.so man page states that LD_PRELOAD is
     # whitespace delimited, but Linux appears to accept either delimiter.
-    ln -sf "$bin_dir/../tools/libexec/libsw-btrace.so" /tmp/libsw-btrace.so
+    ln -sf "$bin_dir/../tools/install/lib/libsw-btrace.so" /tmp/libsw-btrace.so
     export LD_PRELOAD="$LD_PRELOAD:/tmp/libsw-btrace.so"
 else
     echo "Unsupported operating system: $system"

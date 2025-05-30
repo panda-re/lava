@@ -20,10 +20,7 @@ progress "Compiling lavaTool"
 rm -rf "$LAVA_DIR/tools/build"
 
 progress "Configuring tools"
-cmake -B"$LAVA_DIR/tools/build" -H"${LAVA_DIR}/tools" -DCMAKE_INSTALL_PREFIX="${LAVA_DIR}/tools/install" -DCMAKE_BUILD_TYPE=Release
+cmake -B"${LAVA_DIR}/tools/build" -H"${LAVA_DIR}/tools" -DCMAKE_INSTALL_PREFIX="${LAVA_DIR}/tools/install" -DCMAKE_BUILD_TYPE=Release
 
 progress "Compiling lavaTool"
-cmake --build "$LAVA_DIR/tools/build" --target install --parallel "$(nproc)" --config Release
-
-progress "Compiling fbi"
-cmake --build "$LAVA_DIR/tools/build/fbi" --target install --parallel "$(nproc)" --config Release
+cmake --build "${LAVA_DIR}/tools/build" --target install --parallel "$(nproc)" --config Release
