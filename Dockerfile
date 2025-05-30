@@ -48,17 +48,10 @@ RUN [ -e /tmp/build_dep.txt ] && \
     apt-get install -y --no-install-recommends $(cat /tmp/build_dep.txt | grep -o '^[^#]*') && \
     apt-get clean
 
-#### Develop setup: panda built + pypanda installed (in develop mode) - Stage 3
 #### Essentially same as setup_container.sh
-RUN cd /tools/btrace && ./compile.sh
-
-RUN rm -rf /tools/build
-RUN mkdir -p /tools/build
-RUN mkdir -p /tools/install
-
 RUN cmake -B"/tools/build" -H"/tools" -DCMAKE_INSTALL_PREFIX="/tools/install"
-RUN make --no-print-directory -j4 install -C "/tools/build/lavaTool"
-RUN make --no-print-directory -j4 install -C "/tools/build/fbi"
+RUN cmake --build "/tools/build" --target install --parallel "$(nproc)" --config Release
+RUN cmake --build "/tools/build/fbi" --target install --parallel "$(nproc)" --config Release
 
 # RUN useradd volcana
 # RUN chown -R volcana:volcana /tools/

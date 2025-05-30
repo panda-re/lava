@@ -8,8 +8,9 @@ set(CMAKE_VERBOSE_MAKEFILE OFF)
 CONFIGURE_FILE (
     "${PROJECT_SOURCE_DIR}/include/lava_version.h.in"
     "${PROJECT_SOURCE_DIR}/include/lava_version.h"
-    )
+)
 
+add_subdirectory(btrace)
 add_subdirectory(lavaODB)
 add_subdirectory(lavaDB)
 add_subdirectory(lavaTool)

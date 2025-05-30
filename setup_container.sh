@@ -13,24 +13,17 @@ else
     echo "LLVM_DIR is set to '${LLVM_DIR}'"
 fi
 
-
 LAVA_DIR=$(dirname "$(realpath "$0")")
 echo "LAVA_DIR: $LAVA_DIR"
 
-progress "Compile btrace"
-pushd "$LAVA_DIR/tools/btrace"
-./compile.sh
-popd
+progress "Compiling lavaTool"
+rm -rf "$LAVA_DIR/tools/build"
+
+progress "Configuring tools"
+cmake -B"$LAVA_DIR/tools/build" -H"${LAVA_DIR}/tools" -DCMAKE_INSTALL_PREFIX="${LAVA_DIR}/tools/install" -DCMAKE_BUILD_TYPE=Release
 
 progress "Compiling lavaTool"
-
-rm -rf "$LAVA_DIR/tools/build"
-mkdir -p "$LAVA_DIR/tools/build"
-mkdir -p "$LAVA_DIR/tools/install"
-
-cmake -B"$LAVA_DIR/tools/build" -H"${LAVA_DIR}/tools" -DCMAKE_INSTALL_PREFIX="${LAVA_DIR}/tools/install"
-make --no-print-directory -j4 install -C "${LAVA_DIR}/tools/build/lavaTool"
+cmake --build "$LAVA_DIR/tools/build" --target install --parallel "$(nproc)" --config Release
 
 progress "Compiling fbi"
-
-make --no-print-directory -j4 install -C "${LAVA_DIR}/tools/build/fbi"
+cmake --build "$LAVA_DIR/tools/build/fbi" --target install --parallel "$(nproc)" --config Release
