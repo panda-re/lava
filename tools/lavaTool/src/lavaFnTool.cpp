@@ -10,7 +10,6 @@
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchersInternal.h"
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
-#include "lava_version.h"
 
 #include <iostream>
 
@@ -32,12 +31,7 @@ static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp(
     "\nIdentify all fn defs, prototypes, calls for later use by LAVA.\n");
 
-void printVersion(llvm::raw_ostream &OS) {
-    OS << "LavaFnTool Version -- " << LAVA_VER << "\n";
-}
-
 ofstream outfile;
-
 
 void spit_type(const char *label, QualType qt) {
     outfile << label << qt.getAsString() << "\n";
@@ -275,7 +269,6 @@ class FunctionPrinter : public MatchFinder::MatchCallback {
 
 
 int main(int argc, const char **argv) {
-    cl::SetVersionPrinter(printVersion);
     CommonOptionsParser OptionsParser(argc, argv, LavaFnCategory);
     string outfilename = string(argv[argc-1]) + ".fn";
 

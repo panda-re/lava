@@ -30,13 +30,11 @@
 # fixupscript: script to run after add_query to fix up src before make
 #
 
-version="2.0.0"
 trap '' PIPE
 set -e # Exit on error
 set -x # debug mode
 
 USAGE() {
-  echo "$0 version $version"
   echo "USAGE: $0 [options] [ProjectConfig]"
   echo "ProjectConfig should be a path to a json file or simply the target name if the config exists in target_configs/name/name.json"
 

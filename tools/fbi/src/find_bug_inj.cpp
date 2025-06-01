@@ -40,7 +40,6 @@ extern "C" {
 #include "lava.hxx"
 #include "lava-odb.hxx"
 #include "spit.hxx"
-#include "lava_version.h"
 #include <odb/pgsql/database.hxx>
 #include <odb/session.hxx>
 #include <cstdlib>
@@ -920,7 +919,7 @@ void record_ret(Json::Value ple) { }
 
 int main (int argc, char **argv) {
     if (argc != 5 && argc !=6 ) {
-        printf("Find Bug Inject (FBI) -- Version %s\n", LAVA_VER);
+        printf("Find Bug Inject (FBI)");
         printf("usage: fbi host.json ProjectName pandalog inputfile [curtail count]\n");
         printf("    Project JSON file may specify properties:\n");
         printf("        max_liveness: Maximum liveness for DUAs\n");

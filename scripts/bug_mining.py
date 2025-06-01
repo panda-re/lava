@@ -43,7 +43,6 @@ debug = True
 qemu_use_rr = False
 
 start_time = 0
-version = "2.0.0"
 curtail = 0
 
 installdir = None
@@ -95,7 +94,6 @@ def progress(msg):
 
 
 if len(sys.argv) < 4:
-    print("Bug mining script version {}".format(version))
     print("Usage: python bug_mining.py host.json project_name inputfile",
           file=sys.stderr)
     sys.exit(1)

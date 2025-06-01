@@ -17,8 +17,6 @@ from vars import parse_vars
 # from pycparser.diversifier.diversify import diversify
 # from process_compile_commands import get_c_files
 
-version = "2.0.0"
-
 RETRY_COUNT = 0
 
 

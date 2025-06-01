@@ -27,10 +27,8 @@
 #
 
 tick
-version="2.0.0"
 
 USAGE() {
-    echo "$1 version $version"
     echo "Usage: $1 [ATP_Type] JSONfile"
 }
 

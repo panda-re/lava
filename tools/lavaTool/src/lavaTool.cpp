@@ -35,7 +35,6 @@ void parse_whitelist(std::string whitelist_filename) {
 }
 
 int main(int argc, const char **argv) {
-    cl::SetVersionPrinter(printVersion);
     CommonOptionsParser op(argc, argv, LavaCategory);
 
     std::cout << "Starting lavaTool...\n";

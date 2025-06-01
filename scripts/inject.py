@@ -16,11 +16,7 @@ from lava import LavaDatabase, Run, Bug, \
     get_bugs, run_cmd, get_allowed_bugtype_num
 
 start_time = time.time()
-
 debugging = False
-
-version = "2.0.0"
-
 
 # get list of bugs either from cmd line or db
 def get_bug_list(args, db, allowed_bugtypes):
@@ -132,7 +128,6 @@ if __name__ == "__main__":
     #                        help = ('White list file of functions to bug and data flow'))
     parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
                         help='bug types to inject')
-    parser.add_argument('--version', action="version", version="%(prog)s {}".format(version))
 
     args = parser.parse_args()
     global project

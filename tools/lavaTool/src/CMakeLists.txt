@@ -43,10 +43,6 @@ message(STATUS "PROJECT_SOURCE_DIR: ${PROJECT_SOURCE_DIR}")
 message(STATUS "CMAKE_SOURCE_DIR: ${CMAKE_SOURCE_DIR}")
 message(STATUS "LLVM_CLANG_LINK_LIBRARIES: ${LLVM_CLANG_LINK_LIBRARIES}")
 
-if(NOT EXISTS "${CMAKE_SOURCE_DIR}/include/lava_version.h")
-    message(FATAL_ERROR "Missing lava_version.h")
-endif()
-
 # Create OMG static library
 add_library(omg STATIC ../src/omg.cpp)
 target_compile_features(omg PRIVATE cxx_std_17)

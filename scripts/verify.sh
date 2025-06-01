@@ -10,10 +10,7 @@
 # Assume that $2 is the path to json file
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}"  )" && pwd  )"
 
-version="2.0.0"
-
 USAGE() {
-  echo "$0 version $version"
   echo "USAGE: $0 /path/to/json"
   exit 1
 }

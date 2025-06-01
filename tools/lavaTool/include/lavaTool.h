@@ -49,7 +49,6 @@ extern "C" {
 #include "vector_set.hxx"
 #include "Modifier.h"
 #include "Insertions.h"
-#include "lava_version.h"
 
 //using namespace clang;
 using namespace llvm;
@@ -434,11 +433,6 @@ LExpr threeDuaTest(Bug *bug, LvalBytes x, LvalBytes y) {
 LExpr twoDuaTest(const Bug *bug, LvalBytes x) {
     return (Get(bug->trigger)^Get(x)) == LHex(bug->magic);
 }
-
-static void printVersion(llvm::raw_ostream &OS) {
-    OS << "LavaFnTool Version -- " << LAVA_VER << "\n";
-}
-
 
 // returns true iff this fn name is in whitelist to be instrumented
 bool fninstr(std::pair<std::string, std::string> fnname) {
