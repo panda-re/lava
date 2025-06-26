@@ -32,7 +32,7 @@
 
 trap '' PIPE
 set -e # Exit on error
-set -x # debug mode
+# set -x # debug mode
 
 USAGE() {
   echo "USAGE: $0 [options] [ProjectConfig]"

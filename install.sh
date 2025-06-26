@@ -70,11 +70,12 @@ if ! dpkg -l | grep -q pandare; then
 else
     echo "pandare is already installed."
 fi
+progress "Installed build dependencies"
 
 pip3 install --upgrade pip
 pip3 install -r requirements.txt
 progress "Installed Python requirements"
-progress "Installed build dependencies"
+
 
 progress "Configure lavaTool"
 rm -rf "$LAVA_DIR/tools/build"

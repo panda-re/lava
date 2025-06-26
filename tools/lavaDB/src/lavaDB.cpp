@@ -5,6 +5,7 @@
 #include <tuple>
 #include <vector>
 #include <algorithm>
+#include <iostream>
 
 std::vector<std::string> InvertDB(std::map<std::string, uint32_t> &n2ind) {
     std::vector<std::string> ind2n;
@@ -23,11 +24,13 @@ std::map<std::string,uint32_t> LoadDB(std::string dbfile) {
     // Parse the db
     std::map<std::string,uint32_t> StringIDs;
     std::ifstream db(dbfile);
-    if (db.is_open()) {
-        std::string str;
-        std::string istr;
-        while (std::getline(db, istr, '\0')) {
-            std::getline(db, str, '\0');
+    std::string line;
+    while (std::getline(db, line)) {
+        size_t delimiterPos = line.find('\0');
+        if (delimiterPos != std::string::npos) {
+            std::string istr = line.substr(0, delimiterPos); // Extract the ID part
+            std::string str = line.substr(delimiterPos + 1); // Extract the string part
+            std::cout << "Loading " << str << " with ID " << istr << std::endl;
             StringIDs[str] = strtoul(istr.c_str(), NULL, 0);
         }
     }
@@ -38,8 +41,9 @@ std::map<std::string,uint32_t> LoadDB(std::string dbfile) {
 void SaveDB(const std::map<std::string, uint32_t> &StringIDs, std::string dbfile) {
     std::ofstream db(dbfile);
     for (auto p : StringIDs) {
-        db << p.second << '\0' << p.first << '\0';
+        db << p.second << '\0' << p.first << '\n';
     }
+    std::cout << "Saved LavaDB" << std::endl;
 }
 
 uint32_t GetStringID(std::map<std::string, uint32_t> &StringIDs, std::string s) {
