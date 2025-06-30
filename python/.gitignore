@@ -1,0 +1,100 @@
+/lcov_coverage_report/
+
+# Byte-compiled / optimized / compiled Python files
+__pycache__/
+*.py[cod]
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+*.egg-info/
+*.egg
+
+# Wheel files
+*.whl
+
+# PyInstaller
+# Usually contains temporary build files and logs
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+*.cover
+*.py,cover
+.hypothesis/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# macOS files
+.DS_Store
+
+# Windows files
+Thumbs.db
+ehthumbs.db
+
+# Temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*.orig
+
+# Generated documentation
+docs/_build/
+
+# Coverage reports
+*.coverage
+coverage.xml
+*.coveragerc
+
+# Pytest cache
+.pytest_cache/
+
+# MyPy cache
+.mypy_cache/
+
+# Flask instance folder
+instance/
+
+# Static files
+static/
+media/
+
+# Wheel files
+*.whl
+
+# Ignore local configuration files
+*.env

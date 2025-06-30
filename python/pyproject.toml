@@ -4,19 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = [
-    "pylava",
-    "pylava.*"
+    "pyraflow",
+    "pyraflow.*"
 ]
 
 [project]
-name = "pyroclast"
+name = "pyraflow"
 dynamic = ["version"]
 description = "Python Interface for LAVA"
 readme = "README.md"
 authors = [
     { name = "Andrew Quijano", email = "andrew.quijano@nyu.edu" },
 ]
-license = { text = "GPL-2.0" }
 requires-python = ">=3.10"
 dependencies = [
     "db",
@@ -26,10 +25,11 @@ dependencies = [
     "pandare>=1.8.58",
     "PyYAML",
     "SQLAlchemy",
-    "tabulate"
+    "tabulate",
+    "angr",
 ]
+license = "GPL-2.0-only"
 classifiers = [
-    "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
