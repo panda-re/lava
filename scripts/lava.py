@@ -50,25 +50,199 @@ Base = declarative_base()
 debugging = False
 NUM_BUGTYPES = 3 # Make sure this matches what's in lavaTool
 
-class Loc(Composite):
-    column = Integer
-    line = Integer
+class Loc(object):
+    """
+    Represents a location within a file, with line and column numbers.
+    This will be used as a SQLAlchemy Composite type.
+    """
+    def __init__(self, line, col):
+        super().__init__()
+        if not isinstance(line, int) or not isinstance(col, int):
+            raise TypeError("Line and column must be integers.")
+        self.line = line
+        self.col = col
+
+    def __composite_values__(self):
+        """
+        Required by SQLAlchemy for composite types.
+        Returns the values of the attributes that make up this composite.
+        """
+        return self.line, self.col
+
+    def __repr__(self):
+        return f"Loc(line={self.line}, col={self.col})"
+
+    def __eq__(self, other):
+        """
+        Required for comparison operations by SQLAlchemy.
+        """
+        return isinstance(other, Loc) and \
+               other.line == self.line and \
+               other.col == self.col
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 
-class ASTLoc(Composite):
-    filename = Text
-    begin = Loc
-    end = Loc
+class ASTLoc(object):
+    """
+    Represents a location in an Abstract Syntax Tree (AST),
+    including filename and start/end coordinates.
+    This will be used as a SQLAlchemy Composite type.
+    """
+
+    def __init__(self, filename, begin_loc, end_loc, *args):
+        """
+        Initializes an ASTLoc instance.
+        :param filename: The name of the file (string).
+        :param begin_loc: A Loc object representing the beginning of the location.
+        :param end_loc: A Loc object representing the end of the location.
+        """
+        super().__init__(*args)
+        if not isinstance(filename, str):
+            raise TypeError("Filename must be a string.")
+        if not isinstance(begin_loc, Loc) or not isinstance(end_loc, Loc):
+            raise TypeError("begin_loc and end_loc must be Loc objects.")
+
+        self.filename = filename
+        self.begin = begin_loc
+        self.end = end_loc
+
+    def __composite_values__(self):
+        """
+        Required by SQLAlchemy for composite types.
+        Returns the values of the attributes that make up this composite.
+        """
+        return self.filename, self.begin, self.end
+
+    def __repr__(self):
+        """
+        Provides a string representation for debugging.
+        """
+        return f"ASTLoc(filename='{self.filename}', begin={self.begin}, end={self.end})"
+
+    def __eq__(self, other):
+        """
+        Required for comparison operations by SQLAlchemy.
+        """
+        return isinstance(other, ASTLoc) and \
+            other.filename == self.filename and \
+            other.begin == self.begin and \
+            other.end == self.end
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    @classmethod
+    def from_serialized(cls, serialized_string):
+        """
+        Creates an ASTLoc instance from a serialized string,
+        mimicking the C++ constructor's parsing logic.
+
+        The expected format is "filename:begin_line:begin_col:end_line:end_col".
+        Example: "my_file.cpp:10:5:20:1"
+
+        :param serialized_string: The string to parse.
+        :return: An ASTLoc object.
+        :raises ValueError: If the string format is incorrect or components are invalid.
+        """
+        components = serialized_string.split(':')
+
+        if len(components) != 5:
+            raise ValueError(
+                f"Invalid serialized string format. Expected 5 components, got {len(components)}. "
+                f"Format: 'filename:begin_line:begin_col:end_line:end_col'"
+            )
+
+        filename = components[0]
+        try:
+            # Convert line and column parts to integers
+            begin_line = int(components[1])
+            begin_col = int(components[2])
+            end_line = int(components[3])
+            end_col = int(components[4])
+        except ValueError as e:
+            raise ValueError(f"Invalid integer component in serialized string: {e}")
+
+        # Create Loc objects
+        begin_loc = Loc(begin_line, begin_col)
+        end_loc = Loc(end_line, end_col)
+
+        # Return a new instance of ASTLoc using the standard constructor
+        return cls(filename, begin_loc, end_loc)
 
 
-class Range(Composite):
-    low = Integer
-    high = Integer
+class Range(object):
+    """
+    Represents a numerical range [low, high].
+    This will be used as a SQLAlchemy Composite type.
+    """
+    def __init__(self, low, high):
+        super().__init__()
+        if not isinstance(low, int) or not isinstance(high, int):
+            raise TypeError("Low and high must be integers.")
+        self.low = low
+        self.high = high
+
+    def __composite_values__(self):
+        """
+        Required by SQLAlchemy for composite types.
+        Returns the values of the attributes that make up this composite.
+        """
+        return self.low, self.high
+
+    def __repr__(self):
+        """
+        Provides a developer-friendly string representation.
+        """
+        return f"Range(low={self.low}, high={self.high})"
+
+    def __str__(self):
+        """
+        Provides a user-friendly string representation, mimicking C++ ostream operator.
+        """
+        return f"[{self.low}, {self.high}]"
+
+    def __eq__(self, other):
+        """
+        Compares two Range objects for equality, mimicking C++ operator==.
+        """
+        return isinstance(other, Range) and \
+               self.low == other.low and \
+               self.high == other.high
+
+    def __ne__(self, other):
+        """
+        Compares two Range objects for inequality.
+        """
+        return not self.__eq__(other)
+
+    def __lt__(self, other):
+        """
+        Compares two Range objects for less than, mimicking C++ operator<.
+        Uses lexicographical comparison of (low, high).
+        """
+        if not isinstance(other, Range):
+            return NotImplemented # Or raise TypeError
+        return (self.low, self.high) < (other.low, other.high)
+
+    def size(self):
+        """
+        Returns the size of the range (high - low).
+        Mimics C++ size() method.
+        """
+        return self.high - self.low
+
+    def empty(self):
+        """
+        Checks if the range is empty (high <= low).
+        Mimics C++ empty() method.
+        """
+        return self.high <= self.low
 
 
 class SourceLval(Base):
     __tablename__ = 'sourcelval'
-
     id = Column(Integer, primary_key=True)
     loc = ASTLoc.composite('loc')
     ast_name = Column(Text)
@@ -151,6 +325,7 @@ class AttackPoint(Base):
     POINTER_WRITE = 2
     QUERY_POINT = 3
     PRINTF_LEAK = 4
+    MALLOC_OFF_BY_ONE = 5
     # } type;
 
     def __str__(self):
