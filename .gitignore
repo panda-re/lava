@@ -1,3 +1,5 @@
+/lcov_coverage_report/
+
 # ignore IDE and existing lava build directory
 .idea
 lava

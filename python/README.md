@@ -1,124 +1,34 @@
-import os
-import tarfile
-import subprocess
-import argparse
-import angr
-import claripy
-import logging
+# Pyraflow
+This package contains all the Python code for LAVA. 
 
-# We want to see angr's logs for debugging purposes.
-# You can comment this out for a cleaner output.
-logging.getLogger('angr').setLevel(logging.WARN)
+## Code Coverage
+A metric we collect is code coverage.
 
+We suggest updating your Makefile to have a coverage target where you need to pass the following arguments `-g -O0 -fprofile-arcs -ftest-coverage`, 
+to your binary compilation command. For example, if you are compiling a binary called `toy`, your Makefile should have a target like this:
 
-def search_and_extract(keyword: str, source_dir: str) -> str:
-    """
-    Search for a .tar.gz file in 'target_bins/' matching the keyword,
-    extract it to 'target_injections/', and run `make install` inside.
+```makefile
+coverage:
+	$(CC) $(CFLAGS) -DHAVE_CONFIG_H -g -O0 -fprofile-arcs -ftest-coverage -o toy toy.c
+```
 
-    Args:
-        keyword: The project name, e. g. 'toy', 'file, etc.
-        source_dir: The directory with the tar file to unpack
-    Returns:
-        Str: The path to the extracted directory if successful, None otherwise.
-    """
-    dest_dir = os.path.join("target_injections", keyword)
-    os.makedirs(dest_dir, exist_ok=True)
+Once you have the binary, you can use the `coverage.py` script to run the binary and collect coverage data.
 
-    for root, _, files in os.walk(source_dir):
-        for file in files:
-            if file.endswith(".tar.gz") and keyword in file:
-                file_path = os.path.join(root, file)
-                print(f"Found matching file: {file_path}")
+## Generating new inputs
 
-                file_name = os.path.basename(file_path)
-                base_name = file_name.split('-pre.tar.gz')[0]
+Right now, these are some inputs to run for testing:
 
-                with tarfile.open(file_path, "r:gz") as tar:
-                    tar.extractall(dest_dir)
-                    print(f"Extracted contents to: {dest_dir}")
+```bash
+python3 coverage.py --input_dir ./tests/inputs --output_dir ./tests/outputs
+```
 
-                try:
-                    # Extend CFLAGS and CXXFLAGS
-                    # We need static compilation and debug for Angr to work properly with the binary
-                    env = os.environ.copy()
-                    extra_flags = "-g"
-                    
-                    # Build CFLAGS and CXXFLAGS for explicit passing to make
-                    cflags = env.get("CFLAGS", "") + " " + extra_flags
-                    cxxflags = env.get("CXXFLAGS", "") + " " + extra_flags
+## Bug Injection
 
-                    print(f"[*] Running make with:")
-                    print(f"    CFLAGS='{cflags.strip()}'")
-                    print(f"    CXXFLAGS='{cxxflags.strip()}'")
+## Graveyard code
 
-                    subprocess.run(
-                        ["make", f"CFLAGS={cflags.strip()}", f"CXXFLAGS={cxxflags.strip()}"],
-                        cwd=os.path.join(dest_dir, base_name),
-                        check=True,
-                        env=env,
-                    )
-                    subprocess.run(
-                        ["make", "install", f"CFLAGS={cflags.strip()}", f"CXXFLAGS={cxxflags.strip()}"],
-                        cwd=os.path.join(dest_dir, base_name),
-                        check=True,
-                        env=env,
-                    )
-                    print("Make command executed successfully.")
-                    return os.path.join(dest_dir, base_name)
-                except subprocess.CalledProcessError as e:
-                    print(f"Error while running 'make': {e}")
-                    return None
+I am saving the broken workflow of exploring angr. The logic might be helpful later for future exploration
 
-    print(f"No .tar.gz file with keyword '{keyword}' found in {source_dir}.")
-    return None
-
-
-
-def get_initial_coverage(project, binary_path: str, initial_inputs: list, angr_state_options: set) -> set:
-    """
-    Runs the binary with existing inputs to find the baseline coverage.
-    This version correctly simulates file I/O via argv.
-    Args:
-        project: Angr Project
-        binary_path: The path of the statically compiled executable
-        initial_inputs: The list of all files to use as initial inputs for coverage
-        angr_state_options: A set of Angr options to apply to the initial state.
-    Returns:
-        Set: The set of covered basic block addresses.
-    """
-    covered_blocks = set()
-    print(f"[*] Calculating baseline coverage with {len(initial_inputs)} seed inputs...")
-
-    # Define a consistent virtual path for the input file inside the simulation
-    VIRTUAL_INPUT_PATH = '/tmp/input.bin'
-
-    for seed_content in initial_inputs:
-        # Create a "SimFile" - a virtual file for angr's simulated filesystem
-        sim_file = angr.SimFile(VIRTUAL_INPUT_PATH, content=seed_content)
-        
-        # Create the initial state using full_init_state, which is more robust.
-        # Provide the command-line arguments and the virtual filesystem.
-        state = project.factory.full_init_state(
-            args=[binary_path, VIRTUAL_INPUT_PATH],
-            fs={VIRTUAL_INPUT_PATH: sim_file},
-            pylgr_options=angr_state_options
-        )
-        simgr = project.factory.simulation_manager(state)
-        
-        # Run until the program exits or gets stuck
-        simgr.run()
-
-        # We are interested in states that have finished (deadended)
-        for deadended_state in simgr.deadended:
-            # Get all the basic block addresses from the execution history
-            for addr in deadended_state.history.bbl_addrs:
-                covered_blocks.add(addr)
-    
-    print(f"[*] Baseline coverage calculated. Found {len(covered_blocks)} unique basic blocks.")
-    return covered_blocks
-
-
+```python
 def run_angr_concolic_analysis(binary_path: str, inputs_folder: str):
     """
     Run concolic analysis on a binary using Angr, exploring symbolic file input paths
@@ -149,7 +59,7 @@ def run_angr_concolic_analysis(binary_path: str, inputs_folder: str):
     # Use with caution, as it might miss paths that depend on non-zero uninitialized values.
     angr_state_options.add(angr.options.ZERO_FILL_UNCONSTRAINED_MEMORY)
     print("[*] ZERO_FILL_UNCONSTRAINED_MEMORY enabled for performance.")
-    
+
     # You can add other Angr options here for further tuning, e.g.:
     # angr_state_options.add(angr.options.LAZY_SOLVES) # Solves constraints lazily, can be faster but might lead to more paths
     # angr_state_options.add(angr.options.REPLACEMENT_UNCONSTRAINED_REGISTERS) # Replaces unconstrained registers with concrete values
@@ -168,18 +78,18 @@ def run_angr_concolic_analysis(binary_path: str, inputs_folder: str):
     # Create a symbolic bitvector that will represent the file's content
     symbolic_content = claripy.BVS('symbolic_content', 8 * symbolic_input_size)
     symbolic_file = angr.SimFile(SYMBOLIC_INPUT_PATH, content=symbolic_content)
-    
+
     # Create the initial state, providing the symbolic file to the simulated FS
     state = project.factory.full_init_state(
         args=[binary_path, SYMBOLIC_INPUT_PATH],
         fs={SYMBOLIC_INPUT_PATH: symbolic_file}
     )
-    
+
     simgr = project.factory.simulation_manager(state)
     print("\n[*] Starting symbolic exploration to find new paths...")
     found_count = 0
 
-    # --- Step 3: Explore and generate new inputs ---    
+    # --- Step 3: Explore and generate new inputs ---
     while simgr.active:
         simgr.step()
 
@@ -189,7 +99,7 @@ def run_angr_concolic_analysis(binary_path: str, inputs_folder: str):
             if current_addr not in total_coverage:
                 print(f"\n[+] New coverage found at address: {hex(current_addr)}")
                 found_count += 1
-                
+
                 try:
                     line_info = project.loader.find_line_by_addr(current_addr)
                     print(f"    -> Source Location: {line_info}")
@@ -209,11 +119,11 @@ def run_angr_concolic_analysis(binary_path: str, inputs_folder: str):
 
                     for addr in active_state.history.bbl_addrs:
                         total_coverage.add(addr)
-                    
+
                     newly_found_states.append(active_state)
                 else:
                     print("    -> State is NOT satisfiable. Cannot generate input.")
-        
+
         for found_state in newly_found_states:
             simgr.active.remove(found_state)
             simgr.stashes.setdefault('found', []).append(found_state)
@@ -253,3 +163,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+```
