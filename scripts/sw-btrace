@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Find the directory containing this script.  This code is intended to be
 # equivalent to $(dirname "$(readlink -f "$0")"), but it works on platforms
@@ -13,11 +13,8 @@ scriptDir() {
     cd "$(dirname "$path")" && pwd
 }
 
-bin_dir=$(scriptDir)
-libexec_dir=$bin_dir/../libexec
-
-BTRACE_LOG=$PWD/btrace.log
-export BTRACE_LOG
+bin_dir="$(scriptDir)"
+export BTRACE_LOG="$PWD/btrace.log"
 
 # This code copies fakeroot's behavior by adding the library to the front of the
 # LD_PRELOAD variable.
@@ -33,14 +30,8 @@ if test "$system" = "FreeBSD" -o "$system" = "Linux"; then
     # FreeBSD's ld.so man page states that LD_PRELOAD is either colon or
     # whitespace delimited.  Linux's ld.so man page states that LD_PRELOAD is
     # whitespace delimited, but Linux appears to accept either delimiter.
-    preload_lib=$libexec_dir/libsw-btrace.so
-    LD_PRELOAD=$preload_lib${LD_PRELOAD:+ $LD_PRELOAD}
-    export LD_PRELOAD
-elif test "$system" = "Darwin"; then
-    # On OS X, the DYLD_INSERT_LIBRARIES variable functions like LD_PRELOAD.
-    preload_lib=$libexec_dir/libsw-btrace.dylib
-    DYLD_INSERT_LIBRARIES=$preload_lib${DYLD_INSERT_LIBRARIES:+:$DYLD_INSERT_LIBRARIES}
-    export DYLD_INSERT_LIBRARIES
+    ln -sf "$bin_dir/../tools/install/lib/libsw-btrace.so" /tmp/libsw-btrace.so
+    export LD_PRELOAD="$LD_PRELOAD:/tmp/libsw-btrace.so"
 else
     echo "Unsupported operating system: $system"
     exit 1

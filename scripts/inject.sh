@@ -4,17 +4,15 @@
 # Json file required params
 #
 # lava:        directory of lava repository
-# pandahost:   what remote host to run panda on
+
 
 trap '' PIPE
 set -e # Exit on error
 
 # Load lava-functions
 . `dirname $0`/funcs.sh
-version="2.0.0"
 
 USAGE() {
-  echo "$0 version $version"
   echo "USAGE: $0 -a -k -m [Num bugs] -n [Minimum real bugs] -l [List of bug IDs to use] -e [Expected exit code of original program] JSONfile"
   echo "       . . . or just $0 JSONfile"
   exit 1
@@ -76,7 +74,7 @@ mkdir -p $logs
 lf="$logs/inject.log"
 progress "inject" 1 "Starting -- logging to $lf"
 truncate "$lf"
-run_remote "$testinghost" "$python $scripts/inject.py -m $num_bugs $bug_list -e $exit_code $dataflow $json" "$lf"
+run_remote "$buildhost" "$python $scripts/inject.py -m $num_bugs $bug_list -e $exit_code $dataflow $json" "$lf"
 grep yield "$lf"
 
 progress "inject" 1 "Finished."

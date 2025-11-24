@@ -2,12 +2,7 @@
     "name": "toy",
     "db": "toy",
     "preprocessed": true,
-    "dataflow": "true",
-
-    "qcow": "wheezy_panda2.qcow2",
-    "snapshot": "root",
-    "expect_prompt": "root@debian-i386:~#",
-
+    
     "tarfile": "toy-pre.tar.gz",
 
     "configure": "true",
@@ -18,7 +13,7 @@
 
     "main_file": [ "toy.c" ],
 
-    "dataflow": "true",
+    "dataflow": true,
 
     "inputs": [ "inputs/testsmall.bin" ]
 }

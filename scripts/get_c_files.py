@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import json
 import os
@@ -17,9 +17,9 @@ def processCompileCommands(srcPath):
     cFiles = []
     modificationNeeded = False
     pathStr = os.path.join(srcPath, 'compile_commands.json')
-    jsonFile = open(pathStr, 'r')
-    compileCommands = json.load(jsonFile)
-    jsonFile.close()
+    with open(pathStr, 'r') as jsonFile:
+        compileCommands = json.load(jsonFile)
+
     newCompileCommands = compileCommands[:]
     for i in compileCommands:
         if 'Werror' in i['command']:
@@ -37,22 +37,20 @@ def processCompileCommands(srcPath):
     if modificationNeeded:
         shutil.copyfile(pathStr,
             os.path.join(srcPath, 'compile_commands_original.json'))
-        jsonFile = open(pathStr, 'w')
-        json.dump(newCompileCommands, jsonFile, indent=4)
-        jsonFile.close()
+        with open(pathStr, 'w') as jsonFile:
+            json.dump(newCompileCommands, jsonFile, indent=4)
 
-    jsonFile.close()
     return newCompileCommands
 
 
 def getCFiles(compileCommands):
     for d in compileCommands:
-        print os.path.join(d['directory'], d['file'])
+        print(os.path.join(d['directory'], d['file']))
 
 
 def main():
     if (len(sys.argv) < 2):
-        print 'Usage: ./get_c_files.py <src dir>'
+        print('Usage: ./get_c_files.py <src dir>')
         sys.exit(1)
     newCompileCommands = processCompileCommands(sys.argv[1])
     getCFiles(newCompileCommands)

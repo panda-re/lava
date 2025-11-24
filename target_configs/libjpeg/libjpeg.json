@@ -6,10 +6,6 @@
 
     "tarfile": "libjpeg-pre.tar.gz",
 
-    "qcow": "wheezy_panda2.qcow2",
-    "snapshot": "root",
-    "expect_prompt": "root@debian-i386:~#",
-
     "make": "make",
     "clean": "make clean",
     "install": "make install",

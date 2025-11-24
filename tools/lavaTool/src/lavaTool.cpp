@@ -7,6 +7,7 @@
 #include "lexpr.hxx"
 #include "lavaTool.h"
 #include "MatchFinder.h"
+#include <cstdlib>
 
 void parse_whitelist(std::string whitelist_filename) {
     debug(FNARG) <<  "parsing white list " << whitelist_filename << "\n";
@@ -34,7 +35,6 @@ void parse_whitelist(std::string whitelist_filename) {
 }
 
 int main(int argc, const char **argv) {
-    cl::SetVersionPrinter(printVersion);
     CommonOptionsParser op(argc, argv, LavaCategory);
 
     std::cout << "Starting lavaTool...\n";
@@ -66,7 +66,27 @@ int main(int argc, const char **argv) {
             errs() << "Error: Specify a database name with \"--db [name]\".  Exiting . . .\n";
             exit(1);
         }
-        db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
+        const char* pgpass = std::getenv("POSTGRES_PASSWORD");
+        const char* pguser = std::getenv("POSTGRES_USER");
+        if (pgpass) {
+            // PGPASS environment variable is set, and pgpass points to its value.
+            std::cout << "POSTGRES_PASSWORD IS SET" << std::endl;
+        } else {
+            // PGPASS environment variable is not set.
+            std::cout << "POSTGRES_PASSWORD is not set" << std::endl;
+            exit(1);
+        }
+
+        if (pguser) {
+            // PGUSER environment variable is set, and pgpass points to its value.
+            std::cout << "POSTGRES_USER IS SET: " << pguser << std::endl;
+        } else {
+            // PGUSER environment variable is not set.
+            std::cout << "POSTGRES_USER is not set" << std::endl;
+            exit(1);
+        }
+
+        db.reset(new odb::pgsql::database(pguser, pgpass,
                     DBName, DBHost, DBPort));
         t = new odb::transaction(db->begin());
 

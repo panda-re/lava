@@ -3,5 +3,4 @@
 #set_target_properties(lavaDB_x32 PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32")
 
 add_library (lavaDB_x64 STATIC lavaDB.cpp)
-set_property(TARGET lavaDB_x64 PROPERTY CXX_STANDARD 11)
-target_compile_options(lavaDB_x64 PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
+set_property(TARGET lavaDB_x64 PROPERTY CXX_STANDARD 17)

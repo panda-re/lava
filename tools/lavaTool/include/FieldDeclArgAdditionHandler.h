@@ -18,21 +18,21 @@ struct FieldDeclArgAdditionHandler : public LavaMatchHandler {
     virtual void handle(const MatchFinder::MatchResult &Result) {
         const FieldDecl *fd =
             Result.Nodes.getNodeAs<FieldDecl>("fielddecl");
-        SourceLocation l1 = fd->getLocStart();
-        SourceLocation l2 = fd->getLocEnd();
+        SourceLocation l1 = fd->getBeginLoc();
+        SourceLocation l2 = fd->getEndLoc();
         bool inv = false;
         debug(FNARG) << "fielddecl  : [" << getStringBetweenRange(*Mod.sm, fd->getSourceRange(), &inv) << "]\n";
         if (inv) {
             debug(FNARG) << "... is invalid\n";
             return;
         }
-        const Type *ft = fd->getType().getTypePtr();
+        const clang::Type *ft = fd->getType().getTypePtr();
         if (ft->isFunctionPointerType()) {
             // field is a fn pointer
-            const Type *pt = ft->getPointeeType().IgnoreParens().getTypePtr();
+            const clang::Type *pt = ft->getPointeeType().IgnoreParens().getTypePtr();
             //assert(pt);
             if (!pt) return;
-            const FunctionType *fun_type = dyn_cast<FunctionType>(pt);
+            const clang::FunctionType *fun_type = dyn_cast<clang::FunctionType>(pt);
             if (fun_type == NULL) {
                 debug(FNARG) << "... clang could not determine function type, abort\n";
                 return;
@@ -40,11 +40,11 @@ struct FieldDeclArgAdditionHandler : public LavaMatchHandler {
 
             //assert(fun_type);
             if (!fun_type) return;
-            const FunctionProtoType *prot = dyn_cast<FunctionProtoType>(fun_type);
+            const clang::FunctionProtoType *prot = dyn_cast<clang::FunctionProtoType>(fun_type);
             if (!prot) return;
             // add the data_flow arg
-            SourceLocation l1 = fd->getLocStart();
-            SourceLocation l2 = fd->getLocEnd();
+            SourceLocation l1 = fd->getBeginLoc();
+            SourceLocation l2 = fd->getEndLoc();
             AddArgGen(Mod, l1, l2, false, prot->getNumParams(), 2);
         }
     }

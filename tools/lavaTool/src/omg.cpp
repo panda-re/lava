@@ -1,4 +1,3 @@
-
 #include <cassert>
 #include <iostream>
 #include <tuple>
@@ -7,19 +6,15 @@
 
 using namespace std;
 
-
 #include "clang/AST/AST.h"
 #include "clang/Driver/Options.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Lex/Lexer.h"
 
-
-
 using namespace clang;
 //using namespace clang::ast_matchers;
 using namespace clang::driver;
 using namespace llvm;
-
 
 #define PARENS (1 << 0)
 #define GENERAL (1 << 1)
@@ -27,7 +22,7 @@ using namespace llvm;
 #define DEBUG_FLAGS 0 // (PARENS | GENERAL)
 
 static llvm::raw_null_ostream null_ostream;
-#define debug(flag) ((DEBUG_FLAGS & (flag)) ? llvm::errs() : null_ostream)
+#define debug(flag) ((DEBUG_FLAGS & (flag)) ? static_cast<llvm::raw_ostream&>(llvm::errs()) : static_cast<llvm::raw_ostream&>(null_ostream))
 
 #include "omg.h"
 
@@ -100,13 +95,8 @@ static llvm::raw_null_ostream null_ostream;
 
 enum NextThing {NtInvalid=1, NtOpen=2, NtClose=3};
 
-// This tuple is
-// position in string (unsigned)
-// isOpenParen        (bool)
-// level              (unsigned)
-typedef std::tuple < size_t, bool, unsigned > ParenInfo ;
-
-typedef std::vector < ParenInfo > ParensInfo;
+typedef std::tuple<size_t, bool, unsigned> ParenInfo;
+typedef std::vector<ParenInfo> ParensInfo;
 
 // figure out paren info for this string.
 ParensInfo getParens(std::string sourceString) {
@@ -118,163 +108,100 @@ ParensInfo getParens(std::string sourceString) {
         size_t nextClose = sourceString.find(")", searchLoc);
 
         NextThing nt = NtInvalid;
-        if (nextOpen != std::string::npos
-            && nextClose != std::string::npos) {
+        if (nextOpen != std::string::npos && nextClose != std::string::npos) {
             debug(PARENS) << "Both in bounds\n";
-            // both are in bounds so we can compare them
-            // the next one is whichever comes first
             if (nextOpen < nextClose) nt = NtOpen;
             else nt = NtClose;
-        }
-        else {
-            // one or neither is in bounds
-            // whever is in bounds is next one
+        } else {
             debug(PARENS) << "One/neither in bounds\n";
             if (nextOpen != std::string::npos) nt = NtOpen;
             else if (nextClose != std::string::npos) nt = NtClose;
         }
-        ParenInfo pt;
-        // no valid next open or close -- exit loop
+
         if (nt == NtInvalid) break;
         size_t nextLoc;
         debug(PARENS) << "NT is " << ((nt==NtOpen)?"(":")") << "\n";
+        ParenInfo pt;
         switch (nt) {
-        case NtOpen:
-            // '(' is next thing
-            nextLoc = nextOpen;
-            level ++;
-            pt = std::make_tuple(nextLoc, true, level);
-            break;
-        case NtClose:
-            // ')' is next thing
-            nextLoc = nextClose;
-            pt = std::make_tuple(nextLoc, false, level);
-            level --;
-            break;
-        default:
-            assert (1==0); // should not happen
+            case NtOpen:
+                nextLoc = nextOpen;
+                level++;
+                pt = std::make_tuple(nextLoc, true, level);
+                break;
+            case NtClose:
+                nextLoc = nextClose;
+                pt = std::make_tuple(nextLoc, false, level);
+                level--;
+                break;
+            default:
+                assert(false); // should not happen
         }
-        // collect the tuples
         parens.push_back(pt);
-        searchLoc = nextLoc+1;
+        searchLoc = nextLoc + 1;
     }
     debug(PARENS) << sourceString << "\n";
     unsigned l = parens.size();
-    if (l>0) {
-        //debug(PARENS) << "There are parens\n";
-
-        // Find adjacent open, open + close close at same levels, delete all elements
-        // in `parens` between 1st open and last close (inclusive)
-        // I'm not sorry for the goto
-        /*
-          for each element idx=x, level=1 open=T:
-              check if x+1 exists with open=T, level=2, if so:
-              Seek until open=F level=2 idx=y
-              if y+1 exists with open=F, level=1:
-                  delete from x to y, inclusive
-        */
-
-// This is a bad hack that will NOT WORK for all inputs and it never will. We need a better solution for data-flow
-// injections into function arguments
-// We often see lines with "__attribute__((foo)) fn_def(arg1, arg2)" or "fn_def(arg1, arg2) __attribute__((foo))"
-// If the line we have contains "((" and "))" then ignore those when matching
-    std::string ws;
-
-    if (sourceString.find("__attribute__") != std::string::npos) {
+    if (l > 0) {
+        std::string ws;
+        if (sourceString.find("__attribute__") != std::string::npos) {
 remove_attributes:
             for (auto p : parens) {
                 ws = "";
-                for (int i=0;i<std::get<0>(p); i++) ws+=" ";
+                for (size_t i = 0; i < std::get<0>(p); i++) ws += " ";
                 debug(PARENS) << ws << "| paren " << std::get<0>(p)
-                          << " " << std::get<1>(p)
-                          << " " << std::get<2>(p) << "\n";
+                              << " " << std::get<1>(p)
+                              << " " << std::get<2>(p) << "\n";
             }
 
-            // TODO something like __attribute__ ( (foo)) is probably valid too, need to ignore whitespace
-            for (auto oparen=parens.begin(); oparen != parens.end(); ++oparen) {
-                unsigned int o_idx   = std::get<0>(*oparen);
-                bool         o_open  = std::get<1>(*oparen);
+            for (auto oparen = parens.begin(); oparen != parens.end(); ++oparen) {
+                unsigned int o_idx = std::get<0>(*oparen);
+                bool o_open = std::get<1>(*oparen);
                 unsigned int o_level = std::get<2>(*oparen);
 
-                if (o_level != 1 || o_open!=true) continue; // We only want level 1 opens
-                if ((oparen+1) == parens.end()) continue;
+                if (o_level != 1 || !o_open) continue;
+                if ((oparen + 1) == parens.end()) continue;
 
-                // If there's another ( next, get it
-                auto oparen2 = oparen+1;
-                if (std::get<0>(*oparen2)==o_idx+1 &&   // Found adjacent open
-                                std::get<1>(*oparen2)) {
+                auto oparen2 = oparen + 1;
+                if (std::get<0>(*oparen2) == o_idx + 1 && std::get<1>(*oparen2)) {
                     debug(PARENS) << "\tFound set of adjacent open parens at " << o_idx << "\n";
 
-                    // Find next close paren that matches to inner open paren
-                    for (auto cparen=oparen2; cparen != parens.end(); ++cparen) {
-                        unsigned int c_idx   = std::get<0>(*cparen);
-                        bool         c_open  = std::get<1>(*cparen);
+                    for (auto cparen = oparen2; cparen != parens.end(); ++cparen) {
+                        unsigned int c_idx = std::get<0>(*cparen);
+                        bool c_open = std::get<1>(*cparen);
                         unsigned int c_level = std::get<2>(*cparen);
                         if (!c_open && c_level == 2) {
-                            // Found match
                             debug(PARENS) << "\tFound first close paren at " << c_idx << "\n";
-                            if ((cparen+1) == parens.end()) continue;
+                            if ((cparen + 1) == parens.end()) continue;
 
-                            // If there's another ) next, get it
-                            auto cparen2=cparen+1;
-                            if (std::get<0>(*cparen2)==c_idx+1 && !std::get<1>(*cparen2)) { // idx is +1 from close idx, and is close
+                            auto cparen2 = cparen + 1;
+                            if (std::get<0>(*cparen2) == c_idx + 1 && !std::get<1>(*cparen2)) {
                                 debug(PARENS) << ("\tFOUND ((...)) pair, removing\n");
-                                // Delete all elements with idx between (o_idx, c_idx), inclusive
-                                parens.erase(oparen, cparen2+1); // Include cparen2 in the delete
+                                parens.erase(oparen, cparen2 + 1);
                                 goto remove_attributes;
                             }
-                            // We only want to examine the first matching close paren, break after
-                            // XXX this may be a bad assumption that this list is ordered
                             break;
                         }
                     }
                 }
             }
-    }
+        }
 
-        ParenInfo &cp = parens[l-1];
+        ParenInfo &cp = parens[l - 1];
         ParenInfo &op = parens[0];
         if (std::get<1>(op) == true && std::get<1>(cp) == false) {
-            // first is open and last is close
             if (std::get<2>(op) == 1 && std::get<2>(cp) == 1) {
-                // and both are level 1 -- good
-            }
-            else {
-                debug(PARENS) << "Clearing parens since levels of open/close arent both 1\n";
+                // good
+            } else {
+                debug(PARENS) << "Clearing parens since levels of open/close aren't both 1\n";
                 parens.clear();
             }
-        }
-        else {
-            debug(PARENS) << "Clearing parens since we dont have op/close as first/last\n";
+        } else {
+            debug(PARENS) << "Clearing parens since we don't have op/close as first/last\n";
             parens.clear();
         }
     }
     return parens;
 }
-
-
-/*
-  This one is really our fault.  We have the string-ified version of
-  the ast node that is an lval we want to siphon off as a dua.  This
-  comes from libdwarf, by way of the pri magic in PANDA.  This means
-  we can get something like
-
-  ((*((**(pdtbl)).pub)).sent_table))
-
-  Before we siphon that dua off, we need to test the various ptrs that
-  will end up getting dereferenced to make sure they aren't null.  So
-  we use getparens to find the balanced parens, and then consider each to
-  see if it starts wit '(*' or '(**' or ..  And if so, we add checks to
-  ensure that ptrs are non-null
-
-  So, for this example, we want
-
-  if (pdtbl && *pdtbl && ((**(pdtbl)).pub)) {...}
-
-  This, too, is reprehensible.  But, gotta get things to work.  Not
-  sorry.  Right solution would be to have pri figure this out?
-
-*/
 
 std::string createNonNullTests(std::string sourceString) {
     ParensInfo parens = getParens(sourceString);
@@ -285,25 +212,23 @@ std::string createNonNullTests(std::string sourceString) {
     while (true) {
         unsigned i_open;
         bool found = false;
-        for (i_open=curr; i_open<parens.size(); i_open++) {
-            if (std::get<1>(parens[i_open]))
-                // found next open
+        for (i_open = curr; i_open < parens.size(); i_open++) {
+            if (std::get<1>(parens[i_open])) {
                 found = true;
                 break;
+            }
         }
 
-        if (!found) break; // end loop after parsing last pair of parens
+        if (!found) break;
         ParenInfo oinfo = parens[i_open];
         size_t opos = std::get<0>(oinfo);
         unsigned olevel = std::get<2>(oinfo);
         unsigned i_close;
         found = false;
-        for (i_close=i_open+1; i_close<parens.size(); i_close++) {
+        for (i_close = i_open + 1; i_close < parens.size(); i_close++) {
             bool isopen = std::get<1>(parens[i_close]);
-            size_t level = std::get<2>(parens[i_close]);
+            unsigned level = std::get<2>(parens[i_close]);
             if (!isopen && level == olevel) {
-                // found first close after that open
-                // which is at same level
                 found = true;
                 break;
             }
@@ -311,17 +236,16 @@ std::string createNonNullTests(std::string sourceString) {
         if (!found) break;
         ParenInfo cinfo = parens[i_close];
         size_t cpos = std::get<0>(cinfo);
-        std::string cand = sourceString.substr(opos, cpos-opos+1);
-        // (**(pdtbl))
-        unsigned num_stars=1;
-        for (num_stars=1; num_stars<cand.size(); num_stars++)
+        std::string cand = sourceString.substr(opos, cpos - opos + 1);
+        unsigned num_stars = 1;
+        for (num_stars = 1; num_stars < cand.size(); num_stars++)
             if (cand[num_stars] != '*') break;
         num_stars--;
         if (num_stars > 0) {
             debug(PARENS) << "cand = [" << cand << "]\n";
             debug(PARENS) << "num_stars = " << num_stars << "\n";
-            for (unsigned i=0; i<num_stars; i++) {
-                size_t start = i+2;
+            for (unsigned i = 0; i < num_stars; i++) {
+                size_t start = i + 2;
                 size_t len = cand.size() - start - 1;
                 debug(PARENS) << "start = " << start << " len = " << len << "\n";
                 std::string test = " (" + (cand.substr(start, len)) + ")";
@@ -332,18 +256,16 @@ std::string createNonNullTests(std::string sourceString) {
             }
         }
 
-        curr ++;
+        curr++;
     }
     return tests;
-
 }
-
 
 std::string getStringBetweenRange(const SourceManager &sm, SourceRange range, bool *inv) {
     SourceLocation end = Lexer::getLocForEndOfToken(range.getEnd(), 0, sm, LangOptions());
-    *inv=false;
-    if(end == range.getBegin()) {
-        *inv=true;
+    *inv = false;
+    if (end == range.getBegin()) {
+        *inv = true;
         return std::string("Invalid");
     }
     CharSourceRange char_range;
@@ -359,95 +281,47 @@ std::string getStringBetween(const SourceManager &sm, SourceLocation &l1, Source
     unsigned o2 = sm.getFileOffset(l2);
     if (*inv || (o1 > o2))
         return std::string("Invalid");
-    return (std::string(buf, o2-o1+1));
+    return (std::string(buf, o2 - o1 + 1));
 }
-
-
-
-
-
-// find location of str after loc
-// sets *inv=true if something went wrong or we didnt find
 
 SourceLocation getLocAfterStr(const SourceManager &sm, SourceLocation &loc, const char *str, unsigned str_len, unsigned max_search, bool *inv) {
     const char *buf = sm.getCharacterData(loc, inv);
     if (*inv) {
-        // getchardata failed
         return loc;
     }
     debug(PARENS) << "getCharacterData succeeded\n";
-    // getCharacterData succeeded
     const char *p = strstr(buf, str);
     if (p == NULL) {
-        // didnt find the string
         *inv = true;
         return loc;
     }
-    // found the string.
     *inv = false;
     return loc.getLocWithOffset(p - buf);
 }
-/*
-        const char *p = buf;
-        *inv = true;
-        while (true) {
-            if (0 == strncmp(p, str, str_len)) {
-                // found the str in the source
-                *inv = false;
-                break;
-            }
-            p++;
-            if (p-buf > max_search)
-                break;
-        }
-        if (!(*inv)) {
-            unsigned pos = p - buf;
-            //debug(FNARG) << "Found [" << str << "] @ " << pos << "\n";
-            std::string uptomatch = std::string(buf, str_len + pos);
-            //debug(FNARG) << "uptomatch: [" << uptomatch << "]\n";
-            return loc.getLocWithOffset(str_len + pos);
-        }
-    }
-    return loc;
-}
-*/
 
-
-// comparison of source locations based on file offset
-// XXX better to make sure l1 and l2 in same file?
 int srcLocCmp(const SourceManager &sm, SourceLocation &l1, SourceLocation &l2) {
     unsigned o1 = sm.getFileOffset(l1);
     unsigned o2 = sm.getFileOffset(l2);
-    if (o1<o2) return SCMP_LESS;
-    if (o1>o2) return SCMP_GREATER;
+    if (o1 < o2) return SCMP_LESS;
+    if (o1 > o2) return SCMP_GREATER;
     return SCMP_EQUAL;
 }
 
+typedef std::tuple<SourceLocation, bool, unsigned> SLParenInfo;
+typedef std::vector<SLParenInfo> SLParensInfo;
 
-typedef std::tuple < SourceLocation, bool, unsigned > SLParenInfo ;
-
-typedef std::vector < SLParenInfo > SLParensInfo;
-
-/*
-  returns a vector of paren info tuples in terms of SourceLocation instead of
-  position in a string
-*/
-
-SLParensInfo SLgetParens(const SourceManager &sm, SourceLocation &l1,
-                         SourceLocation &l2) {
-
+SLParensInfo SLgetParens(const SourceManager &sm, SourceLocation &l1, SourceLocation &l2) {
     SLParensInfo slparens;
     bool inv;
     std::string sourceStr = getStringBetweenRange(sm, SourceRange(l1, l2), &inv);
     debug(GENERAL) << "SLgetParens sourceStr = [" << sourceStr << "]\n";
     if (inv) {
         debug(GENERAL) << "Invalid\n";
-    }
-    else {
+    } else {
         ParensInfo parens = getParens(sourceStr);
         for (auto paren : parens) {
             size_t pos = std::get<0>(paren);
-            unsigned isopen = std::get<1>(paren);
+            bool isopen = std::get<1>(paren);
             unsigned level = std::get<2>(paren);
             debug(GENERAL) << "Found paren pair open=" << isopen << ", level=" << level << "\n";
             SourceLocation sl = l1.getLocWithOffset(pos);

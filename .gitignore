@@ -1,6 +1,9 @@
-# ignore IDE and existing lava build directory
+# ignore IDE and any panda wheel/debian packages
+.vscode
 .idea
-lava
+*.deb
+*.whl
+.env
 
 # this existed before
 .gdb_history
@@ -17,6 +20,8 @@ host.json
 *.qcow*
 *.qcow2
 *.so
+*.log
+*.json
 *~
 ~*
 .*.sw*
