@@ -22,7 +22,7 @@ jobs:
       - name: Checkout LAVA at current commit
         uses: actions/checkout@v4
       
-      - name: Create Wheel File
+      - name: Install compile dependencies
         run: |
           sudo apt-get update -y
           sudo apt-get install clang-tools-11 libclang-11-dev llvm-11-dev odb libjsoncpp-dev libodb-pgsql-2.4 g++-10 libprotobuf-dev libprotobuf-c-dev -y
