@@ -7,4 +7,4 @@ pandare>=1.8.78
 PyYAML
 SQLAlchemy
 tabulate
-psycopg2
+psycopg2-binary

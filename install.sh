@@ -76,7 +76,6 @@ pip3 install --upgrade pip
 pip3 install -r requirements.txt
 progress "Installed Python requirements"
 
-
 progress "Configure lavaTool"
 rm -rf "$LAVA_DIR/tools/build"
 cmake -B"${LAVA_DIR}/tools/build" -H"${LAVA_DIR}/tools" -DCMAKE_INSTALL_PREFIX="${LAVA_DIR}/tools/install" -DCMAKE_BUILD_TYPE=Release
