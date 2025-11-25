@@ -6,7 +6,39 @@ on:
     branches:
       - master
 
-jobs:  
+# Automatically cancel any previous workflow on new push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  test_debian_package:
+    if: github.repository == 'panda-re/lava'
+    runs-on: ubuntu-22.04
+    env:
+      LLVM_DIR: /usr/lib/llvm-11
+      DEBIAN_FRONTEND: noninteractive
+    steps:  
+      - name: Checkout LAVA at current commit
+        uses: actions/checkout@v4
+      
+      - name: Create Wheel File
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install clang-tools-11 libclang-11-dev llvm-11-dev odb libjsoncpp-dev libodb-pgsql-2.4 g++-10 libprotobuf-dev libprotobuf-c-dev -y
+      #    python3 -m pip install build
+      #    python3 -m build --wheel .
+
+      - name: Create Debian Package
+        run: |
+          cmake -B"./tools/build" \
+          -H"./tools" \
+          -DCMAKE_INSTALL_PREFIX="/usr" \
+          -DCMAKE_BUILD_TYPE=Release
+          cmake --build "./tools/build" --parallel "$(nproc)" --config Release
+          cd ./tools/build
+          cpack -G DEB
+
   test_install_script:
     if: github.repository == 'panda-re/lava'
     runs-on: ubuntu-22.04
@@ -36,12 +68,12 @@ jobs:
       run: bash install.sh
     - name: Setup LAVA
       run: |
+        chmod +x ./scripts/*
         python3 init-host.py
-    - name: Run LAVA on toy
+    - name: Add Postgres credentials and Run LAVA
       run: |
         echo "localhost:5432:*:${POSTGRES_USER}:${POSTGRES_PASSWORD}" > ~/.pgpass
         chmod 600 ~/.pgpass
-        chmod +x ./scripts/*
         ./scripts/lava.sh -ak toy
       env:
         USER: ${{ github.actor }}
@@ -51,98 +83,38 @@ jobs:
 
   # For now I am pushing LAVA, but eventually this should be just a testing repostiory
   build_container:
-    if: false
+    if: github.repository == 'panda-re/lava'
     runs-on: ubuntu-22.04
     env:
       LLVM_DIR: /usr/lib/llvm-11
       DEBIAN_FRONTEND: noninteractive
     steps:
-    - name: Checkout LAVA at current commit
-      uses: actions/checkout@v5
-    - name: Install updates
-      run: sudo apt-get -qq update -y
-    - name: 'Login to Github Container Registry'
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3  
-    - name: Build and push
-      uses: docker/build-push-action@v5
-      with:
-        context: ${{ github.workspace }}
-        tags: ghcr.io/${{ github.repository_owner }}/lava_local:${{ github.sha }}
-        push: true
+      - name: 'Login to Docker Registry'
+        uses: docker/login-action@v3
+        with:
+          username: pandare
+          password: ${{secrets.ALL_PANDARE_DOCKERHUB}}
+    
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:master
+            network=host
+          buildkitd-config-inline: |
+            [registry."${{ secrets.PANDA_ARC_REGISTRY }}"]
+              insecure = true
+              http = true
 
-  test_container:
-    if: false
-    runs-on: ubuntu-22.04
-    needs: [build_container]
-    env:
-      USER: ${{ github.actor }}
-    # https://docs.github.com/en/actions/use-cases-and-examples/using-containerized-services/creating-postgresql-service-containers
-    services:
-      postgres:
-        image: postgres:latest
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgrespostgres
-          POSTGRES_DB: toy_${{ env.USER }}
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U ${POSTGRES_USER}"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-    - name: Checkout LAVA at current commit
-      uses: actions/checkout@v5
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: '3.10'
-    - name: Check PostgreSQL Health
-      run: |
-        until pg_isready -h localhost -U postgres; do
-          echo "Waiting for database to be ready..."
-          sleep 5
-        done
-    - name: Install and upgrade pip, then install the python requirements
-      run: |
-        python3 -m ensurepip --upgrade
-        python3 -m pip install --upgrade pip
-        python3 -m pip install -r requirements.txt
-        sudo apt-get update -y
-        sudo apt-get install wget git build-essential -y
-    - name: Setup LAVA
-      run: |
-        python3 init-host.py --docker --container ghcr.io/${{ github.repository_owner }}/lava_local:${{ github.sha }}
-    - name: Run LAVA on toy
-      run: |
-        echo "postgres:5432:*:${POSTGRES_USER}:${POSTGRES_PASSWORD}" > ~/.pgpass
-        chmod 600 ~/.pgpass
-        chmod +x ./scripts/*
-        ./scripts/lava.sh -ak toy
-      env:
-        USER: ${{ github.actor }}
-        POSTGRES_USER: postgres
-        POSTGRES_PASSWORD: postgrespostgres
-        CI: true
+      - name: Check out
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
-  cleanup:
-    # Cleanup after prior jobs finish - even if they fail
-    needs: [test_container]
-    runs-on: panda-arc
-    if: false
-    steps:
-      # Note we leave the last 72hrs because caching is nice (first few panda image layers won't change often)
-      # docker system prune -> Remove all unused containers, networks, images (both dangling and unreferenced)
-      # docker builder prune -> Remove build cache
-    - name: Cleanup images
-      run: |
-        docker system prune -af --filter "until=72h"
-        docker image prune --all -f --filter "until=72h"
-        docker builder prune -af --filter "until=72h"
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ github.workspace }}
+          push: true
+          tags: |
+            pandare/lava:latest

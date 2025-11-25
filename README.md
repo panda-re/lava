@@ -1,5 +1,9 @@
 # LAVA: Large Scale Automated Vulnerability Addition
 
+[![Publish Lava Package and Container](https://github.com/panda-re/lava/actions/workflows/publish_docker.yml/badge.svg)](https://github.com/panda-re/lava/actions/workflows/publish_docker.yml)
+
+[![Lava Tests](https://github.com/panda-re/lava/actions/workflows/parallel_tests.yml/badge.svg)](https://github.com/panda-re/lava/actions/workflows/parallel_tests.yml)
+
 Evaluating and improving bug-finding tools is currently difficult due to
 a shortage of ground truth corpora (i.e., software that has known bugs
 with triggering inputs). LAVA attempts to solve this problem by

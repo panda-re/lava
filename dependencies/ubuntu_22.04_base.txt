@@ -1,3 +1,27 @@
+# This file contains everything you need to compile this
 # lava dependencies, needed to run LAVA
+
 python3-pip
+cmake
+
+# clang/llvm
+clang-tools-11
+libclang-11-dev
+llvm-11-dev
+
+# Based on original setup.py after panda is installed step
+# https://installati.one/install-odb-ubuntu-20-04/?expand_article=1
+odb
+
+# libjsoncpp needed for fbi json parsing
+libjsoncpp-dev
+
+# I need this for making LavaTool
+g++-10
+
+# Brendan noticed these libraries were needed to compile FBI
+libodb-pgsql-2.4
+
+# FBI needs this, but I think we can remove once Python swap is in
 libprotobuf-dev
+libprotobuf-c-dev

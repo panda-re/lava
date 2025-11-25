@@ -24,16 +24,15 @@ jobs:
   create_release_assets:
     needs: [create_release]
     if: github.repository == 'panda-re/lava'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:  
       - name: Checkout LAVA at current commit
         uses: actions/checkout@v4
       
-      - name: Create Wheel File
+      - name: Install compile dependencies
         run: |
-          sudo apt-get update -y
-      #    python3 -m pip install build
-      #    python3 -m build --wheel .
+          sudo apt-get update -y         
+          sudo apt-get install clang-tools-11 libclang-11-dev llvm-11-dev odb libjsoncpp-dev libodb-pgsql-2.4 g++-10 libprotobuf-dev libprotobuf-c-dev -y
 
       - name: Create Debian Package
         run: |
@@ -44,7 +43,7 @@ jobs:
           -DLAVA_VERSION=${{ needs.create_release.outputs.v-version }}
           cmake --build "./tools/build" --parallel "$(nproc)" --config Release
           cd ./tools/build
-          cpack -G DEB        
+          cpack -G DEB
       - name: Upload wheel and debian packages to release
         uses: softprops/action-gh-release@v2
         env:
@@ -85,7 +84,7 @@ jobs:
         fetch-depth: 0
 
     - name: Build LAVA container
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: ${{ github.workspace }}
         push: true
@@ -93,10 +92,3 @@ jobs:
           pandare/lava:latest
           pandare/lava:${{ github.sha }}
           pandare/lava:${{ needs.create_release.outputs.v-version }}
-        cache-from: |
-          type=registry,ref=${{secrets.PANDA_ARC_REGISTRY}}/pandare/lava:cache,mode=max
-          type=registry,ref=${{secrets.PANDA_ARC_REGISTRY}}/pandare/lava:packagecache,mode=max
-        cache-to: |
-          type=registry,ref=${{secrets.PANDA_ARC_REGISTRY}}/pandare/lava:packagecache,mode=max
-        build-args: |
-          REGISTRY=${{ secrets.PANDA_ARC_REGISTRY }}/proxy
