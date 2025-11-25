@@ -16,7 +16,7 @@ jobs:
     if: github.repository == 'panda-re/lava'
     runs-on: ubuntu-22.04
     env:
-      LLVM_DIR: /usr/lib/llvm-11
+      LLVM_DIR: /usr/lib/llvm-14
       DEBIAN_FRONTEND: noninteractive
     steps:  
       - name: Checkout LAVA at current commit
@@ -25,7 +25,9 @@ jobs:
       - name: Install compile dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install clang-tools-11 libclang-11-dev llvm-11-dev odb libjsoncpp-dev libodb-pgsql-2.4 g++-10 libprotobuf-dev libprotobuf-c-dev -y
+          sudo apt-get install clang-tools-14 libclang-14-dev llvm-14-dev odb libjsoncpp-dev libodb-pgsql-2.4 g++-10 libprotobuf-dev libprotobuf-c-dev -y
+      #    python3 -m pip install build
+      #    python3 -m build --wheel .
 
       - name: Create Debian Package
         run: |

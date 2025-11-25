@@ -10,6 +10,8 @@
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchersInternal.h"
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <iostream>
 
@@ -269,7 +271,15 @@ class FunctionPrinter : public MatchFinder::MatchCallback {
 
 
 int main(int argc, const char **argv) {
-    CommonOptionsParser OptionsParser(argc, argv, LavaFnCategory);
+    auto ExpectedParser = CommonOptionsParser::create(argc, argv, LavaFnCategory);
+    if (!ExpectedParser) {
+        // Print the error message from LLVM
+        llvm::errs() << ExpectedParser.takeError();
+        return 1;
+    }
+    CommonOptionsParser &op = ExpectedParser.get();
+    ClangTool Tool(op.getCompilations(), op.getSourcePathList());
+
     string outfilename = string(argv[argc-1]) + ".fn";
 
     if (outfilename == "--.fn")
@@ -277,8 +287,6 @@ int main(int argc, const char **argv) {
     cout << "outfilename = [" << outfilename << "]\n";
     outfile.open (outfilename);
 
-    ClangTool Tool(OptionsParser.getCompilations(),
-                   OptionsParser.getSourcePathList());
     MatchFinder Finder;
     CallPrinter CPrinter;
     FunctionPrinter FPrinter;

@@ -14,8 +14,8 @@ progress() {
 }
 
 if [ -z "${LLVM_DIR}" ]; then
-    echo "LLVM_DIR is not set ${LLVM_DIR}, setting it to /usr/lib/llvm-11"
-    export LLVM_DIR=/usr/lib/llvm-11
+    echo "LLVM_DIR is not set ${LLVM_DIR}, setting it to /usr/lib/llvm-14"
+    export LLVM_DIR=/usr/lib/llvm-14
 else
     echo "LLVM_DIR is set to '${LLVM_DIR}'"
 fi

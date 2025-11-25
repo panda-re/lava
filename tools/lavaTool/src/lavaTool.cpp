@@ -7,6 +7,9 @@
 #include "lexpr.hxx"
 #include "lavaTool.h"
 #include "MatchFinder.h"
+#include "clang/Tooling/CommonOptionsParser.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/raw_ostream.h"
 #include <cstdlib>
 
 void parse_whitelist(std::string whitelist_filename) {
@@ -35,7 +38,13 @@ void parse_whitelist(std::string whitelist_filename) {
 }
 
 int main(int argc, const char **argv) {
-    CommonOptionsParser op(argc, argv, LavaCategory);
+    auto ExpectedParser = CommonOptionsParser::create(argc, argv, LavaCategory);
+    if (!ExpectedParser) {
+        // Print the error message from LLVM
+        llvm::errs() << ExpectedParser.takeError();
+        return 1;
+    }
+    CommonOptionsParser &op = ExpectedParser.get();
 
     std::cout << "Starting lavaTool...\n";
     LavaPath = std::string(dirname(dirname(dirname(realpath(argv[0], NULL)))));
