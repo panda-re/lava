@@ -175,7 +175,7 @@ panda.load_plugin("dwarf2",
                       'proc': proc_name,
                       'g_debugpath': installdir,
                       'h_debugpath': installdir,
-                      'debug' : True
+                      'debug' : False
                   })
 panda.load_plugin("pri_taint", args={
     'hypercall' : True,
@@ -191,7 +191,7 @@ panda.load_plugin("file_taint",
                     args={
                         'filename': input_file_guest,
                         'pos': True,
-                        'verbose': True
+                        'verbose': False
                     })
 
 
