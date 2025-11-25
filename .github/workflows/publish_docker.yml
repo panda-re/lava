@@ -1,4 +1,4 @@
-name: Publish Lava Docker Container # Only for main lava repo, not forks
+name: Publish Lava Package and Container
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ jobs:
   create_release_assets:
     needs: [create_release]
     if: github.repository == 'panda-re/lava'
-    runs-on: panda-arc
+    runs-on: ubuntu-latest
     steps:  
       - name: Checkout LAVA at current commit
         uses: actions/checkout@v4
@@ -59,7 +59,7 @@ jobs:
 
   build_container:
     needs: [create_release, create_release_assets]
-    if: github.repository  == 'panda-re/lava'
+    if: github.repository == 'panda-re/lava'
     runs-on: panda-arc
     steps:
     - name: 'Login to Docker Registry'
@@ -68,8 +68,21 @@ jobs:
         username: pandare
         password: ${{secrets.ALL_PANDARE_DOCKERHUB}}
 
-    - name: Checkout LAVA at current commit
-      uses: actions/checkout@v4
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        driver-opts: |
+          image=moby/buildkit:master
+          network=host
+        buildkitd-config-inline: |
+          [registry."${{ secrets.PANDA_ARC_REGISTRY }}"]
+            insecure = true
+            http = true
+
+    - name: Check out
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
 
     - name: Build LAVA container
       uses: docker/build-push-action@v5
@@ -80,3 +93,10 @@ jobs:
           pandare/lava:latest
           pandare/lava:${{ github.sha }}
           pandare/lava:${{ needs.create_release.outputs.v-version }}
+        cache-from: |
+          type=registry,ref=${{secrets.PANDA_ARC_REGISTRY}}/pandare/lava:cache,mode=max
+          type=registry,ref=${{secrets.PANDA_ARC_REGISTRY}}/pandare/lava:packagecache,mode=max
+        cache-to: |
+          type=registry,ref=${{secrets.PANDA_ARC_REGISTRY}}/pandare/lava:packagecache,mode=max
+        build-args: |
+          REGISTRY=${{ secrets.PANDA_ARC_REGISTRY }}/proxy

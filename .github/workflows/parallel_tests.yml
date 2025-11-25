@@ -1,4 +1,4 @@
-name: Test Lava
+name: LAVA Tests
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ jobs:
           --health-retries 5
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
     - name: Update and install all requirements
       run: bash install.sh
     - name: Setup LAVA
@@ -58,7 +58,7 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
     steps:
     - name: Checkout LAVA at current commit
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
     - name: Install updates
       run: sudo apt-get -qq update -y
     - name: 'Login to Github Container Registry'
@@ -99,9 +99,9 @@ jobs:
           --health-retries 5
     steps:
     - name: Checkout LAVA at current commit
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.10'
     - name: Check PostgreSQL Health
