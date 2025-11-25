@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=64", "wheel", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = [
+    "scripts",
+    "scripts.*"
+]
+
+[project]
+name = "pyroclast"
+dynamic = ["version"]
+description = "Python Interface for LAVA"
+readme = "README.md"
+authors = [
+    { name = "Andrew Quijano", email = "andrew.quijano@nyu.edu" },
+]
+requires-python = ">=3.10"
+dependencies = [
+    "colorama",
+    "db",
+    "ipython",
+    "lockfile",
+    "numpy",
+    "pandare>=1.8.78",
+    "PyYAML",
+    "SQLAlchemy",
+    "tabulate",
+    "psycopg2-binary"
+]
+license = "GPL-2.0-only"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
+[project.urls]
+Homepage = "https://github.com/panda-re/lava"
+Source = "https://github.com/panda-re/lava"
+Tracker = "https://github.com/panda-re/lava/issues"

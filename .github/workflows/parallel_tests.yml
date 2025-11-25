@@ -26,8 +26,6 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install clang-tools-11 libclang-11-dev llvm-11-dev odb libjsoncpp-dev libodb-pgsql-2.4 g++-10 libprotobuf-dev libprotobuf-c-dev -y
-      #    python3 -m pip install build
-      #    python3 -m build --wheel .
 
       - name: Create Debian Package
         run: |
@@ -38,6 +36,11 @@ jobs:
           cmake --build "./tools/build" --parallel "$(nproc)" --config Release
           cd ./tools/build
           cpack -G DEB
+
+      - name: Create Wheel file
+        run: |
+          python3 -m pip install --upgrade build
+          python3 -m build --wheel .
 
   test_install_script:
     if: github.repository == 'panda-re/lava'
