@@ -16,7 +16,6 @@ jobs:
     if: github.repository == 'panda-re/lava'
     runs-on: ubuntu-22.04
     env:
-      LLVM_DIR: /usr/lib/llvm-14
       DEBIAN_FRONTEND: noninteractive
     steps:  
       - name: Checkout LAVA at current commit
@@ -26,8 +25,6 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install clang-tools-14 libclang-14-dev llvm-14-dev odb libjsoncpp-dev libodb-pgsql-2.4 g++-10 libprotobuf-dev libprotobuf-c-dev -y
-      #    python3 -m pip install build
-      #    python3 -m build --wheel .
 
       - name: Create Debian Package
         run: |
@@ -69,12 +66,16 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v5
+    - name: Manually download Qcow
+      run: |
+        mkdir -p $HOME/.panda
+        wget --show-progress --quiet --tries=5 --wait=10 https://panda-re.mit.edu/qcows/linux/ubuntu/1804/x86_64/bionic-server-cloudimg-amd64-noaslr-nokaslr.qcow2 -O $HOME/.panda/bionic-server-cloudimg-amd64-noaslr-nokaslr.qcow2
     - name: Update and install all requirements
       run: bash install.sh
     - name: Setup LAVA
       run: |
         chmod +x ./scripts/*
-        python3 init-host.py
+        python3 init-host.py -a
     - name: Add Postgres credentials and Run LAVA
       run: |
         echo "localhost:5432:*:${POSTGRES_USER}:${POSTGRES_PASSWORD}" > ~/.pgpass
@@ -84,9 +85,7 @@ jobs:
         USER: ${{ github.actor }}
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: postgrespostgres
-        CI: false
 
-  # For now I am pushing LAVA, but eventually this should be just a testing repostiory
   build_container:
     if: github.repository == 'panda-re/lava'
     runs-on: ubuntu-22.04

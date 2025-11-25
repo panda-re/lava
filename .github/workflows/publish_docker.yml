@@ -26,7 +26,6 @@ jobs:
     if: github.repository == 'panda-re/lava'
     runs-on: ubuntu-22.04
     env:
-      LLVM_DIR: /usr/lib/llvm-14
       DEBIAN_FRONTEND: noninteractive
     steps:  
       - name: Checkout LAVA at current commit
@@ -71,7 +70,7 @@ jobs:
     if: github.repository == 'panda-re/lava'
     runs-on: panda-arc
     steps:
-    - name: 'Login to Docker Registry'
+    - name: Login to Docker Registry
       uses: docker/login-action@v3
       with:
         username: pandare

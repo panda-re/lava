@@ -7,12 +7,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Find LLVM and Clang
-if(DEFINED ENV{LLVM_DIR})
-    list(APPEND CMAKE_PREFIX_PATH "$ENV{LLVM_DIR}/lib/cmake/llvm")
-    list(APPEND CMAKE_PREFIX_PATH "$ENV{LLVM_DIR}/lib/cmake/clang")
-endif()
-
+# LavaTool needs LLVM/Clang
+list(APPEND CMAKE_PREFIX_PATH "${LLVM_DIR}/lib/cmake/llvm")
+list(APPEND CMAKE_PREFIX_PATH "${LLVM_DIR}/lib/cmake/clang")
 find_package(LLVM REQUIRED CONFIG)
 find_package(Clang REQUIRED CONFIG)
 

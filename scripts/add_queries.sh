@@ -207,12 +207,6 @@ else
     done
 fi
 
-# Do we need to explicitly apply replacements in the root source directory
-# This causes clang-apply-replacements to segfault when run a 2nd time
-#pushd "$directory/$name/$source"
-#/usr/lib/llvm-11/bin/clang-apply-replacements .
-#popd
-
 for i in $c_dirs; do
     echo "Applying replacements to $i"
     pushd $i

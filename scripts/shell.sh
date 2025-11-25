@@ -37,5 +37,5 @@ docker run --rm -it \
     -v /home:/home:ro \
     --add-host=database:$DOCKER_IP \
     $docker_map_args \
-    $1 sh -c "trap '' PIPE; su -l $(whoami) -c \"export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/llvm-11/lib; $command\"" \
+    $1 sh -c "trap '' PIPE; su -l $(whoami) -c \"export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$llvm/lib; $command\"" \
 

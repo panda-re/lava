@@ -102,6 +102,16 @@ def parse_vars(host_json, project_name):
 
     # Replace format strings in project configs
     project["install"] = project["install"].format(config_dir=project["config_dir"])
+    project["llvm-dir"] = host.get("llvm", "/usr/lib/llvm-14")
+    project["complete_rr"] = host.get("complete_rr", False)
+    project["env_var"] = \
+            {'CC': os.path.join(project["llvm-dir"], 'bin/clang'),
+            'CXX': os.path.join(project["llvm-dir"], 'bin/clang++'),
+            'CFLAGS': '-O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
+    project["full_env_var"] = \
+            {'CC': os.path.join(project["llvm-dir"], 'bin/clang'),
+            'CXX': os.path.join(project["llvm-dir"], 'bin/clang++'),
+            'CFLAGS': '-Wno-int-conversion -O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
 
     return Project(project)
 
@@ -112,6 +122,7 @@ if __name__ == '__main__':
     import pprint
 
     project = parse_vars(sys.argv[1], sys.argv[2])
+    # project = parse_vars("../host.json", "toy")
     pprint.pprint(project.values)
     project["foo"] = "good_fake_val"
     assert "good" in (project.get('fake', 'good_fake_val'))

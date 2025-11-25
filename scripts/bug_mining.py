@@ -30,17 +30,18 @@ from vars import parse_vars
 from os.path import abspath, join
 from pandare import Panda
 from pandare.extras import dwarfdump
+from dotenv import load_dotenv
+
+load_dotenv()
 
 host_json = abspath(sys.argv[1])
 project_name = sys.argv[2]
 
 project = parse_vars(host_json, project_name)
 qemu_path = project['qemu']
+debug = project['debug']
 
 panda = Panda(generic=qemu_path.split('-')[-1])
-
-debug = True
-qemu_use_rr = False
 
 start_time = 0
 curtail = 0
@@ -79,8 +80,8 @@ def tock():
     return time.time() - start_time
 
 
-def dprint(msg):
-    if debug:
+def dprint(msg: str, debug_bool: bool):
+    if debug_bool:
         print(msg)
 
 
@@ -100,7 +101,7 @@ if len(sys.argv) < 4:
 
 tick()
 
-input_file = abspath(project["config_dir"] + "/" + sys.argv[3])
+input_file = abspath(project["config_dir"] + os.path.sep + sys.argv[3])
 input_file_base = os.path.basename(input_file)
 print("bug_mining.py %s %s" % (project_name, input_file))
 
@@ -127,6 +128,12 @@ command_args = shlex.split(
         install_dir=shlex.quote(installdir),
         input_file=input_file_guest))
 shutil.copy(input_file, installdir)
+
+# In CI/CD, we should try to use complete record and replay
+# Also, please avoid using debug prints in CI/CD, it can cause issues.
+if project["complete_rr"]:
+    progress("Using complete record and replay, likely in GitHub CI/CD")
+    panda.set_complete_rr_snapshot()
 
 panda.run()
 
@@ -175,23 +182,23 @@ panda.load_plugin("dwarf2",
                       'proc': proc_name,
                       'g_debugpath': installdir,
                       'h_debugpath': installdir,
-                      'debug' : False
+                      'debug' : debug
                   })
 panda.load_plugin("pri_taint", args={
     'hypercall' : True,
-    'debug' : True
+    'debug' : debug
 })
 panda.load_plugin("taint2",
                   args={
                       'no_tp': True,
-                      'debug': False
+                      'debug': debug
                   })
 panda.load_plugin('tainted_branch')
 panda.load_plugin("file_taint",
                     args={
                         'filename': input_file_guest,
                         'pos': True,
-                        'verbose': False
+                        'verbose': debug
                     })
 
 
@@ -232,7 +239,7 @@ if curtail != 0:
 elif "curtail" in project:
     fbi_args.append(str(project.get("curtail", 0)))
 
-dprint("fbi invocation: [%s]" % (subprocess.list2cmdline(fbi_args)))
+dprint("fbi invocation: [%s]" % (subprocess.list2cmdline(fbi_args)), debug)
 sys.stdout.flush()
 try:
     subprocess.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
