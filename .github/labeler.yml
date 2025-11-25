@@ -1,0 +1,13 @@
+Documentation:
+  - '**/*.md'
+  - 'docs/**'
+
+Github-files:
+  - .github/**
+
+Dependencies:
+  - 'dependencies/**'
+
+Lava-Core:
+  - 'tools/**'
+
