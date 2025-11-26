@@ -38,7 +38,6 @@ extern "C" {
 
 #include "clang/Tooling/Tooling.h"
 #include "clang/Tooling/Refactoring.h"
-#include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/ReplacementsYaml.h"
 
 #include "llvm/Option/OptTable.h"
@@ -54,7 +53,6 @@ extern "C" {
 using namespace llvm;
 
 using clang::tooling::getAbsolutePath;
-using clang::tooling::CommonOptionsParser;
 
 #define MATCHER (1 << 0)
 #define INJECT (1 << 1)
@@ -128,10 +126,6 @@ std::map<std::pair<LavaASTLoc, AttackPoint::Type>, std::vector<const Bug *>>
 
 static cl::OptionCategory
     LavaCategory("LAVA Taint Query and Attack Point Tool Options");
-static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
-static cl::extrahelp MoreHelp(
-    "\nTODO: Add descriptive help message.  "
-    "Automatic clang stuff is ok for now.\n\n");
 static cl::opt<action> LavaAction("action", cl::desc("LAVA Action"),
     cl::values(
         clEnumValN(LavaQueries, "query", "Add taint queries"),

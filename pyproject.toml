@@ -18,12 +18,13 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
+    "dotenv",
     "colorama",
     "db",
     "ipython",
     "lockfile",
     "numpy",
-    "pandare>=1.8.78",
+    "pandare==1.8.78",
     "PyYAML",
     "SQLAlchemy",
     "tabulate",

@@ -9,7 +9,6 @@ ARG PANDA_VERSION
 ARG CAPSTONE_VERSION
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV LLVM_DIR=/usr/lib/llvm-11
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
 # Copy dependencies lists into container. We copy them all and then do a mv because

@@ -3,7 +3,6 @@ import argparse
 import os
 import re
 import subprocess
-from pathlib import Path
 from shlex import split as shlex_split
 import tarfile
 

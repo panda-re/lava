@@ -19,14 +19,13 @@ jobs:
         with:
           release_branch: master
           use_api: true
-          increment: minor
+          increment: patch
 
   create_release_assets:
     needs: [create_release]
     if: github.repository == 'panda-re/lava'
     runs-on: ubuntu-22.04
     env:
-      LLVM_DIR: /usr/lib/llvm-11
       DEBIAN_FRONTEND: noninteractive
     steps:  
       - name: Checkout LAVA at current commit
@@ -35,7 +34,7 @@ jobs:
       - name: Install compile dependencies
         run: |
           sudo apt-get update -y    
-          sudo apt-get install clang-tools-11 libclang-11-dev llvm-11-dev odb libjsoncpp-dev libodb-pgsql-2.4 g++-10 libprotobuf-dev libprotobuf-c-dev -y
+          sudo apt-get install clang-tools-14 libclang-14-dev llvm-14-dev odb libjsoncpp-dev libodb-pgsql-2.4 g++-10 libprotobuf-dev libprotobuf-c-dev -y
 
       - name: Create Debian Package
         run: |
@@ -71,7 +70,7 @@ jobs:
     if: github.repository == 'panda-re/lava'
     runs-on: panda-arc
     steps:
-    - name: 'Login to Docker Registry'
+    - name: Login to Docker Registry
       uses: docker/login-action@v3
       with:
         username: pandare

@@ -93,7 +93,8 @@ def main():
         json_configs["db_suffix"] = "_" + os.environ["USER"]
         json_configs["port"] = 5432
         json_configs["pguser"] = "postgres"
-        json_configs["debug"] = True
+        json_configs["debug"] = False
+        json_configs["llvm"] = "/usr/lib/llvm-14"
 
         if args.docker:
             json_configs["buildhost"] = "docker" 
@@ -102,9 +103,10 @@ def main():
         else:
             json_configs["buildhost"] = "localhost"
             json_configs["host"] = "localhost"
-
+        # Sometimes GitHub Actions need complete_rr for CI/CD to work
+        # Note, please avoid using debug print in CI/CD, this causes issues on replay
         if args.action:
-            json_configs["host"] = "postgres"
+            json_configs["complete_rr"] = True
         
         # write out json file
         out_json = join(LAVA_DIR, "host.json")

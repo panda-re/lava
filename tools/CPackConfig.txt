@@ -46,7 +46,7 @@ set(CPACK_DEBIAN_PACKAGE_DEPENDS
 )
 
 # Setting name to match standard file names in apt
-set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}_${PROJECT_VERSION}_amd64.deb")
+set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}_${PROJECT_VERSION}_amd64")
 
 # Priority
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional") # Set package priority

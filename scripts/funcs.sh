@@ -67,14 +67,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
         if [ "$remote_machine" == "localhost" ]; then
             echo "$command"
             bash -c "$command" >> "$logfile" 2>&1
-        elif [ "$remote_machine" == "docker" ]; then            
-            # Conditionally add --add-host only if not in CI (i.e., local dev)
-            if [ "$CI" != "true" ]; then
-                add_host_arg="--add-host=database:host-gateway"
-            else
-                add_host_arg="--add-host=postgres:$(getent hosts localhost | awk '{ print $1 }')"
-            fi
-
+        elif [ "$remote_machine" == "docker" ]; then
             echo docker run $dockername sh -c "$command"
             docker run --rm \
                 -e "HTTP_PROXY=$HTTP_PROXY" \
@@ -91,7 +84,7 @@ if [ -z "$LAVA_FUNCS_INCLUDED" ]; then
                 -v /etc/gshadow:/etc/gshadow:ro \
                 -v /home:/home:ro \
                 -v $HOME/.panda:$HOME/.panda \
-                $add_host_arg \
+                "--add-host=database:host-gateway" \
                 $docker_map_args \
                 $extradockerargs \
                 $dockername sh -c "trap '' PIPE; su -l $(whoami) -c \"$command\"" \

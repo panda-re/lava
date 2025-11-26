@@ -28,6 +28,8 @@
 #include "clang/Frontend/CompilerInstance.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/raw_ostream.h"
 
 #define LOG (1 << 0)
 #define INI (1 << 1)
@@ -144,9 +146,15 @@ private:
 
 
 int main(int argc, const char **argv) {
-    CommonOptionsParser OptionsParser(argc, argv, LavaInitCategory);
-    ClangTool Tool(OptionsParser.getCompilations(),
-                   OptionsParser.getSourcePathList());
+
+    auto ExpectedParser = CommonOptionsParser::create(argc, argv, LavaInitCategory);
+    if (!ExpectedParser) {
+        // Print the error message from LLVM
+        llvm::errs() << ExpectedParser.takeError();
+        return 1;
+    }
+    CommonOptionsParser &op = ExpectedParser.get();
+    ClangTool Tool(op.getCompilations(), op.getSourcePathList());
 
     Initializer Init;
     int rv = Tool.run(newFrontendActionFactory(&Init, &Init).get());

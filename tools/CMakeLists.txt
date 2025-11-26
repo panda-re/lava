@@ -23,6 +23,14 @@ else()
     set(PROJECT_VERSION_PATCH "0")
 endif()
 
+# Set default LLVM version, allow override via -DLLVM_VERSION=xx
+set(LLVM_VERSION 14 CACHE STRING "LLVM version to use (default: 14)")
+
+# Allow user to specify LLVM_DIR, otherwise construct it from LLVM_VERSION
+if(NOT DEFINED LLVM_DIR)
+    set(LLVM_DIR "/usr/lib/llvm-${LLVM_VERSION}")
+endif()
+
 # Set the project version dynamically
 project(LAVA VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH})
 

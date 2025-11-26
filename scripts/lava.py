@@ -32,9 +32,9 @@ from composite import Composite
 from process_compile_commands import get_c_files
 from process_compile_commands import process_compile_commands
 from test_crash import process_crash
+from dotenv import load_dotenv
 
-# from multiprocessing import cpu_count
-# from multiprocessing.pool import ThreadPool
+load_dotenv()
 
 Base = declarative_base()
 
@@ -346,7 +346,7 @@ class LavaDatabase(object):
             .filter(Dua.fake_dua == fake)
         if allowed_bugtypes:
             ret = ret.filter(Bug.type.in_(allowed_bugtypes))
-        yield ret.all()  # TODO randomize- or is it ranomized already?
+        yield ret.all()  # TODO randomize- or is it randomized already?
 
     def uninjected_random_balance(self, fake, num_required, bug_types):
         bugs = []
@@ -403,16 +403,16 @@ def run_cmd(cmd, envv=None, timeout=30, cwd=None, rr=False, shell=False):
     except subprocess.TimeoutExpired:
         print("Killing process due to timeout expiration.")
         p.terminate()
-        return (-9, ("", "timeout expired"))
+        return -9, ("", "timeout expired")
 
-    return (p.returncode, output)
+    return p.returncode, output
 
 
 def run_cmd_notimeout(cmd, **kwargs):
     return run_cmd(cmd, None, None, **kwargs)
 
 
-# fuzz_labels_list is a list of listof tainted
+# fuzz_labels_list is a list of list of tainted
 # byte offsets within file filename.
 # replace those bytes with random in a new
 # file named new_filename
@@ -511,9 +511,9 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
                                         '-main-files=' + main_files, 
                                         join(lp.bugs_build, filename)]
 
-    # Todo either paramaterize here or hardcode everywhere else
+    # Todo either parameterize here or hardcode everywhere else
     # For now, lavaTool will only work if it has a whitelist, so we always pass this
-    fninstr = join(join(project['directory'], project['name']), "fninstr")
+    fninstr = join(project['directory'], project['name'], "fninstr")
     cmd.append('-lava-wl=' + fninstr)
 
     if lt_debug:
@@ -704,9 +704,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
             and 'configure' in project.keys():
         print('Re-configuring...')
         run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
-        envv = {'CC': '/usr/lib/llvm-11/bin/clang',
-                'CXX': '/usr/lib/llvm-11/bin/clang++',
-                'CFLAGS': '-O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
+        envv = project["env_var"]
         if project['configure']:
             run_cmd(' '.join(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]),
                     envv, 30, cwd=lp.bugs_build, shell=True)
@@ -719,9 +717,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
         # Silence warnings related to adding integers to pointers since we already
         # know that it's unsafe.
-        envv = {'CC': '/usr/lib/llvm-11/bin/clang',
-                'CXX': '/usr/lib/llvm-11/bin/clang++',
-                'CFLAGS': '-Wno-int-conversion -O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
+        envv = project["full_env_var"]
         if competition:
             envv["CFLAGS"] += " -DLAVA_LOGGING"
         envv = {}
@@ -744,7 +740,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     
     if not os.path.exists(join(lp.bugs_build, 'compile_commands.json')):
         run([join(lp.lava_dir, 'scripts', 'sw-btrace-to-compiledb'),
-             "/usr/lib/llvm-11/lib/clang/11/include"])
+             os.path.join(project["llvm-dir"], "lib/clang/11/include")])
         # also insert instr for main() fn in all files that need it
 
         process_compile_commands(
@@ -819,7 +815,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
 
     def modify_source(dirname):
         return run_lavatool(bugs_to_inject, lp, host_file, project,
-                            '/usr/lib/llvm-11', dirname, knobTrigger=args.knobTrigger,
+                            project['llvm-dir'], dirname, knobTrigger=args.knobTrigger,
                             dataflow=dataflow, competition=competition, randseed=lavatoolseed)
 
     bug_solutions = {}  # Returned by lavaTool
@@ -833,7 +829,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     # with results instead of single-thread
     # if pool:
     # pool.map(modify_source, all_files)
-    clang_apply = join('/usr/lib/llvm-11', 'bin',
+    clang_apply = join(project['llvm-dir'], 'bin',
                        'clang-apply-replacements')
 
     src_dirs = set()
@@ -871,7 +867,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
             print("Success in {}".format(src_dir))
             one_replacement_success = True
 
-    assert (one_replacement_success), "clang-apply-replacements failed in all possible directories"
+    assert one_replacement_success, "clang-apply-replacements failed in all possible directories"
 
     # Ugh.  Lavatool very hard to get right
     # Permit automated fixups via script after bugs inject
@@ -902,9 +898,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     # Silence warnings related to adding integers to pointers since we already
     # know that it's unsafe.
     make_cmd = project["make"]
-    envv = {'CC': '/usr/lib/llvm-11/bin/clang',
-            'CXX': '/usr/lib/llvm-11/bin/clang++',
-            'CFLAGS': '-Wno-int-conversion -O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
+    envv = project["full_env_var"]
     if competition:
         envv["CFLAGS"] += " -DLAVA_LOGGING"
     (rv, outp) = run_cmd(make_cmd, envv, None, cwd=lp.bugs_build)
@@ -922,7 +916,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         print(outp[1].decode('utf-8').replace("\\n", "\n"))
 
         print("Build of injected bugs failed")
-        return (None, input_files, bug_solutions)
+        return None, input_files, bug_solutions
 
     # build success
     print("build succeeded")
@@ -931,8 +925,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     if 'post_install' in project.keys():
         check_call(project['post_install'], cwd=lp.bugs_build, shell=True)
 
-    build = Build(compile=(rv == 0), output=(outp[0].decode('utf-8') + ";" + outp[1].decode('utf-8')),
-                  bugs=bugs_to_inject)
+    build = Build(compile=(rv == 0), output=(outp[0].decode('utf-8') + ";" + outp[1].decode('utf-8')), bugs=bugs_to_inject)
 
     # add a row to the build table in the db
     if update_db:
@@ -987,7 +980,7 @@ def run_modified_program(project, install_dir, input_file,
 # Find actual line number of attack point for this bug in source
 def get_trigger_line(lp, bug):
     # TODO the triggers aren't a simple mapping from trigger of 0xlava - bug_id
-    # But are the lava_get's still corelated to triggers?
+    # But are the lava_get's still correlated to triggers?
     with open(join(lp.bugs_build, bug.atp.loc_filename), "r") as f:
         # TODO: should really check for lava_get(bug_id), but bug_id in db
         # isn't matching source for now, we'll just look for "(0x[magic]" since
@@ -1107,7 +1100,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
                 validated = True
                 if competition:
                     found_bugs = check_competition_bug(rv, outp)
-                    if set(found_bugs) == set([bug.id]):
+                    if set(found_bugs) == {bug.id}:
                         print("... and competition infrastructure agrees")
                         validated &= True
                     else:
@@ -1198,6 +1191,8 @@ def validate_bugs(bug_list, db, lp, project, input_files, build,
         if validated:
             real_bugs.append(bug.id)
         print()
+    # This is assert is needed in case injection fails to plant a bug, especially 50 times, should be flagged.
+    assert len(real_bugs) > 0
     if len(bugs_to_inject) > 0:
         f = float(len(real_bugs)) / len(bugs_to_inject)
         print(u"yield {:.2f} ({} out of {}) real bugs (95% CI +/- {:.2f}) "
