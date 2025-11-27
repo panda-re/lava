@@ -103,6 +103,7 @@ def parse_vars(host_json, project_name):
     # Replace format strings in project configs
     project["install"] = project["install"].format(config_dir=project["config_dir"])
     project["llvm-dir"] = host.get("llvm", "/usr/lib/llvm-14")
+    project["llvm-version"] = project["llvm-dir"].split('-')[-1]
     project["complete_rr"] = host.get("complete_rr", False)
     project["env_var"] = \
             {'CC': os.path.join(project["llvm-dir"], 'bin/clang'),
