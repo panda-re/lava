@@ -40,12 +40,6 @@ message(STATUS "PROJECT_SOURCE_DIR: ${PROJECT_SOURCE_DIR}")
 message(STATUS "CMAKE_SOURCE_DIR: ${CMAKE_SOURCE_DIR}")
 message(STATUS "LLVM_CLANG_LINK_LIBRARIES: ${LLVM_CLANG_LINK_LIBRARIES}")
 
-# Create OMG static library
-add_library(omg STATIC ../src/omg.cpp)
-target_compile_features(omg PRIVATE cxx_std_17)
-target_include_directories(omg PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
-target_link_libraries(omg PRIVATE ${LLVM_CLANG_LINK_LIBRARIES})
-
 # Create lavaTool executable
 add_executable(lavaTool lavaTool.cpp)
 target_compile_features(lavaTool PRIVATE cxx_std_17)
@@ -58,7 +52,7 @@ target_include_directories(lavaTool PRIVATE
     ${LLVM_INCLUDE_DIRS}
     ${CLANG_INCLUDE_DIRS}
 )
-target_link_libraries(lavaTool PRIVATE lavaDB_x64 omg odb odb-pgsql lava-odb_x64 ${LLVM_CLANG_LINK_LIBRARIES})
+target_link_libraries(lavaTool PRIVATE lavaDB_x64 odb odb-pgsql lava-odb_x64 ${LLVM_CLANG_LINK_LIBRARIES})
 set_target_properties(lavaTool PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
 
 # Create lavaFnTool executable
@@ -73,7 +67,7 @@ target_include_directories(lavaFnTool PRIVATE
     ${LLVM_INCLUDE_DIRS}
     ${CLANG_INCLUDE_DIRS}
 )
-target_link_libraries(lavaFnTool PRIVATE lavaDB_x64 omg odb odb-pgsql lava-odb_x64 ${LLVM_CLANG_LINK_LIBRARIES})
+target_link_libraries(lavaFnTool PRIVATE lavaDB_x64 odb odb-pgsql lava-odb_x64 ${LLVM_CLANG_LINK_LIBRARIES})
 set_target_properties(lavaFnTool PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
 
 # Create lavaInitTool executable

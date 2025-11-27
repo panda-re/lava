@@ -9,7 +9,7 @@
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
 
 #include "lava.hxx"
-#include "omg.h"
+#include "clang/Lex/Lexer.h"
 
 using namespace clang;
 using namespace clang::ast_matchers;
@@ -24,6 +24,66 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
     LavaMatchHandler(Modifier &Mod) : Mod(Mod) {}
 
     std::set<SourceLocation> already_added_arg;
+
+    std::string getStringBetweenRange(const SourceManager &sm, SourceRange range, bool *inv) {
+        SourceLocation end = Lexer::getLocForEndOfToken(range.getEnd(), 0, sm, LangOptions());
+        *inv = false;
+        if (end == range.getBegin()) {
+            *inv = true;
+            return std::string("Invalid");
+        }
+        CharSourceRange char_range;
+        char_range.setBegin(range.getBegin());
+        char_range.setEnd(end);
+        llvm::StringRef ref = Lexer::getSourceText(char_range, sm, LangOptions());
+        return ref.str();
+    }
+
+    std::string getStringBetween(const SourceManager &sm, SourceLocation &l1, SourceLocation &l2, bool *inv) {
+        const char *buf = sm.getCharacterData(l1, inv);
+        unsigned o1 = sm.getFileOffset(l1);
+        unsigned o2 = sm.getFileOffset(l2);
+        if (*inv || (o1 > o2))
+        return std::string("Invalid");
+        return (std::string(buf, o2 - o1 + 1));
+    }
+
+    // Scans the range to find the position immediately after the
+    // opening '(' of the argument list.
+    SourceLocation FindInjectionPoint(const SourceManager &SM, const LangOptions &LangOpts,
+                                  SourceLocation StartLoc, SourceLocation EndLoc) {
+
+        SourceLocation CurrentLoc = StartLoc;
+        SourceLocation BestOpenParen; // The winner
+        int ParenLevel = 0;
+        bool Invalid = false;
+
+        // Loop through tokens until we hit EndLoc
+        while (CurrentLoc < EndLoc) {
+            Token Tok;
+            // getRawToken is fast and doesn't require a preprocessor
+            if (Lexer::getRawToken(CurrentLoc, Tok, SM, LangOpts, true)) {
+                // If scanning fails (e.g., weird macro), advance by one char to avoid infinite loop
+                CurrentLoc = CurrentLoc.getLocWithOffset(1);
+                continue;
+            }
+
+            if (Tok.is(tok::l_paren)) {
+                // We found a '('. If we are at the top level, this might be our arg list.
+                // We keep updating BestOpenParen, so the *last* one we find becomes the winner.
+                if (ParenLevel == 0) {
+                    BestOpenParen = Tok.getEndLoc();
+                }
+                ParenLevel++;
+            }
+            else if (Tok.is(tok::r_paren)) {
+                ParenLevel--;
+            }
+            // Move to next token
+            CurrentLoc = Tok.getEndLoc();
+        }
+        return BestOpenParen;
+    }
 
     /*
       The code between startLoc and endLoc contains, and, importantly,
@@ -46,45 +106,29 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             return;
         }
 
-        SLParensInfo parens = SLgetParens(*Mod.sm, startLoc, endLoc);
-        if (parens.size() == 0) {
-            debug(FNARG) << "no parens\n";
+        // Use the new robust Lexer helper
+        SourceLocation loc_param_start = FindInjectionPoint(*Mod.sm, *Mod.LangOpts, startLoc, endLoc);
+        if (loc_param_start.isInvalid()) {
+            debug(FNARG) << "AddArgGen: Could not find argument list parenthesis.\n";
             return;
         }
 
-        // search backwards in that for first open with level = 1
-        // which should match close of param list
-        // NB: SLgetParens requires that last item in parens is a close paren of level 1
-        int l = parens.size();
-        SourceLocation loc_param_start;
-        bool found = false;
-        for (int i=parens.size() - 1; i>=0; i--) {
-            auto paren = parens[i];
-            auto sl = std::get<0>(paren);
-            auto openp = std::get<1>(paren);
-            auto level = std::get<2>(paren);
-            if (openp && level == 1) {
-                // this should be the open paren matching last close paren
-                // note that we want one char to right of that open paren
-                loc_param_start = sl.getLocWithOffset(1);
-                found = true;
-                break;
-            }
-        }
+        debug(FNARG) << "AddArgGen: Found injection point.\n";
 
-        // has to be there -- see getParens
-        assert (found);
-
-        debug(FNARG) << "adding data flow at head of [" << getStringBetweenRange(*Mod.sm, SourceRange(loc_param_start, endLoc), &inv) << "]\n";
-
-        // insert data_flow arg
+        // Logic to insert the argument
         if (already_added_arg.count(loc_param_start) == 0) {
             already_added_arg.insert(loc_param_start);
+
             std::string dfa = ARG_NAME;
-            if (!isCall) dfa = "int *" ARG_NAME;
+            if (!isCall) {
+                dfa = "int *" ARG_NAME;
+            }
+
             if (numArgs == 0) {
-                Mod.InsertAt(loc_param_start, dfa );
+                // Case: void foo()  ->  void foo(int *data_flow)
+                Mod.InsertAt(loc_param_start, dfa);
             } else {
+                // Case: void foo(int a) -> void foo(int *data_flow, int a)
                 Mod.InsertAt(loc_param_start, dfa + ", ");
             }
         }

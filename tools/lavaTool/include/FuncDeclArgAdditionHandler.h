@@ -5,55 +5,32 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
 
     void AddArg(const FunctionDecl *func) {
-        SourceLocation l1 = func->getBeginLoc();
-        SourceLocation l2 = func->getEndLoc();
-        debug(FNARG) << "func->getBeginLoc = " << Mod.sm->getFileOffset(l1) << "\n";
-        debug(FNARG) << "func->getEndLoc = " << Mod.sm->getFileOffset(l2) << "\n";
-        bool inv;
-        debug(FNARG) << "func : [" << getStringBetweenRange(*Mod.sm, func->getSourceRange(), &inv) << "]\n";
+        SourceLocation StartLoc = func->getBeginLoc();
+        SourceLocation EndLoc;
 
-        // We need the end of just the type signature part.
-        // If this decl has a body, then that is the first '{' right?
-        SourceLocation endOfProt;
+        // We need the range covering the function signature (return type + name + args).
+        // The previous code scanned strings for '{' to find the end.
+        // In LLVM/Clang, we can just check if the function has a body.
         if (func->hasBody()) {
-            debug(FNARG) << "has body -- looking for {\n";
-            bool inv;
-            endOfProt = getLocAfterStr(*Mod.sm, l1, "{", 1, 1000, &inv);
-            if (!inv) {
-                // this means we found "{"
-                debug(FNARG) << " FOUND {\n";
-                if (srcLocCmp(*Mod.sm, l2, endOfProt) == SCMP_LESS)
-                    // { is past the end of the l1..l2 range
-                    endOfProt = l2;
-            }
-            else {
-                // hmm I guess there is a body but its not right here?
-                // find last ')' and use that
-                SourceLocation parenLoc, lastParenLoc;
-                bool foundit = false;
-                while (true) {
-                    parenLoc = getLocAfterStr(*Mod.sm, l1, ")", 1, 1000, &inv);
-                    if (inv) {
-                        printf ("foundit\n");
-                        l1 = parenLoc;
-                        lastParenLoc = parenLoc;
-                        foundit = true;
-                    }
-                    else {
-                        printf ("didnt foundit\n");
-                        parenLoc = lastParenLoc;
-                        break;
-                    }
-                }
-                assert (foundit);
-                endOfProt = parenLoc;
-            }
+            // If it has a body: void foo() { ... }
+            // The signature ends right before the body starts.
+            // getBody()->getBeginLoc() points exactly to the '{'.
+            EndLoc = func->getBody()->getBeginLoc();
+        } else {
+            // If it's a prototype: void foo();
+            // The end location of the declaration is the semicolon or the last paren.
+            EndLoc = func->getEndLoc();
         }
-        else
-            endOfProt = l2;
 
-        // add the data_flow arg between l1 and endOfProt
-        AddArgGen(Mod, l1, endOfProt, false, func->getNumParams(), 1);
+        // Debugging (Optional, mostly to match your previous logs)
+        // You can remove these debug lines if you want to clean up further.
+        debug(FNARG) << "func start: " << Mod.sm->getFileOffset(StartLoc) << "\n";
+        debug(FNARG) << "func end  : " << Mod.sm->getFileOffset(EndLoc) << "\n";
+
+        // Call the generator.
+        // We don't need to manually check bounds because 'AddArgGen' (which we fixed earlier)
+        // now uses the Lexer to safely find the opening parenthesis within this range.
+        AddArgGen(Mod, StartLoc, EndLoc, false, func->getNumParams(), 1);
     }
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
