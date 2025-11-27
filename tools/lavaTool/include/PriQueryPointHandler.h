@@ -43,7 +43,42 @@ using namespace clang;
 
 
 struct PriQueryPointHandler : public LavaMatchHandler {
-    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor.
+    using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
+
+    // DWARF debug info usually gives us strings like "(*p)" or "(**p)".
+    // To prevent segfaults, we want to generate checks: "p" or "p && *p".
+    std::string GenerateNullChecks(std::string Expr) {
+        std::string Checks;
+        std::string Current = Expr;
+
+        // Peel off layers of pointers (*p) -> p
+        while (true) {
+            // 1. Strip outer parentheses: "(*p)" -> "*p"
+            if (Current.size() >= 2 && Current.front() == '(' && Current.back() == ')') {
+                Current = Current.substr(1, Current.size() - 2);
+                continue; // Re-evaluate the stripped string
+            }
+
+            // 2. If it starts with '*', it is a dereference.
+            // We must check the pointer being dereferenced.
+            if (Current.size() > 1 && Current.front() == '*') {
+                Current = Current.substr(1); // Strip the '*'
+
+                // Current is now the pointer address (e.g., "p" or "*p").
+                // Add it to our safety checks.
+                std::string NewCheck = "(" + Current + ")";
+                if (!Checks.empty()) {
+                    Checks += " && ";
+                }
+                Checks += NewCheck;
+                continue; // Loop again to handle multiple levels (**p)
+            }
+
+            // If no parens and no star, we have reached the base variable. Done.
+            break;
+        }
+        return Checks;
+    }
 
     // create code that siphons dua bytes into a global
     // for dua x, offset o, generates:
@@ -51,17 +86,20 @@ struct PriQueryPointHandler : public LavaMatchHandler {
     // Each lval gets an if clause containing one siphon
     std::string SiphonsForLocation(LavaASTLoc ast_loc) {
         std::stringstream result_ss;
+        // We iterate over variables (lvals) that LAVA identified as "siphons" (data sources)
         for (const LvalBytes &lval_bytes : map_get_default(siphons_at, ast_loc)) {
-            // NB: lava_bytes.lval->ast_name is a string that came from
-            // libdwarf.  So it could be something like
-            // ((*((**(pdtbl)).pub)).sent_table))
-            // We need to test pdtbl, *pdtbl and (**pdtbl).pub
-            // to make sure they are all not null to reduce risk of
-            // runtime segfault?
-            std::string nntests = (createNonNullTests(lval_bytes.lval->ast_name));
-            if (nntests.size() > 0)
-                nntests = nntests + " && ";
-            result_ss << LIf(nntests + lval_bytes.lval->ast_name, Set(lval_bytes));
+            // Get the string name from DWARF (e.g., "**p")
+            std::string ast_name = lval_bytes.lval->ast_name;
+
+            // Generate the safety checks using our new local helper
+            std::string nntests = GenerateNullChecks(ast_name);
+            if (!nntests.empty()) {
+                nntests += " && ";
+            }
+
+            // Generate the LAVA instrumentation code:
+            // If (Safe) { Siphon(Value); }
+            result_ss << LIf(nntests + ast_name, Set(lval_bytes));
         }
 
         std::string result = result_ss.str();
