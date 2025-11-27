@@ -25,12 +25,10 @@ target_include_directories(fbi BEFORE
 )
 
 add_dependencies(fbi lava-odb_x64)
-set_target_properties(fbi PROPERTIES LINK_FLAGS "-L/usr/local/lib")
 target_link_libraries(fbi
     lavaDB_x64
     lava-odb_x64
     protobuf-c
-    z
     odb
     odb-pgsql
     protobuf

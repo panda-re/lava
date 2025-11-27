@@ -44,6 +44,11 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     FILES_MATCHING PATTERN "*.h")
 
+# Install the license file
+install(FILES "../LICENSE"
+        DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+        RENAME "copyright")
+
 add_subdirectory(btrace)
 add_subdirectory(lavaODB)
 add_subdirectory(lavaDB)
