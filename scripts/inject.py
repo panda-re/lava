@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 import argparse
 import atexit
 import lockfile
@@ -7,9 +6,6 @@ import os
 import signal
 import sys
 import time
-
-from os.path import join
-
 from vars import parse_vars
 from database_types import LavaDatabase, Run, BugKind
 from lava import \
@@ -17,7 +13,7 @@ from lava import \
     get_bugs, run_cmd, get_allowed_bugtype_num
 
 start_time = time.time()
-debugging = False
+
 
 # get list of bugs either from cmd line or db
 def get_bug_list(args, db, allowed_bugtypes):
@@ -73,15 +69,15 @@ def get_bugs_parent(lp):
     sys.stdout.flush()
 
     while bugs_parent == "":
-        candidate_path = join(lp.bugs_top_dir, str(candidate))
+        candidate_path = os.path.join(lp.bugs_top_dir, str(candidate))
         if args.noLock:
             # just use 0 always
-            bugs_parent = join(candidate_path)
+            bugs_parent = os.path.join(candidate_path)
         else:
             lock = lockfile.LockFile(candidate_path)
             try:
                 lock.acquire(timeout=-1)
-                bugs_parent = join(candidate_path)
+                bugs_parent = os.path.join(candidate_path)
                 bugs_lock = lock
             except lockfile.AlreadyLocked:
                 candidate += 1
@@ -153,14 +149,14 @@ if __name__ == "__main__":
     bugs_parent = get_bugs_parent(lp)
 
     # Remove all old YAML files
-    run_cmd(["rm -f {}/*.yaml".format(lp.bugs_build)], None, 10, cwd="/", shell=True)
+    run_cmd(["rm -f {}/*.yaml".format(lp.bugs_build)], project,None, 10, cwd="/", shell=True)
 
     # obtain list of bugs to inject based on cmd-line args and consulting db
-    (update_db, bug_list) = get_bug_list(args, db, allowed_bugtypes)
+    update_db, bug_list = get_bug_list(args, db, allowed_bugtypes)
 
     # add all those bugs to the source code and check that it compiles
     # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
-    (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json,
+    build, input_files, bug_solutions = inject_bugs(bug_list, db, lp,
                                                       project, args, update_db, dataflow=dataflow,
                                                       competition=args.competition)
     if build is None:
@@ -168,9 +164,7 @@ if __name__ == "__main__":
 
     try:
         # determine which of those bugs actually cause a seg fault
-        real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build,
-                                      args, update_db)
-
+        real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, args, update_db)
 
         def count_bug_types(id_list: list[int]):
             tcount = {}
@@ -185,13 +179,11 @@ if __name__ == "__main__":
                 print("%d c(%s)=%d" % (t, BugKind(t).name, tcount[t]))
                 print(str(buglist[t]))
 
-
         print("\nBug types in original, potential set")
         count_bug_types(bug_list)
 
         print("\nBug types in validated set")
         count_bug_types(real_bug_list)
-
 
     except Exception as e:
         print("TESTING FAIL")
