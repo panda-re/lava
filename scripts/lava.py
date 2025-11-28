@@ -231,7 +231,7 @@ class LavaPaths(object):
         self.top_dir = project['output_dir']
         self.lavadb = join(self.top_dir, 'lavadb')
         self.lava_dir = dirname(dirname(abspath(sys.argv[0])))
-        self.lava_tool = join('lavaTool')
+        self.lava_tool = 'lavaTool'
         if 'source_root' in project:
             self.source_root = project['source_root']
         else:
@@ -598,7 +598,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         run(['git', 'branch', 'build' + str(build.id), 'master'])
         run(['git', 'reset', 'HEAD~', '--hard'])
 
-    return (build, input_files, bug_solutions)
+    return build, input_files, bug_solutions
 
 
 def get_suffix(fn):

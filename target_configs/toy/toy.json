@@ -13,7 +13,5 @@
 
     "main_file": [ "toy.c" ],
 
-    "dataflow": true,
-
-    "inputs": [ "inputs/testsmall.bin" ]
+    "dataflow": true
 }

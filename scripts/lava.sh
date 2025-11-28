@@ -214,23 +214,19 @@ if [ $taint -eq 1 ]; then
         run_remote "$buildhost" "psql -U $pguser -h $dbhost -c \"delete from dua_viable_bytes; delete from labelset;\" $db" "$lf"
     fi
     progress "everything" 1 "Taint step -- running panda and fbi"
-    for input in $inputs
-    do
-        i=`echo $input | sed 's/\//-/g'`
-        lf="$logs/bug_mining-$i.log"
-        truncate "$lf"
-        progress "everything" 1 "PANDA taint analysis prospective bug mining -- input $input -- logging to $lf"
-	    run_remote "$buildhost" "$python \"$scripts/bug_mining.py\" \"$hostjson\" $project_name $input $curtail" "$lf"
-        echo -n "Num Bugs in db: "
-        bug_count=$(run_remote "$buildhost" "psql -At $db -U $pguser -h $dbhost -c 'select count(*) from bug'")
-        if [ "$bug_count" = "0" ]; then
-            echo "FATAL ERROR: no bugs found"
-            exit 1
-        fi
-        echo "Found $bug_count bugs"
-        echo
-        run_remote "$buildhost" "psql $db -U $pguser -h $dbhost -c 'select count(*), type from bug group by type order by type'"
-    done
+    lf="$logs/bug_mining.log"
+    truncate "$lf"
+    progress "everything" 1 "PANDA taint analysis prospective bug mining -- logging to $lf"
+	  run_remote "$buildhost" "$python \"$scripts/bug_mining.py\" --host \"$hostjson\" -p $project_name -c $curtail" "$lf"
+    echo -n "Num Bugs in db: "
+    bug_count=$(run_remote "$buildhost" "psql -At $db -U $pguser -h $dbhost -c 'select count(*) from bug'")
+    if [ "$bug_count" = "0" ]; then
+      echo "FATAL ERROR: no bugs found"
+      exit 1
+    fi
+    echo "Found $bug_count bugs"
+    echo
+    run_remote "$buildhost" "psql $db -U $pguser -h $dbhost -c 'select count(*), type from bug group by type order by type'"
     tock
     echo "bug_mining complete $time_diff seconds"
 fi
