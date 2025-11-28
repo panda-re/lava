@@ -12,7 +12,5 @@
     "command": "{install_dir}/bin/yara {install_dir}/share/rules/*.yar {input_file}",
     "COMMENT_injfixupsscript": "fixup.sh {bug_build}",
 
-    "main_file": [ "yara-pre.c" ], 
-
-    "inputs": [ "inputs/toy.i64", "inputs.elenore_jar3.txt" ]
+    "main_file": [ "yara-pre.c" ]
 }

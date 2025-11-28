@@ -95,6 +95,7 @@ def parse_vars(host_json, project_name):
 
     # Other config
     project["qemu"] = host["qemu"]
+    project["qcow_dir"] = host["qcow_dir"]
     project["output_dir"] = host["output_dir"] + os.path.sep + project["name"]
     project["directory"] = host["output_dir"]
     project["config_dir"] = host["config_dir"] + os.path.sep + project["name"]

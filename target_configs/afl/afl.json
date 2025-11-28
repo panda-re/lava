@@ -13,7 +13,5 @@
 
     "COMMENT_injfixupsscript": "fixup.sh {bug_build}",
 
-    "main_file": [ "src/afl-analyze-pre.c" ],
-
-    "inputs": [ "inputs/toy"]
+    "main_file": [ "src/afl-analyze-pre.c" ]
 }

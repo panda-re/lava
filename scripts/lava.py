@@ -942,7 +942,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         run(['git', 'branch', 'build' + str(build.id), 'master'])
         run(['git', 'reset', 'HEAD~', '--hard'])
 
-    return (build, input_files, bug_solutions)
+    return build, input_files, bug_solutions
 
 
 def get_suffix(fn):
