@@ -152,14 +152,14 @@ if __name__ == "__main__":
     bugs_parent = get_bugs_parent(lp)
 
     # Remove all old YAML files
-    run_cmd(["rm -f {}/*.yaml".format(lp.bugs_build)], None, 10, cwd="/", shell=True)
+    run_cmd(["rm -f {}/*.yaml".format(lp.bugs_build)], project,None, 10, cwd="/", shell=True)
 
     # obtain list of bugs to inject based on cmd-line args and consulting db
     (update_db, bug_list) = get_bug_list(args, db, allowed_bugtypes)
 
     # add all those bugs to the source code and check that it compiles
     # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
-    build, input_files, bug_solutions = inject_bugs(bug_list, db, lp, args.host_json,
+    build, input_files, bug_solutions = inject_bugs(bug_list, db, lp,
                                                       project, args, update_db, dataflow=dataflow,
                                                       competition=args.competition)
     if build is None:
