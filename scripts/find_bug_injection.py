@@ -4,8 +4,8 @@ import os
 import random
 
 
-from scripts.lava import LavaDatabase, AttackPoint, Bug, \
-    ASTLoc, DuaBytes, SourceLval, LabelSet, Dua, Range
+from scripts.database_types import AttackPoint, Bug, \
+    ASTLoc, DuaBytes, SourceLval, LabelSet, Dua, Range, LavaDatabase, BugParam
 from scripts.vars import parse_vars
 from sqlalchemy.exc import IntegrityError
 
@@ -56,9 +56,6 @@ def merge_into(source_elements, dest_list):
                       as one of the inputs for the union, and it will be
                       modified in-place to store the sorted unique result.
     """
-    # 1. Capture the current contents of dest_list.
-    #    This mimics `prev_dest.clear(); prev_dest.swap(dest);` in C++,
-    #    where the original `dest` is used as one of the input ranges.
     original_dest_contents = dest_list[:]
 
     # 2. Combine all elements from both the source and the original destination.
@@ -76,7 +73,7 @@ def merge_into(source_elements, dest_list):
     dest_list.extend(sorted_unique_elements)
 
 
-def record_injectable_bugs_at(bug_type, atp, is_new_atp, extra_duas_prechosen, db: LavaDatabase):
+def record_injectable_bugs_at(bug_type, atp, is_new_atp, db: LavaDatabase, extra_duas_prechosen):
     """
     Record injectable bugs at a given attack point (atp) of a given type (bug_type).
     """
@@ -165,14 +162,14 @@ def record_injectable_bugs_at(bug_type, atp, is_new_atp, extra_duas_prechosen, d
 
 
 def attack_point_lval_usage(ple, db: LavaDatabase, ind2str: dict):
-    pleatp = ple["attackPoint"]
+    panda_log_entry_attack_point = ple["attackPoint"]
     ast_id = None
 
-    if "astLocId" in pleatp["srcInfo"]:
-        ast_id = int(pleatp["srcInfo"]["astLocId"], 0)
+    if "astLocId" in panda_log_entry_attack_point["srcInfo"]:
+        ast_id = int(panda_log_entry_attack_point["srcInfo"]["astLocId"], 0)
         print(f"attack point id = {ast_id}")
 
-    si = pleatp["srcInfo"]
+    si = panda_log_entry_attack_point["srcInfo"]
     # ignore duas in header files
     if is_header_file(si["filename"]):
         return
@@ -187,11 +184,11 @@ def attack_point_lval_usage(ple, db: LavaDatabase, ind2str: dict):
     ast_loc = ASTLoc.from_serialized(ind2str[ast_id])
     assert len(ast_loc.filename) > 0
 
-    atp, is_new_atp = get_or_create(db, AttackPoint(ast_loc, int(pleatp["info"])))
+    atp, is_new_atp = get_or_create(db, AttackPoint(ast_loc, int(panda_log_entry_attack_point["info"])))
     print(f"@ATP: {str(atp)}")
 
     # Don't decimate PTR_ADD bugs.
-    attack_point_type = int(pleatp["info"], 0)
+    attack_point_type = int(panda_log_entry_attack_point["info"], 0)
     if attack_point_type == AttackPoint.POINTER_WRITE:
         record_injectable_bugs_at(Bug.REL_WRITE, atp, is_new_atp, [])
         # fall through
@@ -204,7 +201,7 @@ def attack_point_lval_usage(ple, db: LavaDatabase, ind2str: dict):
     db.session.commit()
 
 
-def taint_query_pri(ple, db: LavaDatabase, ind2str: list, inputfile: str):
+def taint_query_pri(ple: dict, db: LavaDatabase, ind2str: list, inputfile: str):
     assert ple is not None
     tqh = ple["taintQueryPri"]
     assert tqh is not None
@@ -229,7 +226,7 @@ def taint_query_pri(ple, db: LavaDatabase, ind2str: list, inputfile: str):
         # Update unique taint sets
         for tq in tqh["taintQuery"]:
             if tq["uniqueLabelSet"]:
-                update_unique_taint_sets(tq["uniqueLabelSet"])
+                update_unique_taint_sets(tq["uniqueLabelSet"], db)
 
         viable_byte = [None] * length
         byte_tcn = [0] * length
@@ -394,18 +391,18 @@ def get_or_create(db: LavaDatabase, model, defaults: dict=None, **kwargs):
 
 
 def update_unique_taint_sets(tquls, db: LavaDatabase, inputfile: str):
-    p = tquls["ptr"]
+    pointer = tquls["ptr"]
     # Find the first key >= p
     keys = sorted(ptr_to_labelset.keys())
     idx = 0
-    while idx < len(keys) and keys[idx] < p:
+    while idx < len(keys) and keys[idx] < pointer:
         idx += 1
-    found = idx < len(keys) and keys[idx] == p
+    found = idx < len(keys) and keys[idx] == pointer
 
     if not found:
         labels = list(tquls.label[:tquls.n_label])
-        ls, _ = get_or_create(db, LabelSet(0, p, inputfile, labels))
-        ptr_to_labelset[p] = ls
+        ls, _ = get_or_create(db, LabelSet(0, pointer, inputfile, labels))
+        ptr_to_labelset[pointer] = ls
 
         max_label = max(labels)
         if len(liveness) <= max_label:
@@ -500,10 +497,10 @@ def get_dead_range(viable_bytes, to_avoid):
        current_run = Range(0, 0)
     if current_run.size() < LAVA_MAGIC_VALUE_SIZE:
         return Range(0, 0)
-    return current_run;
+    return current_run
 
 
-def record_call(ple):
+def record_call(ple: dict):
     """
     Record a Dwarf2 call from Panda Log
     Args:
@@ -511,7 +508,8 @@ def record_call(ple):
     """
     pass
 
-def record_ret(ple):
+
+def record_ret(ple: dict):
     """
     Record a Dwarf2 call from Panda Log
     Args:
@@ -544,7 +542,7 @@ def load_db(db_file: str) -> dict[str, int]:
     Returns:
         dict: A dictionary mapping string keys to integer values.
     """
-    StringIDs = {}
+    string_ids = {}
     with open(db_file, 'rb') as db:
         buffer = b''
         fields = []
@@ -559,17 +557,17 @@ def load_db(db_file: str) -> dict[str, int]:
                 if len(fields) == 2:
                     istr = fields[0].decode('utf-8')
                     str_key = fields[1].decode('utf-8')
-                    StringIDs[str_key] = int(istr, 0)
+                    string_ids[str_key] = int(istr, 0)
                     fields = []
         # Handle any remaining fields (incomplete pair)
         if len(fields) == 2:
             istr = fields[0].decode('utf-8')
             str_key = fields[1].decode('utf-8')
-            StringIDs[str_key] = int(istr, 0)
-    return StringIDs
+            string_ids[str_key] = int(istr, 0)
+    return string_ids
 
 
-def invert_db(n2ind) -> list[str]:
+def invert_db(n2ind: dict) -> list[str]:
     """
     Inverts a dict mapping strings to integers into a list where the index is the integer
     and the value is the string.

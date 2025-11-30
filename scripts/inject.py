@@ -11,7 +11,8 @@ import time
 from os.path import join
 
 from vars import parse_vars
-from lava import LavaDatabase, Run, Bug, \
+from database_types import LavaDatabase, Run, Bug
+from lava import \
     inject_bugs, LavaPaths, validate_bugs, \
     get_bugs, run_cmd, get_allowed_bugtype_num
 
