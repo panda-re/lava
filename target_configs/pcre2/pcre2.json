@@ -11,7 +11,5 @@
     "install": "make install",
     "command": "{install_dir}/bin/pcre2grep -f {input_file} /etc/passwd",
 
-    "main_file": [ "src/pcre2grep-pre.c" ],
-
-    "inputs": [ "inputs/patterns" ]
+    "main_file": [ "src/pcre2grep-pre.c" ]
 }

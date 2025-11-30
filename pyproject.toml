@@ -9,7 +9,7 @@ include = [
 ]
 
 [project]
-name = "pyroclast"
+name = "lava-flow"
 dynamic = ["version"]
 description = "Python Interface for LAVA"
 readme = "README.md"

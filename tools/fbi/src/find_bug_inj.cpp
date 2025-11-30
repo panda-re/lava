@@ -945,7 +945,7 @@ int main (int argc, char **argv) {
     std::string name = argv[2];
 
     // Find project json
-    std::string project_json_path = host["config_dir"].asString() + "/" + name +"/"+name+".json";
+    std::string project_json_path = host["config_dir"].asString() + "/" + name + "/" + name + ".json";
     std::ifstream project_json(project_json_path.c_str());
     Json::Value project;
     project_json >> project;
@@ -1001,17 +1001,6 @@ int main (int argc, char **argv) {
     }
     max_lval = std::strtoul(project["max_lval_size"].asString().c_str(), 0, 0);
     printf("max lval size = %d\n", max_lval);
-
-    /* Unsupported for now (why?)
-    // Chaff has default value of false
-    if (!project["chaff"].isBool()) {
-        chaff_bugs = false;
-    }else{
-        // null should never happen, if it does we'll violate an assert in the asBool
-        chaff_bugs = project.get("chaff", Json::Value::null).asBool();
-    }
-    printf("Chaff_bugs is %d\n", chaff_bugs);
-    */
 
     if (curtail == 0) { // Will be 0 unless specified on command line
         if (!project["curtail_fbi"].isUInt()) {

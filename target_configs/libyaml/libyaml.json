@@ -14,7 +14,5 @@
     "injfixupsscript": "fixup.sh {bug_build}",
 
     "main_file": [ "src/parser.c" ],
-
-    "inputs": [ "inputs/spec.yaml"],
     "_comment_other_inputs_are_broken": [ "inputs/spec.yaml", "inputs/bin.yaml", "inputs/test_yaml2.yaml"]
 }

@@ -48,6 +48,7 @@ extradockerargs="$(jq -r .extra_docker_args "$json")"
 exitCode="$(jq -r .expected_exit_code "$json")"
 dataflow="$(jq -r '.dataflow // "false"' "$json")" # TODO use everywhere, stop passing as argument
 llvm="$(jq -r '.llvm // "/usr/lib/llvm-14"' "$hostjson")"
+llvm_version="$(echo "$llvm" | sed -n 's|.*/llvm-\([0-9]\+\).*|\1|p')"
 
 # List of function names to blacklist for data_flow injection, merged as fn1\|fn2\|fn3 so we can use sed
 # Or an empty string if not present
@@ -59,8 +60,6 @@ fi
 tarfiledir="$tar_dir"
 tarfile="$tarfiledir/$(jq -r '.tarfile' "$json")"
 directory=$output_dir
-
-inputs=`jq -r '.inputs' "$json"  | jq 'join (" ")' | sed 's/\"//g' `
 
 fixupscript="null"
 if [ "$(jq -r .fixupscript "$json")" != "null" ]; then

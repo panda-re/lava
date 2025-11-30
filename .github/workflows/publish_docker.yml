@@ -52,21 +52,64 @@ jobs:
           python3 -m pip install --upgrade build
           PRETEND_VERSION=${{ needs.create_release.outputs.v-version }} python3 -m build --wheel .
 
-      - name: Upload wheel and debian packages to release
-        uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload deb packages as artifacts
+        uses: actions/upload-artifact@v5
         with:
-          tag_name: ${{ needs.create_release.outputs.v-version }}
-          draft: false
-          generate_release_notes: true
-          prerelease: false
-          files: |
-            dist/*.whl
-            tools/build/lava*.deb
+          name: lava
+          path: tools/build/lava*.deb
+          if-no-files-found: error
+
+      - name: Upload whl package as artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: pyroclast
+          path: dist/*.whl
+          if-no-files-found: error
+
+  publish-to-pypi-and-release:
+    name: Publish Python 🐍 distribution 📦 to PyPI and Make Release
+    if: github.repository == 'panda-re/lava'
+    needs: [create_release, create_release_assets]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/lava-flow # Replace <package-name> with your PyPI project name
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+      contents: write  # IMPORTANT: mandatory for creating releases
+
+    steps:
+    - name: Download all the artifacts
+      uses: actions/download-artifact@v5
+      with:
+        name: lava
+        path: debs/
+    - name: Download all the artifacts
+      uses: actions/download-artifact@v5
+      with:
+        name: pyroclast
+        path: dist/
+    - name: Publish distribution 📦 to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        verbose: true
+
+    - name: Upload wheel package to release
+      uses: softprops/action-gh-release@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ needs.create_release.outputs.v-version }}
+        draft: false
+        generate_release_notes: true
+        prerelease: false
+        name: ${{ needs.create_release.outputs.v-version }} @ ${{ github.ref }}
+        files: |
+          dist/*
+          debs/*.deb
 
   build_container:
-    needs: [create_release, create_release_assets]
+    needs: [create_release, publish-to-pypi-and-release]
     if: github.repository == 'panda-re/lava'
     runs-on: panda-arc
     steps:

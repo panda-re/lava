@@ -88,7 +88,8 @@ add_dependencies(lavaTool lavaFnTool)
 
 # Install targets
 install(TARGETS lavaTool lavaFnTool lavaInitTool
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}  # For shared libraries
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}  # For executables (if applicable)
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}  # For static libraries (if applicable)
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}         # For shared libraries
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}         # For executables (if applicable)
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}         # For static libraries (if applicable)
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}    # For header files (if applicable)
 )

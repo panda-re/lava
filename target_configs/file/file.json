@@ -13,7 +13,5 @@
 
     "max_tcn": 10,
 
-    "main_file": [ "src/file.c" ],
-
-    "inputs": ["inputs/constitution_36_garfield.doc"]
+    "main_file": [ "src/file.c" ]
 }

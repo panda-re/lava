@@ -11,7 +11,5 @@
   "install": "make install",
   "command": "{install_dir}/bin/blecho 5 123456789 12 /tmp/blecho_memory < {input_file}",
 
-  "main_file": [ "blecho.c" ],
-
-  "inputs": [ "inputs/tests" ]
+  "main_file": [ "blecho.c" ]
 }

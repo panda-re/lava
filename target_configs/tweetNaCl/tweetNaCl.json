@@ -11,7 +11,5 @@
     "install": "make install",
     "command": "{install_dir}/bin/tweetNaCl {input_file}",
 
-    "main_file": [ "main.c" ],
-
-    "inputs": ["inputs/input.bin"]
+    "main_file": [ "main.c" ]
 }

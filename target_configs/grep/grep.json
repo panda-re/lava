@@ -12,7 +12,5 @@
     "command": "{install_dir}/bin/grep '\\(.\\).\\(.\\)' {input_file}",
     "injfixupsscript": "fixup.sh {bug_build}",
 
-    "main_file": [ "grep-pre.c" ], 
-
-    "inputs": [ "inputs/hi.txt" ]
+    "main_file": [ "grep-pre.c" ]
 }

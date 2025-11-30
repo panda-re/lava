@@ -12,7 +12,5 @@
     "command": "{install_dir}/bin/jq -r . {input_file}",
     "injfixupsscript": "fixup.sh {bug_build}",
 
-    "main_file": [ "src/main.c" ],
-
-    "inputs": [ "jq.json" ]
+    "main_file": [ "src/main.c" ]
 }
