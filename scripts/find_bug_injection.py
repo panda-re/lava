@@ -1,14 +1,16 @@
 import sys
-import json
+import ijson
 import os
-import random
-
 from scripts.database_types import AttackPoint, Bug, \
-    ASTLoc, DuaBytes, SourceLval, LabelSet, Dua, Range, LavaDatabase, BugParam
+    ASTLoc, DuaBytes, SourceLval, LabelSet, Dua, Range, LavaDatabase, AtpKind, BugKind
 from scripts.vars import parse_vars
 from sqlalchemy.exc import IntegrityError
 from typing import Iterable, TypeVar, DefaultDict
 from collections import defaultdict
+from sqlalchemy.orm import Session
+from bisect import bisect_left
+import random
+from sqlalchemy import select
 
 T = TypeVar("T")
 
@@ -40,8 +42,9 @@ FAKE_DUA_BYTE_FLAG = 777
 recent_duas_by_instr: list[Dua] = []
 
 num_real_duas, num_fake_duas = 0, 0
+num_bugs_added_to_db, num_potential_bugs, num_potential_nonbugs = 0, 0, 0
 
-num_bugs_of_type = { Bug.type : 0 }
+num_bugs_of_type: dict = { Bug.type : 0 }
 
 def disjoint(iter1: Iterable[T], iter2: Iterable[T]) -> bool:
     """
@@ -103,95 +106,171 @@ def merge_into(source_elements: list, dest_list: list):
     dest_list[:] = sorted(set(dest_list).union(source_elements))
 
 
-def record_injectable_bugs_at(bug_type: int, atp: AttackPoint, is_new_atp, db: LavaDatabase, extra_duas_prechosen: list):
+# Assuming you have these imported
+# from .models import Bug, BugKind, AttackPoint, AtpKind, DuaBytes, Dua
+# from .utils import get_or_create, merge_into, disjoint, get_dua_dead_range
+
+def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: bool,
+                              session: Session, extra_duas_prechosen: list):
     """
     Record injectable bugs at a given attack point (atp) of a given type (bug_type).
     """
-    skip_trigger_lvals = []
-    if not is_new_atp:
-        # Query DB for lval_ids already used with this atp/type
-        param = BugParam(atp_id=atp.id, type=bug_type)
-        pq = db.session.lookup_query('atp-shortcut', param)
-        if not pq:
-            pq = db.session.prepare_query(
-                'atp-shortcut',
-                lambda buglval: buglval.atp == param.atp_id and buglval.type == param.type
-            )
-            db.session.cache_query(pq, param)
-        result = pq.execute()
-        skip_trigger_lvals = [row.trigger_lval for row in result]
+    skip_trigger_lval_ids = []
 
-    skip_trigger_lvals = sorted(skip_trigger_lvals)
+    # --- 1. THE ODB REPLACEMENT ---
+    if not is_new_atp:
+        # In C++, this query was cached. In Python/Postgres, just run it.
+        # We want to find all 'trigger_lval_id's that successfully generated
+        # a bug for this specific ATP and BUG TYPE.
+        stmt = select(Bug.trigger_lval_id).where(
+            Bug.atp_id == atp.id,
+            Bug.type == bug_type
+        )
+        # scalars() extracts the single value from the row automatically
+        # This returns a clean List[int] that the IDE understands perfectly
+        skip_trigger_lval_ids = sorted(session.scalars(stmt).all())
+
     skip_it = 0
-    num_extra_duas = Bug.num_extra_duas[bug_type] - len(extra_duas_prechosen)
-    assert num_extra_duas >= 0
+
+    # --- 2. Fix Bug Metadata Access ---
+    # Use the dictionary we defined in the Bug class
+    req_extra = Bug.required_extra_duas_for_type[bug_type]
+    num_extra_duas_needed = req_extra - len(extra_duas_prechosen)
+    assert num_extra_duas_needed >= 0
+
     prechosen_labels = []
     for extra in extra_duas_prechosen:
         merge_into(extra.all_labels, prechosen_labels)
 
+    # Loop over recent_dead_duas (Dict: lval_id -> Dua object)
     for lval_id, trigger_dua in recent_dead_duas.items():
-        # Fast-forward skip_it so skip_trigger_lvals[skip_it] >= lval_id
-        while skip_it < len(skip_trigger_lvals) and skip_trigger_lvals[skip_it] < lval_id:
+
+        # --- 3. The Skip Logic (Linear Scan on Sorted Lists) ---
+        # Fast-forward skip_it so it matches or exceeds current lval_id
+        while skip_it < len(skip_trigger_lval_ids) and skip_trigger_lval_ids[skip_it] < lval_id:
             skip_it += 1
-        if skip_it < len(skip_trigger_lvals) and skip_trigger_lvals[skip_it] == lval_id:
+
+        # If we found a match, this LVAL + ATP + TYPE combo has been done. Skip.
+        if skip_it < len(skip_trigger_lval_ids) and skip_trigger_lval_ids[skip_it] == lval_id:
             continue
 
+        # --- 4. Range Logic ---
         selected = get_dua_dead_range(trigger_dua, prechosen_labels)
+        # Ensure LAVA_MAGIC_VALUE_SIZE is defined/imported
         if not selected or selected.size() < LAVA_MAGIC_VALUE_SIZE:
             continue
 
-        trigger, _ = get_or_create(DuaBytes(trigger_dua, selected))
+        # --- 5. Fix get_or_create for DuaBytes ---
+        # Assuming DuaBytes takes 'dua' and 'selected_range' columns
+        trigger_duabytes, _ = get_or_create(
+            session,
+            DuaBytes,
+            dua=trigger_dua,
+            selected_range=selected
+        )
+
         extra_duas = list(extra_duas_prechosen)
         labels_so_far = list(prechosen_labels)
-        merge_into(trigger.all_labels, labels_so_far)
+        merge_into(trigger_duabytes.all_labels, labels_so_far)
 
-        # Get list of duas observed before chosen trigger
-        end_idx = next((i for i, dua in enumerate(recent_duas_by_instr) if dua.instr >= trigger_dua.instr), len(recent_duas_by_instr))
+        # --- 6. Fix "lower_bound" (Performance) ---
+        # C++ std::lower_bound is Binary Search.
+        # Python 'next(...)' is Linear Search (Slow!).
+        # We use bisect_left on 'recent_duas_by_instr'.
+        # Since recent_duas_by_instr contains objects, we need a key.
+        # Python 3.10+ supports key in bisect.
+
+        # Find index where dua.instr >= trigger_dua.instr
+        end_idx = bisect_left(
+            recent_duas_by_instr,
+            trigger_dua.instr,
+            key=lambda d: d.instr
+        )
+
         begin_idx = 0
         distance = end_idx - begin_idx
-        if num_extra_duas < distance:
-            for _ in range(num_extra_duas):
+
+        if num_extra_duas_needed < distance:
+            for _ in range(num_extra_duas_needed):
                 extra = None
                 for tries in range(2):
+                    # Random index in range
                     idx = random.randint(begin_idx, end_idx - 1)
                     extra_dua = recent_duas_by_instr[idx]
-                    selected = get_dua_dead_range(extra_dua, labels_so_far)
-                    if not selected:
+
+                    selected_extra = get_dua_dead_range(extra_dua, labels_so_far)
+                    if not selected_extra:
                         continue
-                    extra, _ = get_or_create(DuaBytes(extra_dua, selected))
-                    if disjoint(labels_so_far, extra.all_labels):
+
+                    extra_obj, _ = get_or_create(
+                        session,
+                        DuaBytes,
+                        dua=extra_dua,
+                        selected_range=selected_extra
+                    )
+
+                    if disjoint(labels_so_far, extra_obj.all_labels):
+                        extra = extra_obj
                         break
+
                 if extra is None:
-                    break
+                    break  # Failed to find a disjoint extra dua
+
                 extra_duas.append(extra)
-                new_size = len(extra.all_labels) + len(labels_so_far)
+                # merge_into modifies labels_so_far in place
                 merge_into(extra.all_labels, labels_so_far)
-                assert new_size == len(labels_so_far)
-        if len(extra_duas) < Bug.num_extra_duas[bug_type]:
+
+        if len(extra_duas) < req_extra:
             continue
-        if not trigger.dua.fake_dua:
-            if not (len(labels_so_far) >= 4 * Bug.num_extra_duas[bug_type]):
+
+        if not trigger_duabytes.dua.fake_dua:
+            if not (len(labels_so_far) >= 4 * req_extra):
                 continue
 
+        # Calculate max liveness
         c_max_liveness = 0
-        for l in trigger.all_labels:
+        for l in trigger_duabytes.all_labels:
             c_max_liveness = max(c_max_liveness, liveness[l])
 
-        assert bug_type != Bug.RET_BUFFER or atp.type == AttackPoint.QUERY_POINT
-        assert len(extra_duas) == Bug.num_extra_duas[bug_type]
-        bug = Bug(bug_type, trigger, c_max_liveness, atp, extra_duas)
-        db.session.persist(bug)
-        num_bugs_of_type[bug_type] += 1
+        # Assertions
+        assert bug_type != BugKind.BUG_RET_BUFFER or atp.typ == AtpKind.QUERY_POINT
+        assert len(extra_duas) == req_extra
 
+        # --- 7. Save Bug ---
+        # The Bug Model expects 'extra_duas' to be a LIST OF IDs (Array[BigInt]),
+        # not a list of objects. We extract .id here.
+        extra_duas_ids = [d.id for d in extra_duas]
+
+        bug = Bug(
+            type=bug_type,
+            trigger=trigger_duabytes,
+            max_liveness=c_max_liveness,
+            atp=atp,
+            extra_duas=extra_duas_ids
+        )
+
+        session.add(bug)  # SQLAlchemy's version of persist()
+
+        # --- 8. Update Globals ---
+        # Ensure these are declared global if you are modifying them
         global num_bugs_added_to_db, num_potential_bugs, num_potential_nonbugs
+        num_bugs_of_type[bug_type] += 1
         num_bugs_added_to_db += 1
+
         if trigger_dua.fake_dua:
             num_potential_nonbugs += 1
         else:
             num_potential_bugs += 1
 
 
-def attack_point_lval_usage(ple: dict, db: LavaDatabase, ind2str: dict):
+def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict):
+    """
+    Process an attack point log entry from PANDA logs.
+    Args:
+        ple (dict): The AttackPoint PANDA Log Entry
+        session (Session): The Database connection to input Attack Point data
+        ind2str: a list mapping indices to strings from lavadb. This obtains the filename from a number.
+    """
     panda_log_entry_attack_point = ple["attackPoint"]
     ast_id = None
 
@@ -199,9 +278,9 @@ def attack_point_lval_usage(ple: dict, db: LavaDatabase, ind2str: dict):
         ast_id = int(panda_log_entry_attack_point["srcInfo"]["astLocId"], 0)
         print(f"attack point id = {ast_id}")
 
-    si = panda_log_entry_attack_point["srcInfo"]
+    source_info = panda_log_entry_attack_point["srcInfo"]
     # ignore duas in header files
-    if is_header_file(si["filename"]):
+    if is_header_file(ind2str[source_info["filename"]]):
         return
 
     print("ATTACK POINT")
@@ -210,25 +289,29 @@ def attack_point_lval_usage(ple: dict, db: LavaDatabase, ind2str: dict):
         return
 
     print(f"{len(recent_dead_duas)} viable duas remain")
-    assert "astLocId" in si
+    assert "astLocId" in source_info
     ast_loc = ASTLoc.from_serialized(ind2str[ast_id])
     assert len(ast_loc.filename) > 0
+    attack_point_type = int(panda_log_entry_attack_point["info"], 0)
 
-    atp, is_new_atp = get_or_create(db, AttackPoint(ast_loc, int(panda_log_entry_attack_point["info"])))
+    atp, is_new_atp = get_or_create(
+        session,
+        AttackPoint,
+        loc=ast_loc,
+        typ=attack_point_type
+    )
+
     print(f"@ATP: {str(atp)}")
 
     # Don't decimate PTR_ADD bugs.
-    attack_point_type = int(panda_log_entry_attack_point["info"], 0)
-    if attack_point_type == AttackPoint.POINTER_WRITE:
-        record_injectable_bugs_at(Bug.REL_WRITE, atp, is_new_atp, db, [])
-        # fall through
-    if attack_point_type in [AttackPoint.POINTER_READ]:
-        record_injectable_bugs_at(Bug.PTR_ADD, atp, is_new_atp, db, [])
-    elif attack_point_type == AttackPoint.PRINTF_LEAK:
-        record_injectable_bugs_at(Bug.PRINTF_LEAK, atp, is_new_atp, db, [])
-    elif attack_point_type == AttackPoint.MALLOC_OFF_BY_ONE:
-        record_injectable_bugs_at(Bug.MALLOC_OFF_BY_ONE, atp, is_new_atp, db, [])
-    db.session.commit()
+    if attack_point_type == AtpKind.POINTER_WRITE:
+        record_injectable_bugs_at(BugKind.BUG_REL_WRITE, atp, is_new_atp, session, [])
+    if attack_point_type in [AtpKind.POINTER_READ]:
+        record_injectable_bugs_at(BugKind.BUG_PTR_ADD, atp, is_new_atp, session, [])
+    elif attack_point_type == AtpKind.PRINTF_LEAK:
+        record_injectable_bugs_at(BugKind.BUG_PRINTF_LEAK, atp, is_new_atp, session, [])
+    elif attack_point_type == AtpKind.MALLOC_OFF_BY_ONE:
+        record_injectable_bugs_at(BugKind.BUG_MALLOC_OFF_BY_ONE, atp, is_new_atp, session, [])
 
 
 def taint_query_pri(ple: dict, db: LavaDatabase, ind2str: list, inputfile: str):
@@ -335,15 +418,15 @@ def taint_query_pri(ple: dict, db: LavaDatabase, ind2str: list, inputfile: str):
                              c_max_tcn, c_max_card, instr, is_fake_dua))
 
             if is_dua:
-                for l in dua.all_labels:
-                    dua_dependencies.setdefault(l, set()).add(dua)
+                for label in dua.all_labels:
+                    dua_dependencies.setdefault(label, set()).add(dua)
 
-            pad_atp, is_new_atp = get_or_create(db, AttackPoint(ast_loc, AttackPoint.QUERY_POINT))
-            if length >= 20 and decimate_by_type(Bug.RET_BUFFER):
+            pad_atp, is_new_atp = get_or_create(db, AttackPoint(ast_loc, AtpKind.QUERY_POINT))
+            if length >= 20 and decimate_by_type(BugKind.BUG_RET_BUFFER):
                 range_ = get_dua_exploit_pad(dua)
                 dua_bytes, _ = get_or_create(DuaBytes(dua, range_))
                 if is_fake_dua or range_.size() >= 20:
-                    record_injectable_bugs_at(Bug.RET_BUFFER, pad_atp, is_new_atp, [dua_bytes])
+                    record_injectable_bugs_at(BugKind.BUG_RET_BUFFER, pad_atp, is_new_atp, session, [dua_bytes])
 
             print("OK DUA.\n")
 
@@ -377,58 +460,43 @@ def taint_query_pri(ple: dict, db: LavaDatabase, ind2str: list, inputfile: str):
             print(f"discarded {num_viable_bytes} viable bytes {len(all_labels)} labels {si.filename}:{si.linenum} {si.astnodename}")
 
 
-def get_or_create(project: dict, model, defaults: dict=None, **kwargs):
+def get_or_create(session, model, defaults: dict=None, **kwargs):
     """
-    Retrieves an object from the database, or creates it if it does not exist.
-    This function mimics the C++ `create_full` behavior.
-
-    :param project: The dictionary storing arguments used to make LavaDatabase connections.
-    :param model: The SQLAlchemy model class (e.g., SourceLval, AttackPoint).
-    :param defaults: A dictionary of default values to set on the object
-                     if it needs to be created. These are not used for querying.
-                     If the object is created, kwargs are also used for creation.
-    :param kwargs: Keyword arguments that represent the unique attributes
-                   to query for the existing object. For composite types,
-                   these should map to the underlying *column* names (e.g.,
-                   'loc_filename', 'loc_begin_line' for ASTLoc components).
-    :return: A tuple (instance, created_boolean).
-             instance: The existing or newly created object.
-             created_boolean: True if the object was created, False if it existed.
-
+    Retrieves object or creates it using an EXISTING session.
+    Args:
+        session: The SQLAlchemy session to use.
+        model: The SQLAlchemy model class.
+        defaults: A dict of default values to use when creating the object.
+        **kwargs: The lookup parameters.
     """
-    with LavaDatabase(project) as db:
-        instance = db.session.query(model).filter_by(**kwargs).first()
-        if instance:
-            return instance, False
-        else:
-            # If not found, prepare data for creation
-            # Merge kwargs (for unique identification) and defaults (for other attributes)
-            params = {**kwargs, **(defaults or {})}
-            instance = model(**params)
-            db.session.add(instance)
-            try:
-                db.session.commit()
-                return instance, True
-            except IntegrityError:
-                db.session.rollback()
-                # Race condition: Another process/thread created it
-                # between our query and our commit. Try to fetch again.
-                instance = db.session.query(model).filter_by(**kwargs).first()
-                if instance:
-                    return instance, False
-                else:
-                    # This should ideally not happen if kwargs are truly unique constraints.
-                    # Re-raise or handle as a critical error.
-                    raise
+    instance = session.query(model).filter_by(**kwargs).first()
+    if instance:
+        return instance, False
+    else:
+        params = {**kwargs, **(defaults or {})}
+        instance = model(**params)
+        session.add(instance)
+        try:
+            # We commit here to generate the ID (if auto-incrementing)
+            # and handle the race condition safely.
+            session.commit()
+            return instance, True
+        except IntegrityError:
+            session.rollback()
+            instance = session.query(model).filter_by(**kwargs).first()
+            if instance:
+                return instance, False
+            else:
+                raise
 
 
-def update_unique_taint_sets(unique_label_set: dict, project: dict, inputfile: str):
+def update_unique_taint_sets(unique_label_set: dict, session: Session, inputfile: str):
     """
     Update the global mapping of unique taint sets based on the provided unique_label_set from PANDA Log.
     Args:
-        unique_label_set: the Panda Log unique label set
-        project: The input arguments and host.json input
-        inputfile: the input file_name that caused the bug
+        unique_label_set (dict): the Panda Log unique label set
+        session (Session): The SQLAlchemy session for database operations.
+        inputfile (str): the input file_name that caused the bug
     """
     pointer = int(unique_label_set["ptr"])
 
@@ -442,15 +510,17 @@ def update_unique_taint_sets(unique_label_set: dict, project: dict, inputfile: s
         # 3. Create and Insert
         # C++: create(LabelSet{0, p, inputfile, vec});
         # Assuming get_or_create logic handles the object creation/deduplication
-        label_set, _ = get_or_create(project, LabelSet(0, pointer, inputfile, labels))
+        label_set, _ = get_or_create(
+            session,
+            LabelSet,
+            ptr=pointer,
+            inputfile=inputfile,
+            labels=labels
+        )
         ptr_to_labelset[pointer] = label_set
 
-    # Note: len() on a dict is O(1) in Python, unlike some C++ containers.
-    if project['debug']:
-        print(f"{len(ptr_to_labelset)} unique taint sets")
 
-
-def update_liveness(panda_log_entry: dict, project: dict, inputfile: str):
+def update_liveness(panda_log_entry: dict, session: Session, inputfile: str):
     """
     Processes a 'taintedBranch' entry from PANDA logs to update global liveness state
     and prune non-viable Def-Use Associations (DUAs).
@@ -469,7 +539,7 @@ def update_liveness(panda_log_entry: dict, project: dict, inputfile: str):
 
     Args:
         panda_log_entry (dict): The parsed JSON entry containing a "taintedBranch" object.
-        project (dict): Configuration dictionary containing project settings and database connections.
+        session (Session): The SQLAlchemy session for database operations.
         inputfile (str): The name of the file currently being processed (used for tracking LabelSets).
 
     Side Effects:
@@ -488,7 +558,7 @@ def update_liveness(panda_log_entry: dict, project: dict, inputfile: str):
         assert taint_query
         if taint_query["uniqueLabelSet"]:
             # This will be updating the database with new LabelSets as needed
-            update_unique_taint_sets(taint_query["uniqueLabelSet"], project, inputfile)
+            update_unique_taint_sets(taint_query["uniqueLabelSet"], session, inputfile)
         pointer = int(taint_query["ptr"])
         cur_labels = ptr_to_labelset[pointer].labels
         merge_into(cur_labels, all_labels)
@@ -743,33 +813,33 @@ def main():
         print("POSTGRES_USER is not set")
         sys.exit(1)
 
-    # re-read pandalog, this time focusing on taint queries. Look for
-    # dead available data, attack points, and thus bug injection opportunities
-    with open(panda_log, 'r') as plog_file:
-        plog_data = json.load(plog_file)
-
     num_entries_read = 0
 
-    for ple in plog_data:
-        num_entries_read += 1
-        if num_entries_read % 10000 == 0:
-            print(f"processed {num_entries_read} pandalog entries")
-            print(f"{num_bugs_added_to_db} added to db {len(recent_dead_duas)} current duas {num_real_duas} real duas {num_fake_duas} fake duas")
+    with open(panda_log, 'r') as plog_file:
+        # 'item' iterates over elements in the root array
+        parser = ijson.items(plog_file, 'item')
 
-        if "taintQueryPri" in ple:
-            taint_query_pri(ple, project, ind2str, inputfile)
-        elif "taintedBranch" in ple:
-            update_liveness(ple, project, inputfile)
-        elif "attackPoint" in ple:
-            attack_point_lval_usage(ple, project, ind2str, inputfile)
-        elif "dwarfCall" in ple:
-            record_call(ple)
-        elif "dwarfRet" in ple:
-            record_ret(ple)
+        with LavaDatabase(project) as db:
+            for ple in parser:
+                num_entries_read += 1
+                if num_entries_read % 10000 == 0:
+                    print(f"processed {num_entries_read} pandalog entries")
+                    print(f"{num_bugs_added_to_db} added to db {len(recent_dead_duas)} current duas {num_real_duas} real duas {num_fake_duas} fake duas")
 
-        if 0 < curtail < num_real_duas:
-            print(f"*** Curtailing output of fbi at {num_real_duas}")
-            break
+                if "taintQueryPri" in ple:
+                    taint_query_pri(ple, db.session, ind2str, inputfile)
+                elif "taintedBranch" in ple:
+                    update_liveness(ple, db.session, inputfile)
+                elif "attackPoint" in ple:
+                    attack_point_lval_usage(ple, db.session, ind2str, inputfile)
+                elif "dwarfCall" in ple:
+                    record_call(ple)
+                elif "dwarfRet" in ple:
+                    record_ret(ple)
+
+                if 0 < curtail < num_real_duas:
+                    print(f"*** Curtailing output of fbi at {num_real_duas}")
+                    break
 
     print(f"{num_bugs_added_to_db} added to db")
     print(f"{num_potential_bugs} potential bugs")

@@ -4,12 +4,16 @@ from sqlalchemy.types import TypeEngine
 from sqlalchemy import Column, ForeignKey, Table, create_engine
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import load_only, relationship, sessionmaker, composite
+from sqlalchemy.orm import load_only, relationship, sessionmaker, composite, Mapped, mapped_column
 from sqlalchemy.sql.expression import func
 from sqlalchemy.types import BigInteger, Boolean, Float, Integer, Text
 import random
 from dataclasses import dataclass
 from sqlalchemy.engine.url import URL
+from sqlalchemy.types import TypeDecorator
+from sqlalchemy import UniqueConstraint
+from sqlalchemy.dialects.postgresql import ARRAY
+from enum import IntEnum
 
 Base = declarative_base()
 
@@ -28,6 +32,26 @@ build_bugs = \
           Column('index', BigInteger, default=0),
           Column('value', BigInteger, ForeignKey('bug.id')))
 
+
+class SortedIntArray(TypeDecorator):
+    """
+    Automatically sorts a list of integers before sending it to the database.
+    This ensures that [2, 1] and [1, 2] are treated as the exact same set.
+    """
+    impl = ARRAY(Integer) # The underlying DB type is still INT[]
+
+    def process_bind_param(self, value, dialect):
+        # This runs BEFORE the data goes to SQL (both INSERT and SELECT)
+        if value is not None:
+            return sorted(value)
+        return value
+
+    def process_result_value(self, value, dialect):
+        # This runs when data comes BACK from the database
+        # (Postgres usually keeps arrays in order, but good to be safe)
+        if value is not None:
+            return sorted(value)
+        return value
 
 
 class LavaDatabase(object):
@@ -182,50 +206,65 @@ class LavaDatabase(object):
         count = self.uninjected2(fake).count()
         return self.uninjected2(fake)[random.randrange(0, count)]
 
+class BugKind(IntEnum):
+    BUG_PTR_ADD = 0
+    BUG_RET_BUFFER = 1
+    BUG_REL_WRITE = 2
+    BUG_PRINTF_LEAK = 3
+    BUG_MALLOC_OFF_BY_ONE = 4
+
+    def __str__(self):
+        return self.name
+
+
 class Bug(Base):
     __tablename__ = 'bug'
 
-    # enum Type {
-    PTR_ADD = 0
-    RET_BUFFER = 1
-    REL_WRITE = 2
-    PRINTF_LEAK = 3
-    MALLOC_OFF_BY_ONE = 4
-    # };
-    type_strings = ['BUG_PTR_ADD', 'BUG_RET_BUFFER',
-                    'BUG_REL_WRITE', 'BUG_PRINTF_LEAK', 'MALLOC_OFF_BY_ONE']
+    # 1. Primary Key
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
 
-    id = Column(BigInteger, primary_key=True)
-    type = Column(Integer)
-    trigger_id = Column('trigger', BigInteger, ForeignKey('duabytes.id'))
-    trigger_lval_id = Column('trigger_lval', BigInteger,
-                             ForeignKey('sourcelval.id'))
-    atp_id = Column('atp', BigInteger, ForeignKey('attackpoint.id'))
+    # 2. Foreign Keys (Use Mapped[int])
+    # Note: We name the Python attribute 'trigger_id', but map it to DB column 'trigger'
+    trigger_id: Mapped[int] = mapped_column('trigger', BigInteger, ForeignKey('duabytes.id'))
+    trigger_lval_id: Mapped[int] = mapped_column('trigger_lval', BigInteger, ForeignKey('sourcelval.id'))
+    atp_id: Mapped[int] = mapped_column('atp', BigInteger, ForeignKey('attackpoint.id'))
 
-    trigger = relationship("DuaBytes")
-    trigger_lval = relationship("SourceLval")
+    # 3. Rename 'type' to 'typ' to avoid Python keyword collision
+    # It still maps to the database column named "type"
+    type: Mapped[BugKind] = mapped_column("type", Integer, nullable=False)
 
-    max_liveness = Column(Float)
-    magic = Column(Integer)
+    # 4. Relationships (CRITICAL FIX FOR IDE WARNINGS)
+    # Using Mapped["ClassName"] tells the IDE these are valid constructor args
+    trigger: Mapped["DuaBytes"] = relationship("DuaBytes")
+    trigger_lval: Mapped["SourceLval"] = relationship("SourceLval")
+    atp: Mapped["AttackPoint"] = relationship("AttackPoint")
 
-    atp = relationship("AttackPoint")
+    # 5. Other Columns
+    max_liveness: Mapped[float] = mapped_column(Float, nullable=True)
+    magic: Mapped[int] = mapped_column(Integer, nullable=True)
 
-    extra_duas = Column(postgresql.ARRAY(BigInteger))
+    # 6. Postgres Array
+    # Mapped[List[int]] makes usage clear
+    extra_duas: Mapped[List[int]] = mapped_column(postgresql.ARRAY(BigInteger), nullable=True)
 
-    builds = relationship("Build", secondary=build_bugs,
-                          back_populates="bugs")
+    # 7. Many-to-Many
+    builds: Mapped[List["Build"]] = relationship("Build", secondary="build_bugs", back_populates="bugs")
 
     required_extra_duas_for_type = {
-        'PTR_ADD' : 0,
-        'RET_BUFFER' : 1,
-        'REL_WRITE' : 2,
-        'PRINTF_LEAK' : 0,
-        'MALLOC_OFF_BY_ONE' : 0
+        BugKind.BUG_PTR_ADD: 0,
+        BugKind.BUG_RET_BUFFER: 1,
+        BugKind.BUG_REL_WRITE: 2,
+        BugKind.BUG_PRINTF_LEAK: 0,
+        BugKind.BUG_MALLOC_OFF_BY_ONE: 0
     }
+
+    @classmethod
+    def num_extra_duas(cls, bug_type: BugKind):
+        return cls.required_extra_duas_for_type[bug_type]
 
     def __str__(self):
         return 'Bug[{}](type={}, trigger={}, atp={})'.format(
-            self.id, Bug.type_strings[self.type], self.trigger, self.atp)
+            self.id, self.typ.name, self.trigger, self.atp)
 
 
 class Build(Base):
@@ -310,8 +349,8 @@ class Composite(object):
 
 @dataclass(frozen=True, order=True)
 class Loc:
-    line: int
-    column: int
+    line: int = Integer
+    column: int = Integer
 
     def __str__(self):
         return f"{self.line}:{self.column}"
@@ -320,8 +359,17 @@ class Loc:
 @dataclass(frozen=True, order=True)
 class ASTLoc(Composite):
     filename: str = Text
-    begin = Loc
-    end = Loc
+    begin : Loc = Loc
+    end : Loc = Loc
+
+    def __composite_values__(self):
+        return (
+            self.filename,
+            self.begin.line,
+            self.begin.column,
+            self.end.line,
+            self.end.column
+        )
 
     @classmethod
     def from_serialized(cls, serialized_str: str):
@@ -354,17 +402,6 @@ class ASTLoc(Composite):
             end=Loc(end_line, end_col)
         )
 
-@dataclass(frozen=True)
-class BugParam(Composite):
-    atp_id: int = BigInteger
-    type: int = Integer
-
-    def __lt__(self, other) -> bool:
-        return (self.atp_id, self.type) < (other.atp_id, other.type)
-
-    def __repr__(self) -> str:
-        return f"BugParam(atp_id={self.atp_id}, type={self.type})"
-
 class Range(Composite):
     low: int = Integer
     high: int = Integer
@@ -394,7 +431,7 @@ class LabelSet(Base):
     id : int = Column(BigInteger, primary_key=True)
     ptr : int = Column(BigInteger)
     inputfile : str = Column(Text)
-    labels : List[int] = Column(postgresql.ARRAY(Integer))
+    labels : List[int] = Column(SortedIntArray)
 
     def __repr__(self):
         return str(self.labels)
@@ -426,7 +463,7 @@ class DuaBytes(Base):
 
     id = Column(BigInteger, primary_key=True)
     dua_id = Column('dua', BigInteger, ForeignKey('dua.id'))
-    selected = Range.composite('selected')
+    selected: Loc = Range.composite('selected')
     all_labels = Column(postgresql.ARRAY(Integer))
 
     dua = relationship("Dua")
@@ -438,14 +475,10 @@ class DuaBytes(Base):
             self.selected.low, self.selected.high, self.all_labels)
 
 
-class AttackPoint(Base):
-    __tablename__ = 'attackpoint'
+def create_ast_loc(f, bl, bc, el, ec):
+    return ASTLoc(f, Loc(bl, bc), Loc(el, ec))
 
-    id = Column(BigInteger, primary_key=True)
-    loc = ASTLoc.composite('loc')
-    typ = Column('type', Integer)
-
-    # enum Type {
+class AtpKind(IntEnum):
     FUNCTION_CALL = 0
     POINTER_READ = 1
     POINTER_WRITE = 2
@@ -453,7 +486,26 @@ class AttackPoint(Base):
     PRINTF_LEAK = 4
     MALLOC_OFF_BY_ONE = 5
 
-    # } type;
+    def __str__(self):
+        return f"ATP_{self.name}"
+
+class AttackPoint(Base):
+    __tablename__ = 'attackpoint'
+
+    id: int = Column(BigInteger, primary_key=True)
+
+    # --- 1. Define the ACTUAL Database Columns ---
+    # These hold the raw data. We prefix them with "loc_" to namespace them.
+    _f: Mapped[str] = mapped_column("loc_filename", Text)
+    _bl: Mapped[int] = mapped_column("loc_begin_line", Integer, nullable=False)
+    _bc: Mapped[int] = mapped_column("loc_begin_col", Integer, nullable=False)
+    _el: Mapped[int] = mapped_column("loc_end_line", Integer, nullable=False)
+    _ec: Mapped[int] = mapped_column("loc_end_col", Integer, nullable=False)
+
+    # --- 2. Define the Composite Bridge ---
+    # This maps the 5 columns above into your ASTLoc class.
+    loc: Mapped[ASTLoc] = composite(create_ast_loc, _f, _bl, _bc, _el, _ec)
+    typ: Mapped[AtpKind] = mapped_column("type", Integer, nullable=False)
 
     def __str__(self):
         type_strs = [
@@ -467,3 +519,13 @@ class AttackPoint(Base):
         return 'ATP[{}](loc={}:{}, type={})'.format(
             self.id, self.loc.filename, self.loc.begin.line, type_strs[self.typ]
         )
+
+    #  Enforce Uniqueness at the Database Level
+    # This is critical once we start passing lots of files via concolic execution, expect lots of duplicates.
+    __table_args__ = (
+        UniqueConstraint(
+            'loc_filename', 'loc_begin_line', 'loc_begin_col',
+            'loc_end_line', 'loc_end_col', 'type',
+            name='_atp_unique_constraint'
+        ),
+    )

@@ -28,7 +28,8 @@ dependencies = [
     "PyYAML",
     "SQLAlchemy",
     "tabulate",
-    "psycopg2-binary"
+    "psycopg2-binary",
+    "ijson"
 ]
 license = "GPL-2.0-only"
 classifiers = [
