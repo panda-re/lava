@@ -3,24 +3,27 @@ import json
 import os
 import random
 
-
 from scripts.database_types import AttackPoint, Bug, \
     ASTLoc, DuaBytes, SourceLval, LabelSet, Dua, Range, LavaDatabase, BugParam
 from scripts.vars import parse_vars
 from sqlalchemy.exc import IntegrityError
+from typing import Iterable, TypeVar, DefaultDict
+from collections import defaultdict
+
+T = TypeVar("T")
 
 # Map from source lval ID to most recent DUA incarnation.
-recent_dead_duas = {}
+recent_dead_duas: dict[int, Dua] = {}
 
 # These map pointer values in the PANDA taint run to the sets they refer to.
-ptr_to_labelset = {}
+ptr_to_labelset: dict[int, LabelSet] = {}
 
 # Map from label to duas that are tainted by that label.
 # So when we update liveness, we know what duas might be invalidated.
-dua_dependencies = {}
+dua_dependencies: dict[int, Dua] = {}
 
 # Liveness for each input byte.
-liveness = []
+liveness: DefaultDict[int, int] = defaultdict(int)
 
 CBNO_TCN_BIT = 0
 CBNO_CRD_BIT = 1
@@ -34,46 +37,73 @@ FAKE_DUA_BYTE_FLAG = 777
 
 # List of recent duas sorted by dua->instr. Invariant should hold that:
 # set(recent_dead_duas.values()) == set(recent_duas_by_instr).
-recent_duas_by_instr = []
+recent_duas_by_instr: list[Dua] = []
 
 num_real_duas, num_fake_duas = 0, 0
 
 num_bugs_of_type = { Bug.type : 0 }
 
-
-def merge_into(source_elements, dest_list):
-   """
-    Performs a sorted set union of two lists and stores the unique, sorted result
-    in `dest_list` in-place. Works for lists of custom objects that implement
-    __eq__, __hash__, and __lt__.
-    Assumptions:
-    - Both `source_elements` and the original `dest_list` are already sorted.
-    - Elements are hashable (required for set conversion).
-
-    :param source_elements: A list of elements (corresponds to `InputIt first, InputIt last`).
-                            It will be treated as a sorted sequence.
-    :param dest_list: The destination list. Its current contents will be used
-                      as one of the inputs for the union, and it will be
-                      modified in-place to store the sorted unique result.
+def disjoint(iter1: Iterable[T], iter2: Iterable[T]) -> bool:
     """
-    original_dest_contents = dest_list[:]
+    Return True if the two sorted iterables have no element in common.
+    Both iterables must be sorted in ascending order.
+    """
+    it1 = iter(iter1)
+    it2 = iter(iter2)
 
-    # 2. Combine all elements from both the source and the original destination.
-    combined_elements = original_dest_contents + source_elements
+    try:
+        a = next(it1)
+    except StopIteration:
+        return True
+    try:
+        b = next(it2)
+    except StopIteration:
+        return True
 
-    # 3. Use a set to automatically handle uniqueness.
-    unique_elements = set(combined_elements)
+    while True:
+        if a < b:
+            try:
+                a = next(it1)
+            except StopIteration:
+                return True
+        elif b < a:
+            try:
+                b = next(it2)
+            except StopIteration:
+                return True
+        else:
+            # a == b -> not disjoint
+            return False
 
-    # 4. Sort the unique elements to maintain order.
-    sorted_unique_elements = sorted(list(unique_elements))
 
-    # 5. Clear the destination list and extend it with the new sorted unique elements.
-    #    This modifies dest_list in-place, mirroring the C++ `dest` reference.
-    dest_list.clear()
-    dest_list.extend(sorted_unique_elements)
+def disjoint_dua(db1: DuaBytes, db2: DuaBytes) -> bool:
+    """
+    Expect objects with an `all_labels` attribute (an iterable of sorted labels).
+    Mirrors the C++ overload that uses `db->all_labels`.
+    """
+    return disjoint(getattr(db1, "all_labels"), getattr(db2, "all_labels"))
 
 
-def record_injectable_bugs_at(bug_type, atp, is_new_atp, db: LavaDatabase, extra_duas_prechosen):
+def count_nonzero(arr: Iterable[int]) -> int:
+    """
+    Return number of elements in `arr` that are not zero.
+    """
+    return sum(1 for t in arr if t != 0)
+
+
+def merge_into(source_elements: list, dest_list: list):
+    """
+    Performs a set union of dest_list and source_elements, ensuring the result
+    is sorted and unique, updating dest_list in-place.
+    """
+    # 1. set(dest_list) creates a set from the current list
+    # 2. .union(source_elements) adds the new items, handling deduping
+    # 3. sorted() turns it back into a sorted list
+    # 4. dest_list[:] = ... replaces the contents in-place (no new object created)
+    dest_list[:] = sorted(set(dest_list).union(source_elements))
+
+
+def record_injectable_bugs_at(bug_type: int, atp: AttackPoint, is_new_atp, db: LavaDatabase, extra_duas_prechosen: list):
     """
     Record injectable bugs at a given attack point (atp) of a given type (bug_type).
     """
@@ -161,7 +191,7 @@ def record_injectable_bugs_at(bug_type, atp, is_new_atp, db: LavaDatabase, extra
             num_potential_bugs += 1
 
 
-def attack_point_lval_usage(ple, db: LavaDatabase, ind2str: dict):
+def attack_point_lval_usage(ple: dict, db: LavaDatabase, ind2str: dict):
     panda_log_entry_attack_point = ple["attackPoint"]
     ast_id = None
 
@@ -190,14 +220,14 @@ def attack_point_lval_usage(ple, db: LavaDatabase, ind2str: dict):
     # Don't decimate PTR_ADD bugs.
     attack_point_type = int(panda_log_entry_attack_point["info"], 0)
     if attack_point_type == AttackPoint.POINTER_WRITE:
-        record_injectable_bugs_at(Bug.REL_WRITE, atp, is_new_atp, [])
+        record_injectable_bugs_at(Bug.REL_WRITE, atp, is_new_atp, db, [])
         # fall through
     if attack_point_type in [AttackPoint.POINTER_READ]:
-        record_injectable_bugs_at(Bug.PTR_ADD, atp, is_new_atp, [])
+        record_injectable_bugs_at(Bug.PTR_ADD, atp, is_new_atp, db, [])
     elif attack_point_type == AttackPoint.PRINTF_LEAK:
-        record_injectable_bugs_at(Bug.PRINTF_LEAK, atp, is_new_atp, [])
+        record_injectable_bugs_at(Bug.PRINTF_LEAK, atp, is_new_atp, db, [])
     elif attack_point_type == AttackPoint.MALLOC_OFF_BY_ONE:
-        record_injectable_bugs_at(Bug.MALLOC_OFF_BY_ONE, atp, is_new_atp, [])
+        record_injectable_bugs_at(Bug.MALLOC_OFF_BY_ONE, atp, is_new_atp, db, [])
     db.session.commit()
 
 
@@ -243,7 +273,7 @@ def taint_query_pri(ple: dict, db: LavaDatabase, ind2str: list, inputfile: str):
                 if offset >= length:
                     continue
                 print(f"considering offset = {offset}\n")
-                ls = ptr_to_labelset[tq["ptr"]]
+                ls = ptr_to_labelset[int(tq["ptr"])]
                 byte_tcn[offset] = tq.tcn
 
                 current_byte_not_ok = 0
@@ -347,12 +377,12 @@ def taint_query_pri(ple: dict, db: LavaDatabase, ind2str: list, inputfile: str):
             print(f"discarded {num_viable_bytes} viable bytes {len(all_labels)} labels {si.filename}:{si.linenum} {si.astnodename}")
 
 
-def get_or_create(db: LavaDatabase, model, defaults: dict=None, **kwargs):
+def get_or_create(project: dict, model, defaults: dict=None, **kwargs):
     """
     Retrieves an object from the database, or creates it if it does not exist.
     This function mimics the C++ `create_full` behavior.
 
-    :param db: The SQLAlchemy session.
+    :param project: The dictionary storing arguments used to make LavaDatabase connections.
     :param model: The SQLAlchemy model class (e.g., SourceLval, AttackPoint).
     :param defaults: A dictionary of default values to set on the object
                      if it needs to be created. These are not used for querying.
@@ -364,74 +394,115 @@ def get_or_create(db: LavaDatabase, model, defaults: dict=None, **kwargs):
     :return: A tuple (instance, created_boolean).
              instance: The existing or newly created object.
              created_boolean: True if the object was created, False if it existed.
+
     """
-    instance = db.session.query(model).filter_by(**kwargs).first()
-    if instance:
-        return instance, False
-    else:
-        # If not found, prepare data for creation
-        # Merge kwargs (for unique identification) and defaults (for other attributes)
-        params = {**kwargs, **(defaults or {})}
-        instance = model(**params)
-        db.session.add(instance)
-        try:
-            db.session.commit()
-            return instance, True
-        except IntegrityError:
-            db.session.rollback()
-            # Race condition: Another process/thread created it
-            # between our query and our commit. Try to fetch again.
-            instance = db.session.query(model).filter_by(**kwargs).first()
-            if instance:
-                return instance, False
-            else:
-                # This should ideally not happen if kwargs are truly unique constraints.
-                # Re-raise or handle as a critical error.
-                raise
+    with LavaDatabase(project) as db:
+        instance = db.session.query(model).filter_by(**kwargs).first()
+        if instance:
+            return instance, False
+        else:
+            # If not found, prepare data for creation
+            # Merge kwargs (for unique identification) and defaults (for other attributes)
+            params = {**kwargs, **(defaults or {})}
+            instance = model(**params)
+            db.session.add(instance)
+            try:
+                db.session.commit()
+                return instance, True
+            except IntegrityError:
+                db.session.rollback()
+                # Race condition: Another process/thread created it
+                # between our query and our commit. Try to fetch again.
+                instance = db.session.query(model).filter_by(**kwargs).first()
+                if instance:
+                    return instance, False
+                else:
+                    # This should ideally not happen if kwargs are truly unique constraints.
+                    # Re-raise or handle as a critical error.
+                    raise
 
 
-def update_unique_taint_sets(tquls, db: LavaDatabase, inputfile: str):
-    pointer = tquls["ptr"]
-    # Find the first key >= p
-    keys = sorted(ptr_to_labelset.keys())
-    idx = 0
-    while idx < len(keys) and keys[idx] < pointer:
-        idx += 1
-    found = idx < len(keys) and keys[idx] == pointer
+def update_unique_taint_sets(unique_label_set: dict, project: dict, inputfile: str):
+    """
+    Update the global mapping of unique taint sets based on the provided unique_label_set from PANDA Log.
+    Args:
+        unique_label_set: the Panda Log unique label set
+        project: The input arguments and host.json input
+        inputfile: the input file_name that caused the bug
+    """
+    pointer = int(unique_label_set["ptr"])
 
-    if not found:
-        labels = list(tquls.label[:tquls.n_label])
-        ls, _ = get_or_create(db, LabelSet(0, pointer, inputfile, labels))
-        ptr_to_labelset[pointer] = ls
+    # The Lookup Logic (Major Fix)
+    # C++ was checking if the pointer existed.
+    # Python dicts are Hash Maps. Lookups are O(1).
+    if pointer not in ptr_to_labelset:
+        # Ensure labels are integers (C++ did a conversion)
+        labels = [int(x) for x in unique_label_set["label"]]
 
-        max_label = max(labels)
-        if len(liveness) <= max_label:
-            liveness.extend([0] * (max_label + 1 - len(liveness)))
-    print(f"{len(ptr_to_labelset)} unique taint sets\n")
+        # 3. Create and Insert
+        # C++: create(LabelSet{0, p, inputfile, vec});
+        # Assuming get_or_create logic handles the object creation/deduplication
+        label_set, _ = get_or_create(project, LabelSet(0, pointer, inputfile, labels))
+        ptr_to_labelset[pointer] = label_set
+
+    # Note: len() on a dict is O(1) in Python, unlike some C++ containers.
+    if project['debug']:
+        print(f"{len(ptr_to_labelset)} unique taint sets")
 
 
-def update_liveness(ple, db: LavaDatabase, inputfile: str):
-    assert ple is not None
-    tb = ple["taintedBranch"]
-    assert tb is not None
+def update_liveness(panda_log_entry: dict, project: dict, inputfile: str):
+    """
+    Processes a 'taintedBranch' entry from PANDA logs to update global liveness state
+    and prune non-viable Def-Use Associations (DUAs).
+
+    This function performs three main steps:
+    1.  **Label Aggregation:** Iterates through all taint queries in the branch entry,
+        updates the global `ptr_to_labelset` map via `update_unique_taint_sets`,
+        and merges all discovered labels into a single sorted list (`all_labels`).
+    2.  **Liveness Updates:** Increments the liveness count for every label found.
+        It identifies potential candidate DUAs to check by looking up dependencies
+        (`dua_dependencies`) associated with these labels.
+    3.  **Viability Check:** Verifies if the candidate DUAs are still "dead" (viable for injection).
+        If a DUA is found to be alive (i.e., `!is_dua_dead`), it is marked non-viable
+        and removed from `recent_dead_duas`, `recent_duas_by_instr`, and the
+        dependency tracking maps.
+
+    Args:
+        panda_log_entry (dict): The parsed JSON entry containing a "taintedBranch" object.
+        project (dict): Configuration dictionary containing project settings and database connections.
+        inputfile (str): The name of the file currently being processed (used for tracking LabelSets).
+
+    Side Effects:
+        - Modifies global `liveness` (increments counts).
+        - Modifies global `recent_dead_duas` and `recent_duas_by_instr` (removes items).
+        - Modifies global `dua_dependencies` (removes items).
+        - Updates the database (via `update_unique_taint_sets`).
+    """
+    assert panda_log_entry is not None
+    tainted_branch = panda_log_entry["taintedBranch"]
+    assert tainted_branch is not None
     print("TAINTED BRANCH\n")
 
-    with db.session.transaction():
-        all_labels = []
-        for tq in tb["taintQuery"]:
-            assert tq
-            if tq["uniqueLabelSet"]:
-                update_unique_taint_sets(tq["uniqueLabelSet"], db, inputfile)
-            cur_labels = ptr_to_labelset[tq["ptr"]].labels
-            merge_into(cur_labels, all_labels)
+    all_labels = []
+    for taint_query in tainted_branch["taintQuery"]:
+        assert taint_query
+        if taint_query["uniqueLabelSet"]:
+            # This will be updating the database with new LabelSets as needed
+            update_unique_taint_sets(taint_query["uniqueLabelSet"], project, inputfile)
+        pointer = int(taint_query["ptr"])
+        cur_labels = ptr_to_labelset[pointer].labels
+        merge_into(cur_labels, all_labels)
 
     duas_to_check = []
-    for l in all_labels:
-        liveness[l] += 1
+    for label in all_labels:
+        liveness[label] += 1
         print(f"checking viability of {len(recent_dead_duas)} duas\n")
-        depends = dua_dependencies.get(l)
+        depends = dua_dependencies.get(label)
         if depends:
-            merge_into(depends, duas_to_check)
+            if isinstance(depends, list):
+                merge_into(depends, duas_to_check)
+            else:
+                merge_into([depends], duas_to_check)
 
     non_viable_duas = []
     for dua in duas_to_check:
@@ -445,9 +516,9 @@ def update_liveness(ple, db: LavaDatabase, inputfile: str):
 
     print(f"{len(non_viable_duas)} non-viable duas \n")
     for dua in non_viable_duas:
-        for l in dua.all_labels:
-            if l in dua_dependencies:
-                dua_dependencies.pop(l)
+        for label in dua.all_labels:
+            if label in dua_dependencies:
+                dua_dependencies.pop(label, None)
 
 
 def is_dua_dead(dua: Dua) -> bool:
@@ -470,31 +541,31 @@ def get_dua_dead_range(dua: Dua, to_avoid):
 
 # get first 4-or-larger dead range. to_avoid is a sorted vector of labels that
 # can't be used
-def get_dead_range(viable_bytes, to_avoid):
+def get_dead_range(viable_bytes: LabelSet, to_avoid):
     current_run = Range(0, 0)
     # NB: we have already checked dua for viability wrt tcn & card at induction
     # these do not need re-checking as they are to be captured at dua siphon point
-    for (uint32_t i = 0; i < viable_bytes.size(); i++):
+    for i in range(len(viable_bytes.labels)):
         byte_viable = True
         ls = viable_bytes[i]
         if ls:
-            if !disjoint(ls.labels, to_avoid):
-                byte_viable = False;
+            if not disjoint(ls.labels, to_avoid):
+                byte_viable = False
             else:
-                for (l : ls.labels):
-                    if liveness[l] > max_liveness):
-                        dprintf("byte offset is nonviable b/c label %d has liveness %lu\n", l, liveness[l]);
-                        byte_viable = false;
+                for label in ls.labels:
+                    if liveness[label] > max_liveness:
+                        print("byte offset is nonviable b/c label %d has liveness %lu\n", label, liveness[label])
+                        byte_viable = False
                         break
-            if (byte_viable):
-                if (current_run.empty()):
-                    current_run = Range{i, i + 1};
+            if byte_viable:
+                if current_run.empty():
+                    current_run = Range(i, i + 1)
                 else:
-                    current_run.high++
-                    if (current_run.size() >= LAVA_MAGIC_VALUE_SIZE):
+                    current_run.high += 1
+                    if current_run.size() >= LAVA_MAGIC_VALUE_SIZE:
                         break
                 continue
-       current_run = Range(0, 0)
+        current_run = Range(0, 0)
     if current_run.size() < LAVA_MAGIC_VALUE_SIZE:
         return Range(0, 0)
     return current_run
@@ -630,33 +701,24 @@ def main():
     # Throw exception if we can't process any required argument
     if not isinstance(project["max_liveness"], int):
         raise RuntimeError("Could not parse max_liveness")
-    max_liveness = project["max_liveness"]
-    print(f"maximum liveness score of {max_liveness}")
 
     if "max_cardinality" not in project:
         print("max_cardinality not set, using default 100")
         project["max_cardinality"] = 100
     if not isinstance(project["max_cardinality"], int):
         raise RuntimeError("Could not parse max_cardinality")
-    max_card = project["max_cardinality"]
-    print(f"max card of taint set returned by query = {max_card}")
 
     if "max_tcn" not in project:
         print("max_tcn not set, using default 100")
         project["max_tcn"] = 100
     if not isinstance(project["max_tcn"], int):
         raise RuntimeError("Could not parse max_tcn")
-    max_tcn = project["max_tcn"]
-    print(f"max tcn for addr = {max_tcn}")
 
     if "max_lval_size" not in project:
         print("max_lval_size not set, using default 100")
         project["max_lval_size"] = 100
     if not isinstance(project["max_lval_size"], int):
         raise RuntimeError("Could not parse max_lval_size")
-    global max_lval
-    max_lval = project["max_lval_size"]
-    print(f"max lval size = {max_lval}")
 
     if curtail == 0:  # Will be 0 unless specified on command line
         if not isinstance(project.get("curtail_fbi", 0), int):
@@ -681,8 +743,6 @@ def main():
         print("POSTGRES_USER is not set")
         sys.exit(1)
 
-    db = LavaDatabase(project)
-
     # re-read pandalog, this time focusing on taint queries. Look for
     # dead available data, attack points, and thus bug injection opportunities
     with open(panda_log, 'r') as plog_file:
@@ -697,11 +757,11 @@ def main():
             print(f"{num_bugs_added_to_db} added to db {len(recent_dead_duas)} current duas {num_real_duas} real duas {num_fake_duas} fake duas")
 
         if "taintQueryPri" in ple:
-            taint_query_pri(ple, db, ind2str, inputfile)
+            taint_query_pri(ple, project, ind2str, inputfile)
         elif "taintedBranch" in ple:
-            update_liveness(ple, db)
+            update_liveness(ple, project, inputfile)
         elif "attackPoint" in ple:
-            attack_point_lval_usage(ple, db, ind2str, inputfile)
+            attack_point_lval_usage(ple, project, ind2str, inputfile)
         elif "dwarfCall" in ple:
             record_call(ple)
         elif "dwarfRet" in ple:

@@ -1,3 +1,5 @@
+from typing import List
+
 from sqlalchemy.types import TypeEngine
 from sqlalchemy import Column, ForeignKey, Table, create_engine
 from sqlalchemy.dialects import postgresql
@@ -7,6 +9,7 @@ from sqlalchemy.sql.expression import func
 from sqlalchemy.types import BigInteger, Boolean, Float, Integer, Text
 import random
 from dataclasses import dataclass
+from sqlalchemy.engine.url import URL
 
 Base = declarative_base()
 
@@ -30,16 +33,28 @@ build_bugs = \
 class LavaDatabase(object):
     def __init__(self, project):
         self.project = project
-        self.engine = create_engine(
-            "postgresql+psycopg2://{}@{}:{}/{}".format(
-                project['database_user'],
-                project['database'],
-                project['database_port'],
-                project['db']
-            )
+        db_url = URL.create(
+            drivername="postgresql+psycopg2",
+            username=project['database_user'],
+            password=project.get('database_password'),  # Assuming you have a password
+            host=project['database'],  # Assuming this maps to host
+            port=project['database_port'],
+            database=project['db']
         )
+        self.engine = create_engine(db_url)
         self.Session = sessionmaker(bind=self.engine)
         self.session = self.Session()
+
+    def close(self):
+        """Closes the session and releases the connection to the pool."""
+        if self.session:
+            self.session.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     # If we have over a million bugs, don't bother counting things
     def huge(self):
@@ -168,7 +183,6 @@ class LavaDatabase(object):
         return self.uninjected2(fake)[random.randrange(0, count)]
 
 class Bug(Base):
-    num_extra_duas = None
     __tablename__ = 'bug'
 
     # enum Type {
@@ -200,6 +214,14 @@ class Bug(Base):
 
     builds = relationship("Build", secondary=build_bugs,
                           back_populates="bugs")
+
+    required_extra_duas_for_type = {
+        'PTR_ADD' : 0,
+        'RET_BUFFER' : 1,
+        'REL_WRITE' : 2,
+        'PRINTF_LEAK' : 0,
+        'MALLOC_OFF_BY_ONE' : 0
+    }
 
     def __str__(self):
         return 'Bug[{}](type={}, trigger={}, atp={})'.format(
@@ -332,6 +354,7 @@ class ASTLoc(Composite):
             end=Loc(end_line, end_col)
         )
 
+@dataclass(frozen=True)
 class BugParam(Composite):
     atp_id: int = BigInteger
     type: int = Integer
@@ -347,7 +370,10 @@ class Range(Composite):
     high: int = Integer
 
     def size(self) -> int:
-        return int(self.high) - int(self.low)
+        return self.high - self.low
+
+    def empty(self) -> bool:
+        return self.high <= self.low
 
 class SourceLval(Base):
     __tablename__ = 'sourcelval'
@@ -365,18 +391,17 @@ class SourceLval(Base):
 class LabelSet(Base):
     __tablename__ = 'labelset'
 
-    id = Column(BigInteger, primary_key=True)
-    ptr = Column(BigInteger)
-    inputfile = Column(Text)
-    labels = Column(postgresql.ARRAY(Integer))
+    id : int = Column(BigInteger, primary_key=True)
+    ptr : int = Column(BigInteger)
+    inputfile : str = Column(Text)
+    labels : List[int] = Column(postgresql.ARRAY(Integer))
 
     def __repr__(self):
         return str(self.labels)
 
 class Dua(Base):
     __tablename__ = 'dua'
-
-    id = Column(BigInteger, primary_key=True)
+    id: int = Column(BigInteger, primary_key=True)
     lval_id = Column('lval', BigInteger, ForeignKey('sourcelval.id'))
     all_labels = Column(postgresql.ARRAY(Integer))
     inputfile = Column(Text)
