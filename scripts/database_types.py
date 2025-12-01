@@ -412,11 +412,9 @@ class Range(Composite):
     low: int = Integer
     high: int = Integer
 
-    @property
     def size(self) -> int:
         return self.high - self.low
 
-    @property
     def empty(self) -> bool:
         return self.high <= self.low
 
@@ -443,11 +441,11 @@ class SourceLval(Base):
     loc: Mapped[ASTLoc] = composite(create_ast_loc, _f, _bl, _bc, _el, _ec)
 
     # 4. Other Columns
-    ast_node_name: Mapped[str] = mapped_column(Text, nullable=False)
+    ast_name: Mapped[str] = mapped_column(Text, nullable=False)
     len: Mapped[int] = mapped_column(Integer, nullable=False)
 
     def __str__(self):
-        return f"LVAL[{self.id}](loc={self.loc}, node={self.ast_node_name}, len={self.len})"
+        return f"LVAL[{self.id}](loc={self.loc}, node={self.ast_name}, len={self.len})"
 
     def __repr__(self):
         return self.__str__()
@@ -464,30 +462,59 @@ class LabelSet(Base):
     def __repr__(self):
         return str(self.labels)
 
+
 class Dua(Base):
     __tablename__ = 'dua'
-    id: int = Column(BigInteger, primary_key=True)
-    lval_id = Column('lval', BigInteger, ForeignKey('sourcelval.id'))
-    all_labels = Column(postgresql.ARRAY(Integer))
-    inputfile = Column(Text)
-    max_tcn = Column(Integer)
+
+    # 1. Primary Key
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+
+    # 2. Foreign Key (Column name is 'lval' to match C++ ODB default)
+    lval_id: Mapped[int] = mapped_column('lval', BigInteger, ForeignKey('sourcelval.id'))
+
+    # 3. Vectors / Arrays
+    # Note: 'secondary' requires the association table 'dua_viable_bytes' to be defined!
+    viable_bytes: Mapped[List["LabelSet"]] = relationship("LabelSet", secondary="dua_viable_bytes")
+
+    # The missing column from C++ std::vector<uint32_t> byte_tcn
     byte_tcn: Mapped[List[int]] = mapped_column(postgresql.ARRAY(Integer))
-    max_cardinality = Column(Integer)
-    instr = Column(BigInteger)
-    fake_dua = Column(Boolean)
 
-    lval = relationship("SourceLval")
-    viable_bytes = relationship("LabelSet", secondary=dua_viable_bytes)
+    # C++ std::vector<uint32_t> all_labels
+    all_labels: Mapped[List[int]] = mapped_column(postgresql.ARRAY(Integer))
 
+    # 4. Standard Metadata
+    inputfile: Mapped[str] = mapped_column(Text)
+    max_tcn: Mapped[int] = mapped_column(Integer)
+    max_cardinality: Mapped[int] = mapped_column(Integer)
+    instr: Mapped[int] = mapped_column(BigInteger)
+    fake_dua: Mapped[bool] = mapped_column(Boolean)
+
+    # 5. Relationship Backref
+    lval: Mapped["SourceLval"] = relationship("SourceLval")
+
+    # 6. Unique Constraint (Matches #pragma db index("DuaUniq")...)
     __table_args__ = (
-        UniqueConstraint('lval', 'inputfile', 'instr', 'fake_dua', name='DuaUniq'),
+        UniqueConstraint(
+            'lval',  # Refers to the column name defined in lval_id
+            'inputfile',
+            'instr',
+            'fake_dua',
+            name='DuaUniq'
+        ),
     )
 
     def __str__(self):
-        return 'DUA[{}](lval={}, labels={}, viable={}, \
-                input={}, instr={}, fake_dua={})'.format(
-            self.id, self.lval, self.all_labels, self.viable_bytes,
-            self.inputfile, self.instr, self.fake_dua
+        # Mirrors the C++ operator<< logic fairly closely
+        return 'DUA[{}][{}, viable_len={}, labels={}, tcn_len={}, {}, {}, instr={}, {}]'.format(
+            self.inputfile,
+            self.lval,
+            len(self.viable_bytes) if self.viable_bytes else 0,
+            self.all_labels,
+            len(self.byte_tcn) if self.byte_tcn else 0,
+            self.max_tcn,
+            self.max_cardinality,
+            self.instr,
+            'fake' if self.fake_dua else 'real'
         )
 
 

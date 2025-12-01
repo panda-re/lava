@@ -87,11 +87,11 @@ def disjoint_dua(db1: DuaBytes, db2: DuaBytes) -> bool:
     return disjoint(getattr(db1, "all_labels"), getattr(db2, "all_labels"))
 
 
-def count_nonzero(arr: Iterable[int]) -> int:
+def count_nonzero(arr: Iterable[LabelSet]) -> int:
     """
     Return number of elements in `arr` that are not zero.
     """
-    return sum(1 for t in arr if t != 0)
+    return sum(1 for t in arr if t.labels != 0)
 
 
 def merge_into(source_elements: list, dest_list: list):
@@ -263,13 +263,14 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
             num_potential_bugs += 1
 
 
-def attack_point_lval_usage(ple: dict, session: Session, ind2str: list, project: dict):
+def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict, project: dict):
     """
     Process an attack point log entry from PANDA logs.
     Args:
         ple (dict): The AttackPoint PANDA Log Entry
         session (Session): The Database connection to input Attack Point data
         ind2str: a list mapping indices to strings from lavadb. This obtains the filename from a number.
+        project: a dict of input values
     """
     panda_log_entry_attack_point = ple["attackPoint"]
     ast_id = None
@@ -424,7 +425,7 @@ def decimate_by_type(bug_type: BugKind) -> bool:
 # dua_dependencies, recent_dead_duas, recent_duas_by_instr
 # num_real_duas, num_fake_duas, chaff_bugs, FAKE_DUA_BYTE_FLAG
 
-def taint_query_pri(ple: dict, session: Session, ind2str: list, inputfile: str, project: dict):
+def taint_query_pri(ple: dict, session: Session, ind2str: dict, inputfile: str, project: dict):
     """
     Process a Taint Query Priority entry to identify potential DUAs (Data Use Associations).
     """
@@ -456,7 +457,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: list, inputfile: str, 
     # Process new unique label sets from the log
     for tq in tqh["taintQuery"]:
         if "uniqueLabelSet" in tq:
-            update_unique_taint_sets(tq["uniqueLabelSet"], session, inputfile)
+            update_unique_taint_sets(tq["uniqueLabelSet"], inputfile)
 
     # 3. Viability Analysis (Real DUA)
     # Initialize arrays of size 'length'
@@ -489,7 +490,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: list, inputfile: str, 
             # Note: ls.labels is a list/array
             card_too_high = len(ls.labels) > project["max_card"]
 
-            if (tcn_too_high or card_too_high):
+            if tcn_too_high or card_too_high:
                 # print(f"discarding byte {offset}: tcn={tcn_too_high} card={card_too_high}")
                 pass
             else:
@@ -579,17 +580,14 @@ def taint_query_pri(ple: dict, session: Session, ind2str: list, inputfile: str, 
             session,
             Dua,
             lval=lval,
+            viable_bytes=viable_byte,
+            byte_tcn=byte_tcn,
+            all_labels=sorted_labels,
             inputfile=inputfile,
+            max_tcn=c_max_tcn,
+            max_cardinality=c_max_card,
             instr=instr_addr,
             fake_dua=is_fake_dua,
-            # Defaults for creation:
-            defaults={
-                "viable_bytes": [ls for ls in viable_byte if ls is not None],  # Relationship needs list of objects
-                "byte_tcn": byte_tcn,
-                "all_labels": sorted_labels,
-                "max_tcn": c_max_tcn,
-                "max_cardinality": c_max_card
-            }
         )
 
         # Track Dependencies
@@ -708,12 +706,11 @@ def get_or_create(session, model, defaults: dict=None, **kwargs):
                 raise
 
 
-def update_unique_taint_sets(unique_label_set: dict, session: Session, inputfile: str):
+def update_unique_taint_sets(unique_label_set: dict, inputfile: str):
     """
     Update the global mapping of unique taint sets based on the provided unique_label_set from PANDA Log.
     Args:
         unique_label_set (dict): the Panda Log unique label set
-        session (Session): The SQLAlchemy session for database operations.
         inputfile (str): the input file_name that caused the bug
     """
     pointer = int(unique_label_set["ptr"])
@@ -773,7 +770,7 @@ def update_liveness(panda_log_entry: dict, session: Session, inputfile: str, pro
         assert taint_query
         if taint_query["uniqueLabelSet"]:
             # This will be updating the database with new LabelSets as needed
-            update_unique_taint_sets(taint_query["uniqueLabelSet"], session, inputfile)
+            update_unique_taint_sets(taint_query["uniqueLabelSet"], inputfile)
         pointer = int(taint_query["ptr"])
         cur_labels = ptr_to_labelset[pointer].labels
         merge_into(cur_labels, all_labels)
@@ -885,62 +882,36 @@ def is_header_file(filename: str) -> bool:
     return filename[-2] == '.' and filename[-1] == 'h'
 
 
-def load_idb(file_name: str) -> list:
-    x = load_db(file_name)
-    return invert_db(x)
-
-
-def load_db(db_file: str) -> dict[str, int]:
-    """
-    Loads a database file containing alternating null-terminated integer and string pairs.
-    Args:
-        db_file (str): Path to the database file to load.
-    Returns:
-        dict: A dictionary mapping string keys to integer values.
-    """
+def load_db(db_file: str) -> dict[int, str]:
     string_ids = {}
-    with open(db_file, 'rb') as db:
-        buffer = b''
-        fields = []
-        while True:
-            chunk = db.read(4096)
-            if not chunk:
-                break
-            buffer += chunk
-            while b'\0' in buffer:
-                part, buffer = buffer.split(b'\0', 1)
-                fields.append(part)
-                if len(fields) == 2:
-                    istr = fields[0].decode('utf-8')
-                    str_key = fields[1].decode('utf-8')
-                    string_ids[str_key] = int(istr, 0)
-                    fields = []
-        # Handle any remaining fields (incomplete pair)
-        if len(fields) == 2:
-            istr = fields[0].decode('utf-8')
-            str_key = fields[1].decode('utf-8')
-            string_ids[str_key] = int(istr, 0)
+
+    with open(db_file, 'rb') as f:
+        raw_data = f.read()
+
+    # 2. Split by the null byte.
+    # This creates a list like: [b'3', b'toy.c:1925...', b'4', b'toy.c:1925...', b'']
+    parts = raw_data.split(b'\0')
+
+    # 3. Iterate in steps of 2 (Key, Value, Key, Value...)
+    # We stop at len(parts) - 1 to ignore any trailing empty byte at the end
+    for i in range(0, len(parts) - 1, 2):
+        try:
+            key_bytes = parts[i]
+            val_bytes = parts[i + 1]
+
+            # Decode and cast
+            # .strip() is crucial because your snippet showed newlines (\n) might exist
+            # between the previous value and the next ID.
+            index = int(key_bytes.decode('utf-8').strip())
+            value = val_bytes.decode('utf-8')
+
+            string_ids[index] = value
+
+        except ValueError:
+            # Handles cases where the file might have weird whitespace or incomplete endings
+            continue
+
     return string_ids
-
-
-def invert_db(n2ind: dict) -> list[str]:
-    """
-    Inverts a dict mapping strings to integers into a list where the index is the integer
-    and the value is the string.
-
-    Args:
-        n2ind (dict): Dictionary mapping strings to integers.
-
-    Returns:
-        list: List of strings, where each index corresponds to the integer value.
-    """
-    if not n2ind:
-        return []
-    max_index = max(n2ind.values())
-    ind2n = [None] * (max_index + 1)
-    for k, v in n2ind.items():
-        ind2n[v] = k
-    return ind2n
 
 
 def parse_panda_log(panda_log_file: str, project_data: dict, program_name: str):
@@ -949,9 +920,8 @@ def parse_panda_log(panda_log_file: str, project_data: dict, program_name: str):
     """
     # maps from ind -> (filename, lvalname, attackpointname)
     root_directory = project_data["output_dir"]
-    directory = f"{root_directory}/{program_name}"
-    lavadb = f"{directory}/lavadb"
-    lava_db = load_idb(lavadb)
+    lavadb = f"{root_directory}/lavadb"
+    lava_db = load_db(lavadb)
     print(f"{len(lava_db)} strings in lavadb")
 
     pgpass = os.getenv("POSTGRES_USER")
@@ -1013,6 +983,7 @@ if __name__ == "__main__":
     host_json = sys.argv[1]
     project_name = sys.argv[2]
     panda_log = sys.argv[3]
+    inputfile = sys.argv[4]
 
     # host_json reads overall config from host.json, project_name finds configs for specific project
     project = parse_vars(host_json, project_name)
@@ -1044,10 +1015,8 @@ if __name__ == "__main__":
         raise RuntimeError("Could not parse max_lval_size")
 
     if curtail == 0:  # Will be 0 unless specified on command line
-        if not isinstance(project.get("curtail_fbi", 0), int):
+        if not isinstance(project.get("curtail", 0), int):
             project["curtail"] = 0
     print(f"Curtail is {project['curtail']}")
-
-    inputfile = sys.argv[4]
 
     parse_panda_log(panda_log, project, project_name)
