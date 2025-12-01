@@ -1,9 +1,9 @@
 import sys
 import ijson
 import os
-from scripts.database_types import AttackPoint, Bug, \
+from database_types import AttackPoint, Bug, \
     ASTLoc, DuaBytes, SourceLval, LabelSet, Dua, Range, LavaDatabase, AtpKind, BugKind
-from scripts.vars import parse_vars
+from vars import parse_vars
 from sqlalchemy.exc import IntegrityError
 from typing import Iterable, TypeVar, DefaultDict, Set
 from collections import defaultdict
@@ -943,41 +943,79 @@ def invert_db(n2ind: dict) -> list[str]:
     return ind2n
 
 
-def main():
+def parse_panda_log(panda_log_file: str, project_data: dict, program_name: str):
     """
     Main function for Find Bug Inject (FBI) tool.
     """
-    if len(sys.argv) != 5 and len(sys.argv) != 6:
-        print(f"Find Bug Inject (FBI)")
-        print("usage: fbi host.json ProjectName pandalog inputfile [curtail count]")
-        print("    Project JSON file may specify properties:")
-        print("        max_liveness: Maximum liveness for DUAs")
-        print("        max_cardinality: Maximum cardinality for label sets on DUAs")
-        print("        max_tcn: Maximum taint compute number for DUAs")
-        print("        max_lval_size: Maximum bytewise size for")
-        print("    pandalog: Pandalog. Should be like queries-file-5.22-bash.iso.plog")
-        print("    inputfile: Input file basename, like malware.pcap")
+    # maps from ind -> (filename, lvalname, attackpointname)
+    root_directory = project_data["output_dir"]
+    directory = f"{root_directory}/{program_name}"
+    lavadb = f"{directory}/lavadb"
+    lava_db = load_idb(lavadb)
+    print(f"{len(lava_db)} strings in lavadb")
+
+    pgpass = os.getenv("POSTGRES_USER")
+    pguser = os.getenv("POSTGRES_PASSWORD")
+    if pgpass:
+        print("POSTGRES_PASSWORD IS SET")
+    else:
+        print("POSTGRES_PASSWORD is not set")
         sys.exit(1)
 
-    curtail = int(sys.argv[5]) if len(sys.argv) == 6 else 0
+    if pguser:
+        print(f"POSTGRES_USER IS SET: {pguser}")
+    else:
+        print("POSTGRES_USER is not set")
+        sys.exit(1)
+
+    num_entries_read = 0
 
     # We want decimation to be deterministic, so srand with magic value.
     random.seed(0x6c617661)
+
+    with open(panda_log_file, 'r') as plog_file:
+        # 'item' iterates over elements in the root array
+        parser = ijson.items(plog_file, 'item')
+
+        with LavaDatabase(project_data) as db:
+            for ple in parser:
+                num_entries_read += 1
+                if num_entries_read % 10000 == 0:
+                    print(f"processed {num_entries_read} pandalog entries")
+                    print(f"{num_bugs_added_to_db} added to db {len(recent_dead_duas)} current duas {num_real_duas} real duas {num_fake_duas} fake duas")
+
+                if "taintQueryPri" in ple:
+                    taint_query_pri(ple, db.session, lava_db, inputfile, project_data)
+                elif "taintedBranch" in ple:
+                    update_liveness(ple, db.session, inputfile, project_data)
+                elif "attackPoint" in ple:
+                    attack_point_lval_usage(ple, db.session, lava_db, project_data)
+                elif "dwarfCall" in ple:
+                    record_call(ple)
+                elif "dwarfRet" in ple:
+                    record_ret(ple)
+
+                if 0 < curtail < num_real_duas:
+                    print(f"*** Curtailing output of fbi at {num_real_duas}")
+                    break
+
+    print(f"{num_bugs_added_to_db} added to db")
+    print(f"{num_potential_bugs} potential bugs")
+    print(f"{num_potential_nonbugs} potential non bugs")
+
+    if num_potential_bugs == 0:
+        print("No bugs found", file=sys.stderr)
+        raise RuntimeError("No bugs found by FBI")
+
+
+if __name__ == "__main__":
+    curtail = int(sys.argv[5]) if len(sys.argv) == 6 else 0
     host_json = sys.argv[1]
     project_name = sys.argv[2]
     panda_log = sys.argv[3]
 
     # host_json reads overall config from host.json, project_name finds configs for specific project
     project = parse_vars(host_json, project_name)
-
-    root_directory = project["output_dir"]
-    directory = f"{root_directory}/{project_name}"
-
-    lavadb = f"{directory}/lavadb"
-
-    # maps from ind -> (filename, lvalname, attackpointname)
-    ind2str = load_idb(lavadb)
-    print(f"{len(ind2str)} strings in lavadb")
 
     if "max_liveness" not in project:
         print("max_liveness not set, using default 100000")
@@ -1007,62 +1045,9 @@ def main():
 
     if curtail == 0:  # Will be 0 unless specified on command line
         if not isinstance(project.get("curtail_fbi", 0), int):
-            curtail = 0
-        else:
-            curtail = project.get("curtail_fbi", 0)
-    print(f"Curtail is {curtail}")
+            project["curtail"] = 0
+    print(f"Curtail is {project['curtail']}")
 
     inputfile = sys.argv[4]
 
-    pgpass = os.getenv("POSTGRES_USER")
-    pguser = os.getenv("POSTGRES_PASSWORD")
-    if pgpass:
-        print("POSTGRES_PASSWORD IS SET")
-    else:
-        print("POSTGRES_PASSWORD is not set")
-        sys.exit(1)
-
-    if pguser:
-        print(f"POSTGRES_USER IS SET: {pguser}")
-    else:
-        print("POSTGRES_USER is not set")
-        sys.exit(1)
-
-    num_entries_read = 0
-
-    with open(panda_log, 'r') as plog_file:
-        # 'item' iterates over elements in the root array
-        parser = ijson.items(plog_file, 'item')
-
-        with LavaDatabase(project) as db:
-            for ple in parser:
-                num_entries_read += 1
-                if num_entries_read % 10000 == 0:
-                    print(f"processed {num_entries_read} pandalog entries")
-                    print(f"{num_bugs_added_to_db} added to db {len(recent_dead_duas)} current duas {num_real_duas} real duas {num_fake_duas} fake duas")
-
-                if "taintQueryPri" in ple:
-                    taint_query_pri(ple, db.session, ind2str, inputfile, project)
-                elif "taintedBranch" in ple:
-                    update_liveness(ple, db.session, inputfile, project)
-                elif "attackPoint" in ple:
-                    attack_point_lval_usage(ple, db.session, ind2str, project)
-                elif "dwarfCall" in ple:
-                    record_call(ple)
-                elif "dwarfRet" in ple:
-                    record_ret(ple)
-
-                if 0 < curtail < num_real_duas:
-                    print(f"*** Curtailing output of fbi at {num_real_duas}")
-                    break
-
-    print(f"{num_bugs_added_to_db} added to db")
-    print(f"{num_potential_bugs} potential bugs")
-    print(f"{num_potential_nonbugs} potential non bugs")
-
-    if num_potential_bugs == 0:
-        print("No bugs found", file=sys.stderr)
-        raise RuntimeError("No bugs found by FBI")
-
-if __name__ == "__main__":
-    main()
+    parse_panda_log(panda_log, project, project_name)

@@ -17,6 +17,12 @@ from enum import IntEnum
 
 Base = declarative_base()
 
+def create_range(l, h):
+    return Range(l, h)
+
+def create_ast_loc(f, bl, bc, el, ec):
+    return ASTLoc(f, Loc(bl, bc), Loc(el, ec))
+
 dua_viable_bytes = \
     Table('dua_viable_bytes', Base.metadata,
           Column('object_id', BigInteger, ForeignKey('dua.id')),
@@ -406,23 +412,45 @@ class Range(Composite):
     low: int = Integer
     high: int = Integer
 
+    @property
     def size(self) -> int:
         return self.high - self.low
 
+    @property
     def empty(self) -> bool:
         return self.high <= self.low
+
+    def __composite_values__(self):
+        return self.low, self.high
 
 class SourceLval(Base):
     __tablename__ = 'sourcelval'
 
-    id = Column(Integer, primary_key=True)
-    loc = ASTLoc.composite('loc')
-    ast_name = Column(Text)
+    # 1. Primary Key
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+
+    # 2. Explicitly Define the Composite Columns
+    # This mirrors exactly what we did for AttackPoint.
+    # We prefix columns with "loc_" to keep the DB clean.
+    _f:  Mapped[str] = mapped_column("loc_filename", Text, nullable=False)
+    _bl: Mapped[int] = mapped_column("loc_begin_line", Integer, nullable=False)
+    _bc: Mapped[int] = mapped_column("loc_begin_col", Integer, nullable=False)
+    _el: Mapped[int] = mapped_column("loc_end_line", Integer, nullable=False)
+    _ec: Mapped[int] = mapped_column("loc_end_col", Integer, nullable=False)
+
+    # 3. Map them to the ASTLoc Object
+    # Using the same helper function 'create_ast_loc' from before
+    loc: Mapped[ASTLoc] = composite(create_ast_loc, _f, _bl, _bc, _el, _ec)
+
+    # 4. Other Columns
+    ast_node_name: Mapped[str] = mapped_column(Text, nullable=False)
+    len: Mapped[int] = mapped_column(Integer, nullable=False)
 
     def __str__(self):
-        return 'Lval[{}](loc={}:{}, ast="{}")'.format(
-            self.id, self.loc.filename, self.loc.begin.line, self.ast_name
-        )
+        return f"LVAL[{self.id}](loc={self.loc}, node={self.ast_node_name}, len={self.len})"
+
+    def __repr__(self):
+        return self.__str__()
 
 
 class LabelSet(Base):
@@ -466,22 +494,39 @@ class Dua(Base):
 class DuaBytes(Base):
     __tablename__ = 'duabytes'
 
-    id = Column(BigInteger, primary_key=True)
-    dua_id = Column('dua', BigInteger, ForeignKey('dua.id'))
-    selected: Loc = Range.composite('selected')
-    all_labels = Column(postgresql.ARRAY(Integer))
+    # 1. Primary Key
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
 
-    dua = relationship("Dua")
+    # 2. Foreign Key
+    dua_id: Mapped[int] = mapped_column('dua', BigInteger, ForeignKey('dua.id'))
+
+    # 3. Explicit Composite Columns
+    # We map the DB columns 'selected_low' and 'selected_high'
+    _low: Mapped[int] = mapped_column("selected_low", Integer, nullable=False)
+    _high: Mapped[int] = mapped_column("selected_high", Integer, nullable=False)
+
+    # 4. The Composite Property
+    # Usage: my_duabytes.selected.size
+    selected: Mapped[Range] = composite(create_range, _low, _high)
+
+    # 5. Other Columns
+    all_labels: Mapped[List[int]] = mapped_column(postgresql.ARRAY(Integer))
+
+    # 6. Relationship
+    dua: Mapped["Dua"] = relationship("Dua")
 
     def __str__(self):
+        # Note: Updated 'ast_name' to 'ast_node_name' to match your SourceLval definition
         return 'DUABytes[DUA[{}:{}, {}, {}]][{}:{}](labels={})'.format(
-            self.dua.lval.loc.filename, self.dua.lval.loc.begin.line,
-            self.dua.lval.ast_name, 'fake' if self.dua.fake_dua else 'real',
-            self.selected.low, self.selected.high, self.all_labels)
+            self.dua.lval.loc.filename,
+            self.dua.lval.loc.begin.line,
+            self.dua.lval.ast_node_name,
+            'fake' if self.dua.fake_dua else 'real',
+            self.selected.low,
+            self.selected.high,
+            self.all_labels
+        )
 
-
-def create_ast_loc(f, bl, bc, el, ec):
-    return ASTLoc(f, Loc(bl, bc), Loc(el, ec))
 
 class AtpKind(IntEnum):
     FUNCTION_CALL = 0

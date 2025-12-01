@@ -16,7 +16,7 @@ from process_compile_commands import get_c_files
 from process_compile_commands import process_compile_commands
 from test_crash import process_crash
 from dotenv import load_dotenv
-from database_types import Bug, DuaBytes, AttackPoint, Build, Run
+from database_types import Bug, DuaBytes, Build, Run, BugKind, AtpKind
 
 load_dotenv()
 
@@ -90,7 +90,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug,
         file_bytes = bytearray(f.read())
     # change first 4 bytes in dua to magic value
 
-    if bug.type == Bug.REL_WRITE:
+    if bug.type == BugKind.BUG_REL_WRITE:
         assert (len(fuzz_labels_list) == 3)  # Must have 3 sets of labels
 
         m = bug.magic
@@ -685,16 +685,16 @@ def check_stacktrace_bug(lp, project, bug, fuzzed_input):
                                     get_trigger_line(lp, bug))
     print("Prediction {}".format(prediction))
     for line in out.splitlines():
-        if bug.type == Bug.RET_BUFFER:
+        if bug.type == BugKind.BUG_RET_BUFFER:
             # These should go into garbage code if they trigger.
             if line.startswith("#0") and line.endswith(" in ?? ()"):
                 return True
-        elif bug.type == Bug.PRINTF_LEAK:
+        elif bug.type == BugKind.BUG_PRINTF_LEAK:
             # FIXME: Validate this!
             return True
         else:  # PTR_ADD or REL_WRITE for now.
             if line.startswith("#0") or \
-                    bug.atp.typ == AttackPoint.FUNCTION_CALL:
+                    bug.atp.typ == AtpKind.FUNCTION_CALL:
                 # Function call bugs are valid if they happen anywhere in
                 # call stack.
                 if line.endswith(prediction):
@@ -739,8 +739,8 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     print("retval = %d" % rv)
     validated = False
     if bug.trigger.dua.fake_dua is False:
-        print("bug type is " + Bug.type_strings[bug.type])
-        if bug.type == Bug.PRINTF_LEAK:
+        print("bug type is " + Bug.type)
+        if bug.type == BugKind.BUG_PRINTF_LEAK:
             if outp != unfuzzed_outputs[bug.trigger.dua.inputfile]:
                 print("printf bug -- outputs disagree\n")
                 validated = True
@@ -873,19 +873,35 @@ def get_bugs(db, bug_id_list):
     return bugs
 
 
-def get_allowed_bugtype_num(args):
+def get_allowed_bugtype_num(args) -> list[int]:
     allowed_bugtype_nums = []
+
+    # Safety check if arg is empty
+    if not args.bugtypes:
+        return allowed_bugtype_nums
+
     for bugtype_name in args.bugtypes.split(","):
-        if not len(bugtype_name):
+        bugtype_name = bugtype_name.strip()
+        if not bugtype_name:
             continue
+
         btnl = bugtype_name.lower()
-        bugtype_num = None
-        for i in range(len(Bug.type_strings)):
-            btsl = Bug.type_strings[i].lower()
-            if btnl in btsl:
-                bugtype_num = i
-        if bugtype_num is None:
-            raise RuntimeError("I dont have a bug type [%s]" % bugtype_name)
-        allowed_bugtype_nums.append(bugtype_num)
+        found_kind = None
+
+        for kind in BugKind:
+            # kind.name is "BUG_PTR_ADD"
+            # kind.value is 0
+
+            # Check if user input (e.g. "ptr") is in the enum name ("bug_ptr_add")
+            if btnl == kind.name[5:].lower():
+                found_kind = kind
+                break
+
+        if found_kind is None:
+            raise RuntimeError(f"I dont have a bug type [{bugtype_name}]")
+
+        allowed_bugtype_nums.append(found_kind.value)
+
+    return allowed_bugtype_nums
 
     return allowed_bugtype_nums
