@@ -5,12 +5,12 @@ from scripts.database_types import AttackPoint, Bug, \
     ASTLoc, DuaBytes, SourceLval, LabelSet, Dua, Range, LavaDatabase, AtpKind, BugKind
 from scripts.vars import parse_vars
 from sqlalchemy.exc import IntegrityError
-from typing import Iterable, TypeVar, DefaultDict
+from typing import Iterable, TypeVar, DefaultDict, Set
 from collections import defaultdict
-from sqlalchemy.orm import Session
-from bisect import bisect_left
 import random
 from sqlalchemy import select
+from sqlalchemy.orm import Session
+from bisect import bisect_left
 
 T = TypeVar("T")
 
@@ -22,7 +22,7 @@ ptr_to_labelset: dict[int, LabelSet] = {}
 
 # Map from label to duas that are tainted by that label.
 # So when we update liveness, we know what duas might be invalidated.
-dua_dependencies: dict[int, Dua] = {}
+dua_dependencies: DefaultDict[int, Set[Dua]] = defaultdict(set)
 
 # Liveness for each input byte.
 liveness: DefaultDict[int, int] = defaultdict(int)
@@ -111,7 +111,7 @@ def merge_into(source_elements: list, dest_list: list):
 # from .utils import get_or_create, merge_into, disjoint, get_dua_dead_range
 
 def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: bool,
-                              session: Session, extra_duas_prechosen: list):
+                              session: Session, extra_duas_prechosen: list, project: dict):
     """
     Record injectable bugs at a given attack point (atp) of a given type (bug_type).
     """
@@ -155,7 +155,7 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
             continue
 
         # --- 4. Range Logic ---
-        selected = get_dua_dead_range(trigger_dua, prechosen_labels)
+        selected = get_dua_dead_range(trigger_dua, prechosen_labels, project)
         # Ensure LAVA_MAGIC_VALUE_SIZE is defined/imported
         if not selected or selected.size() < LAVA_MAGIC_VALUE_SIZE:
             continue
@@ -263,7 +263,7 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
             num_potential_bugs += 1
 
 
-def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict):
+def attack_point_lval_usage(ple: dict, session: Session, ind2str: list, project: dict):
     """
     Process an attack point log entry from PANDA logs.
     Args:
@@ -305,160 +305,378 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict):
 
     # Don't decimate PTR_ADD bugs.
     if attack_point_type == AtpKind.POINTER_WRITE:
-        record_injectable_bugs_at(BugKind.BUG_REL_WRITE, atp, is_new_atp, session, [])
+        record_injectable_bugs_at(BugKind.BUG_REL_WRITE, atp, is_new_atp, session, [], project)
     if attack_point_type in [AtpKind.POINTER_READ]:
-        record_injectable_bugs_at(BugKind.BUG_PTR_ADD, atp, is_new_atp, session, [])
+        record_injectable_bugs_at(BugKind.BUG_PTR_ADD, atp, is_new_atp, session, [], project)
     elif attack_point_type == AtpKind.PRINTF_LEAK:
-        record_injectable_bugs_at(BugKind.BUG_PRINTF_LEAK, atp, is_new_atp, session, [])
+        record_injectable_bugs_at(BugKind.BUG_PRINTF_LEAK, atp, is_new_atp, session, [], project)
     elif attack_point_type == AtpKind.MALLOC_OFF_BY_ONE:
-        record_injectable_bugs_at(BugKind.BUG_MALLOC_OFF_BY_ONE, atp, is_new_atp, session, [])
+        record_injectable_bugs_at(BugKind.BUG_MALLOC_OFF_BY_ONE, atp, is_new_atp, session, [], project)
 
 
-def taint_query_pri(ple: dict, db: LavaDatabase, ind2str: list, inputfile: str):
-    assert ple is not None
+def get_dua_exploit_pad(dua: Dua) -> Range:
+    """
+    Scans the DUA's viable bytes to find the largest contiguous run of
+    'clean' bytes (tainted, uncomplicated, dead) suitable for exploitation.
+    """
+    current_run = Range(0, 0)
+    largest_run = Range(0, 0)
+
+    # Iterate through all viable bytes in the DUA
+    # Note: verify dua.viable_bytes is a list of LabelSets (or None)
+    for i, label_set in enumerate(dua.viable_bytes):
+
+        # Condition Check:
+        # 1. ls exists (is tainted)
+        # 2. ls has exactly 1 label (uncomplicated taint)
+        # 3. Taint Compute Number is 0 (direct copy, not arithmetic result)
+        # 4. Liveness is low (label is not used much downstream)
+
+        is_candidate = False
+        if label_set is not None and len(label_set.labels) == 1:
+            # Get the single label
+            label = label_set.labels[0]
+            if dua.byte_tcn[i] == 0 and liveness[label] <= 10:
+                is_candidate = True
+
+        if is_candidate:
+            if current_run.empty():
+                current_run = Range(i, i + 1)
+            else:
+                current_run.high += 1
+        else:
+            # End of a run, check if it's the new record
+            if current_run.size > largest_run.size:
+                largest_run = current_run
+            # Reset
+            current_run = Range(0, 0)
+
+    # Final check in case the run goes to the very end of the byte array
+    if current_run.size > largest_run.size:
+        largest_run = current_run
+
+    # Reserve 4 bytes for trigger at start if the run is substantial
+    if largest_run.size() >= 20:
+        largest_run.low += 4
+
+    return largest_run
+
+
+def decimate(ratio: float) -> bool:
+    """
+    Returns True with probability 1/ratio.
+    Examples:
+        ratio=1.0 -> 100% True (Keep everything)
+        ratio=2.0 -> 50% True (Keep half)
+        ratio=100.0 -> 1% True (Keep 1 in 100)
+    """
+    if ratio <= 0:
+        return True  # Safety fallback, though logic dictates ratio >= 1.0
+
+    # random.random() returns [0.0, 1.0)
+    return random.random() < (1.0 / ratio)
+
+
+def decimation_ratio(bug_type: BugKind, potential: int) -> float:
+    """
+    Calculates a throttling ratio to ensure the database doesn't get flooded
+    with one specific type of bug.
+
+    Logic:
+    If a bug type is >10,000 counts above the average, we start returning
+    a high ratio (e.g., 20.0, 100.0) to aggressively skip new ones.
+    """
+    num_types_injected_already = 0
+
+    # Iterate over the Enum members directly (Cleaner than C++ for loop)
+    for kind in BugKind:
+        if num_bugs_of_type[kind] > 0:
+            num_types_injected_already += 1
+
+    # Avoid division by zero if DB is empty
+    if num_types_injected_already == 0:
+        return 1.0
+
+    average_num_bugs = num_bugs_added_to_db / num_types_injected_already
+
+    # How far above the average is this specific bug type?
+    current_count = num_bugs_of_type[bug_type]
+    diff = (current_count + potential) - average_num_bugs
+
+    # Threshold: If we are within 10,000 of the average, don't throttle (Ratio 1.0).
+    if diff < 10000:
+        return 1.0
+    else:
+        # Scale up the ratio: For every bug above the limit, increase rejection chance.
+        return 1.0 + (diff - 10000) * 0.2
+
+
+def decimate_by_type(bug_type: BugKind) -> bool:
+    """
+    Determines if we should skip this bug based on the decimation ratio.
+    """
+    # Assuming decimate() and decimation_ratio() are defined helper functions
+    return decimate(decimation_ratio(bug_type, 1))
+
+
+# Assuming globals/constants are available:
+# max_lval, LAVA_MAGIC_VALUE_SIZE, max_tcn, max_card, ptr_to_labelset
+# dua_dependencies, recent_dead_duas, recent_duas_by_instr
+# num_real_duas, num_fake_duas, chaff_bugs, FAKE_DUA_BYTE_FLAG
+
+def taint_query_pri(ple: dict, session: Session, ind2str: list, inputfile: str, project: dict):
+    """
+    Process a Taint Query Priority entry to identify potential DUAs (Data Use Associations).
+    """
     tqh = ple["taintQueryPri"]
-    assert tqh is not None
 
-    # Limit lval size
-    length = min(tqh["len"], max_lval)
-    num_tainted = tqh["numTainted"]
+    # 1. Parse Header Info
+    # std::min logic: Cap the length at max_lval
+    raw_len = int(tqh["len"])
+    length = min(raw_len, max_lval)
+    num_tainted = int(tqh["numTainted"])
+
     si = tqh["srcInfo"]
-    if is_header_file(str(si["filename"])):
-        return
-    assert si is not None
-    cs = tqh["callStack"]
-    assert cs is not None
-    instr = ple["instr"]
-    print(f"TAINT QUERY HYPERCALL len={length} num_tainted={num_tainted}\n")
+    filename = str(si["filename"])
 
-    all_labels = []
+    # Ignore headers
+    if is_header_file(filename):
+        return
+
+    instr_addr = int(ple["instr"])
+    # print(f"TAINT QUERY HYPERCALL len={length} num_tainted={num_tainted}")
+
+    # 2. Collect Labels & Unique Sets
+    all_labels = set()  # Using set for O(1) uniqueness, sorted list later if needed
+
+    # We maintain max stats for this specific DUA
     c_max_tcn = 0
     c_max_card = 0
 
-    with db.session.transaction():
-        # Update unique taint sets
+    # Process new unique label sets from the log
+    for tq in tqh["taintQuery"]:
+        if "uniqueLabelSet" in tq:
+            update_unique_taint_sets(tq["uniqueLabelSet"], session, inputfile)
+
+    # 3. Viability Analysis (Real DUA)
+    # Initialize arrays of size 'length'
+    viable_byte: list[LabelSet | None] = [None] * length
+    byte_tcn = [0] * length
+
+    is_dua = False
+    is_fake_dua = False
+    num_viable_bytes = 0
+
+    # Optimization: Don't check if we don't have enough tainted bytes
+    if num_tainted >= LAVA_MAGIC_VALUE_SIZE:
         for tq in tqh["taintQuery"]:
-            if tq["uniqueLabelSet"]:
-                update_unique_taint_sets(tq["uniqueLabelSet"], db)
+            offset = int(tq["offset"])
+            if offset >= length:
+                continue
 
-        viable_byte = [None] * length
-        byte_tcn = [0] * length
+            ptr = int(tq["ptr"])
+            tcn = int(tq["tcn"])
 
-        print(f"considering taint queries on {len(tqh.taint_query)} bytes\n")
+            # Retrieve the LabelSet object from our global map
+            ls = ptr_to_labelset.get(ptr)
+            if not ls:
+                continue  # Safety check
 
-        is_dua = False
-        is_fake_dua = False
-        num_viable_bytes = 0
+            byte_tcn[offset] = tcn
 
-        if num_tainted >= LAVA_MAGIC_VALUE_SIZE:
-            for tq in tqh.taint_query:
-                offset = tq.offset
-                if offset >= length:
-                    continue
-                print(f"considering offset = {offset}\n")
-                ls = ptr_to_labelset[int(tq["ptr"])]
-                byte_tcn[offset] = tq.tcn
+            # Filtering Logic (Bitwise logic simplified to boolean)
+            tcn_too_high = tcn > project["max_tcn"]
+            # Note: ls.labels is a list/array
+            card_too_high = len(ls.labels) > project["max_card"]
 
-                current_byte_not_ok = 0
-                current_byte_not_ok |= (tq.tcn > max_tcn) << CBNO_TCN_BIT
-                current_byte_not_ok |= (len(ls.labels) > max_card) << CBNO_CRD_BIT
-                if current_byte_not_ok:
-                    print(f"discarding byte -- here's why: {current_byte_not_ok:x}\n")
-                    if 1 << CBNO_TCN_BIT:
-                        print("** tcn too high")
-                    if 1 << CBNO_CRD_BIT:
-                        print("** card too high")
-                else:
-                    print("retaining byte\n")
-                    c_max_tcn = max(tq.tcn, c_max_tcn)
-                    c_max_card = max(len(ls.labels), c_max_card)
-                    merge_into(ls.labels, all_labels)
-                    print(f"keeping byte @ offset {offset}\n")
-                    viable_byte[offset] = ls
-                    num_viable_bytes += 1
+            if (tcn_too_high or card_too_high):
+                # print(f"discarding byte {offset}: tcn={tcn_too_high} card={card_too_high}")
+                pass
+            else:
+                # Retain byte
+                c_max_tcn = max(tcn, c_max_tcn)
+                c_max_card = max(len(ls.labels), c_max_card)
 
-            print(f"{num_viable_bytes} viable bytes in lval\n")
-            if (num_viable_bytes >= LAVA_MAGIC_VALUE_SIZE and
-                len(all_labels) >= LAVA_MAGIC_VALUE_SIZE and
-                get_dead_range(viable_byte, []).size() >= LAVA_MAGIC_VALUE_SIZE):
+                # Merge labels (Python set update handles deduping)
+                all_labels.update(ls.labels)
+
+                viable_byte[offset] = ls
+                num_viable_bytes += 1
+
+        # Check DUA Viability
+        # 1. Enough viable bytes
+        # 2. Enough total labels involved
+        # 3. Enough dead bytes (ranges)
+        if (num_viable_bytes >= LAVA_MAGIC_VALUE_SIZE and
+                len(all_labels) >= LAVA_MAGIC_VALUE_SIZE):
+
+            # get_dead_range expects a list of LabelSets (or None)
+            # We assume get_dead_range returns a Range object with a .size property
+            dead_range = get_dead_range(viable_byte, [], project)
+            if dead_range.size() >= LAVA_MAGIC_VALUE_SIZE:
                 is_dua = True
 
-        if not is_dua and tqh["len"] - num_tainted >= LAVA_MAGIC_VALUE_SIZE:
-            print("not enough taint -- what about non-taint?\n")
-            print(f"len={length} num_tainted={num_tainted}\n")
-            viable_byte = [None] * len(viable_byte)
-            count = 0
-            tqp = iter(tqh.taint_query)
-            tqp_end = len(tqh.taint_query)
-            for i in range(len(viable_byte)):
-                try:
-                    tq = next(tqp)
-                except StopIteration:
-                    tq = None
-                if not tq or tq.offset > i or not tq.ptr:
-                    # Use a static fake label set
-                    if not hasattr(taint_query_pri, "_fake_ls"):
-                        taint_query_pri._fake_ls = get_or_create(db, LabelSet(0, FAKE_DUA_BYTE_FLAG, "fakedua", []))
-                    viable_byte[i] = taint_query_pri._fake_ls
-                    count += 1
+    # 4. Fake DUA Logic (The Fix)
+    # If we are making chaff bugs, it's not a real DUA, and we have enough empty space
+    if (not is_dua and
+            (raw_len - num_tainted) >= LAVA_MAGIC_VALUE_SIZE):
+
+        # Reset viable_byte to clean slate for fake generation
+        viable_byte = [None] * length
+
+        # Identify occupied offsets
+        occupied_offsets = set()
+        for tq in tqh["taintQuery"]:
+            occupied_offsets.add(int(tq["offset"]))
+
+        # Get the Singleton Fake LabelSet (Get or Create)
+        # 0xFA4E is a magic number often used for fake flags
+        fake_ls, _ = get_or_create(
+            session,
+            LabelSet,
+            ptr=FAKE_DUA_BYTE_FLAG,
+            inputfile="fakedua",
+            labels=[]
+        )
+
+        count = 0
+        # Iterate the BUFFER (not the taint queries) to find gaps
+        for i in range(length):
+            if i not in occupied_offsets:
+                viable_byte[i] = fake_ls
+                count += 1
                 if count >= LAVA_MAGIC_VALUE_SIZE:
                     break
-            assert count >= LAVA_MAGIC_VALUE_SIZE
+
+        # If we successfully found 4 bytes
+        if count >= LAVA_MAGIC_VALUE_SIZE:
             is_fake_dua = True
 
-        print(f"is_dua={int(is_dua)} is_fake_dua={int(is_fake_dua)}\n")
-        assert not (is_dua and is_fake_dua)
-        if is_dua or is_fake_dua:
-            assert si.has_ast_loc_id
-            ast_loc = ASTLoc.from_serialized(ind2str[si.ast_loc_id])
-            assert len(ast_loc.filename) > 0
+    # 5. Database Persistence & Registration
+    assert not (is_dua and is_fake_dua)
 
-            lval, _ = get_or_create(SourceLval(ast_loc, si["astnodename"], length))
-            dua, _ = get_or_create(Dua(lval, viable_byte, byte_tcn, all_labels, inputfile,
-                             c_max_tcn, c_max_card, instr, is_fake_dua))
+    if is_dua or is_fake_dua:
+        assert "astLocId" in si
+        ast_loc_id = int(si["astLocId"])
 
-            if is_dua:
-                for label in dua.all_labels:
-                    dua_dependencies.setdefault(label, set()).add(dua)
+        # Create ASTLoc object
+        ast_loc = ASTLoc.from_serialized(ind2str[ast_loc_id])
+        assert len(ast_loc.filename) > 0
 
-            pad_atp, is_new_atp = get_or_create(db, AttackPoint(ast_loc, AtpKind.QUERY_POINT))
-            if length >= 20 and decimate_by_type(BugKind.BUG_RET_BUFFER):
-                range_ = get_dua_exploit_pad(dua)
-                dua_bytes, _ = get_or_create(DuaBytes(dua, range_))
-                if is_fake_dua or range_.size() >= 20:
-                    record_injectable_bugs_at(BugKind.BUG_RET_BUFFER, pad_atp, is_new_atp, session, [dua_bytes])
+        # Create SourceLval
+        lval, _ = get_or_create(
+            session,
+            SourceLval,
+            loc=ast_loc,
+            ast_node_name=str(si["astnodename"]),
+            len=length
+        )
 
-            print("OK DUA.\n")
+        # Create Dua
+        # Note: all_labels is a set, convert to sorted list for DB array
+        sorted_labels = sorted(list(all_labels))
+        dua, is_new_dua = get_or_create(
+            session,
+            Dua,
+            lval=lval,
+            inputfile=inputfile,
+            instr=instr_addr,
+            fake_dua=is_fake_dua,
+            # Defaults for creation:
+            defaults={
+                "viable_bytes": [ls for ls in viable_byte if ls is not None],  # Relationship needs list of objects
+                "byte_tcn": byte_tcn,
+                "all_labels": sorted_labels,
+                "max_tcn": c_max_tcn,
+                "max_cardinality": c_max_card
+            }
+        )
 
-            lval_id = lval.id
-            if lval_id not in recent_dead_duas:
-                recent_dead_duas[lval_id] = dua
-                print("new lval\n")
-            else:
-                old_dua = recent_dead_duas[lval_id]
-                instr_range = [i for i, d in enumerate(recent_duas_by_instr) if d == old_dua]
-                if instr_range:
-                    recent_duas_by_instr.pop(instr_range[0])
-                for l in old_dua.all_labels:
-                    dua_dependencies[l].discard(old_dua)
-                recent_dead_duas[lval_id] = dua
-                print("previously observed lval\n")
+        # Track Dependencies
+        if is_dua:
+            for l in sorted_labels:
+                dua_dependencies[l] = dua
 
-            if not recent_duas_by_instr or dua.instr >= recent_duas_by_instr[-1].instr:
-                recent_duas_by_instr.append(dua)
-            else:
-                recent_duas_by_instr.append(dua)  # For simplicity, append
+        # Handle Buffer Overflow Injection (RET_BUFFER)
+        # Create AttackPoint (QUERY_POINT)
+        pad_atp, is_new_atp = get_or_create(
+            session,
+            AttackPoint,
+            loc=ast_loc,
+            typ=AtpKind.QUERY_POINT
+        )
 
-            assert len(recent_dead_duas) == len(recent_duas_by_instr)
+        if length >= 20 and decimate_by_type(BugKind.BUG_RET_BUFFER):
+            exploit_range = get_dua_exploit_pad(dua)
 
-            global num_real_duas, num_fake_duas
-            if is_dua:
-                num_real_duas += 1
-            if is_fake_dua:
-                num_fake_duas += 1
+            # create(DuaBytes...)
+            dua_bytes, _ = get_or_create(
+                session,
+                DuaBytes,
+                dua=dua,
+                selected_range=exploit_range
+            )
+
+            if is_fake_dua or exploit_range.size() >= 20:
+                record_injectable_bugs_at(
+                    BugKind.BUG_RET_BUFFER,
+                    pad_atp,
+                    is_new_atp,
+                    session,
+                    [dua_bytes],
+                    project
+                )
+
+        # print("OK DUA.")
+
+        # 6. Global State Maintenance (recent_dead_duas)
+        # Logic: Replace old DUA with same lval_id, or insert new.
+
+        lval_id = lval.id
+
+        if lval_id in recent_dead_duas:
+            # We have seen this LVAL before. Replace it.
+            old_dua = recent_dead_duas[lval_id]
+
+            # Remove from recent_duas_by_instr
+            # Note: Python list.remove is O(N). If this list is huge,
+            # we might need a better structure, but recent window is usually small-ish.
+            try:
+                recent_duas_by_instr.remove(old_dua)
+            except ValueError:
+                pass  # Should ideally not happen based on C++ logic assertions
+
+            # Clean up old dependencies
+            for l in old_dua.all_labels:
+                if old_dua in dua_dependencies[l]:
+                    dua_dependencies[l].remove(old_dua)
+
+            # print("previously observed lval")
         else:
-            print(f"discarded {num_viable_bytes} viable bytes {len(all_labels)} labels {si.filename}:{si.linenum} {si.astnodename}")
+            # print("new lval")
+            pass
 
+        # Insert/Update the map
+        recent_dead_duas[lval_id] = dua
+
+        # Enforce sorted order logic for recent_duas_by_instr
+        # C++ did: assert(dua->instr >= recent_duas_by_instr.back()->instr);
+        # This implies the log is processed in execution order, so we can just append.
+        recent_duas_by_instr.append(dua)
+
+        # Verify invariants
+        assert len(recent_dead_duas) == len(recent_duas_by_instr)
+
+        # 7. Update Stats (Global)
+        global num_real_duas, num_fake_duas
+        if is_dua:
+            num_real_duas += 1
+        if is_fake_dua:
+            num_fake_duas += 1
+    else:
+        # Debugging discard
+        # print(f"discarded {num_viable_bytes} viable bytes {len(all_labels)} labels...")
+        pass
 
 def get_or_create(session, model, defaults: dict=None, **kwargs):
     """
@@ -507,12 +725,9 @@ def update_unique_taint_sets(unique_label_set: dict, session: Session, inputfile
         # Ensure labels are integers (C++ did a conversion)
         labels = [int(x) for x in unique_label_set["label"]]
 
-        # 3. Create and Insert
-        # C++: create(LabelSet{0, p, inputfile, vec});
-        # Assuming get_or_create logic handles the object creation/deduplication
-        label_set, _ = get_or_create(
-            session,
-            LabelSet,
+        # 3. Create LabelSet and append to global map
+        label_set = LabelSet(
+            id=0,
             ptr=pointer,
             inputfile=inputfile,
             labels=labels
@@ -520,7 +735,7 @@ def update_unique_taint_sets(unique_label_set: dict, session: Session, inputfile
         ptr_to_labelset[pointer] = label_set
 
 
-def update_liveness(panda_log_entry: dict, session: Session, inputfile: str):
+def update_liveness(panda_log_entry: dict, session: Session, inputfile: str, project: dict):
     """
     Processes a 'taintedBranch' entry from PANDA logs to update global liveness state
     and prune non-viable Def-Use Associations (DUAs).
@@ -576,7 +791,7 @@ def update_liveness(panda_log_entry: dict, session: Session, inputfile: str):
 
     non_viable_duas = []
     for dua in duas_to_check:
-        if not is_dua_dead(dua):
+        if not is_dua_dead(dua, project):
             print(f"{str(dua)}\n ** DUA not viable\n")
             recent_dead_duas.pop(dua.lval.id, None)
             if dua in recent_duas_by_instr:
@@ -591,11 +806,11 @@ def update_liveness(panda_log_entry: dict, session: Session, inputfile: str):
                 dua_dependencies.pop(label, None)
 
 
-def is_dua_dead(dua: Dua) -> bool:
-    return get_dua_dead_range(dua, {}).size() == LAVA_MAGIC_VALUE_SIZE
+def is_dua_dead(dua: Dua, project: dict) -> bool:
+    return get_dua_dead_range(dua, [], project).size() == LAVA_MAGIC_VALUE_SIZE
 
 
-def get_dua_dead_range(dua: Dua, to_avoid):
+def get_dua_dead_range(dua: Dua, to_avoid, project: dict):
     viable_bytes = dua.viable_bytes
     print("checking viability of dua: currently %u viable bytes\n", count_nonzero(viable_bytes))
     if "nodua" in dua.lval.ast_name:
@@ -604,26 +819,26 @@ def get_dua_dead_range(dua: Dua, to_avoid):
         print("\n")
         empty = Range(0, 0)
         return empty
-    result = get_dead_range(dua.viable_bytes, to_avoid)
+    result = get_dead_range(dua.viable_bytes, to_avoid, project)
     print("%s\ndua has %u viable bytes\n", str(dua), result.size())
     return result
 
 
 # get first 4-or-larger dead range. to_avoid is a sorted vector of labels that
 # can't be used
-def get_dead_range(viable_bytes: LabelSet, to_avoid):
+def get_dead_range(viable_bytes: list[LabelSet], to_avoid, project):
     current_run = Range(0, 0)
     # NB: we have already checked dua for viability wrt tcn & card at induction
     # these do not need re-checking as they are to be captured at dua siphon point
-    for i in range(len(viable_bytes.labels)):
+    for i in range(len(viable_bytes)):
         byte_viable = True
-        ls = viable_bytes[i]
-        if ls:
-            if not disjoint(ls.labels, to_avoid):
+        label_set = viable_bytes[i]
+        if label_set:
+            if not disjoint(label_set.labels, to_avoid):
                 byte_viable = False
             else:
-                for label in ls.labels:
-                    if liveness[label] > max_liveness:
+                for label in label_set.labels:
+                    if liveness[label] > project["max_liveness"]:
                         print("byte offset is nonviable b/c label %d has liveness %lu\n", label, liveness[label])
                         byte_viable = False
                         break
@@ -827,11 +1042,11 @@ def main():
                     print(f"{num_bugs_added_to_db} added to db {len(recent_dead_duas)} current duas {num_real_duas} real duas {num_fake_duas} fake duas")
 
                 if "taintQueryPri" in ple:
-                    taint_query_pri(ple, db.session, ind2str, inputfile)
+                    taint_query_pri(ple, db.session, ind2str, inputfile, project)
                 elif "taintedBranch" in ple:
-                    update_liveness(ple, db.session, inputfile)
+                    update_liveness(ple, db.session, inputfile, project)
                 elif "attackPoint" in ple:
-                    attack_point_lval_usage(ple, db.session, ind2str, inputfile)
+                    attack_point_lval_usage(ple, db.session, ind2str, project)
                 elif "dwarfCall" in ple:
                     record_call(ple)
                 elif "dwarfRet" in ple:

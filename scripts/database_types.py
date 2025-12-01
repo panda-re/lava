@@ -443,12 +443,17 @@ class Dua(Base):
     all_labels = Column(postgresql.ARRAY(Integer))
     inputfile = Column(Text)
     max_tcn = Column(Integer)
+    byte_tcn: Mapped[List[int]] = mapped_column(postgresql.ARRAY(Integer))
     max_cardinality = Column(Integer)
     instr = Column(BigInteger)
     fake_dua = Column(Boolean)
 
     lval = relationship("SourceLval")
     viable_bytes = relationship("LabelSet", secondary=dua_viable_bytes)
+
+    __table_args__ = (
+        UniqueConstraint('lval', 'inputfile', 'instr', 'fake_dua', name='DuaUniq'),
+    )
 
     def __str__(self):
         return 'DUA[{}](lval={}, labels={}, viable={}, \
