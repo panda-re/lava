@@ -21,6 +21,7 @@ void parse_whitelist(std::string whitelist_filename) {
     while ((read = getline(&line, &len, fp)) != -1) {
         char *p = line;
         char *np = strtok(p, " ");
+        char *tag = strtok(NULL, " ");
         char *npp = strtok(NULL, "\n");
 
         if (npp == NULL) {
@@ -30,7 +31,14 @@ void parse_whitelist(std::string whitelist_filename) {
 
         debug(FNARG) << "\t np= " << np << " npp=" << npp << "\n";
         auto wlp = std::make_pair(std::string(np), std::string(npp));
-        whitelist.insert(std::string(npp));
+        // Extra tagging to indicate the root function of dataflow
+        if (!strcmp(tag, "df")) {
+            whitelist.insert(std::string(npp));
+        } else if (!strcmp(tag, "root")) {
+            dataflowroot.insert(std::string(npp));
+        } else if (!strcmp(tag, "addvar")) {    // add unused variables
+            addvarlist.insert(std::string(npp));
+        }
         debug(FNARG) << "white list entry: file = [" << np << "] func = [" << npp << "]\n";
 
     }
@@ -109,6 +117,12 @@ int main(int argc, const char **argv) {
         std::transform(bug_ids.begin(), bug_ids.end(), std::back_inserter(bugs),
                 [&](uint32_t bug_id) { return db->load<Bug>(bug_id); });
 
+        //while (!real_bug) {
+        //    real_bug = bugs[rand()%bugs.size()];
+        //    if (real_bug->type != Bug::CHAFF_STACK_CONST)
+        //        real_bug = nullptr;
+        //}
+
         for (const Bug *bug : bugs) {
             LavaASTLoc atp_loc = bug->atp->loc;
             auto key = std::make_pair(atp_loc, bug->atp->type);
@@ -116,10 +130,13 @@ int main(int argc, const char **argv) {
 
             mark_for_siphon(bug->trigger);
 
-            if (bug->type != Bug::RET_BUFFER) {
+            if (bug->type != Bug::CHAFF_STACK_UNUSED) {
                 for (uint64_t dua_id : bug->extra_duas) {
                     const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
-                    mark_for_siphon(dua_bytes);
+                    mark_for_siphon_extra(dua_bytes);
+
+                    // Siphon Overconstrain injection point
+                    mark_for_overconst_extra(bug, dua_bytes);
                 }
             }
         }
@@ -166,6 +183,9 @@ int main(int argc, const char **argv) {
             }
         }
     }
+
+    if (real_bug)
+        std::cout << "Final Real Bug : " << real_bug->id << "\n";
 
     if (t) {
         t->commit();

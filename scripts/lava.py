@@ -38,9 +38,8 @@ load_dotenv()
 
 Base = declarative_base()
 
-debugging = False
-NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
-
+debugging = True
+NUM_BUGTYPES = 3 # Make sure this matches what's in lavaTool
 
 class Loc(Composite):
     column = Integer
@@ -130,12 +129,19 @@ class DuaBytes(Base):
             self.selected.low, self.selected.high, self.all_labels)
 
 
+class CallTrace(Base):
+    __tablename__ = 'calltrace'
+    id = Column(BigInteger, primary_key=True)
+    caller = Column(Text)
+    filename = Column('file', Text)
+
 class AttackPoint(Base):
     __tablename__ = 'attackpoint'
 
     id = Column(BigInteger, primary_key=True)
     loc = ASTLoc.composite('loc')
     typ = Column('type', Integer)
+    ctrace = Column('calltrace', postgresql.ARRAY(BigInteger))
 
     # enum Type {
     FUNCTION_CALL = 0
@@ -175,10 +181,15 @@ class Bug(Base):
     RET_BUFFER = 1
     REL_WRITE = 2
     PRINTF_LEAK = 3
-    MALLOC_OFF_BY_ONE = 4
+    CHAFF_STACK_UNUSED = 4
+    CHAFF_STACK_CONST = 5
+    CHAFF_HEAP_CONST = 6
+    CHAFF_DIVZERO = 7
     # };
     type_strings = ['BUG_PTR_ADD', 'BUG_RET_BUFFER',
-                    'BUG_REL_WRITE', 'BUG_PRINTF_LEAK', 'MALLOC_OFF_BY_ONE']
+                    'BUG_REL_WRITE', 'BUG_PRINTF_LEAK',
+                    'CHAFF_BUG_STACK_UNUSED', 'CHAFF_BUG_STACK_CONST',
+                    'CHAFF_BUG_HEAP_CONST', 'CHAFF_BUG_DIVZERO']
 
     id = Column(BigInteger, primary_key=True)
     type = Column(Integer)
@@ -192,6 +203,7 @@ class Bug(Base):
 
     max_liveness = Column(Float)
     magic = Column(Integer)
+    stackoff = Column(Integer)
 
     atp = relationship("AttackPoint")
 
@@ -419,7 +431,8 @@ def run_cmd_notimeout(cmd, **kwargs):
 
 
 def mutfile(filename, fuzz_labels_list, new_filename, bug,
-            kt=False, knob=0, solution=None):
+            kt=False, knob=0, solution=None, patchval=0):
+    passval = struct.pack('<I', patchval)
     # Open filename, mutate it and store in new_filename such that
     # it hopefully triggers the passed bug
     if kt:
@@ -477,9 +490,12 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug,
             file_bytes[offset] = c_val[i]
 
     else:
-        for fuzz_labels in fuzz_labels_list:
-            for (i, offset) in zip(range(4), fuzz_labels):
-                file_bytes[offset] = magic_val[i]
+        for (i, offset) in zip(range(4), fuzz_labels_list[0]):
+            file_bytes[offset] = magic_val[i]
+        if (len(fuzz_labels_list) > 1):
+            for fuzz_labels in fuzz_labels_list[1:]:
+                for (i, offset) in zip(range(4), fuzz_labels):
+                    file_bytes[offset] = passval[i]
 
     with open(new_filename, 'wb') as fuzzed_f:
         fuzzed_f.write(file_bytes)
@@ -488,7 +504,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug,
 # run lavatool on this file to inject any parts of this list of bugs
 def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
                  knobTrigger=False, dataflow=False, competition=False,
-                 randseed=0):
+                 randseed=0, inj_debug=False):
     print("Running lavaTool on [{}]...".format(filename))
     lt_debug = project['debug']
     if (len(bug_list)) == 0:
@@ -513,11 +529,13 @@ def run_lavatool(bug_list, lp, host_file, project, llvm_src, filename,
 
     # Todo either parameterize here or hardcode everywhere else
     # For now, lavaTool will only work if it has a whitelist, so we always pass this
-    fninstr = join(project['directory'], project['name'], "fninstr")
+    fninstr = join(join(project['directory'], project['name']), "fnwhitelist")
     cmd.append('-lava-wl=' + fninstr)
 
     if lt_debug:
         cmd.append("-debug")
+    if inj_debug:
+        cmd.append("--debug-inject")
     if dataflow:
         cmd.append('-arg_dataflow')
     if knobTrigger > 0:
@@ -675,7 +693,7 @@ def collect_src_and_print(bugs_to_inject, db):
 # version of the program in bug_dir
 def inject_bugs(bug_list, db, lp, host_file, project, args,
                 update_db, dataflow=False, competition=False,
-                validated=False, lavatoolseed=0):
+                validated=False, lavatoolseed=0, inj_debug=False):
     # TODO: don't pass args, just pass the data we need to run
     # TODO: split into multiple functions, this is huge
 
@@ -703,11 +721,16 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     if not os.path.exists(join(lp.bugs_build, 'config.log')) \
             and 'configure' in project.keys():
         print('Re-configuring...')
-        run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
         envv = project["env_var"]
         if project['configure']:
             run_cmd(' '.join(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]),
                     envv, 30, cwd=lp.bugs_build, shell=True)
+        with open(os.path.join(lp.bugs_build, 'Makefile'), 'a') as fd, \
+                open(os.path.join(lp.lava_dir, 'makefile.fixup'), 'r') as fdd:
+            fd.write(fdd.read())
+        envv = { 'CC':'/llvm-3.6.2/Release/bin/clang',
+                'CXX': '/llvm-3.6.2/Release/bin/clang++',}
+        run_cmd( ' '.join(['make', 'lava_preprocess']), envv, 30, cwd=lp.bugs_build, shell=True )
     if not os.path.exists(join(lp.bugs_build, 'btrace.log')):
         print("Making with btrace...")
 
@@ -816,7 +839,8 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     def modify_source(dirname):
         return run_lavatool(bugs_to_inject, lp, host_file, project,
                             project['llvm-dir'], dirname, knobTrigger=args.knobTrigger,
-                            dataflow=dataflow, competition=competition, randseed=lavatoolseed)
+                            dataflow=dataflow, competition=competition, randseed=lavatoolseed,
+                            inj_debug=inj_debug)
 
     bug_solutions = {}  # Returned by lavaTool
 
@@ -1069,6 +1093,7 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
         print("Knob size: {}".format(args.knobTrigger))
         mutfile_kwargs = {'kt': True, 'knob': args.knobTrigger}
 
+    #mutfile_kwargs['patchval'] = 0x0011cb88
     fuzz_labels_list = [bug.trigger.all_labels]
     if len(bug.extra_duas) > 0:
         extra_query = db.session.query(DuaBytes) \
@@ -1123,6 +1148,58 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
         print("RV is zero which is good b/c this used a fake dua")
         assert rv == 0
         validated = False
+
+    # Retry with another patch value
+    if not validated:
+        #mutfile_kwargs['patchval'] = 0x88cb1100
+        mutfile(unfuzzed_input, fuzz_labels_list, fuzzed_input, bug,
+                solution=solution, **mutfile_kwargs)
+        timeout = project.get('timeout', 5)
+        (rv, outp) = run_modified_program(project, lp.bugs_install,
+                                          fuzzed_input, timeout, shell=True)
+        print("retval = %d" % rv)
+        if bug.trigger.dua.fake_dua is False:
+            print ("bug type is " + Bug.type_strings[bug.type])
+            if bug.type == Bug.PRINTF_LEAK:
+                if outp != unfuzzed_outputs[bug.trigger.dua.inputfile]:
+                    print ("printf bug -- outputs disagree\n")
+                    validated = True
+            else:
+                # this really is supposed to be a bug
+                # we should see a seg fault or something
+                # NB: Wrapping programs in bash transforms rv -> 128 - rv,
+                # so we do the mod
+                if (rv % 256) > 128 and rv != -9: # check and ignoring timeouts
+                    print("RV indicates memory corruption")
+                    # Default: not checking that bug manifests at same line as
+                    # trigger point or is found by competition grading
+                    # infrastructure
+                    validated = True
+                    if competition:
+                        found_bugs = check_competition_bug(rv, outp)
+                        if set(found_bugs) == set([bug.id]):
+                            print("... and competition infrastructure agrees")
+                            validated &= True
+                        else:
+                            validated &= False
+                            print("... but competition infrastructure"
+                                  " misidentified it ({} vs {})".format(found_bugs, bug.id))
+                    if args.checkStacktrace:
+                        if check_stacktrace_bug(lp, project, bug, fuzzed_input):
+                            print("... and stacktrace agrees with trigger line")
+                            validated &= True
+                        else:
+                            print("... but stacktrace disagrees with trigger line")
+                            validated &= False
+                else:
+                    print("RV does not indicate memory corruption")
+                    validated = False
+        else:
+            # this really is supposed to be a non-bug
+            # we should see a 0
+            print("RV is zero which is good b/c this used a fake dua")
+            assert rv == 0
+            validated = False
 
     if update_db:
         db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
@@ -1231,4 +1308,6 @@ def get_allowed_bugtype_num(args):
             raise RuntimeError("I dont have a bug type [%s]" % bugtype_name)
         allowed_bugtype_nums.append(bugtype_num)
 
+    if args.many == "1":
+        return [Bug.CHAFF_STACK_CONST]
     return allowed_bugtype_nums

@@ -128,6 +128,10 @@ command_args = shlex.split(
         install_dir=shlex.quote(installdir),
         input_file=input_file_guest))
 shutil.copy(input_file, installdir)
+with open(os.path.join(installdir, "setup.sh"), 'w') as fd:
+    fd.write("#!/bin/bash\n")
+    fd.write("cp {}/x86_64-linux-gnu/ld-2.24.so /ld.so\n".format(pipes.quote(installdir)))
+os.chmod(os.path.join(installdir, "setup.sh"), 0777)
 
 # In CI/CD, we should try to use complete record and replay
 # Also, please avoid using debug prints in CI/CD, it can cause issues.

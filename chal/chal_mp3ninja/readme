@@ -1,0 +1,13 @@
+
+source code credit to minimp3 : git@github.com:lieff/minimp3.git 
+
+350 bugs
+1 exploitable
+
+tricks to evade from Ropper:
+    rop longer than 5 inst,
+    duplicate the last 6 inst of rop gadgets at other address, so the intended gadgets won't be shown on Ropper
+
+
+1bug version:
+    change pass constraints to always "true", since image size changes after we removed injected code, and pass constraints no longer holds as exploitable address

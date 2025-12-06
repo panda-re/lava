@@ -5,13 +5,14 @@
     "dataflow": true,
     "tarfile": "file-5.22-pre.tar.gz",
 
+    "configure": "./configure --enable-static=yes --enable-shared=no",
     "make": "make",
     "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/file -m {install_dir}/share/misc/magic.mgc {input_file}",
-    "injfixupsscript": "file_fixup.sh {bug_build}",
 
-    "max_tcn": 10,
+    "max_liveness": 0,
+    "max_tcn": 0,
 
     "main_file": [ "src/file.c" ],
 

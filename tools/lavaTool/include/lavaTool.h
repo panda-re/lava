@@ -62,7 +62,7 @@ using clang::tooling::getAbsolutePath;
 //#define DEBUG_FLAGS 0 // (MATCHER | INJECT | FNARG | PRI)
 #define DEBUG_FLAGS (INJECT | FNARG | PRI)
 
-#define ARG_NAME "data_flow"
+#define ARG_NAME "lava_data_flow"
 
 #define MAX_STRNLEN 64
 
@@ -78,6 +78,10 @@ uint32_t num_taint_queries = 0;
 // that can be instrumented
 // with dua and atp queries (which will later mean bugs)
 std::set<std::string> whitelist;
+std::set<std::string> dataflowroot;
+std::set<std::string> addvarlist;
+
+#define UNUSED_RANDOM_BYTES "Once upon a midnight dreary, while I pondered, weak and weary, Over many a quaint and curious volume of forgotten lore- While I nodded, nearly napping, suddenly there came a tapping, As of some one gently rapping, rapping at my chamber door. Tis some visitor, I muttered, tapping at my chamber door- Only this and nothing more."
 
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
@@ -108,6 +112,11 @@ struct LvalBytes {
 // Map of bugs with siphon of a given  lval name at a given loc.
 std::map<LavaASTLoc, vector_set<LvalBytes>> siphons_at;
 std::map<LvalBytes, uint32_t> data_slots;
+// Same mapping for siphon of extra_duas
+std::map<LavaASTLoc, vector_set<LvalBytes>> extra_siphons_at;
+std::map<LvalBytes, uint32_t> extra_data_slots;
+
+std::map<LavaASTLoc, std::vector<LExpr>> extra_overconst_expr;
 
 std::string LavaPath;
 
@@ -117,6 +126,7 @@ Loc::Loc(const FullSourceLoc &full_loc)
 
 static std::vector<const Bug*> bugs;
 static std::set<std::string> main_files;
+const Bug *real_bug = nullptr;
 
 static std::map<std::string, uint32_t> StringIDs;
 
@@ -187,6 +197,10 @@ static cl::opt<std::string> DBHost("host",
 static cl::opt<int> DBPort("port",
     cl::desc("Remote Port"),
     cl::init(5432));
+static cl::opt<bool> DebugInject("debug-inject",
+    cl::desc("Debug Option: Replacing All bugs to Divide-by-Zero"),
+    cl::cat(LavaCategory),
+    cl::init(false));
 
 unsigned int RANDOM_SEED = 0;
 
@@ -336,7 +350,11 @@ uint32_t alphanum(int len) {
 }
 
 LExpr Get(LvalBytes x) {
+#ifdef LEGACY_CHAFF_BUGS
     return ArgDataflow ? DataFlowGet(Slot(x)) : LavaGet(Slot(x));
+#else
+    return LavaGet(Slot(x));
+#endif
 }
 
 LExpr Get(const Bug *bug) {
@@ -344,7 +362,11 @@ LExpr Get(const Bug *bug) {
 }
 
 LExpr Set(LvalBytes x) {
+#ifdef LEGACY_CHAFF_BUGS
     return (ArgDataflow ? DataFlowSet : LavaSet)(x.lval, x.selected, Slot(x));
+#else
+    return LavaSet(x.lval, x.selected, Slot(x));
+#endif
 }
 
 LExpr Set(const Bug *bug) {
@@ -470,12 +492,106 @@ LExpr knobTriggerAttack(const Bug *bug) {
 void mark_for_siphon(const DuaBytes *dua_bytes) {
 
     LvalBytes lval_bytes(dua_bytes);
-    siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
+    auto tridx = dua_bytes->dua->trace_index;
+    const SourceTrace *tr = db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tridx);
+    //siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
+    siphons_at[tr->loc].insert(lval_bytes);
 
     debug(INJECT) << "    Mark siphon at " << lval_bytes.lval->loc << "\n";
 
     // if insert fails do nothing. we already have a slot for this one.
     data_slots.insert(std::make_pair(lval_bytes, data_slots.size()));
+}
+
+void mark_for_siphon_extra(const DuaBytes *dua_bytes) {
+
+    LvalBytes lval_bytes(dua_bytes);
+    auto tridx = dua_bytes->dua->trace_index;
+    const SourceTrace *tr = db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tridx);
+    //extra_siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
+    extra_siphons_at[tr->loc].insert(lval_bytes);
+
+    debug(INJECT) << "    Mark extra siphon at " << lval_bytes.lval->loc << "\n";
+
+    // if insert fails do nothing. we already have a slot for this one.
+    extra_data_slots.insert(std::make_pair(lval_bytes, extra_data_slots.size()));
+}
+
+void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
+
+    uint64_t tr_end = bug->atp->trace_index;
+    uint64_t tr_start = dua_bytes->dua->trace_index;
+
+    LvalBytes lval_bytes(dua_bytes);
+
+    // Just for fail safe
+    // - probably won't even trigger the bug if things like this happens
+    if (tr_end < tr_start)  tr_start = tr_end;
+
+    // gen 4 overconstrain code - each taking care of 1 byte
+    uint32_t nstep = 2;
+    uint32_t flipflag = rand()&1;
+    std::string checkfunc = "";
+    switch (rand()%5) {
+    case 0:
+        checkfunc = "lava_check_const_low_1";
+        break;
+    case 1:
+        checkfunc = "lava_check_const_low_2";
+        break;
+    case 2:
+        checkfunc = "lava_check_const_low_3";
+        break;
+    case 3:
+        checkfunc = "lava_check_const_low_5";
+        break;
+    case 4:
+    default:
+        checkfunc = "lava_check_const_low_6";
+        break;
+    }
+    if (bug == real_bug)    checkfunc = "lava_check_const_low_4";
+    for (uint32_t i = 0; i < nstep; i++) {
+        if (tr_end != tr_start)
+            tr_start = tr_start + (rand() % (tr_end - tr_start));
+        std::unique_ptr<SourceTrace> tr(
+                db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tr_start));
+        LavaASTLoc ast_loc = tr->loc;
+        LExpr checker  = Test(bug);
+        if (flipflag) {
+            if (i > 0) {
+                checker = /*checker &&*/ LFunc(checkfunc, {
+                        LDecimal(extra_data_slots[lval_bytes]) });
+                extra_overconst_expr[ast_loc].emplace_back(
+                        LIf(checker.render(), {
+                            LFunc("lava_update_const_low", {
+                                    LDecimal(extra_data_slots[lval_bytes]) })}));
+            } else {
+                checker = /*checker &&*/ LFunc("lava_check_const_high", {
+                        LDecimal(extra_data_slots[lval_bytes])});
+                extra_overconst_expr[ast_loc].emplace_back(
+                        LIf(checker.render(), {
+                            LFunc("lava_update_const_high", {
+                                    LDecimal(extra_data_slots[lval_bytes]) })}));
+            }
+        } else {
+            if (i == 0) {
+                checker = /*checker &&*/ LFunc(checkfunc, {
+                        LDecimal(extra_data_slots[lval_bytes]) });
+                extra_overconst_expr[ast_loc].emplace_back(
+                        LIf(checker.render(), {
+                            LFunc("lava_update_const_low", {
+                                    LDecimal(extra_data_slots[lval_bytes]) })}));
+            } else {
+                checker = /*checker &&*/ LFunc("lava_check_const_high", {
+                        LDecimal(extra_data_slots[lval_bytes])});
+                extra_overconst_expr[ast_loc].emplace_back(
+                        LIf(checker.render(), {
+                            LFunc("lava_update_const_high", {
+                                    LDecimal(extra_data_slots[lval_bytes]) })}));
+            }
+        }
+    }
 }
 
 #endif

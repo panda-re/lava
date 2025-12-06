@@ -217,6 +217,7 @@ struct Dua {
 
     uint64_t instr;     // instr count
     bool fake_dua;      // true iff this dua is fake (corresponds to untainted bytes)
+    uint64_t trace_index;   // Index into the SourceTrace
 
 #pragma db index("DuaUniq") unique members(lval, inputfile, instr, fake_dua)
 
@@ -224,11 +225,12 @@ struct Dua {
     inline Dua(const SourceLval *lval, std::vector<const LabelSet*> &&viable_bytes,
             std::vector<uint32_t> &&byte_tcn, std::vector<uint32_t> &&all_labels,
             std::string inputfile, uint32_t max_tcn, uint32_t max_cardinality,
-            uint64_t instr, bool fake_dua)
+            uint64_t instr, bool fake_dua, uint64_t src_tr)
         : id(0), lval(lval), viable_bytes(std::move(viable_bytes)),
             byte_tcn(std::move(byte_tcn)), all_labels(std::move(all_labels)),
             inputfile(inputfile), max_tcn(max_tcn),
-            max_cardinality(max_cardinality), instr(instr), fake_dua(fake_dua) {}
+            max_cardinality(max_cardinality), instr(instr), fake_dua(fake_dua),
+            trace_index(src_tr) {}
 
     bool operator<(const Dua &other) const {
          return std::tie(lval->id, inputfile, instr, fake_dua) <
@@ -298,6 +300,45 @@ struct DuaBytes {
 };
 
 #pragma db object
+struct SourceTrace {
+#pragma db id auto
+    uint64_t id;
+
+#pragma db not_null
+    uint64_t index;
+#pragma db not_null
+    LavaASTLoc loc;
+
+#pragma db index("SourceTraceUniq") unique members(index)
+
+    bool operator<(const SourceTrace &other) const {
+        return index < other.index;
+    }
+};
+
+#pragma db object
+struct CallTrace {
+#pragma db id auto
+    uint64_t id;
+
+#pragma db not_null
+    std::string caller;
+#pragma db not_null
+    std::string file;
+
+#pragma db index("CallTraceUniq") unique members(caller, file)
+
+    bool operator<(const CallTrace &other) const {
+        return std::tie(caller, file) <
+            std::tie(other.caller, other.file);
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const CallTrace &m) {
+        return os;
+    }
+};
+
+#pragma db object
 struct AttackPoint {
 #pragma db id auto
     uint64_t id;
@@ -314,7 +355,11 @@ struct AttackPoint {
         TYPE_END
     } type;
 
-#pragma db index("AttackPointUniq") unique members(loc, type)
+    std::vector<uint64_t> calltrace;
+
+    uint64_t trace_index;   // Index into the SourceTrace
+
+#pragma db index("AttackPointUniq") unique members(loc, type, trace_index)
 
     bool operator<(const AttackPoint &other) const {
         return std::tie(type, loc) <
@@ -352,7 +397,10 @@ struct Bug {
         RET_BUFFER,
         REL_WRITE,
         PRINTF_LEAK,
-        MALLOC_OFF_BY_ONE,
+        CHAFF_STACK_UNUSED,
+        CHAFF_STACK_CONST,
+        CHAFF_HEAP_CONST,
+        CHAFF_DIVZERO,
         TYPE_END
     } type;
 
@@ -360,8 +408,11 @@ struct Bug {
         [PTR_ADD] = 0,
         [RET_BUFFER] = 1,
         [REL_WRITE] = 2,
-	[PRINTF_LEAK] = 0,
-        [MALLOC_OFF_BY_ONE] = 0,
+        [PRINTF_LEAK] = 0,
+        [CHAFF_STACK_UNUSED] = 0,
+        [CHAFF_STACK_CONST] = 1,
+        [CHAFF_HEAP_CONST] = 1,
+        [CHAFF_DIVZERO] = 1,
     };
 
 #pragma db not_null
@@ -382,15 +433,17 @@ struct Bug {
 
     uint32_t magic;
 
-#pragma db index("BugUniq") unique members(type, atp, trigger_lval)
+    uint32_t stackoff;
+
+#pragma db index("BugUniq") unique members(type, atp, trigger, extra_duas)
 #pragma db index("BugLvalsQuery") members(atp, type)
 
     Bug() {}
     Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
-            const AttackPoint *atp, std::vector<uint64_t> extra_duas)
+            const AttackPoint *atp, std::vector<uint64_t> extra_duas, uint32_t stackoff)
         : id(0), type(type), trigger(trigger), trigger_lval(trigger->dua->lval),
             atp(atp), max_liveness(max_liveness), extra_duas(extra_duas),
-            magic(0) {
+            magic(0), stackoff(stackoff) {
         for (int i = 0; i < 4; i++) {
             magic <<= 8;
             magic |= rand() % 26 + 0x60;
@@ -399,8 +452,8 @@ struct Bug {
     }
 
     Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
-            const AttackPoint *atp, std::vector<const DuaBytes *> extra_duas_)
-        : Bug(type, trigger, max_liveness, atp, std::initializer_list<uint64_t>({})) {
+            const AttackPoint *atp, std::vector<const DuaBytes *> extra_duas_, uint32_t stackoff)
+        : Bug(type, trigger, max_liveness, atp, std::initializer_list<uint64_t>({}), stackoff) {
         for (const DuaBytes *dua_bytes : extra_duas_) {
             extra_duas.push_back(dua_bytes->id);
         }
@@ -420,6 +473,12 @@ struct Bug {
     // magic values
     inline uint16_t magic_kt() const {
         return (uint16_t)magic;
+    }
+
+    bool operator<(const Bug &other) const {
+         return std::tie(type, trigger->id, atp->id, extra_duas) <
+             std::tie(other.type, other.trigger->id,
+                     other.atp->id, other.extra_duas);
     }
 };
 

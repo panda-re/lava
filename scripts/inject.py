@@ -12,8 +12,9 @@ from os.path import join
 
 from vars import parse_vars
 from lava import LavaDatabase, Run, Bug, \
-    inject_bugs, LavaPaths, validate_bugs, \
-    get_bugs, run_cmd, get_allowed_bugtype_num
+                 inject_bugs, LavaPaths, validate_bugs, \
+                 get_bugs, run_cmd, get_allowed_bugtype_num
+from dataflow import *
 
 start_time = time.time()
 debugging = False
@@ -33,7 +34,7 @@ def get_bug_list(args, db, allowed_bugtypes):
         print("Using strategy: random")
         bug = db.next_bug_random(False)
         bug_list.append(bug.id)
-        update_db = True
+        #update_db = True
     elif args.buglist:
         bug_list = eval(args.buglist)  # TODO
         update_db = False
@@ -128,6 +129,8 @@ if __name__ == "__main__":
     #                        help = ('White list file of functions to bug and data flow'))
     parser.add_argument('-t', '--bugtypes', action="store", default="ptr_add,rel_write",
                         help='bug types to inject')
+    parser.add_argument('--debuginject', action="store_true", default=False)
+
 
     args = parser.parse_args()
     global project
@@ -157,11 +160,19 @@ if __name__ == "__main__":
     # obtain list of bugs to inject based on cmd-line args and consulting db
     (update_db, bug_list) = get_bug_list(args, db, allowed_bugtypes)
 
+    # Write the fnwhitelist to indicate root && end of dataflow
+    fnwhitelist = os.path.join(project["output_dir"], "fnwhitelist")
+    fnpickle = os.path.join(project["output_dir"], "getfns.pickle")
+    genFnTraceHelper(db, bug_list, fnwhitelist, fnpickle)
+
+    # Write the fnwhitelist to indicate where to probe extra variables for stack overflow
+    genStackVarHelper(db, bug_list, fnwhitelist)
+
     # add all those bugs to the source code and check that it compiles
     # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
     (build, input_files, bug_solutions) = inject_bugs(bug_list, db, lp, args.host_json,
-                                                      project, args, update_db, dataflow=dataflow,
-                                                      competition=args.competition)
+                                       project, args, update_db, dataflow=dataflow, competition=args.competition,
+                                       inj_debug=args.debuginject)
     if build is None:
         raise RuntimeError("LavaTool failed to build target binary")
 

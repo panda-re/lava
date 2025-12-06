@@ -83,14 +83,18 @@ reset_db=0
 add_queries=0
 make=0
 taint=0
+sanitize=0
 inject=0
 num_trials=0
 kt=""
 demo=0
 curtail=0
 ATP_TYPE=""
+debug_inject=""
 # default bugtypes
-bugtypes="ptr_add,rel_write,malloc_off_by_one"
+#bugtypes="ptr_add,rel_write"
+bugtypes="chaff_bug_stack_const,chaff_bug_heap_const,chaff_bug_divzero"
+#bugtypes="chaff_bug_stack_const,chaff_bug_stack_unused"
 # default # of bugs to be injected at a time
 many=50
 
@@ -148,6 +152,7 @@ if [ $reset -eq 1 ]; then
     # remove all plog files in the directory
     deldir "$directory/$name/*.plog"
     deldir "$directory/$name/*.json"
+    deldir "$directory/$name/san"
     progress "everything" 0 "Truncating logs..."
     for i in $(ls "$logs" | grep '.log$'); do
         truncate "$logs/$i"
@@ -233,6 +238,13 @@ if [ $taint -eq 1 ]; then
     done
     tock
     echo "bug_mining complete $time_diff seconds"
+fi
+
+if [ $sanitize -eq 1 ]; then
+    lf="$logs/sanitize.log"
+    truncate "$lf"
+    progress "everything" 1 "Sanitize step -- "
+    run_remote "$testinghost" "$scripts/sanitize.sh $project_name" "$lf"
 fi
 
 if [ $inject -eq 1 ]; then

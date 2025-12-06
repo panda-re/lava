@@ -69,6 +69,8 @@ std::unique_ptr<odb::pgsql::database> db;
 bool debug = false;
 #define dprintf(...) if (debug) { printf(__VA_ARGS__); fflush(stdout); }
 
+#define RANDOM_DUA_TRIES 2
+
 uint64_t max_liveness = 0;
 uint32_t max_card = 0;
 uint32_t max_tcn = 0;
@@ -99,6 +101,12 @@ std::vector<const Dua *> recent_duas_by_instr;
 // Map from label to duas that are tainted by that label.
 // So when we update liveness, we know what duas might be invalidated.
 std::map<uint32_t, std::set<const Dua *> > dua_dependencies;
+
+// Stack Trace
+std::vector<std::pair<std::string, std::string>> cur_call_stack; // (file, func)
+
+// Source level Trace indexing - Overconstrain Injection
+uint64_t source_trace_index = 0;
 
 // Returns true with probability 1/ratio.
 inline bool decimate(double ratio) {
@@ -402,7 +410,7 @@ inline bool is_dua_dead(const Dua *dua) {
 }
 
 template<Bug::Type bug_type>
-void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
+void record_injectable_bugs_at(const uint32_t stackoff, const AttackPoint *atp, bool is_new_atp,
         std::initializer_list<const DuaBytes *> extra_duas);
 
 void taint_query_pri(Json::Value& ple) {
@@ -508,6 +516,7 @@ void taint_query_pri(Json::Value& ple) {
         }
     }
 
+#ifdef LEGACY_CHAFF_BUGS
     // create a fake dua if we can
     if (chaff_bugs && !is_dua
             && std::strtoul(tqh["len"].asString().c_str(), 0, 0) - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
@@ -543,9 +552,28 @@ void taint_query_pri(Json::Value& ple) {
         assert(count >= LAVA_MAGIC_VALUE_SIZE);
         is_fake_dua = true;
     }
+#endif
 
     dprintf("is_dua=%d is_fake_dua=%d\n", is_dua, is_fake_dua);
     assert(!(is_dua && is_fake_dua));
+
+    assert(si->has_ast_loc_id);
+    LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
+    assert(ast_loc.filename.size() > 0);
+
+    // Track Callers
+    std::vector<uint64_t> calltrace;
+    for (auto stkframe : cur_call_stack)
+    {
+        const CallTrace *ct = create(CallTrace{0, stkframe.second, stkframe.first});
+        calltrace.push_back(ct->id);
+    }
+
+    const AttackPoint *pad_atp;
+    bool is_new_atp;
+    std::tie(pad_atp, is_new_atp) = create_full(
+            AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT, calltrace, source_trace_index});
+
     if (is_dua || is_fake_dua) {
         // looks like we can subvert this for either real or fake bug.
         // NB: we don't know liveness info yet. defer byte selection until later.
@@ -567,10 +595,7 @@ void taint_query_pri(Json::Value& ple) {
             }
         }
 
-        const AttackPoint *pad_atp;
-        bool is_new_atp;
-        std::tie(pad_atp, is_new_atp) = create_full(
-                AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT});
+#ifdef LEGACY_CHAFF_BUGS
         if (len >= 20 && decimate_by_type(Bug::RET_BUFFER)) {
             Range range = get_dua_exploit_pad(dua);
             const DuaBytes *dua_bytes = create(DuaBytes(dua, range));
@@ -579,6 +604,7 @@ void taint_query_pri(Json::Value& ple) {
                         pad_atp, is_new_atp, { dua_bytes });
             }
         }
+#endif
         dprintf("OK DUA.\n");
 
         // Update recent_dead_duas + recent_duas_by_instr:
@@ -629,6 +655,40 @@ void taint_query_pri(Json::Value& ple) {
                 std::strtoul(si["linenum"].asString().c_str(), 0, 0),
                 si["astnodename"].asString().c_str());
     }
+
+    record_injectable_bugs_at<Bug::CHAFF_STACK_UNUSED>(
+            si->insertionpoint, pad_atp, is_new_atp, {});
+#define RANDOM_SAMPLING_THRESHOLD   2
+    uint64_t randcount = RANDOM_SAMPLING_THRESHOLD;
+    if (RANDOM_SAMPLING_THRESHOLD > recent_duas_by_instr.size()) {
+        for (const auto &exploit_dua : recent_dead_duas) {
+            Range r = get_dua_dead_range(exploit_dua.second, {});
+            if (r.empty())  continue;
+            const DuaBytes *k = create(DuaBytes{exploit_dua.second, r});
+            record_injectable_bugs_at<Bug::CHAFF_STACK_CONST>(
+                    si->insertionpoint, pad_atp, is_new_atp, { k });
+            record_injectable_bugs_at<Bug::CHAFF_HEAP_CONST>(
+                    si->insertionpoint, pad_atp, is_new_atp, { k });
+            record_injectable_bugs_at<Bug::CHAFF_DIVZERO>(
+                    si->insertionpoint, pad_atp, is_new_atp, { k });
+            //break;
+        }
+    } else {
+        while (randcount--) {
+            const Dua *exploit_dua = recent_duas_by_instr[rand() % recent_duas_by_instr.size()];
+            Range r = get_dua_dead_range(exploit_dua, {});
+            if (r.empty())  continue;
+            const DuaBytes *k = create(DuaBytes{exploit_dua, r});
+            record_injectable_bugs_at<Bug::CHAFF_STACK_CONST>(
+                    si->insertionpoint, pad_atp, is_new_atp, { k });
+            record_injectable_bugs_at<Bug::CHAFF_HEAP_CONST>(
+                    si->insertionpoint, pad_atp, is_new_atp, { k });
+            record_injectable_bugs_at<Bug::CHAFF_DIVZERO>(
+                    si->insertionpoint, pad_atp, is_new_atp, { k });
+            //break;
+        }
+    }
+
     t.commit();
 }
 
@@ -724,7 +784,7 @@ struct BugParam {
 std::map<BugParam, std::vector<uint64_t>> cached_skip_lists;
 
 template<Bug::Type bug_type>
-void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
+void record_injectable_bugs_at(const uint32_t stackoff, const AttackPoint *atp, bool is_new_atp,
         std::initializer_list<const DuaBytes *> extra_duas_prechosen) {
     std::vector<uint64_t> empty;
     std::vector<uint64_t> *skip_trigger_lvals = &empty;
@@ -812,7 +872,7 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
                 unsigned tries;
                 // Try two times to find an extra dua that is disjoint from
                 // trigger.
-                for (tries = 0; tries < 2; tries++) {
+                for (tries = 0; tries < RANDOM_DUA_TRIES; tries++) {
                     auto it = begin_it;
                     std::advance(it, rand() % distance);
                     const Dua *extra_dua = *it;
@@ -821,7 +881,7 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
                     extra = create(DuaBytes(extra_dua, selected));
                     if (disjoint(labels_so_far, extra->all_labels)) break;
                 }
-                if (tries == 2) break;
+                if (tries == RANDOM_DUA_TRIES) break;
                 extra_duas.push_back(extra);
 
                 size_t new_size = extra->all_labels.size() + labels_so_far.size();
@@ -850,8 +910,8 @@ void record_injectable_bugs_at(const AttackPoint *atp, bool is_new_atp,
         assert(bug_type != Bug::RET_BUFFER ||
                 atp->type == AttackPoint::QUERY_POINT);
         assert(extra_duas.size() == Bug::num_extra_duas[bug_type]);
-        Bug bug(bug_type, trigger, c_max_liveness, atp, extra_duas);
-        db->persist(bug);
+        const Bug *bug = create(Bug(bug_type, trigger, c_max_liveness, atp, extra_duas, stackoff));
+        //db->persist(bug);
         num_bugs_of_type[bug_type]++;
 
         num_bugs_added_to_db++;
@@ -897,14 +957,14 @@ void attack_point_lval_usage(Json::Value ple) {
     // Don't decimate PTR_ADD bugs.
     switch ((AttackPoint::Type) std::strtoul(pleatp["info"].asString().c_str(), 0, 0)) {
     case AttackPoint::POINTER_WRITE:
-        record_injectable_bugs_at<Bug::REL_WRITE>(atp, is_new_atp, { });
+        record_injectable_bugs_at<Bug::REL_WRITE>(si->insertionpoint, atp, is_new_atp, { });
         // fall through
     case AttackPoint::POINTER_READ:
     case AttackPoint::FUNCTION_ARG:
-        record_injectable_bugs_at<Bug::PTR_ADD>(atp, is_new_atp, { });
+        record_injectable_bugs_at<Bug::PTR_ADD>(si->insertionpoint, atp, is_new_atp, { });
         break;
     case AttackPoint::PRINTF_LEAK:
-        record_injectable_bugs_at<Bug::PRINTF_LEAK>(atp, is_new_atp, { });
+        record_injectable_bugs_at<Bug::PRINTF_LEAK>(si->insertionpoint, atp, is_new_atp, { });
         break;
     case AttackPoint::MALLOC_OFF_BY_ONE:
         record_injectable_bugs_at<Bug::MALLOC_OFF_BY_ONE>(atp, is_new_atp, { });
@@ -913,9 +973,46 @@ void attack_point_lval_usage(Json::Value ple) {
     t.commit();
 }
 
-void record_call(Json::Value ple) { }
+const char *except_list = "libc-2.13.so!";
 
-void record_ret(Json::Value ple) { }
+void record_call(Panda__LogEntry *ple) {
+    Panda__DwarfCall *call = ple->dwarf_call;
+
+    // Skip library calls
+    if (strstr(call->function_name_callee, except_list) != NULL)
+        return;
+
+    cur_call_stack.push_back(std::make_pair(
+                std::string(call->file_callee),
+                std::string(call->function_name_callee)));
+
+    // Restrict call stack size
+    assert(cur_call_stack.size() < 100);
+}
+
+void record_ret(Panda__LogEntry *ple) {
+    Panda__DwarfCall *ret = ple->dwarf_ret;
+
+    // Skip library calls
+    if (strstr(ret->function_name_callee, except_list) != NULL)
+        return;
+
+    if (cur_call_stack.size() == 0) return;
+
+    assert (cur_call_stack.back() == std::make_pair(std::string(ret->file_callee),
+                std::string(ret->function_name_callee)));
+    cur_call_stack.pop_back();
+}
+
+
+void record_trace(Panda__LogEntry *ple) {
+    transaction t(db->begin());
+    Panda__SourceTraceId *stid = ple->source_trace_id;
+    LavaASTLoc ast_loc(ind2str[stid->ast_loc_id]);
+    const SourceTrace *srctr = create(
+            SourceTrace{0, source_trace_index++, ast_loc});
+    t.commit();
+}
 
 int main (int argc, char **argv) {
     if (argc != 5 && argc !=6 ) {
@@ -1097,6 +1194,8 @@ int main (int argc, char **argv) {
             record_call(ple);
         } else if (ple.isMember("dwarfRet")) {
             record_ret(ple);
+        } else if (ple->source_trace_id) {
+            record_trace(ple);
         }
         // pandalog_free_entry(ple);
 
