@@ -241,7 +241,7 @@ project["max_tcn"] = 100
 project["max_lval_size"] = 100
 project["curtail"] = curtail
 
-parse_panda_log(pandalog_json, project, project_name)
+parse_panda_log(pandalog_json, project)
 progress("Found Bugs, Injectable!!")
 
 fib_time = tock()

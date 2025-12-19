@@ -14,6 +14,8 @@ from sqlalchemy.engine.url import URL
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.ext.orderinglist import ordering_list
+from sqlalchemy.ext.associationproxy import association_proxy
 
 Base = declarative_base()
 
@@ -23,13 +25,28 @@ def create_range(l, h):
 def create_ast_loc(f, bl, bc, el, ec):
     return ASTLoc(f, Loc(bl, bc), Loc(el, ec))
 
-dua_viable_bytes = \
-    Table('dua_viable_bytes', Base.metadata,
-          Column('object_id', BigInteger, ForeignKey('dua.id')),
-          Column('index', BigInteger),
-          Column('value', BigInteger, ForeignKey('labelset.id')))
 
+class DuaViableByte(Base):
+    __tablename__ = 'dua_viable_bytes'
 
+    # 1. Foreign Keys
+    # 'object_id' matches ODB's name for the pointer to Dua
+    object_id: Mapped[int] = mapped_column(BigInteger, ForeignKey('dua.id'), primary_key=True)
+
+    # 'value' matches ODB's name for the pointer to LabelSet
+    labelset_id: Mapped[int] = mapped_column('value', BigInteger, ForeignKey('labelset.id'), primary_key=True)
+
+    # 2. The Index Column (This is what caused your crash!)
+    # We make it a primary key component or just a column.
+    # ODB usually relies on the order, but let's make it a column.
+    index: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # 3. Relationships
+    # We don't need a relationship back to Dua here necessarily, but we need one to LabelSet
+    labelset: Mapped["LabelSet"] = relationship("LabelSet")
+
+    def __repr__(self):
+        return f"<DuaViableByte index={self.index} ls={self.labelset_id}>"
 
 
 build_bugs = \
@@ -408,18 +425,26 @@ class ASTLoc(Composite):
             end=Loc(end_line, end_col)
         )
 
-class Range(Composite):
-    low: int = Integer
-    high: int = Integer
+@dataclass
+class Range:
+    low: int
+    high: int
 
+    # Logic methods work fine here
     def size(self) -> int:
         return self.high - self.low
 
     def empty(self) -> bool:
         return self.high <= self.low
 
+    # Required for SQLAlchemy to read the object back from the DB
     def __composite_values__(self):
         return self.low, self.high
+
+    # Optional: Logic for comparing Ranges (useful for your bug finding)
+    def __eq__(self, other):
+        return isinstance(other, Range) and self.low == other.low and self.high == other.high
+
 
 class SourceLval(Base):
     __tablename__ = 'sourcelval'
@@ -432,9 +457,9 @@ class SourceLval(Base):
     # We prefix columns with "loc_" to keep the DB clean.
     _f:  Mapped[str] = mapped_column("loc_filename", Text, nullable=False)
     _bl: Mapped[int] = mapped_column("loc_begin_line", Integer, nullable=False)
-    _bc: Mapped[int] = mapped_column("loc_begin_col", Integer, nullable=False)
+    _bc: Mapped[int] = mapped_column("loc_begin_column", Integer, nullable=False)
     _el: Mapped[int] = mapped_column("loc_end_line", Integer, nullable=False)
-    _ec: Mapped[int] = mapped_column("loc_end_col", Integer, nullable=False)
+    _ec: Mapped[int] = mapped_column("loc_end_column", Integer, nullable=False)
 
     # 3. Map them to the ASTLoc Object
     # Using the same helper function 'create_ast_loc' from before
@@ -442,10 +467,10 @@ class SourceLval(Base):
 
     # 4. Other Columns
     ast_name: Mapped[str] = mapped_column(Text, nullable=False)
-    len: Mapped[int] = mapped_column(Integer, nullable=False)
+    len_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
 
     def __str__(self):
-        return f"LVAL[{self.id}](loc={self.loc}, node={self.ast_name}, len={self.len})"
+        return f"LVAL[{self.id}](loc={self.loc}, node={self.ast_name}, len={self.len_bytes})"
 
     def __repr__(self):
         return self.__str__()
@@ -454,13 +479,23 @@ class SourceLval(Base):
 class LabelSet(Base):
     __tablename__ = 'labelset'
 
-    id : int = Column(BigInteger, primary_key=True)
-    ptr : int = Column(BigInteger)
-    inputfile : str = Column(Text)
-    labels : List[int] = Column(SortedIntArray)
+    # 1. Primary Key
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+
+    # 2. Data Columns
+    ptr: Mapped[int] = mapped_column(BigInteger)
+    inputfile: Mapped[str] = mapped_column(Text)
+
+    # 3. Array Column (Using your SortedIntArray type)
+    labels: Mapped[List[int]] = mapped_column(SortedIntArray)
+
+    # 4. Unique Constraint (Matches C++ #pragma db index("LabelSetUniq"))
+    __table_args__ = (
+        UniqueConstraint('ptr', 'inputfile', name='LabelSetUniq'),
+    )
 
     def __repr__(self):
-        return str(self.labels)
+        return f"LabelSet(ptr={self.ptr}, labels={self.labels})"
 
 
 class Dua(Base):
@@ -473,8 +508,27 @@ class Dua(Base):
     lval_id: Mapped[int] = mapped_column('lval', BigInteger, ForeignKey('sourcelval.id'))
 
     # 3. Vectors / Arrays
-    # Note: 'secondary' requires the association table 'dua_viable_bytes' to be defined!
-    viable_bytes: Mapped[List["LabelSet"]] = relationship("LabelSet", secondary="dua_viable_bytes")
+    # 1. Internal Relationship to the Association Object
+    # This handles the 'index' column automatically via ordering_list
+    _viable_bytes_assoc: Mapped[List["DuaViableByte"]] = relationship(
+        "DuaViableByte",
+        order_by="DuaViableByte.index",
+        collection_class=ordering_list("index"),  # Automatically sets DuaViableByte.index
+        cascade="all, delete-orphan"
+    )
+
+    @staticmethod
+    def _create_viable_byte(ls: "LabelSet") -> "DuaViableByte":
+        return DuaViableByte(labelset=ls)
+
+    # 2. Public Proxy
+    # This allows you to say: my_dua.viable_bytes = [labelset1, labelset2]
+    # It automatically creates the DuaViableByte objects in the background.
+    viable_bytes = association_proxy(
+        '_viable_bytes_assoc',
+        'labelset',
+        creator=_create_viable_byte  # How to create the link
+    )
 
     # The missing column from C++ std::vector<uint32_t> byte_tcn
     byte_tcn: Mapped[List[int]] = mapped_column(postgresql.ARRAY(Integer))
@@ -543,11 +597,10 @@ class DuaBytes(Base):
     dua: Mapped["Dua"] = relationship("Dua")
 
     def __str__(self):
-        # Note: Updated 'ast_name' to 'ast_node_name' to match your SourceLval definition
         return 'DUABytes[DUA[{}:{}, {}, {}]][{}:{}](labels={})'.format(
             self.dua.lval.loc.filename,
             self.dua.lval.loc.begin.line,
-            self.dua.lval.ast_node_name,
+            self.dua.lval.ast_name,
             'fake' if self.dua.fake_dua else 'real',
             self.selected.low,
             self.selected.high,
@@ -575,9 +628,9 @@ class AttackPoint(Base):
     # These hold the raw data. We prefix them with "loc_" to namespace them.
     _f: Mapped[str] = mapped_column("loc_filename", Text)
     _bl: Mapped[int] = mapped_column("loc_begin_line", Integer, nullable=False)
-    _bc: Mapped[int] = mapped_column("loc_begin_col", Integer, nullable=False)
+    _bc: Mapped[int] = mapped_column("loc_begin_column", Integer, nullable=False)
     _el: Mapped[int] = mapped_column("loc_end_line", Integer, nullable=False)
-    _ec: Mapped[int] = mapped_column("loc_end_col", Integer, nullable=False)
+    _ec: Mapped[int] = mapped_column("loc_end_column", Integer, nullable=False)
 
     # --- 2. Define the Composite Bridge ---
     # This maps the 5 columns above into your ASTLoc class.
@@ -597,12 +650,12 @@ class AttackPoint(Base):
             self.id, self.loc.filename, self.loc.begin.line, type_strs[self.typ]
         )
 
-    #  Enforce Uniqueness at the Database Level
+    # Enforce Uniqueness at the Database Level
     # This is critical once we start passing lots of files via concolic execution, expect lots of duplicates.
     __table_args__ = (
         UniqueConstraint(
-            'loc_filename', 'loc_begin_line', 'loc_begin_col',
-            'loc_end_line', 'loc_end_col', 'type',
+            'loc_filename', 'loc_begin_line', 'loc_begin_column',
+            'loc_end_line', 'loc_end_column', 'type',
             name='_atp_unique_constraint'
         ),
     )
