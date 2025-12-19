@@ -885,31 +885,20 @@ def is_header_file(filename: str) -> bool:
 def load_db(db_file: str) -> dict[int, str]:
     string_ids = {}
 
-    with open(db_file, 'rb') as f:
-        raw_data = f.read()
+    with open(db_file, 'r', encoding='utf-8', errors='replace') as f:
+        for line in f:
+            # 1. Clean up the line (removes the trailing \n)
+            line = line.strip()
+            if not line:
+                continue
 
-    # 2. Split by the null byte.
-    # This creates a list like: [b'3', b'toy.c:1925...', b'4', b'toy.c:1925...', b'']
-    parts = raw_data.split(b'\0')
-
-    # 3. Iterate in steps of 2 (Key, Value, Key, Value...)
-    # We stop at len(parts) - 1 to ignore any trailing empty byte at the end
-    for i in range(0, len(parts) - 1, 2):
-        try:
-            key_bytes = parts[i]
-            val_bytes = parts[i + 1]
-
-            # Decode and cast
-            # .strip() is crucial because your snippet showed newlines (\n) might exist
-            # between the previous value and the next ID.
-            index = int(key_bytes.decode('utf-8').strip())
-            value = val_bytes.decode('utf-8')
-
-            string_ids[index] = value
-
-        except ValueError:
-            # Handles cases where the file might have weird whitespace or incomplete endings
-            continue
+            parts = line.split('\t', 1)
+            if len(parts) == 2:
+                try:
+                    # parts[0] is the ID ("3"), parts[1] is the Value ("toy.c:...")
+                    string_ids[int(parts[0])] = parts[1]
+                except ValueError:
+                    continue  # Skip lines with bad IDs
 
     return string_ids
 
@@ -965,7 +954,7 @@ def parse_panda_log(panda_log_file: str, project_data: dict, program_name: str):
                 elif "dwarfRet" in ple:
                     record_ret(ple)
 
-                if 0 < curtail < num_real_duas:
+                if 0 < project_data.get("curtail", 0) < num_real_duas:
                     print(f"*** Curtailing output of fbi at {num_real_duas}")
                     break
 

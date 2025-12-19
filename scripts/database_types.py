@@ -1,5 +1,8 @@
 from typing import List
-
+import random
+from dataclasses import dataclass
+from enum import IntEnum
+import os
 from sqlalchemy.types import TypeEngine
 from sqlalchemy import Column, ForeignKey, Table, create_engine
 from sqlalchemy.dialects import postgresql
@@ -7,13 +10,10 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import load_only, relationship, sessionmaker, composite, Mapped, mapped_column
 from sqlalchemy.sql.expression import func
 from sqlalchemy.types import BigInteger, Boolean, Float, Integer, Text
-import random
-from dataclasses import dataclass
 from sqlalchemy.engine.url import URL
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
-from enum import IntEnum
 
 Base = declarative_base()
 
@@ -66,7 +66,7 @@ class LavaDatabase(object):
         db_url = URL.create(
             drivername="postgresql+psycopg2",
             username=project['database_user'],
-            password=project.get('database_password'),  # Assuming you have a password
+            password=os.getenv("POSTGRES_PASSWORD", ""),  # Assuming you have a password
             host=project['database'],  # Assuming this maps to host
             port=project['database_port'],
             database=project['db']

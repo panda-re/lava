@@ -26,7 +26,7 @@ std::map<std::string,uint32_t> LoadDB(std::string dbfile) {
     std::ifstream db(dbfile);
     std::string line;
     while (std::getline(db, line)) {
-        size_t delimiterPos = line.find('\0');
+        size_t delimiterPos = line.find('\t');
         if (delimiterPos != std::string::npos) {
             std::string istr = line.substr(0, delimiterPos); // Extract the ID part
             std::string str = line.substr(delimiterPos + 1); // Extract the string part
@@ -41,7 +41,7 @@ std::map<std::string,uint32_t> LoadDB(std::string dbfile) {
 void SaveDB(const std::map<std::string, uint32_t> &StringIDs, std::string dbfile) {
     std::ofstream db(dbfile);
     for (auto p : StringIDs) {
-        db << p.second << '\0' << p.first << '\n';
+        db << p.second << '\t' << p.first << '\n';
     }
     std::cout << "Saved LavaDB" << std::endl;
 }
