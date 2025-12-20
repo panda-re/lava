@@ -248,14 +248,4 @@ fib_time = tock()
 print("fib complete %.2f seconds" % fib_time)
 sys.stdout.flush()
 
-db = LavaDatabase(project)
 
-print("Count\tBug Type Num\tName")
-for kind in BugKind:
-    n = db.session.query(Bug).filter(Bug.type == kind).count()
-    print("%d\t%d\t%s" % (n, kind, Bug.type))
-
-print("total dua:", db.session.query(Dua).count())
-print("total atp:", db.session.query(AttackPoint).count())
-print("total bug:", db.session.query(Bug).count())
-db.session.close()

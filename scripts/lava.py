@@ -881,24 +881,22 @@ def get_allowed_bugtype_num(args) -> list[int]:
         return allowed_bugtype_nums
 
     for bugtype_name in args.bugtypes.split(","):
-        bugtype_name = bugtype_name.strip()
+        bugtype_name = bugtype_name.strip().lower()
         if not bugtype_name:
             continue
 
-        btnl = bugtype_name.lower()
-        found_kind = None
-
+        found_kind: BugKind | None = None
         for kind in BugKind:
-            # kind.name is "BUG_PTR_ADD"
-            # kind.value is 0
+            normalized_enum_name = kind.name.lower().replace("bug_", "")
 
-            # Check if user input (e.g. "ptr") is in the enum name ("bug_ptr_add")
-            if btnl == kind.name[5:].lower():
+            if bugtype_name == normalized_enum_name:
                 found_kind = kind
                 break
 
         if found_kind is None:
-            raise RuntimeError(f"I dont have a bug type [{bugtype_name}]")
+            # Debug tip: print what we were looking for vs what we have
+            available = ", ".join([k.name for k in BugKind])
+            raise RuntimeError(f"I dont have a bug type [{bugtype_name}]. Available: {available}")
 
         allowed_bugtype_nums.append(found_kind.value)
 

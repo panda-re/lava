@@ -15,9 +15,6 @@ from bisect import bisect_left
 
 T = TypeVar("T")
 
-# Map from source lval ID to most recent DUA incarnation.
-recent_dead_duas: dict[int, Dua] = {}
-
 # These map pointer values in the PANDA taint run to the sets they refer to.
 ptr_to_labelset: dict[int, LabelSet] = {}
 
@@ -38,8 +35,10 @@ LAVA_MAGIC_VALUE_SIZE: int = 4
 FAKE_DUA_BYTE_FLAG: int = 777
 
 # List of recent duas sorted by dua->instr. Invariant should hold that:
-# set(recent_dead_duas.values()) == set(recent_duas_by_instr).
 recent_duas_by_instr: list[Dua] = []
+# set(recent_dead_duas.values()) == set(recent_duas_by_instr).
+# Map from source lval ID to most recent DUA incarnation.
+recent_dead_duas: dict[int, Dua] = {}
 
 num_real_duas : int = 0
 num_fake_duas : int = 0
@@ -488,7 +487,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             # Retrieve the LabelSet object from our global map
             label_set = ptr_to_labelset.get(ptr)
             if not label_set:
-                continue  # Safety check
+                continue
 
             byte_tcn[offset] = tcn
 
@@ -550,8 +549,8 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         count = 0
         # 'i' starts at 0 and increments every time we look at a taint query
         # This matches the C++ loop where ++i happens at the bottom of every iteration
-        for i, tq in enumerate(taint_query_header["taintQuery"]):
-            offset = int(tq["offset"])
+        for i, taint_query in enumerate(taint_query_header["taintQuery"]):
+            offset = int(taint_query["offset"])
 
             # C++: if (offset > i)
             # If the tainted byte is further ahead than our current index,
@@ -594,9 +593,8 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         dua, is_new_dua = get_or_create(
             session,
             Dua,
-            # --- SEARCH KEYS (Must match C++ #pragma db index("DuaUniq")...) ---
             lval=lval,
-            inputfile="unknown",  # Warning: C++ usually expects the real filename here
+            inputfile="unknown",
             instr=instr_addr,
             fake_dua=is_fake_dua,
 
@@ -979,13 +977,22 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     print(f"*** Curtailing output of fbi at {num_real_duas}")
                     break
 
-    print(f"{num_bugs_added_to_db} added to db")
-    print(f"{num_potential_bugs} potential bugs")
-    print(f"{num_potential_nonbugs} potential non bugs")
-
     if num_potential_bugs == 0:
         print("No bugs found", file=sys.stderr)
         raise RuntimeError("No bugs found by FBI")
+    print_bug_stats(project_data)
+
+
+def print_bug_stats(project_data: dict):
+    with LavaDatabase(project_data) as db:
+        print("Count\tBug Type Num\tName")
+        for kind in BugKind:
+            n = db.session.query(Bug).filter(Bug.type == kind).count()
+            print("%d\t%d\t%s" % (n, kind.value, kind.name))
+
+        print("total dua:", db.session.query(Dua).count())
+        print("total atp:", db.session.query(AttackPoint).count())
+        print("total bug:", db.session.query(Bug).count())
 
 
 if __name__ == "__main__":
@@ -1031,3 +1038,4 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
     parse_panda_log(panda_log, project)
+
