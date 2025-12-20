@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union
 import random
 from dataclasses import dataclass
 from enum import IntEnum
@@ -246,33 +246,43 @@ class Bug(Base):
     # 1. Primary Key
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
 
-    # 2. Foreign Keys (Use Mapped[int])
-    # Note: We name the Python attribute 'trigger_id', but map it to DB column 'trigger'
-    trigger_id: Mapped[int] = mapped_column('trigger', BigInteger, ForeignKey('duabytes.id'))
-    trigger_lval_id: Mapped[int] = mapped_column('trigger_lval', BigInteger, ForeignKey('sourcelval.id'))
-    atp_id: Mapped[int] = mapped_column('atp', BigInteger, ForeignKey('attackpoint.id'))
+    # 2. Foreign Keys
+    # mapped_column('db_col_name', Type, ForeignKey)
+    trigger_id: Mapped[int] = mapped_column('trigger', BigInteger, ForeignKey('duabytes.id'), nullable=False)
+    trigger_lval_id: Mapped[int] = mapped_column('trigger_lval', BigInteger, ForeignKey('sourcelval.id'),
+                                                 nullable=False)
+    atp_id: Mapped[int] = mapped_column('atp', BigInteger, ForeignKey('attackpoint.id'), nullable=False)
 
-    # 3. Rename 'type' to 'typ' to avoid Python keyword collision
-    # It still maps to the database column named "type"
+    # 3. Type Column
     type: Mapped[BugKind] = mapped_column("type", Integer, nullable=False)
 
-    # 4. Relationships (CRITICAL FIX FOR IDE WARNINGS)
-    # Using Mapped["ClassName"] tells the IDE these are valid constructor args
+    # 4. Relationships
     trigger: Mapped["DuaBytes"] = relationship("DuaBytes")
     trigger_lval: Mapped["SourceLval"] = relationship("SourceLval")
     atp: Mapped["AttackPoint"] = relationship("AttackPoint")
 
-    # 5. Other Columns
-    max_liveness: Mapped[float] = mapped_column(Float, nullable=True)
-    magic: Mapped[int] = mapped_column(Integer, nullable=True)
+    # 5. Data Columns
+    # Note: C++ uses uint64_t for max_liveness, but Python often treats liveness as float.
+    # If C++ says uint64, Integer is safer unless you know it's fractional.
+    max_liveness: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
-    # 6. Postgres Array
-    # Mapped[List[int]] makes usage clear
-    extra_duas: Mapped[List[int]] = mapped_column(postgresql.ARRAY(BigInteger), nullable=True)
+    # C++ initializes magic to 0 in list, then calculates it. Database says NOT NULL.
+    magic: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    # 7. Many-to-Many
+    # 6. Arrays
+    # C++: std::vector<uint64_t> extra_duas;
+    extra_duas: Mapped[List[int]] = mapped_column(postgresql.ARRAY(BigInteger), nullable=False)
+
+    # 7. Reverse Relationships
     builds: Mapped[List["Build"]] = relationship("Build", secondary="build_bugs", back_populates="bugs")
 
+    # 8. Constraints
+    __table_args__ = (
+        # #pragma db index("BugUniq") unique members(type, atp, trigger_lval)
+        UniqueConstraint('type', 'atp', 'trigger_lval', name='BugUniq'),
+    )
+
+    # --- CONSTANTS ---
     required_extra_duas_for_type = {
         BugKind.BUG_PTR_ADD: 0,
         BugKind.BUG_RET_BUFFER: 1,
@@ -281,13 +291,61 @@ class Bug(Base):
         BugKind.BUG_MALLOC_OFF_BY_ONE: 0
     }
 
-    @classmethod
-    def num_extra_duas(cls, bug_type: BugKind):
-        return cls.required_extra_duas_for_type[bug_type]
+    def __init__(self, bug_type: BugKind, trigger, atp, extra_duas: Union[List[int], List["DuaBytes"]], max_liveness=0,
+                 **kwargs):
+        """
+        Mirroring C++ Constructor logic:
+        Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
+            const AttackPoint *atp, std::vector<uint64_t> extra_duas)
+        """
+        # 1. Handle Trigger LVAL Logic
+        # C++: trigger_lval(trigger->dua->lval)
+        # We assume 'trigger' is a DuaBytes object.
+        resolved_lval = None
+        if hasattr(trigger, 'dua') and trigger.dua:
+            resolved_lval = trigger.dua.lval
+
+        # 2. Handle Extra Duas Logic
+        # C++ accepts both IDs (uint64) or Pointers (DuaBytes*).
+        # We standardize to List[int] (IDs) for the DB column.
+        final_extras = []
+        if extra_duas:
+            for item in extra_duas:
+                if isinstance(item, int):
+                    final_extras.append(item)
+                elif hasattr(item, 'id'):
+                    final_extras.append(item.id)
+                else:
+                    raise ValueError(f"Invalid item in extra_duas: {item}")
+
+        # 3. Handle Magic Number Logic
+        # C++: Loop 4 times, shift, OR random, XOR random
+        # magic <<= 8; magic |= rand() % 26 + 0x60; ...
+        c_magic = 0
+        for _ in range(4):
+            c_magic <<= 8
+            # rand() % 26 + 0x60 generates '`' through 'z' (ish)
+            val = (random.randint(0, 32767) % 26) + 0x60
+            c_magic |= val
+            # rand() & 0x20 checks a specific bit to maybe flip case
+            if random.randint(0, 32767) & 0x20:
+                c_magic ^= 0x20  # Flip bit
+
+        # Pass everything to SQLAlchemy's internal init
+        super().__init__(
+            type=bug_type,
+            trigger=trigger,
+            trigger_lval=resolved_lval,  # Auto-filled!
+            atp=atp,
+            extra_duas=final_extras,  # Auto-converted!
+            max_liveness=max_liveness,
+            magic=c_magic,  # Auto-generated!
+            **kwargs
+        )
 
     def __str__(self):
         return 'Bug[{}](type={}, trigger={}, atp={})'.format(
-            self.id, self.typ.name, self.trigger, self.atp)
+            self.id, self.type.name if self.type else '?', self.trigger, self.atp)
 
 
 class Build(Base):
@@ -571,42 +629,76 @@ class Dua(Base):
             'fake' if self.fake_dua else 'real'
         )
 
+    def __lt__(self, other):
+        """
+        Mirrors C++ operator<:
+        return std::tie(lval->id, inputfile, instr, fake_dua) < ...
+        """
+        if not isinstance(other, Dua):
+            return NotImplemented
+
+        # We use lval_id directly (the Foreign Key ID) as it is much faster
+        # than triggering a lazy load for the full SourceLval object.
+        return (self.lval_id, self.inputfile, self.instr, self.fake_dua) < \
+            (other.lval_id, other.inputfile, other.instr, other.fake_dua)
+
 
 class DuaBytes(Base):
     __tablename__ = 'duabytes'
 
-    # 1. Primary Key
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-
-    # 2. Foreign Key
     dua_id: Mapped[int] = mapped_column('dua', BigInteger, ForeignKey('dua.id'))
 
-    # 3. Explicit Composite Columns
-    # We map the DB columns 'selected_low' and 'selected_high'
+    # Composite Range Columns
     _low: Mapped[int] = mapped_column("selected_low", Integer, nullable=False)
     _high: Mapped[int] = mapped_column("selected_high", Integer, nullable=False)
-
-    # 4. The Composite Property
-    # Usage: my_duabytes.selected.size
     selected: Mapped[Range] = composite(create_range, _low, _high)
 
-    # 5. Other Columns
-    all_labels: Mapped[List[int]] = mapped_column(postgresql.ARRAY(Integer))
+    all_labels: Mapped[List[int]] = mapped_column(postgresql.ARRAY(Integer), nullable=False)
 
-    # 6. Relationship
+    # Relationship
     dua: Mapped["Dua"] = relationship("Dua")
 
-    def __str__(self):
-        return 'DUABytes[DUA[{}:{}, {}, {}]][{}:{}](labels={})'.format(
-            self.dua.lval.loc.filename,
-            self.dua.lval.loc.begin.line,
-            self.dua.lval.ast_name,
-            'fake' if self.dua.fake_dua else 'real',
-            self.selected.low,
-            self.selected.high,
-            self.all_labels
-        )
+    # Mirroring the C++ Index: unique members(dua, selected)
+    __table_args__ = (
+        UniqueConstraint('dua', 'selected_low', 'selected_high', name='DuaBytesUniq'),
+    )
 
+    def __init__(self, dua=None, selected=None, **kwargs):
+        """
+        Mirroring the C++ Constructor:
+        DuaBytes(const Dua *dua, Range selected)
+        """
+        super().__init__(dua=dua, selected=selected, **kwargs)
+
+        if dua and selected:
+            # Mirror the C++ Asserts
+            assert selected.low <= selected.high
+            # In Python, we assume dua.viable_bytes is a list of LabelSet objects
+            assert selected.high <= len(dua.viable_bytes)
+
+            # Mirror the C++ loop and merge_into logic
+            # We use a set for unique labels, then sort it to match 'SortedIntArray' expectations
+            labels_set = set()
+            for ls in dua.viable_bytes[selected.low:selected.high]:
+                if ls and ls.labels:
+                    labels_set.update(ls.labels)
+
+            self.all_labels = sorted(list(labels_set))
+
+    def __str__(self):
+        # Using .getattr or checking if relationship is loaded to avoid LazyLoad errors in logs
+        dua_info = f"DUA[{self.dua_id}]"
+        if self.dua and self.dua.lval:
+            dua_info = '{}:{}:{}'.format(
+                self.dua.lval.loc.filename,
+                self.dua.lval.loc.begin.line,
+                self.dua.lval.ast_name
+            )
+
+        return 'DUABytes[{}][{}:{}](labels={})'.format(
+            dua_info, self.selected.low, self.selected.high, self.all_labels
+        )
 
 class AtpKind(IntEnum):
     FUNCTION_CALL = 0
@@ -635,19 +727,11 @@ class AttackPoint(Base):
     # --- 2. Define the Composite Bridge ---
     # This maps the 5 columns above into your ASTLoc class.
     loc: Mapped[ASTLoc] = composite(create_ast_loc, _f, _bl, _bc, _el, _ec)
-    typ: Mapped[AtpKind] = mapped_column("type", Integer, nullable=False)
+    type: Mapped[AtpKind] = mapped_column("type", Integer, nullable=False)
 
     def __str__(self):
-        type_strs = [
-            "ATP_FUNCTION_CALL",
-            "ATP_POINTER_READ",
-            "ATP_POINTER_WRITE",
-            "ATP_QUERY_POINT",
-            "ATP_PRINTF_LEAK",
-            "ATP_MALLOC_OFF_BY_ONE"
-        ]
         return 'ATP[{}](loc={}:{}, type={})'.format(
-            self.id, self.loc.filename, self.loc.begin.line, type_strs[self.typ]
+            self.id, self.loc.filename, self.loc.begin.line, AtpKind(self.type).name
         )
 
     # Enforce Uniqueness at the Database Level

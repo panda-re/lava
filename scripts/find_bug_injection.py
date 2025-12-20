@@ -28,14 +28,14 @@ dua_dependencies: DefaultDict[int, Set[Dua]] = defaultdict(set)
 # Liveness for each input byte.
 liveness: DefaultDict[int, int] = defaultdict(int)
 
-CBNO_TCN_BIT = 0
-CBNO_CRD_BIT = 1
-CBNO_LVN_BIT = 2
+CBNO_TCN_BIT: int = 0
+CBNO_CRD_BIT: int = 1
+CBNO_LVN_BIT: int = 2
 
 # number of bytes in lava magic value used to trigger bugs
-LAVA_MAGIC_VALUE_SIZE = 4
+LAVA_MAGIC_VALUE_SIZE: int = 4
 # special flag to indicate untainted byte that we want to use for fake dua
-FAKE_DUA_BYTE_FLAG = 777
+FAKE_DUA_BYTE_FLAG: int = 777
 
 # List of recent duas sorted by dua->instr. Invariant should hold that:
 # set(recent_dead_duas.values()) == set(recent_duas_by_instr).
@@ -141,9 +141,9 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
 
     # --- 2. Fix Bug Metadata Access ---
     # Use the dictionary we defined in the Bug class
-    req_extra = Bug.required_extra_duas_for_type[bug_type]
-    num_extra_duas_needed = req_extra - len(extra_duas_prechosen)
-    assert num_extra_duas_needed >= 0
+    required_extra = Bug.required_extra_duas_for_type[bug_type]
+    num_extra_duas = required_extra - len(extra_duas_prechosen)
+    assert num_extra_duas >= 0
 
     prechosen_labels : list[int] = []
     for extra in extra_duas_prechosen:
@@ -164,7 +164,7 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
         # --- 4. Range Logic ---
         selected : Range = get_dua_dead_range(trigger_dua, prechosen_labels, project_data)
         # Ensure LAVA_MAGIC_VALUE_SIZE is defined/imported
-        if not selected or selected.size() < LAVA_MAGIC_VALUE_SIZE:
+        if selected.empty() or selected.size() < LAVA_MAGIC_VALUE_SIZE:
             continue
 
         # --- 5. Fix get_or_create for DuaBytes ---
@@ -173,10 +173,7 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
             session,
             DuaBytes,
             dua=trigger_dua,
-            selected=selected,
-            default={
-                'all_labels': sorted([])
-            }
+            selected=selected
         )
 
         extra_duas = list(extra_duas_prechosen)
@@ -200,8 +197,8 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
         begin_idx = 0
         distance = end_idx - begin_idx
 
-        if num_extra_duas_needed < distance:
-            for _ in range(num_extra_duas_needed):
+        if num_extra_duas < distance:
+            for _ in range(num_extra_duas):
                 extra = None
                 for tries in range(2):
                     # Random index in range
@@ -212,18 +209,14 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
                     if selected_extra.empty():
                         continue
 
-                    extra_obj, _ = get_or_create(
+                    extra, _ = get_or_create(
                         session,
                         DuaBytes,
                         dua=extra_dua,
-                        selected=selected_extra,
-                        default={
-                            'all_labels': sorted([])
-                        }
+                        selected=selected_extra
                     )
 
-                    if disjoint(labels_so_far, extra_obj.all_labels):
-                        extra = extra_obj
+                    if disjoint(labels_so_far, extra.all_labels):
                         break
 
                 if extra is None:
@@ -233,11 +226,11 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
                 # merge_into modifies labels_so_far in place
                 merge_into(extra.all_labels, labels_so_far)
 
-        if len(extra_duas) < req_extra:
+        if len(extra_duas) < required_extra:
             continue
 
         if not trigger_duabytes.dua.fake_dua:
-            if not (len(labels_so_far) >= 4 * req_extra):
+            if not (len(labels_so_far) >= 4 * required_extra):
                 continue
 
         # Calculate max liveness
@@ -246,8 +239,8 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
             c_max_liveness = max(c_max_liveness, liveness[l])
 
         # Assertions
-        assert bug_type != BugKind.BUG_RET_BUFFER or atp.typ == AtpKind.QUERY_POINT
-        assert len(extra_duas) == req_extra
+        assert bug_type != BugKind.BUG_RET_BUFFER or atp.type == AtpKind.QUERY_POINT
+        assert len(extra_duas) == required_extra
 
         # --- 7. Save Bug ---
         # The Bug Model expects 'extra_duas' to be a LIST OF IDs (Array[BigInt]),
@@ -255,7 +248,7 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
         extra_duas_ids = [d.id for d in extra_duas]
 
         bug = Bug(
-            type=bug_type,
+            bug_type=bug_type,
             trigger=trigger_duabytes,
             max_liveness=c_max_liveness,
             atp=atp,
@@ -307,13 +300,13 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
     assert "astLocId" in source_info
     ast_loc = ASTLoc.from_serialized(ind2str[ast_id])
     assert len(ast_loc.filename) > 0
-    attack_point_type = int(panda_log_entry_attack_point["info"], 0)
+    attack_point_type = panda_log_entry_attack_point["info"]
 
     atp, is_new_atp = get_or_create(
         session,
         AttackPoint,
         loc=ast_loc,
-        typ=attack_point_type
+        type=attack_point_type
     )
 
     dprint(project_data, f"@ATP: {str(atp)}")
@@ -321,7 +314,7 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
     # Don't decimate PTR_ADD bugs.
     if attack_point_type == AtpKind.POINTER_WRITE:
         record_injectable_bugs_at(BugKind.BUG_REL_WRITE, atp, is_new_atp, session, [], project_data)
-    if attack_point_type in [AtpKind.POINTER_READ]:
+    if attack_point_type in [AtpKind.POINTER_READ, AtpKind.FUNCTION_CALL]:
         record_injectable_bugs_at(BugKind.BUG_PTR_ADD, atp, is_new_atp, session, [], project_data)
     elif attack_point_type == AtpKind.PRINTF_LEAK:
         record_injectable_bugs_at(BugKind.BUG_PRINTF_LEAK, atp, is_new_atp, session, [], project_data)
@@ -346,7 +339,6 @@ def get_dua_exploit_pad(dua: Dua) -> Range:
         # 2. ls has exactly 1 label (uncomplicated taint)
         # 3. Taint Compute Number is 0 (direct copy, not arithmetic result)
         # 4. Liveness is low (label is not used much downstream)
-
         is_candidate = False
         if label_set is not None and len(label_set.labels) == 1:
             # Get the single label
@@ -361,7 +353,7 @@ def get_dua_exploit_pad(dua: Dua) -> Range:
                 current_run.high += 1
         else:
             # End of a run, check if it's the new record
-            if current_run.size > largest_run.size:
+            if current_run.size() > largest_run.size():
                 largest_run = current_run
             # Reset
             current_run = Range(0, 0)
@@ -514,9 +506,12 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
 
                 # Merge labels (Python set update handles deduping)
                 all_labels.update(label_set.labels)
+                dprint(project_data, f"keeping byte @ offset {offset}")
 
                 viable_byte[offset] = label_set
                 num_viable_bytes += 1
+
+        dprint(project_data, "{num_viable_bytes} viable bytes in lval")
 
         # Check DUA Viability
         # 1. Enough viable bytes
@@ -542,11 +537,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         # Reset viable_byte to clean slate for fake generation
         viable_byte = [None] * length
 
-        # Identify occupied offsets
-        occupied_offsets = set()
-        for taint_query in taint_query_header["taintQuery"]:
-            occupied_offsets.add(int(taint_query["offset"]))
-
         # Get the Singleton Fake LabelSet (Get or Create)
         # 0xFA4E is a magic number often used for fake flags
         fake_ls, _ = get_or_create(
@@ -558,15 +548,22 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         )
 
         count = 0
-        # Iterate the BUFFER (not the taint queries) to find gaps
-        for i in range(length):
-            if i not in occupied_offsets:
+        # 'i' starts at 0 and increments every time we look at a taint query
+        # This matches the C++ loop where ++i happens at the bottom of every iteration
+        for i, tq in enumerate(taint_query_header["taintQuery"]):
+            offset = int(tq["offset"])
+
+            # C++: if (offset > i)
+            # If the tainted byte is further ahead than our current index,
+            # it means index 'i' is untainted and available for a fake DUA.
+            if offset > i:
                 viable_byte[i] = fake_ls
                 count += 1
-                if count >= LAVA_MAGIC_VALUE_SIZE:
-                    break
 
-        # If we successfully found 4 bytes
+            # Stop as soon as we have enough bytes for a LAVA magic value
+            if count >= LAVA_MAGIC_VALUE_SIZE:
+                break
+
         if count >= LAVA_MAGIC_VALUE_SIZE:
             is_fake_dua = True
 
@@ -616,7 +613,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         # Track Dependencies
         if is_dua:
             for l in sorted_labels:
-                dua_dependencies[l] = dua
+                dua_dependencies[l].add(dua)
 
         # Handle Buffer Overflow Injection (RET_BUFFER)
         # Create AttackPoint (QUERY_POINT)
@@ -624,28 +621,18 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             session,
             AttackPoint,
             loc=ast_loc,
-            typ=AtpKind.QUERY_POINT
+            type=AtpKind.QUERY_POINT
         )
 
         if length >= 20 and decimate_by_type(BugKind.BUG_RET_BUFFER):
             exploit_range = get_dua_exploit_pad(dua)
-            duabytes_labels = set()
-            # Iterate from low to high (safe because exploit_range comes from this same list)
-            for i in range(exploit_range.low, exploit_range.high):
-                if i < len(viable_byte):
-                    ls = viable_byte[i]
-                    if ls is not None:
-                        duabytes_labels.update(ls.labels)
 
             # create(DuaBytes...)
             dua_bytes, _ = get_or_create(
                 session,
                 DuaBytes,
                 dua=dua,
-                selected=exploit_range,
-                defaults={
-                    'all_labels': sorted(list(duabytes_labels))
-                }
+                selected=exploit_range
             )
 
             if is_fake_dua or exploit_range.size() >= 20:
@@ -814,10 +801,10 @@ def update_liveness(panda_log_entry: dict, project_data: dict):
     duas_to_check = []
     for label in all_labels:
         liveness[label] += 1
-        dprint(project_data, f"checking viability of {len(recent_dead_duas)} duas\n")
+        dprint(project_data, f"checking viability of {len(recent_dead_duas)} duas")
         depends = dua_dependencies.get(label)
         if depends:
-            if isinstance(depends, list):
+            if isinstance(depends, list) or isinstance(depends, set):
                 merge_into(depends, duas_to_check)
             else:
                 merge_into([depends], duas_to_check)
