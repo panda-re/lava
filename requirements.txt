@@ -9,3 +9,4 @@ SQLAlchemy
 tabulate
 psycopg2-binary
 dotenv
+ijson

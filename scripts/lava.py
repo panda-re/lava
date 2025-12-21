@@ -1,6 +1,5 @@
 import math
 import os
-import random
 import shlex
 import struct
 import subprocess
@@ -12,364 +11,22 @@ from os.path import join
 from subprocess import PIPE
 from subprocess import check_call
 
-from sqlalchemy import Column
-from sqlalchemy import ForeignKey
-from sqlalchemy import Table
-from sqlalchemy import create_engine
-from sqlalchemy.dialects import postgresql
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import load_only
-from sqlalchemy.orm import relationship
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.sql.expression import func
-from sqlalchemy.types import BigInteger
-from sqlalchemy.types import Boolean
-from sqlalchemy.types import Float
-from sqlalchemy.types import Integer
-from sqlalchemy.types import Text
 
-from composite import Composite
 from process_compile_commands import get_c_files
 from process_compile_commands import process_compile_commands
 from test_crash import process_crash
 from dotenv import load_dotenv
+from database_types import Bug, DuaBytes, Build, Run, BugKind, AtpKind
 
 load_dotenv()
 
-Base = declarative_base()
+
 
 debugging = False
 NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
 
 
-class Loc(Composite):
-    column = Integer
-    line = Integer
 
-
-class ASTLoc(Composite):
-    filename = Text
-    begin = Loc
-    end = Loc
-
-
-class Range(Composite):
-    low = Integer
-    high = Integer
-
-
-class SourceLval(Base):
-    __tablename__ = 'sourcelval'
-
-    id = Column(Integer, primary_key=True)
-    loc = ASTLoc.composite('loc')
-    ast_name = Column(Text)
-
-    def __str__(self):
-        return 'Lval[{}](loc={}:{}, ast="{}")'.format(
-            self.id, self.loc.filename, self.loc.begin.line, self.ast_name
-        )
-
-
-class LabelSet(Base):
-    __tablename__ = 'labelset'
-
-    id = Column(BigInteger, primary_key=True)
-    ptr = Column(BigInteger)
-    inputfile = Column(Text)
-    labels = Column(postgresql.ARRAY(Integer))
-
-    def __repr__(self):
-        return str(self.labels)
-
-
-dua_viable_bytes = \
-    Table('dua_viable_bytes', Base.metadata,
-          Column('object_id', BigInteger, ForeignKey('dua.id')),
-          Column('index', BigInteger),
-          Column('value', BigInteger, ForeignKey('labelset.id')))
-
-
-class Dua(Base):
-    __tablename__ = 'dua'
-
-    id = Column(BigInteger, primary_key=True)
-    lval_id = Column('lval', BigInteger, ForeignKey('sourcelval.id'))
-    all_labels = Column(postgresql.ARRAY(Integer))
-    inputfile = Column(Text)
-    max_tcn = Column(Integer)
-    max_cardinality = Column(Integer)
-    instr = Column(BigInteger)
-    fake_dua = Column(Boolean)
-
-    lval = relationship("SourceLval")
-    viable_bytes = relationship("LabelSet", secondary=dua_viable_bytes)
-
-    def __str__(self):
-        return 'DUA[{}](lval={}, labels={}, viable={}, \
-                input={}, instr={}, fake_dua={})'.format(
-            self.id, self.lval, self.all_labels, self.viable_bytes,
-            self.inputfile, self.instr, self.fake_dua
-        )
-
-
-class DuaBytes(Base):
-    __tablename__ = 'duabytes'
-
-    id = Column(BigInteger, primary_key=True)
-    dua_id = Column('dua', BigInteger, ForeignKey('dua.id'))
-    selected = Range.composite('selected')
-    all_labels = Column(postgresql.ARRAY(Integer))
-
-    dua = relationship("Dua")
-
-    def __str__(self):
-        return 'DUABytes[DUA[{}:{}, {}, {}]][{}:{}](labels={})'.format(
-            self.dua.lval.loc.filename, self.dua.lval.loc.begin.line,
-            self.dua.lval.ast_name, 'fake' if self.dua.fake_dua else 'real',
-            self.selected.low, self.selected.high, self.all_labels)
-
-
-class AttackPoint(Base):
-    __tablename__ = 'attackpoint'
-
-    id = Column(BigInteger, primary_key=True)
-    loc = ASTLoc.composite('loc')
-    typ = Column('type', Integer)
-
-    # enum Type {
-    FUNCTION_CALL = 0
-    POINTER_READ = 1
-    POINTER_WRITE = 2
-    QUERY_POINT = 3
-    PRINTF_LEAK = 4
-
-    # } type;
-
-    def __str__(self):
-        type_strs = [
-            "ATP_FUNCTION_CALL",
-            "ATP_POINTER_READ",
-            "ATP_POINTER_WRITE",
-            "ATP_QUERY_POINT",
-            "ATP_PRINTF_LEAK",
-            "ATP_MALLOC_OFF_BY_ONE"
-        ]
-        return 'ATP[{}](loc={}:{}, type={})'.format(
-            self.id, self.loc.filename, self.loc.begin.line, type_strs[self.typ]
-        )
-
-
-build_bugs = \
-    Table('build_bugs', Base.metadata,
-          Column('object_id', BigInteger, ForeignKey('build.id')),
-          Column('index', BigInteger, default=0),
-          Column('value', BigInteger, ForeignKey('bug.id')))
-
-
-class Bug(Base):
-    __tablename__ = 'bug'
-
-    # enum Type {
-    PTR_ADD = 0
-    RET_BUFFER = 1
-    REL_WRITE = 2
-    PRINTF_LEAK = 3
-    MALLOC_OFF_BY_ONE = 4
-    # };
-    type_strings = ['BUG_PTR_ADD', 'BUG_RET_BUFFER',
-                    'BUG_REL_WRITE', 'BUG_PRINTF_LEAK', 'MALLOC_OFF_BY_ONE']
-
-    id = Column(BigInteger, primary_key=True)
-    type = Column(Integer)
-    trigger_id = Column('trigger', BigInteger, ForeignKey('duabytes.id'))
-    trigger_lval_id = Column('trigger_lval', BigInteger,
-                             ForeignKey('sourcelval.id'))
-    atp_id = Column('atp', BigInteger, ForeignKey('attackpoint.id'))
-
-    trigger = relationship("DuaBytes")
-    trigger_lval = relationship("SourceLval")
-
-    max_liveness = Column(Float)
-    magic = Column(Integer)
-
-    atp = relationship("AttackPoint")
-
-    extra_duas = Column(postgresql.ARRAY(BigInteger))
-
-    builds = relationship("Build", secondary=build_bugs,
-                          back_populates="bugs")
-
-    def __str__(self):
-        return 'Bug[{}](type={}, trigger={}, atp={})'.format(
-            self.id, Bug.type_strings[self.type], self.trigger, self.atp)
-
-
-class Build(Base):
-    __tablename__ = 'build'
-
-    id = Column(BigInteger, primary_key=True)
-    compile = Column(Boolean)
-    output = Column(Text)
-
-    bugs = relationship("Bug", secondary=build_bugs,
-                        back_populates="builds")
-
-
-class Run(Base):
-    __tablename__ = 'run'
-
-    id = Column(BigInteger, primary_key=True)
-    build_id = Column('build', BigInteger, ForeignKey('build.id'))
-    fuzzed_id = Column('fuzzed', BigInteger, ForeignKey('bug.id'))
-    exitcode = Column(Integer)
-    output = Column(Text)
-    success = Column(Boolean)
-    validated = Column(Boolean)
-
-    build = relationship("Build")
-    fuzzed = relationship("Bug")
-
-
-class LavaDatabase(object):
-    def __init__(self, project):
-        self.project = project
-        self.engine = create_engine(
-            "postgresql+psycopg2://{}@{}:{}/{}".format(
-                project['database_user'],
-                project['database'],
-                project['database_port'],
-                project['db']
-            )
-        )
-        self.Session = sessionmaker(bind=self.engine)
-        self.session = self.Session()
-
-    # If we have over a million bugs, don't bother counting things
-    def huge(self):
-        return self.session.query(Bug.id).count() > 1000000
-
-    def uninjected(self):
-        return self.session.query(Bug).filter(~Bug.builds.any())
-
-    # returns uninjected (not yet in the build table) possibly fake bugs
-    def uninjected2(self, fake, allowed_bugtypes=None):
-        ret = self.uninjected() \
-            .join(Bug.atp) \
-            .join(Bug.trigger) \
-            .join(DuaBytes.dua) \
-            .filter(Dua.fake_dua == fake)
-        if allowed_bugtypes:
-            ret.filter(Bug.type.in_(allowed_bugtypes))
-        return ret
-
-    def uninjected_random(self, fake, allowed_bugtypes=None):
-        return self.uninjected2(fake, allowed_bugtypes).order_by(func.random())
-
-    def uninjected_random_by_atp_bugtype(self, fake, atp_types=None, allowed_bugtypes=None, atp_lim=10):
-        # For each ATP find X possible bugs,
-        # Returns dict list of lists:
-        #   {bugtype1:[[atp0_bug0, atp0_bug1,..], [atp1_bug0, atp1_bug1,..]],
-        #    bugtype2:[[atp0_bug0, atp0_bug1,..], [atp1_bug0, atp1_bug1,..]]}
-        # Where sublists are randomly sorted
-        if atp_types:
-            _atps = self.session.query(AttackPoint.id).filter(AttackPoint.typ.in_(atp_types)).all()
-        else:
-            _atps = self.session.query(AttackPoint.id).all()
-
-        atps = [r.id for r in _atps]
-        # print(atps)
-        print("Found {} distinct ATPs".format(len(atps)))
-
-        results = {}
-        assert (len(allowed_bugtypes)), "Requires bugtypes"
-
-        for bugtype in allowed_bugtypes:
-            results[bugtype] = []
-            for atp in atps:
-                q = self.session.query(Bug).filter(Bug.atp_id == atp).filter(~Bug.builds.any()) \
-                    .filter(Bug.type == bugtype) \
-                    .join(Bug.atp) \
-                    .join(Bug.trigger) \
-                    .join(DuaBytes.dua) \
-                    .filter(Dua.fake_dua == fake)
-
-                results[bugtype].append(q.order_by(func.random()).limit(atp_lim).all())
-        return results
-
-    def uninjected_random_by_atp(self, fake, atp_types=None,
-                                 allowed_bugtypes=None, atp_lim=10):
-        # For each ATP find X possible bugs,
-        # Returns list of lists: [[atp0_bug0, atp0_bug1,..],
-        # [atp1_bug0, atp1_bug1,..]]
-        # Where sublists are randomly sorted
-        if atp_types:
-            _atps = self.session.query(AttackPoint.id) \
-                .filter(AttackPoint.typ.in_(atp_types)).all()
-        else:
-            _atps = self.session.query(AttackPoint.id).all()
-
-        atps = [r.id for r in _atps]
-        # print(atps)
-        print("Found {} distinct ATPs".format(len(atps)))
-
-        results = []
-        for atp in atps:
-            q = self.session.query(Bug).filter(Bug.atp_id == atp) \
-                .filter(~Bug.builds.any()) \
-                .join(Bug.atp) \
-                .join(Bug.trigger) \
-                .join(DuaBytes.dua) \
-                .filter(Dua.fake_dua == fake)
-            if allowed_bugtypes:
-                q = q.filter(Bug.type.in_(allowed_bugtypes))
-
-            results.append(q.order_by(func.random()).limit(atp_lim).all())
-        return results
-
-    def uninjected_random_limit(self, allowed_bugtypes=None, count=100):
-        # Fast, doesn't support fake bugs, only return IDs of allowed bugtypes
-        ret = self.session.query(Bug) \
-            .filter(~Bug.builds.any()) \
-            .options(load_only(Bug.id))
-        if allowed_bugtypes:
-            ret = ret.filter(Bug.type.in_(allowed_bugtypes))
-        return ret.order_by(func.random()).limit(count).all()
-
-    def uninjected_random_y(self, fake, allowed_bugtypes=None, yield_count=100):
-        # Same as above but yield results
-        ret = self.session.query(Bug) \
-            .filter(~Bug.builds.any()).yield_per(yield_count) \
-            .join(Bug.atp) \
-            .join(Bug.trigger) \
-            .join(DuaBytes.dua) \
-            .filter(Dua.fake_dua == fake)
-        if allowed_bugtypes:
-            ret = ret.filter(Bug.type.in_(allowed_bugtypes))
-        yield ret.all()  # TODO randomize- or is it randomized already?
-
-    def uninjected_random_balance(self, fake, num_required, bug_types):
-        bugs = []
-        types_present = self.session.query(Bug.type) \
-            .filter(~Bug.builds.any()) \
-            .group_by(Bug.type)
-        num_avail = 0
-        for (i,) in types_present:
-            if i in bug_types:
-                num_avail += 1
-        print("%d bugs available of allowed types" % num_avail)
-        assert (num_avail > 0)
-        num_per = num_required / num_avail
-        for (i,) in types_present:
-            if (i in bug_types):
-                bug_query = self.uninjected_random(fake).filter(Bug.type == i)
-                print("found %d bugs of type %d" % (bug_query.count(), i))
-                bugs.extend(bug_query[:num_per])
-        return bugs
-
-    def next_bug_random(self, fake):
-        count = self.uninjected2(fake).count()
-        return self.uninjected2(fake)[random.randrange(0, count)]
 
 
 def run_cmd(cmd, envv=None, timeout=30, cwd=None, rr=False, shell=False):
@@ -433,7 +90,7 @@ def mutfile(filename, fuzz_labels_list, new_filename, bug,
         file_bytes = bytearray(f.read())
     # change first 4 bytes in dua to magic value
 
-    if bug.type == Bug.REL_WRITE:
+    if bug.type == BugKind.BUG_REL_WRITE:
         assert (len(fuzz_labels_list) == 3)  # Must have 3 sets of labels
 
         m = bug.magic
@@ -612,7 +269,7 @@ def limit_atp_reuse(bugs, max_per_line=1):
     uniq_bugs = []
     seen = {}
     for bug in bugs:
-        tloc = (bug.atp.loc_filename, bug.atp.loc_begin_line)
+        tloc = (bug.atp.loc.filename, bug.atp.loc.begin.line)
         if tloc not in seen.keys():
             seen[tloc] = 0
         seen[tloc] += 1
@@ -635,11 +292,11 @@ def collect_src_and_print(bugs_to_inject, db):
             print("NON-BUG")
         else:
             print("BUG {} id={}".format(bug_index, bug.id))
-        print("    ATP file: ", bug.atp.loc_filename)
-        print("        line: ", bug.atp.loc_begin_line)
+        print("    ATP file: ", bug.atp.loc.filename)
+        print("        line: ", bug.atp.loc.begin.line)
         print("DUA:")
         print("   ", bug.trigger.dua)
-        print("      Src_file: ", bug.trigger_lval.loc_filename)
+        print("      Src_file: ", bug.trigger_lval.loc.filename)
         print("      Filename: ", bug.trigger.dua.inputfile)
 
         if len(bug.extra_duas):
@@ -650,13 +307,13 @@ def collect_src_and_print(bugs_to_inject, db):
                     raise RuntimeError("Bug {} references DuaBytes {} which does not exist" \
                                        .format(bug.id, extra_id))
                 print("  ", extra_id, "   @   ", dua_bytes.dua)
-                print("     Src_file: ", dua_bytes.dua.lval.loc_filename)
+                print("     Src_file: ", dua_bytes.dua.lval.loc.filename)
 
                 # Add filesnames for extra_duas into src_files and input_files
                 # Note this is the file _name_ not the path
-                file_name = dua_bytes.dua.lval.loc_filename
-                if "/" in file_name:
-                    file_name = file_name.split("/")[1]
+                file_name = dua_bytes.dua.lval.loc.filename
+                if os.path.sep in file_name:
+                    file_name = file_name.split(os.path.sep)[1]
                 src_files.add(file_name)
                 # input_files.add(lval.inputfile)
 
@@ -664,8 +321,8 @@ def collect_src_and_print(bugs_to_inject, db):
         print("   ", bug.atp)
         print("max_tcn={}  max_liveness={}".format(
             bug.trigger.dua.max_tcn, bug.max_liveness))
-        src_files.add(bug.trigger_lval.loc_filename)
-        src_files.add(bug.atp.loc_filename)
+        src_files.add(bug.trigger_lval.loc.filename)
+        src_files.add(bug.atp.loc.filename)
         input_files.add(bug.trigger.dua.inputfile)
     sys.stdout.flush()
     return (src_files, input_files)
@@ -981,7 +638,7 @@ def run_modified_program(project, install_dir, input_file,
 def get_trigger_line(lp, bug):
     # TODO the triggers aren't a simple mapping from trigger of 0xlava - bug_id
     # But are the lava_get's still correlated to triggers?
-    with open(join(lp.bugs_build, bug.atp.loc_filename), "r") as f:
+    with open(join(lp.bugs_build, bug.atp.loc.filename), "r") as f:
         # TODO: should really check for lava_get(bug_id), but bug_id in db
         # isn't matching source for now, we'll just look for "(0x[magic]" since
         # that seems to always be there, at least for old bug types
@@ -990,7 +647,7 @@ def get_trigger_line(lp, bug):
                      lava_get in line]  # and "lava_get" in line]
         # return closest to original begin line.
         distances = [
-            (abs(line - bug.atp.loc_begin_line), line) for line in atp_lines
+            (abs(line - bug.atp.loc.begin.line), line) for line in atp_lines
         ]
         if not distances:
             return None
@@ -1024,20 +681,20 @@ def check_stacktrace_bug(lp, project, bug, fuzzed_input):
             print(line)
         for line in err.splitlines():
             print(line)
-    prediction = " at {}:{}".format(basename(bug.atp.loc_filename),
+    prediction = " at {}:{}".format(basename(bug.atp.loc.filename),
                                     get_trigger_line(lp, bug))
     print("Prediction {}".format(prediction))
     for line in out.splitlines():
-        if bug.type == Bug.RET_BUFFER:
+        if bug.type == BugKind.BUG_RET_BUFFER:
             # These should go into garbage code if they trigger.
             if line.startswith("#0") and line.endswith(" in ?? ()"):
                 return True
-        elif bug.type == Bug.PRINTF_LEAK:
+        elif bug.type == BugKind.BUG_PRINTF_LEAK:
             # FIXME: Validate this!
             return True
         else:  # PTR_ADD or REL_WRITE for now.
             if line.startswith("#0") or \
-                    bug.atp.typ == AttackPoint.FUNCTION_CALL:
+                    bug.atp.typ == AtpKind.FUNCTION_CALL:
                 # Function call bugs are valid if they happen anywhere in
                 # call stack.
                 if line.endswith(prediction):
@@ -1082,8 +739,8 @@ def validate_bug(db, lp, project, bug, bug_index, build, args, update_db,
     print("retval = %d" % rv)
     validated = False
     if bug.trigger.dua.fake_dua is False:
-        print("bug type is " + Bug.type_strings[bug.type])
-        if bug.type == Bug.PRINTF_LEAK:
+        print("bug type is " + Bug.type)
+        if bug.type == BugKind.BUG_PRINTF_LEAK:
             if outp != unfuzzed_outputs[bug.trigger.dua.inputfile]:
                 print("printf bug -- outputs disagree\n")
                 validated = True
@@ -1216,19 +873,33 @@ def get_bugs(db, bug_id_list):
     return bugs
 
 
-def get_allowed_bugtype_num(args):
+def get_allowed_bugtype_num(args) -> list[int]:
     allowed_bugtype_nums = []
+
+    # Safety check if arg is empty
+    if not args.bugtypes:
+        return allowed_bugtype_nums
+
     for bugtype_name in args.bugtypes.split(","):
-        if not len(bugtype_name):
+        bugtype_name = bugtype_name.strip().lower()
+        if not bugtype_name:
             continue
-        btnl = bugtype_name.lower()
-        bugtype_num = None
-        for i in range(len(Bug.type_strings)):
-            btsl = Bug.type_strings[i].lower()
-            if btnl in btsl:
-                bugtype_num = i
-        if bugtype_num is None:
-            raise RuntimeError("I dont have a bug type [%s]" % bugtype_name)
-        allowed_bugtype_nums.append(bugtype_num)
+
+        found_kind: BugKind | None = None
+        for kind in BugKind:
+            normalized_enum_name = kind.name.lower().replace("bug_", "")
+
+            if bugtype_name == normalized_enum_name:
+                found_kind = kind
+                break
+
+        if found_kind is None:
+            # Debug tip: print what we were looking for vs what we have
+            available = ", ".join([k.name for k in BugKind])
+            raise RuntimeError(f"I dont have a bug type [{bugtype_name}]. Available: {available}")
+
+        allowed_bugtype_nums.append(found_kind.value)
+
+    return allowed_bugtype_nums
 
     return allowed_bugtype_nums

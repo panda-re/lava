@@ -21,16 +21,14 @@ from errno import EEXIST
 from os.path import dirname
 from os.path import basename
 
-from lava import Dua
-from lava import Bug
-from lava import AttackPoint
-from lava import LavaDatabase
+from database_types import Dua, LavaDatabase, Bug, AttackPoint, BugKind
 
 from vars import parse_vars
 from os.path import abspath, join
 from pandare import Panda
 from pandare.extras import dwarfdump
 from dotenv import load_dotenv
+from find_bug_injection import parse_panda_log
 
 load_dotenv()
 
@@ -227,45 +225,28 @@ except subprocess.CalledProcessError as e:
     print("The script to convert the panda log into JSON has failed")
     raise e
 
-# fbi_args = [join(lavadir, 'fbi', 'fbi'),
-# project_file, pandalog, input_file_base]
-fbi_args = [join(lavadir, 'tools', 'install', 'bin', 'fbi'), host_json,
-            project_name, pandalog_json, input_file_base]
+fbi_args = [join(lavadir, 'tools', 'install', 'bin', 'fbi'),
+            host_json,
+            project_name,
+            pandalog_json,
+            input_file_base]
 
-# Command line curtail argument takes priority, otherwise use project specific one
-# global curtail
-if curtail != 0:
-    fbi_args.append(str(curtail))
-elif "curtail" in project:
-    fbi_args.append(str(project.get("curtail", 0)))
+print("Calling fbi invocation")
 
-dprint("fbi invocation: [%s]" % (subprocess.list2cmdline(fbi_args)), debug)
-sys.stdout.flush()
-try:
-    subprocess.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
-except subprocess.CalledProcessError as e:
-    print("FBI Failed. Possible causes: \n" +
-          "\tNo DUAs found because taint analysis failed: \n"
-          "\t\t Ensure PANDA 'saw open of file we want to taint'\n"
-          "\t\t Make sure target has debug symbols (version2): No 'failed DWARF loading' messages\n"
-          "\tFBI crashed (bad arguments, config, or other untested code)")
-    raise e
+# Set a few variables before you call fbi
 
-print()
+project["max_liveness"] = 100000
+project["max_cardinality"] = 100
+project["max_tcn"] = 100
+project["max_lval_size"] = 100
+project["curtail"] = curtail
+project["input"] = input_file_base
+
+parse_panda_log(pandalog_json, project)
 progress("Found Bugs, Injectable!!")
 
 fib_time = tock()
 print("fib complete %.2f seconds" % fib_time)
 sys.stdout.flush()
 
-db = LavaDatabase(project)
 
-print("Count\tBug Type Num\tName")
-for i in range(len(Bug.type_strings)):
-    n = db.session.query(Bug).filter(Bug.type == i).count()
-    print("%d\t%d\t%s" % (n, i, Bug.type_strings[i]))
-
-print("total dua:", db.session.query(Dua).count())
-print("total atp:", db.session.query(AttackPoint).count())
-print("total bug:", db.session.query(Bug).count())
-db.session.close()
