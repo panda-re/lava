@@ -269,7 +269,7 @@ def limit_atp_reuse(bugs, max_per_line=1):
     uniq_bugs = []
     seen = {}
     for bug in bugs:
-        tloc = (bug.atp.loc_filename, bug.atp.loc_begin_line)
+        tloc = (bug.atp.loc.filename, bug.atp.loc.begin.line)
         if tloc not in seen.keys():
             seen[tloc] = 0
         seen[tloc] += 1
@@ -292,11 +292,11 @@ def collect_src_and_print(bugs_to_inject, db):
             print("NON-BUG")
         else:
             print("BUG {} id={}".format(bug_index, bug.id))
-        print("    ATP file: ", bug.atp.loc_filename)
-        print("        line: ", bug.atp.loc_begin_line)
+        print("    ATP file: ", bug.atp.loc.filename)
+        print("        line: ", bug.atp.loc.begin.line)
         print("DUA:")
         print("   ", bug.trigger.dua)
-        print("      Src_file: ", bug.trigger_lval.loc_filename)
+        print("      Src_file: ", bug.trigger_lval.loc.filename)
         print("      Filename: ", bug.trigger.dua.inputfile)
 
         if len(bug.extra_duas):
@@ -307,13 +307,13 @@ def collect_src_and_print(bugs_to_inject, db):
                     raise RuntimeError("Bug {} references DuaBytes {} which does not exist" \
                                        .format(bug.id, extra_id))
                 print("  ", extra_id, "   @   ", dua_bytes.dua)
-                print("     Src_file: ", dua_bytes.dua.lval.loc_filename)
+                print("     Src_file: ", dua_bytes.dua.lval.loc.filename)
 
                 # Add filesnames for extra_duas into src_files and input_files
                 # Note this is the file _name_ not the path
-                file_name = dua_bytes.dua.lval.loc_filename
-                if "/" in file_name:
-                    file_name = file_name.split("/")[1]
+                file_name = dua_bytes.dua.lval.loc.filename
+                if os.path.sep in file_name:
+                    file_name = file_name.split(os.path.sep)[1]
                 src_files.add(file_name)
                 # input_files.add(lval.inputfile)
 
@@ -321,8 +321,8 @@ def collect_src_and_print(bugs_to_inject, db):
         print("   ", bug.atp)
         print("max_tcn={}  max_liveness={}".format(
             bug.trigger.dua.max_tcn, bug.max_liveness))
-        src_files.add(bug.trigger_lval.loc_filename)
-        src_files.add(bug.atp.loc_filename)
+        src_files.add(bug.trigger_lval.loc.filename)
+        src_files.add(bug.atp.loc.filename)
         input_files.add(bug.trigger.dua.inputfile)
     sys.stdout.flush()
     return (src_files, input_files)
@@ -638,7 +638,7 @@ def run_modified_program(project, install_dir, input_file,
 def get_trigger_line(lp, bug):
     # TODO the triggers aren't a simple mapping from trigger of 0xlava - bug_id
     # But are the lava_get's still correlated to triggers?
-    with open(join(lp.bugs_build, bug.atp.loc_filename), "r") as f:
+    with open(join(lp.bugs_build, bug.atp.loc.filename), "r") as f:
         # TODO: should really check for lava_get(bug_id), but bug_id in db
         # isn't matching source for now, we'll just look for "(0x[magic]" since
         # that seems to always be there, at least for old bug types
@@ -647,7 +647,7 @@ def get_trigger_line(lp, bug):
                      lava_get in line]  # and "lava_get" in line]
         # return closest to original begin line.
         distances = [
-            (abs(line - bug.atp.loc_begin_line), line) for line in atp_lines
+            (abs(line - bug.atp.loc.begin.line), line) for line in atp_lines
         ]
         if not distances:
             return None
@@ -681,7 +681,7 @@ def check_stacktrace_bug(lp, project, bug, fuzzed_input):
             print(line)
         for line in err.splitlines():
             print(line)
-    prediction = " at {}:{}".format(basename(bug.atp.loc_filename),
+    prediction = " at {}:{}".format(basename(bug.atp.loc.filename),
                                     get_trigger_line(lp, bug))
     print("Prediction {}".format(prediction))
     for line in out.splitlines():
