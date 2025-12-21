@@ -594,7 +594,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             session,
             Dua,
             lval=lval,
-            inputfile="unknown",
+            inputfile=project_data.get("input", "unknown"),
             instr=instr_addr,
             fake_dua=is_fake_dua,
 
@@ -747,7 +747,7 @@ def update_unique_taint_sets(unique_label_set: dict, project_data: dict):
         # 3. Create LabelSet and append to global map
         label_set = LabelSet(
             ptr=pointer,
-            inputfile="unknown",
+            inputfile=project_data.get("input", "unknown"),
             labels=labels
         )
         ptr_to_labelset[pointer] = label_set

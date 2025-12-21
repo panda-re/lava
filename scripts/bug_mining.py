@@ -240,6 +240,7 @@ project["max_cardinality"] = 100
 project["max_tcn"] = 100
 project["max_lval_size"] = 100
 project["curtail"] = curtail
+project["input"] = input_file_base
 
 parse_panda_log(pandalog_json, project)
 progress("Found Bugs, Injectable!!")

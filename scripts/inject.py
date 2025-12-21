@@ -11,7 +11,7 @@ import time
 from os.path import join
 
 from vars import parse_vars
-from database_types import LavaDatabase, Run, Bug
+from database_types import LavaDatabase, Run, BugKind
 from lava import \
     inject_bugs, LavaPaths, validate_bugs, \
     get_bugs, run_cmd, get_allowed_bugtype_num
@@ -172,7 +172,7 @@ if __name__ == "__main__":
                                       args, update_db)
 
 
-        def count_bug_types(id_list):
+        def count_bug_types(id_list: list[int]):
             tcount = {}
             buglist = {}
             for bug in get_bugs(db, id_list):
@@ -182,7 +182,7 @@ if __name__ == "__main__":
                 tcount[bug.type] += 1
                 buglist[bug.type].append(bug.id)
             for t in tcount.keys():
-                print("%d c(%s)=%d" % (t, Bug.type_strings[t], tcount[t]))
+                print("%d c(%s)=%d" % (t, BugKind(t).name, tcount[t]))
                 print(str(buglist[t]))
 
 

@@ -345,7 +345,7 @@ class Bug(Base):
 
     def __str__(self):
         return 'Bug[{}](type={}, trigger={}, atp={})'.format(
-            self.id, self.type.name if self.type else '?', self.trigger, self.atp)
+            self.id, BugKind(self.type).name, self.trigger, self.atp)
 
 
 class Build(Base):
