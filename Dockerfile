@@ -15,8 +15,7 @@ ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 # we need to transform base_image into a windows compatible filename which we can't
 # do in a COPY command.
 COPY ./dependencies/* /tmp
-COPY ./requirements.txt /tmp
-COPY ./tools/ /tools
+COPY . /
 
 RUN mv /tmp/$(echo "$BASE_IMAGE" | sed 's/:/_/g')_build.txt /tmp/build_dep.txt && \
     mv /tmp/$(echo "$BASE_IMAGE" | sed 's/:/_/g')_base.txt /tmp/base_dep.txt
@@ -39,19 +38,25 @@ RUN cd /tmp && \
     curl --retry 5 --retry-delay 10 -LJO https://github.com/panda-re/panda/releases/download/${PANDA_VERSION}/pandare_${UBUNTU_VERSION}.deb && \
     apt-get install -qq -y --fix-missing /tmp/pandare_${UBUNTU_VERSION}.deb && \
     rm -f /tmp/pandare_${UBUNTU_VERSION}.deb
-RUN pip install -r /tmp/requirements.txt
 
-### BUILD IMAGE - STAGE 2
 RUN [ -e /tmp/build_dep.txt ] && \
     apt-get -qq update && \
     apt-get install -y --no-install-recommends $(cat /tmp/build_dep.txt | grep -o '^[^#]*') && \
     apt-get clean
 
-#### Essentially same as setup_container.sh
+#### Essentially same as install.sh
+RUN rm -rf /tools/build && \
+    mkdir -p /tools/build
 RUN rm -rf /tools/build && \
     mkdir -p /tools/build && \
-    cmake -B"/tools/build" -H"/tools" -DCMAKE_INSTALL_PREFIX="/tools/install" -DCMAKE_BUILD_TYPE=Release
+    cmake -B"./tools/build" \
+          -H"./tools" \
+          -DCMAKE_INSTALL_PREFIX="/usr" \
+          -DCMAKE_BUILD_TYPE=Release
 RUN cmake --build "/tools/build" --target install --parallel "$(nproc)" --config Release
+
+# Install the pyroclast package
+RUN python3 -m pip install .
 
 # RUN useradd volcana
 # RUN chown -R volcana:volcana /tools/
