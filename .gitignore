@@ -1,3 +1,6 @@
+# Saving copy of SQL for wheel file
+scripts/*.sql
+
 # ignore IDE and any panda wheel/debian packages
 .vscode
 .idea

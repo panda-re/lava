@@ -2,14 +2,19 @@
 requires = ["setuptools>=64", "wheel", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.packages.find]
-include = [
-    "scripts",
-    "scripts.*"
-]
+where = ["."]
+include = ["scripts", "scripts.*"]
+
+[tool.setuptools.package-data]
+# This explicitly attaches the ODB files ONLY to the 'generated' sub-package
+"scripts" = ["*.cxx", "*.hxx", "*.ixx", "*.sql"]
 
 [project]
-name = "pyroclast"
+name = "pyroclastic"
 dynamic = ["version"]
 description = "Python Interface for LAVA"
 readme = "README.md"
@@ -36,6 +41,8 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
     "Intended Audience :: Developers",
     "Topic :: Software Development :: Libraries :: Python Modules"

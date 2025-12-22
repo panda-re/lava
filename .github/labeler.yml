@@ -3,10 +3,13 @@ Documentation:
   - 'docs/**'
 
 Github-files:
-  - .github/**
+  - '.github/**'
 
 Dependencies:
   - 'dependencies/**'
+
+Pyroclastic:
+  - 'scripts/**'
 
 Lava-Core:
   - 'tools/**'

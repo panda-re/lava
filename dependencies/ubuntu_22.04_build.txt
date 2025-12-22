@@ -1,7 +1,6 @@
-# lava dependencies, to compile LAVA
+# Run-time dependencies for building on Ubuntu 22.04
 
 # Initial list based on what Andrew Fasano thinks
-bc
 build-essential
 
 git
@@ -18,9 +17,6 @@ ca-certificates
 
 # https://installati.one/install-libodbc2-ubuntu-22-04/?expand_article=1
 libodbc2
-
-# https://installati.one/install-libodb-pgsql-2.4-ubuntu-20-04/
-libodb-pgsql-dev
 
 # https://pypi.org/project/pyzmq/
 libzmq3-dev

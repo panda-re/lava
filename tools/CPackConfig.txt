@@ -2,7 +2,7 @@ set(CPACK_PACKAGE_NAME "lava")
 set(CPACK_PACKAGE_DESCRIPTION "Large Scale Automated Vulnerability Addition (LAVA) is a tool designed to automatically inject synthetic vulnerabilities into C source code for testing and evaluation purposes.")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "LAVA enables researchers and developers to study and improve vulnerability detection tools by planting controlled memory errors in C programs.")
 set(CPACK_PACKAGE_VENDOR "PANDA")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "andrewquijano@nyu.edu")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "andrew.quijano@nyu.edu")
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE amd64)
 
 if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
@@ -18,31 +18,33 @@ set(CPACK_DEBIAN_PACKAGE_COMPRESSION_TYPE "xz") # Use xz compression for smaller
 set(CPACK_DEBIAN_PACKAGE_LICENSE "GPL-2.0") # Specify the license type
 
 # Dependencies
-set(CPACK_DEBIAN_PACKAGE_DEPENDS 
-    "bc, 
-    build-essential, 
-    clang-tools-11,
-    libclang-11-dev,
-    llvm-11-dev,
-    cmake, 
-    git, 
-    inotify-tools, 
+set(CPACK_DEBIAN_PACKAGE_DEPENDS
+    "python3-pip,
+    cmake,
+    clang-tools-14,
+    libclang-14-dev,
+    llvm-14-dev,
+    libcjson-dev,
+    odb,
+    libjsoncpp-dev,
+    g++-10,
+    libodb-pgsql-2.4,
+    libprotobuf-dev,
+    libprotobuf-c-dev,
+    bc,
+    build-essential,
+    git,
+    inotify-tools,
     jq,
-    libfdt-dev, 
-    libjsoncpp-dev, 
+    libfdt-dev,
     libpq-dev,
-    postgresql, 
-    socat, 
-    ca-certificates, 
-    odb, 
-    libodbc2, 
-    libodb-pgsql-dev, 
-    libodb-pgsql-2.4, 
-    libzmq3-dev, 
-    g++-10, 
-    dwarfdump, 
-    python3-pip, 
-    libprotobuf-dev"
+    postgresql,
+    socat,
+    ca-certificates,
+    libodbc2,
+    libodb-pgsql-dev,
+    libzmq3-dev,
+    dwarfdump"
 )
 
 # Setting name to match standard file names in apt
@@ -64,9 +66,12 @@ set(CPACK_SOURCE_IGNORE_FILES "^${CMAKE_BINARY_DIR};/\\\\.gitignore;/\\\\.svn;\\
 set(CPACK_STRIP_FILES true) # Strip binaries to reduce package size
 
 # Create the triggers file dynamically
-file(WRITE "${CMAKE_BINARY_DIR}/triggers" "activate-noawait ldconfig")
+file(WRITE "${CMAKE_BINARY_DIR}/triggers" "activate-noawait ldconfig\n")
 
 # Include the triggers file in the Debian package
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_BINARY_DIR}/triggers")
+
+set(CPACK_DEBIAN_PACKAGE_CONFLICTS "lava")
+set(CPACK_DEBIAN_PACKAGE_REPLACES "lava")
 
 include(CPack)

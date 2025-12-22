@@ -27,14 +27,21 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       DEBIAN_FRONTEND: noninteractive
-    steps:  
+    steps:
       - name: Checkout LAVA at current commit
-        uses: actions/checkout@v4
-      
+        uses: actions/checkout@v5
+
       - name: Install compile dependencies
         run: |
-          sudo apt-get update -y    
-          sudo apt-get install clang-tools-14 libclang-14-dev llvm-14-dev odb libjsoncpp-dev libodb-pgsql-2.4 g++-10 libprotobuf-dev libprotobuf-c-dev -y
+          version=$(lsb_release -rs)
+          dep_base=./dependencies/ubuntu_${version}_base.txt
+          sudo apt-get -qq update
+          if [ -f "${dep_base}" ]; then
+            sudo apt-get -y install --no-install-recommends $(cat ${dep_base} | grep -o '^[^#]*')
+          else
+            echo "Unsupported Ubuntu version: $version. Create a list of base/build dependencies and try again."
+            exit 1
+          fi
 
       - name: Create Debian Package
         run: |
@@ -65,8 +72,66 @@ jobs:
             dist/*.whl
             tools/build/lava*.deb
 
-  build_container:
+      - name: Upload deb packages as artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: lava
+          path: tools/build/lava*.deb
+          if-no-files-found: error
+
+      - name: Upload whl package as artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: pyroclastic
+          path: dist/*.whl
+          if-no-files-found: error
+
+  publish-to-pypi-and-release:
+    name: Publish Python 🐍 distribution 📦 to PyPI and Make Release
+    if: github.repository == 'panda-re/lava'
     needs: [create_release, create_release_assets]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pyroclastic # Replace <package-name> with your PyPI project name
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+      contents: write  # IMPORTANT: mandatory for creating releases
+
+    steps:
+    - name: Download all the artifacts
+      uses: actions/download-artifact@v5
+      with:
+        name: lava
+        path: debs/
+
+    - name: Download all the artifacts
+      uses: actions/download-artifact@v5
+      with:
+        name: pyroclastic
+        path: dist/
+
+    - name: Publish distribution 📦 to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        verbose: true
+
+    - name: Upload wheel package to release
+      uses: softprops/action-gh-release@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ needs.create_release.outputs.v-version }}
+        draft: false
+        generate_release_notes: true
+        prerelease: false
+        name: ${{ needs.create_release.outputs.v-version }} @ ${{ github.ref }}
+        files: |
+          dist/*
+          debs/**.deb
+
+  build_container:
+    needs: [create_release, publish-to-pypi-and-release]
     if: github.repository == 'panda-re/lava'
     runs-on: panda-arc
     steps:

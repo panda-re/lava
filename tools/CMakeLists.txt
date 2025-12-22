@@ -33,9 +33,16 @@ endif()
 
 # Set the project version dynamically
 project(LAVA VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH})
+include(GNUInstallDirs)
+set(CMAKE_VERBOSE_MAKEFILE OFF)
 
 # Print the project version for debugging
 message(STATUS "LAVA Project version: ${PROJECT_VERSION}")
+
+# Install the headers
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.h")
 
 add_subdirectory(btrace)
 add_subdirectory(lavaODB)
