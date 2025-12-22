@@ -47,10 +47,13 @@ RUN [ -e /tmp/build_dep.txt ] && \
     apt-get install -y --no-install-recommends $(cat /tmp/build_dep.txt | grep -o '^[^#]*') && \
     apt-get clean
 
-#### Essentially same as setup_container.sh
+#### Essentially same as install.sh
 RUN rm -rf /tools/build && \
     mkdir -p /tools/build && \
-    cmake -B"/tools/build" -H"/tools" -DCMAKE_INSTALL_PREFIX="/tools/install" -DCMAKE_BUILD_TYPE=Release
+    cmake -B"./tools/build" \
+          -H"./tools" \
+          -DCMAKE_INSTALL_PREFIX="/usr" \
+          -DCMAKE_BUILD_TYPE=Release \
 RUN cmake --build "/tools/build" --target install --parallel "$(nproc)" --config Release
 
 # RUN useradd volcana
