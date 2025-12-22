@@ -19,12 +19,19 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
     steps:  
       - name: Checkout LAVA at current commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       
       - name: Install compile dependencies
         run: |
-          sudo apt-get update -y
-          sudo apt-get install clang-tools-14 libclang-14-dev llvm-14-dev odb libjsoncpp-dev libodb-pgsql-2.4 g++-10 libprotobuf-dev libprotobuf-c-dev -y
+          version=$(lsb_release -rs)
+          dep_base=./dependencies/ubuntu_${version}_base.txt
+          sudo apt-get -qq update
+          if [ -f "${dep_base}" ]; then
+            sudo apt-get -y install --no-install-recommends $(cat ${dep_base} | grep -o '^[^#]*')
+          else
+            echo "Unsupported Ubuntu version: $version. Create a list of base/build dependencies and try again."
+            exit 1
+          fi
 
       - name: Create Debian Package
         run: |
@@ -35,6 +42,17 @@ jobs:
           cmake --build "./tools/build" --parallel "$(nproc)" --config Release
           cd ./tools/build
           cpack -G DEB
+          sudo apt-get install ./lava*.deb
+          # Force the cache to update NOW so we don't rely on the background trigger timing
+          sudo ldconfig
+          if ldconfig -p | grep -q "libsw-btrace.so"; then
+            echo "[DEBIAN INSTALL] Lava Debian package installed successfully"
+          else
+            echo "[DEBIAN INSTALL] Error: libsw-btrace.so not found in ldconfig cache"
+            echo "[DEBIAN INSTALL] Checking if the file exists on disk at least..."
+            find /usr/lib -name "libsw-btrace.so"
+            exit 1
+          fi
 
       - name: Create Wheel file
         run: |
@@ -45,7 +63,6 @@ jobs:
     if: github.repository == 'panda-re/lava'
     runs-on: ubuntu-22.04
     env:
-      LLVM_DIR: /usr/lib/llvm-11
       DEBIAN_FRONTEND: noninteractive
       USER: ${{ github.actor }}
       # https://docs.github.com/en/actions/use-cases-and-examples/using-containerized-services/creating-postgresql-service-containers
@@ -90,7 +107,6 @@ jobs:
     if: github.repository == 'panda-re/lava'
     runs-on: ubuntu-22.04
     env:
-      LLVM_DIR: /usr/lib/llvm-11
       DEBIAN_FRONTEND: noninteractive
     steps:
       - name: 'Login to Docker Registry'

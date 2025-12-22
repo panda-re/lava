@@ -9,18 +9,19 @@ clang-tools-14
 libclang-14-dev
 llvm-14-dev
 
-# Based on original setup.py after panda is installed step
-# https://installati.one/install-odb-ubuntu-20-04/?expand_article=1
-odb
+# btrace needs this for C-JSON
+libcjson-dev
 
-# libjsoncpp needed for fbi json parsing
+# These packages are for libodb, needed for the database backend
+odb
+libodb-dev
+libodb-pgsql-dev
+
+# libjsoncpp needed for fbi json parsing, maybe can delete after FBI is replaced?
 libjsoncpp-dev
 
 # I need this for making LavaTool
 g++-10
-
-# Brendan noticed these libraries were needed to compile FBI
-libodb-pgsql-2.4
 
 # FBI needs this, but I think we can remove once Python swap is in
 libprotobuf-dev

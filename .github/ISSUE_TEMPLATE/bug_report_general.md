@@ -12,11 +12,11 @@ Please be as descriptive as possible
 
 <!-- Filling this table is mandatory -->
 
-| Questions                                | Answers
-|------------------------------------------|--------------------
-| Which component is breaking              | Compilation, Bug Injection, PANDA Taint Analysis, etc.
-| Source of LAVA                           | `git clone`, brew, pip, release binaries etc.
-| Version/git commit                       | v5.0.1, <commit hash>
+| Questions                   | Answers                                                |
+|-----------------------------|--------------------------------------------------------|
+| Which component is breaking | Compilation, Bug Injection, PANDA Taint Analysis, etc. |
+| Source of LAVA              | `git clone`, brew, pip, release binaries etc.          |
+| Version/git commit          | v5.0.1, <commit hash>                                  |
 
 <!-- OTHER BUGS -->
 
