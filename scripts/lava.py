@@ -377,12 +377,11 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         envv = project["full_env_var"]
         if competition:
             envv["CFLAGS"] += " -DLAVA_LOGGING"
-        envv = {}
-        btrace = join(lp.lava_dir, 'scripts', 'sw-btrace')
-        print("Running btrace make command: {} {} with env: {} in {}"
-              .format(btrace, project['make'], envv, lp.bugs_build))
-
-        (rv, outp) = run_cmd(btrace + " " + project['make'], envv, 30,
+        envv["BTRACE_LOG"] = "btrace.log"
+        envv["LD_PRELOAD"] = "libsw-btrace.so"
+        print("Running btrace make command: {} with env: {} in {}"
+              .format(project['make'], envv, lp.bugs_build))
+        (rv, outp) = run_cmd(project['make'], envv, 30,
                              cwd=lp.bugs_build, shell=True)
         assert (rv == 0), "Make with btrace failed"
 

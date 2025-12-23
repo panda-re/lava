@@ -102,11 +102,13 @@ read -ra MAKES <<< "$makecmd"
 for i in "${MAKES[@]}"; do
     IFS=' '
     read -ra ARGS <<< "$i"
-    echo "$scripts_path/sw-btrace ${ARGS[@]}"
+    echo "LD_PRELOAD=libsw-btrace.so ${ARGS[@]}"
+    BTRACE_LOG=btrace.log \
+    LD_PRELOAD=libsw-btrace.so \
     CC=$llvm/bin/clang \
         CXX=$llvm/bin/clang++ \
         CFLAGS="-O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
-    "$scripts_path/sw-btrace" "${ARGS[@]}"
+    "${ARGS[@]}"
     IFS='&&'
 done
 IFS=$ORIGIN_IFS
