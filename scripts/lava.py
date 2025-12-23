@@ -231,7 +231,7 @@ class LavaPaths(object):
         self.top_dir = project['output_dir']
         self.lavadb = join(self.top_dir, 'lavadb')
         self.lava_dir = dirname(dirname(abspath(sys.argv[0])))
-        self.lava_tool = join(self.lava_dir, 'tools', 'install', 'bin', 'lavaTool')
+        self.lava_tool = join('lavaTool')
         if 'source_root' in project:
             self.source_root = project['source_root']
         else:
@@ -377,12 +377,11 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
         envv = project["full_env_var"]
         if competition:
             envv["CFLAGS"] += " -DLAVA_LOGGING"
-        envv = {}
-        btrace = join(lp.lava_dir, 'scripts', 'sw-btrace')
-        print("Running btrace make command: {} {} with env: {} in {}"
-              .format(btrace, project['make'], envv, lp.bugs_build))
-
-        (rv, outp) = run_cmd(btrace + " " + project['make'], envv, 30,
+        envv["BTRACE_LOG"] = "btrace.log"
+        envv["LD_PRELOAD"] = "libsw-btrace.so"
+        print("Running btrace make command: {} with env: {} in {}"
+              .format(project['make'], envv, lp.bugs_build))
+        (rv, outp) = run_cmd(project['make'], envv, 30,
                              cwd=lp.bugs_build, shell=True)
         assert (rv == 0), "Make with btrace failed"
 
@@ -397,7 +396,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     
     if not os.path.exists(join(lp.bugs_build, 'compile_commands.json')):
         run([join(lp.lava_dir, 'scripts', 'sw-btrace-to-compiledb'),
-             os.path.join(project["llvm-dir"], "lib/clang/11/include")])
+             os.path.join(project["llvm-dir"], "lib/clang", project["llvm-version"], "include")])
         # also insert instr for main() fn in all files that need it
 
         process_compile_commands(

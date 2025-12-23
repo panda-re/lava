@@ -225,7 +225,7 @@ except subprocess.CalledProcessError as e:
     print("The script to convert the panda log into JSON has failed")
     raise e
 
-fbi_args = [join(lavadir, 'tools', 'install', 'bin', 'fbi'),
+fbi_args = ['fbi',
             host_json,
             project_name,
             pandalog_json,

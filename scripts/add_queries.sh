@@ -102,11 +102,13 @@ read -ra MAKES <<< "$makecmd"
 for i in "${MAKES[@]}"; do
     IFS=' '
     read -ra ARGS <<< "$i"
-    echo "$scripts_path/sw-btrace ${ARGS[@]}"
+    echo "LD_PRELOAD=libsw-btrace.so ${ARGS[@]}"
+    BTRACE_LOG=btrace.log \
+    LD_PRELOAD=libsw-btrace.so \
     CC=$llvm/bin/clang \
         CXX=$llvm/bin/clang++ \
         CFLAGS="-O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/" \
-    "$scripts_path/sw-btrace" "${ARGS[@]}"
+    "${ARGS[@]}"
     IFS='&&'
 done
 IFS=$ORIGIN_IFS
@@ -119,7 +121,7 @@ bash -c $install
 progress "queries" 0  "Creating compile_commands.json..."
 # Delete any pre-existing compile commands.json (could be in archive by mistake)
 rm -f compile_commands.json
-"$scripts_path/sw-btrace-to-compiledb" $llvm/lib/clang/11/include
+"$scripts_path/sw-btrace-to-compiledb" $llvm/lib/clang/$llvm_version/include
 if [ -e "$directory/$name/extra_compile_commands.json" ]; then
     sed -i '$d' compile_commands.json
     echo "," >> compile_commands.json
@@ -147,7 +149,7 @@ done
 # i.e., which have only prototypes, which have bodies.  
 progress "queries" 0 "Figure out functions" 
 for this_c_file in $c_files; do
-    "$lava/tools/install/bin/lavaFnTool" "$this_c_file"
+    "lavaFnTool" "$this_c_file"
 done
 
 #progress "queries" 0  "Initialize variables..."
@@ -182,7 +184,7 @@ if [ "$dataflow" = "true" ]; then
     # Since it's okay to pass the whitelist either way
     progress "queries" 0  "Inserting queries for dataflow"
     for i in $c_files; do
-        "$lava/tools/install/bin/lavaTool" -action=query \
+        "lavaTool" -action=query \
         -lava-db="$directory/$name/lavadb" \
         -p="$directory/$name/$source/compile_commands.json" \
         -arg_dataflow \
@@ -196,7 +198,7 @@ else
     progress "queries" 0  "Inserting queries..."
     # TODO: remove lava-wl here, unless we're using it to limit where we inject
     for i in $c_files; do
-        "$lava/tools/install/bin/lavaTool" -action=query \
+        "lavaTool" -action=query \
         -lava-db="$directory/$name/lavadb" \
         -lava-wl="$fninstr" \
         -p="$source/compile_commands.json" \
