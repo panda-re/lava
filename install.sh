@@ -28,8 +28,6 @@ ubuntu_version=$(lsb_release -r | awk '{print $2}')
 # Minimum Acceptable version is 1.8.78
 PANDA_VERSION="v1.8.78"
 CAPSTONE_VERSION="5.0.5"
-LAVA_DIR=$(dirname "$(realpath "$0")")
-echo "LAVA_DIR: $LAVA_DIR"
 
 # shellcheck disable=SC2086
 dep_base=$(find ./dependencies/ubuntu_${version}.* -print -quit | sed  -e "s/_build\.txt\|_base\.txt//")
@@ -59,7 +57,7 @@ if ! dpkg -l | grep -q pandare; then
     curl -LJ -o /tmp/pandare_${ubuntu_version}.deb https://github.com/panda-re/panda/releases/download/${PANDA_VERSION}/pandare_${ubuntu_version}.deb
     # shellcheck disable=SC2086
     $SUDO apt-get -y install /tmp/pandare_${ubuntu_version}.deb
-    rm /tmp/*.deb
+    rm "/tmp/pandare_${ubuntu_version}.deb"
 else
     echo "pandare is already installed."
 fi
@@ -70,10 +68,17 @@ pip3 install -r requirements.txt
 progress "Installed Python requirements"
 
 progress "Configure lavaTool"
-rm -rf "$LAVA_DIR/tools/build"
-cmake -B"${LAVA_DIR}/tools/build" -H"${LAVA_DIR}/tools" -DCMAKE_INSTALL_PREFIX="${LAVA_DIR}/tools/install" -DCMAKE_BUILD_TYPE=Release
+rm -rf "./tools/build"
+cmake -B"./tools/build" \
+      -H"./tools" \
+      -DCMAKE_INSTALL_PREFIX="/usr" \
+      -DCMAKE_BUILD_TYPE=Release
 
 progress "Compiling lavaTool"
-cmake --build "${LAVA_DIR}/tools/build" --target install --parallel "$(nproc)" --config Release
+cmake --build "./tools/build" --parallel "$(nproc)" --config Release
+pushd ./tools/build
+cpack -G DEB
+$SUDO sudo apt-get install ./lava*.deb
+popd
 
 progress "Installed LAVA"

@@ -231,7 +231,7 @@ class LavaPaths(object):
         self.top_dir = project['output_dir']
         self.lavadb = join(self.top_dir, 'lavadb')
         self.lava_dir = dirname(dirname(abspath(sys.argv[0])))
-        self.lava_tool = join(self.lava_dir, 'tools', 'install', 'bin', 'lavaTool')
+        self.lava_tool = join('lavaTool')
         if 'source_root' in project:
             self.source_root = project['source_root']
         else:

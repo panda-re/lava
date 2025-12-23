@@ -149,7 +149,7 @@ done
 # i.e., which have only prototypes, which have bodies.  
 progress "queries" 0 "Figure out functions" 
 for this_c_file in $c_files; do
-    "$lava/tools/install/bin/lavaFnTool" "$this_c_file"
+    "lavaFnTool" "$this_c_file"
 done
 
 #progress "queries" 0  "Initialize variables..."
@@ -184,7 +184,7 @@ if [ "$dataflow" = "true" ]; then
     # Since it's okay to pass the whitelist either way
     progress "queries" 0  "Inserting queries for dataflow"
     for i in $c_files; do
-        "$lava/tools/install/bin/lavaTool" -action=query \
+        "lavaTool" -action=query \
         -lava-db="$directory/$name/lavadb" \
         -p="$directory/$name/$source/compile_commands.json" \
         -arg_dataflow \
@@ -198,7 +198,7 @@ else
     progress "queries" 0  "Inserting queries..."
     # TODO: remove lava-wl here, unless we're using it to limit where we inject
     for i in $c_files; do
-        "$lava/tools/install/bin/lavaTool" -action=query \
+        "lavaTool" -action=query \
         -lava-db="$directory/$name/lavadb" \
         -lava-wl="$fninstr" \
         -p="$source/compile_commands.json" \
