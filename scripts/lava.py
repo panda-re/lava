@@ -396,7 +396,7 @@ def inject_bugs(bug_list, db, lp, host_file, project, args,
     
     if not os.path.exists(join(lp.bugs_build, 'compile_commands.json')):
         run([join(lp.lava_dir, 'scripts', 'sw-btrace-to-compiledb'),
-             os.path.join(project["llvm-dir"], "lib/clang/11/include")])
+             os.path.join(project["llvm-dir"], "lib/clang", project["llvm-version"], "include")])
         # also insert instr for main() fn in all files that need it
 
         process_compile_commands(
