@@ -47,16 +47,15 @@ RUN [ -e /tmp/build_dep.txt ] && \
 #### Essentially same as install.sh
 RUN rm -rf /tools/build && \
     mkdir -p /tools/build
-RUN rm -rf /tools/build && \
-    mkdir -p /tools/build && \
-    cmake -B"./tools/build" \
+RUN cmake -B"./tools/build" \
           -H"./tools" \
           -DCMAKE_INSTALL_PREFIX="/usr" \
           -DCMAKE_BUILD_TYPE=Release
 RUN cmake --build "/tools/build" --target install --parallel "$(nproc)" --config Release
 
 # Install the pyroclast package
-RUN python3 -m pip install .
+RUN cd python \
+    python3 -m pip install .
 
 # RUN useradd volcana
 # RUN chown -R volcana:volcana /tools/

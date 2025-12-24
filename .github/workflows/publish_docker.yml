@@ -56,6 +56,7 @@ jobs:
 
       - name: Create Wheel file
         run: |
+          cd python
           python3 -m pip install --upgrade build
           PRETEND_VERSION=${{ needs.create_release.outputs.v-version }} python3 -m build --wheel .
 
@@ -70,7 +71,7 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: pyroclastic
-          path: dist/*.whl
+          path: python/dist/*.whl
           if-no-files-found: error
 
   publish-to-pypi-and-release:
