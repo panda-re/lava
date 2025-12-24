@@ -21,6 +21,7 @@ readme = "README.md"
 authors = [
     { name = "Andrew Quijano", email = "andrew.quijano@nyu.edu" },
 ]
+keywords = ["lava", "panda", "bug-injection", "fuzzing", "dynamic-analysis"]
 requires-python = ">=3.10"
 dependencies = [
     "dotenv",
@@ -36,18 +37,27 @@ dependencies = [
     "psycopg2-binary",
     "ijson"
 ]
-license = "GPL-2.0-only"
+license = "GPL-2.0"
 classifiers = [
+    "Topic :: Software Development :: Assemblers :: Bug Tracking",
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Operating System :: OS Independent",
+    "Programming Language :: C",
+    "Programming Language :: C++",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: Console",
     "Intended Audience :: Developers",
-    "Topic :: Software Development :: Libraries :: Python Modules"
+    "Intended Audience :: Education",
+    "Natrual Language :: English"
 ]
 [project.urls]
 Homepage = "https://github.com/panda-re/lava"
 Source = "https://github.com/panda-re/lava"
 Tracker = "https://github.com/panda-re/lava/issues"
+Documentation = "https://github.com/panda-re/lava/tree/master/docs"
+Download = "https://github.com/panda-re/lava/releases/download/v3.1.4/lava_3.1.4_amd64.deb"
