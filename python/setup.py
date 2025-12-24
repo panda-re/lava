@@ -13,7 +13,7 @@ else:
                           local_scheme="no-local-version")
     version = version.partition(".dev")[0]
 
-with open("README.md", "r") as fh:
+with open("../README.md", "r") as fh:
     long_description = fh.read()
 
 setup(

@@ -68,7 +68,7 @@ def main():
     progress("In LAVA git dir at {}".format(LAVA_DIR))
 
     # Tars should just be tracked by git now, maybe we can change that later
-    TAR_DIR = join(LAVA_DIR, "target_bins")
+    TAR_DIR = join(LAVA_DIR, "../../../../target_bins")
     if not isdir(TAR_DIR):
         os.mkdir(TAR_DIR)
 
@@ -81,15 +81,15 @@ def main():
     else:
         progress("Found existing target_bins/{}".format(basename(TAR_URL)))
 
-    if not isfile(join(LAVA_DIR, "host.json")):
+    if not isfile(join(LAVA_DIR, "../../../../host.json")):
         progress("Building host.json")
         # Build host.json
         json_configs = {}
         json_configs["qemu"] = "panda-system-x86_64"
         json_configs["qcow_dir"] = LAVA_DIR
-        json_configs["output_dir"] = join(LAVA_DIR, "target_injections")
-        json_configs["config_dir"] = join(LAVA_DIR, "target_configs")
-        json_configs["tar_dir"] = join(LAVA_DIR, "target_bins")
+        json_configs["output_dir"] = join(LAVA_DIR, "../../../../target_injections")
+        json_configs["config_dir"] = join(LAVA_DIR, "../../../../target_configs")
+        json_configs["tar_dir"] = join(LAVA_DIR, "../../../../target_bins")
         json_configs["db_suffix"] = "_" + os.environ["USER"]
         json_configs["port"] = 5432
         json_configs["pguser"] = "postgres"
@@ -109,7 +109,7 @@ def main():
             json_configs["complete_rr"] = True
         
         # write out json file
-        out_json = join(LAVA_DIR, "host.json")
+        out_json = join(LAVA_DIR, "../../../../host.json")
 
         with open(out_json, 'w') as f:
             f.write(json.dumps(json_configs, indent=4))

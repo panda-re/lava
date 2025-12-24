@@ -7,7 +7,7 @@ import signal
 import sys
 import time
 from vars import parse_vars
-from database_types import LavaDatabase, Run, BugKind
+from python.src.pyroclastic.utils.database_types import LavaDatabase, Run, BugKind
 from lava import \
     inject_bugs, LavaPaths, validate_bugs, \
     get_bugs, run_cmd, get_allowed_bugtype_num

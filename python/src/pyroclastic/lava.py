@@ -8,10 +8,98 @@ import random
 from subprocess import PIPE, check_call
 from process_compile_commands import get_c_files, process_compile_commands
 from dotenv import load_dotenv
-from database_types import Bug, DuaBytes, Build, Run, BugKind, AtpKind
+from python.src.pyroclastic.utils.database_types import Bug, DuaBytes, Build, Run, BugKind, AtpKind
+import argparse
 
 load_dotenv()
 NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
+
+
+def parse_lava_args():
+    parser = argparse.ArgumentParser(
+        description="LAVA: Large-scale Automated Vulnerability Addition",
+        usage="%(prog)s [options] [ProjectConfig]",
+        add_help=False  # We will handle help manually to match your USAGE
+    )
+
+    # --- Common Options ---
+    common = parser.add_argument_group("Common Options")
+    common.add_argument("-h", "--help", action="store_true")
+    common.add_argument("-a", "--all", action="store_true", help="Run all lava steps")
+    common.add_argument("-k", "--force", action="store_true", help="Delete old data without confirmation")
+    common.add_argument("-n", "--count", type=int, default=50, help="Number of bugs to inject at once")
+    common.add_argument("-y", "--bug-types", default="ptr_add,rel_write,malloc_off_by_one",
+                        help="Comma separated list of bug types")
+    common.add_argument("-b", "--atp-type", choices=["mem_read", "fn_arg", "mem_write"],
+                        help="Specify a single ATP type")
+
+    # --- Step Flags ---
+    steps = parser.add_argument_group("Specify Steps to Run")
+    steps.add_argument("-r", "--reset", action="store_true", help="Run reset step")
+    steps.add_argument("-c", "--clean", action="store_true", help="Run clean step (DB only)")
+    steps.add_argument("-q", "--add-queries", action="store_true", help="Run add queries step")
+    steps.add_argument("-m", "--make", action="store_true", help="Run make step")
+    steps.add_argument("-t", "--taint", action="store_true", help="Run taint step")
+    steps.add_argument("-i", "--inject", type=int, metavar="NUM_TRIALS",
+                       help="Run inject step with specified number of trials")
+
+    # --- Expert/Dev Options ---
+    expert = parser.add_argument_group("Expert only options")
+    expert.add_argument("--demo", action="store_true", help="Run lava demo")
+    expert.add_argument("--test-data-flow", action="store_true", help="Inject data-flow only, 0 bugs")
+    expert.add_argument("--curtail", type=int, default=0, help="Curtail bug-finding after count bugs")
+    expert.add_argument("--enable-knob-trigger", help="Enable knob trigger")
+
+    # --- Backwards Compatibility / Combined Flags ---
+    # Argparse doesn't natively do '-ak', so we check sys.argv for it later
+    # or define it as a hidden action.
+    expert.add_argument("-ak", action="store_true", help=argparse.SUPPRESS)
+
+    # --- Positional ---
+    parser.add_argument("project_name", nargs='?', help="Name of the project or path to JSON")
+
+    # If no args, show help
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(1)
+
+    args = parser.parse_args()
+
+    # Handle the help flag manually to match your exit behavior
+    if args.help:
+        parser.print_help()
+        sys.exit(0)
+
+    # --- Custom Logic Mapping (Replacing the 'case' logic in Bash) ---
+
+    # Handle -ak and --all shortcuts
+    if args.ak or args.all:
+        args.reset = True
+        args.clean = True
+        args.add_queries = True
+        args.make = True
+        args.taint = True
+        args.inject = 3 if args.inject is None else args.inject
+        if args.ak:
+            args.force = True
+
+    # Handle positional project_name shorthand (lava.sh ProjectName)
+    # Your bash script allowed: lava.sh myproject (with no flags)
+    if len(sys.argv) == 2 and not sys.argv[1].startswith("-"):
+        args.reset = True
+        args.clean = True
+        args.add_queries = True
+        args.make = True
+        args.taint = True
+        args.inject = 3
+        args.project_name = sys.argv[1]
+
+    # Handle --test-data-flow logic
+    if args.test_data_flow:
+        args.inject = 1
+        args.count = 0
+
+    return args
 
 
 def run_cmd(cmd, project, envv=None, timeout=30, cwd=None, shell=False):
@@ -383,7 +471,7 @@ def inject_bugs(bug_list, db, lp, project, args,
 
     
     if not os.path.exists(os.path.join(lp.bugs_build, 'compile_commands.json')):
-        run([os.path.join(lp.lava_dir, 'scripts', 'sw-btrace-to-compiledb'),
+        run([os.path.join(lp.lava_dir, 'scripts', 'add_queries/sw-btrace-to-compiledb.py'),
              os.path.join(project["llvm-dir"], "lib/clang", project["llvm-version"], "include")])
         # also insert instr for main() fn in all files that need it
 
@@ -925,3 +1013,20 @@ def process_crash(buf: str):
                 bugs.append(bug_id)
 
     return bugs
+
+
+def main():
+    # 1. Parse CLI arguments
+    params = parse_lava_args()
+    # 2. Load the project configuration (host.json + project.json)
+    # This mimics the . funcs.sh and . vars.sh logic
+    project_config = parse_vars(args.host_json, args.project_name)
+
+    # 3. Execute Steps
+    if args.add_queries:
+        manager = QueryManager(project_config)
+        manager.step_add_queries(atp_type=args.atp_type)
+
+
+if __name__ == "__main__":
+    main()
