@@ -8,7 +8,7 @@ import random
 from subprocess import PIPE, check_call
 from process_compile_commands import get_c_files, process_compile_commands
 from dotenv import load_dotenv
-from database_types import Bug, DuaBytes, Build, Run, BugKind, AtpKind
+from python.src.pyroclastic.utils.database_types import Bug, DuaBytes, Build, Run, BugKind, AtpKind
 import argparse
 
 load_dotenv()
@@ -471,7 +471,7 @@ def inject_bugs(bug_list, db, lp, project, args,
 
     
     if not os.path.exists(os.path.join(lp.bugs_build, 'compile_commands.json')):
-        run([os.path.join(lp.lava_dir, 'scripts', 'sw-btrace-to-compiledb.py'),
+        run([os.path.join(lp.lava_dir, 'scripts', 'add_queries/sw-btrace-to-compiledb.py'),
              os.path.join(project["llvm-dir"], "lib/clang", project["llvm-version"], "include")])
         # also insert instr for main() fn in all files that need it
 

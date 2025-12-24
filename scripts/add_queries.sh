@@ -121,7 +121,7 @@ bash -c $install
 progress "queries" 0  "Creating compile_commands.json..."
 # Delete any pre-existing compile commands.json (could be in archive by mistake)
 rm -f compile_commands.json
-"$scripts_path/sw-btrace-to-compiledb" $llvm/lib/clang/$llvm_version/include
+"$scripts_path/sw-btrace-to-compiledb.py" $llvm/lib/clang/$llvm_version/include
 if [ -e "$directory/$name/extra_compile_commands.json" ]; then
     sed -i '$d' compile_commands.json
     echo "," >> compile_commands.json
