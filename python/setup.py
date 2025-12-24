@@ -7,7 +7,7 @@ if "PRETEND_VERSION" in os.environ:
     version = os.environ["PRETEND_VERSION"]
 else:
     from setuptools_scm import get_version
-    version = get_version(root='.',
+    version = get_version(root='..',
                           fallback_version="0.0.1",
                           version_scheme="guess-next-dev",
                           local_scheme="no-local-version")

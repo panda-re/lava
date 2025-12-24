@@ -6,12 +6,12 @@ build-backend = "setuptools.build_meta"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["scripts", "scripts.*"]
+where = ["src"]
+include = ["pyroclastic", "pyroclastic.*"]
 
 [tool.setuptools.package-data]
 # This explicitly attaches the ODB files ONLY to the 'generated' sub-package
-"scripts" = ["*.cxx", "*.hxx", "*.ixx", "*.sql"]
+"pyroclastic.data" = ["*.cxx", "*.hxx", "*.ixx", "*.sql"]
 
 [project]
 name = "pyroclastic"
@@ -41,7 +41,6 @@ license = "GPL-2.0"
 classifiers = [
     "Topic :: Software Development :: Assemblers :: Bug Tracking",
     "Development Status :: 5 - Production/Stable",
-    "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -55,6 +54,10 @@ classifiers = [
     "Intended Audience :: Education",
     "Natrual Language :: English"
 ]
+[project.scripts]
+lava = "pyroclastic.lava:main"
+lava-init = "pyroclastic.utils.init_host:main"
+
 [project.urls]
 Homepage = "https://github.com/panda-re/lava"
 Source = "https://github.com/panda-re/lava"

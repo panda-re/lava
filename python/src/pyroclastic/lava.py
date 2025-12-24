@@ -6,10 +6,11 @@ import subprocess
 import sys
 import random
 from subprocess import PIPE, check_call
-from process_compile_commands import get_c_files, process_compile_commands
+from inject.process_compile_commands import get_c_files, process_compile_commands
 from dotenv import load_dotenv
-from python.src.pyroclastic.utils.database_types import Bug, DuaBytes, Build, Run, BugKind, AtpKind
+from utils.database_types import Bug, DuaBytes, Build, Run, BugKind, AtpKind
 import argparse
+from utils.vars import parse_vars
 
 load_dotenv()
 NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
@@ -1017,14 +1018,14 @@ def process_crash(buf: str):
 
 def main():
     # 1. Parse CLI arguments
-    params = parse_lava_args()
+    args = parse_lava_args()
     # 2. Load the project configuration (host.json + project.json)
     # This mimics the . funcs.sh and . vars.sh logic
     project_config = parse_vars(args.host_json, args.project_name)
 
     # 3. Execute Steps
     if args.add_queries:
-        manager = QueryManager(project_config)
+        # manager = QueryManager(project_config)
         manager.step_add_queries(atp_type=args.atp_type)
 
 

@@ -92,7 +92,7 @@ jobs:
     - name: Setup LAVA
       run: |
         chmod +x ./scripts/*
-        python3 init-host.py -a
+        python3 lava-init -a
     - name: Add Postgres credentials and Run LAVA
       run: |
         echo "localhost:5432:*:${POSTGRES_USER}:${POSTGRES_PASSWORD}" > ~/.pgpass
