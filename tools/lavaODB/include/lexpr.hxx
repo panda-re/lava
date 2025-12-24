@@ -88,7 +88,7 @@ struct LExpr {
             os << expr.str;
             expr.infix(os, "(", ", ", ")");
         } else if (expr.t == LExpr::BLOCK) {
-            expr.infix(os, "({", "; ", ";})");
+            expr.infix(os, "{", "; ", ";}");
         } else if (expr.t == LExpr::IF) {
             os << "if (" << expr.str << ") ";
             expr.infix(os, "{\n", ";\n", ";\n}\n");
@@ -110,7 +110,7 @@ struct LExpr {
             ::infix(expr.instrs.cbegin(), expr.instrs.cend(), os,
                     "\"", "\\n\\t", "\"");
             os << " : : ";
-            expr.infix(os, "\"rm\" (", "), \"rm\" (", ")");
+            expr.infix(os, "\"r\" (", "), \"r\" (", ")");
             os << ")";
         } else if (expr.t == LExpr::DEREF) {
             os << '*' << *expr.args.at(0);
@@ -221,8 +221,17 @@ LExpr LavaGet(uint32_t slot) {
     return LFunc("lava_get", { LDecimal(slot) });
 }
 
+LExpr LavaGetExtra(uint32_t slot) {
+    return LFunc("lava_get_extra", { LDecimal(slot) });
+}
+
 LExpr DataFlowGet(uint32_t slot) {
     return LIndex(LStr("data_flow"), slot);
+}
+
+LExpr LRandomBytes(std::string base, uint32_t len) {
+    std::string randstr = base.substr(rand() % (base.length() - len), len);
+    return LStr("\"" + randstr + "\"");
 }
 
 LExpr UCharCast(LExpr arg) { return LCast("const unsigned char *", arg); }
@@ -239,7 +248,11 @@ LExpr SelectCast(const SourceLval *lval, Range selected) {
 }
 
 LExpr LavaSet(const SourceLval *lval, Range selected, uint32_t slot) {
-    return LFunc("lava_set", { LDecimal(slot), SelectCast(lval, selected) });
+    return LBlock({LFunc("lava_set", { LDecimal(slot), SelectCast(lval, selected) })});
+}
+
+LExpr LavaSetExtra(const SourceLval *lval, Range selected, uint32_t slot) {
+    return LBlock({LFunc("lava_set_extra", { LDecimal(slot), SelectCast(lval, selected) })});
 }
 
 LExpr DataFlowSet(const SourceLval *lval, Range selected, uint32_t slot) {
