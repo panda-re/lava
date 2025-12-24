@@ -9,8 +9,8 @@
 #include <time.h>
 #include <unistd.h>
 
-void btrace_getArgBlock(char **argBlock, size_t *argBlockSize)
-{
+// See brace.h, this is the Linux implementation of btrace_getArgBlock
+void btrace_getArgBlock(char **argBlock, size_t *argBlockSize) {
     char *buf = NULL;
     size_t bufSize = 0;
     bool ret = btrace_readEntireFile("/proc/self/cmdline", &buf, &bufSize);
@@ -25,8 +25,7 @@ void btrace_getArgBlock(char **argBlock, size_t *argBlockSize)
     *argBlockSize = bufSize;
 }
 
-static void advanceField(char **p, int i, int j)
-{
+static void advanceField(char **p, int i, int j){
     for (; i < j; ++i) {
         *p = strchr(*p, ' ');
         assert(*p != NULL && "Error reading /proc/<pid>/stat");
@@ -34,8 +33,7 @@ static void advanceField(char **p, int i, int j)
     }
 }
 
-static time_t getBootTime(void)
-{
+static time_t getBootTime(void) {
     FILE *fp = fopen("/proc/stat", "r");
     assert(fp != NULL && "Error opening /proc/stat.");
     char *line = NULL;
@@ -56,8 +54,8 @@ static time_t getBootTime(void)
     return bootTime;
 }
 
-bool btrace_procStat(pid_t pid, pid_t *parentPid, time_t *startTime)
-{
+// See brace.h, this is the Linux implementation of btrace_procStat.
+bool btrace_procStat(pid_t pid, pid_t *parentPid, time_t *startTime) {
     static time_t bootTime;
     static long jiffiesPerSecond;
 

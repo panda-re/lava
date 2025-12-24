@@ -13,13 +13,6 @@ progress() {
   echo -e "\e[32m[lava_install]\e[0m \e[1m$1\e[0m"
 }
 
-# This was originally in the docs/setup.md, I removed things starting with 'python-' as that should be installed via pip
-# shellcheck disable=SC2046
-# libc6 needed for compiling btrace
-# libjsoncpp needed for fbi json parsing
-# This fixes installing psycopg2
-# https://stackoverflow.com/questions/11618898/pg-config-executable-not-found
-
 # Dependencies are for a major version, but the filenames include minor versions
 # So take our major version, find the first match in dependencies directory and run with it.
 # This will give us "./panda/dependencies/ubuntu:20.04" where ubuntu:20.04_build.txt or 20.04_base.txt exists

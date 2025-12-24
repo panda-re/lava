@@ -11,6 +11,4 @@
     "command": "{install_dir}/bin/math {input_file}",
 
     "main_file": [ "main-pre.c" ],
-
-    "inputs": ["inputs/input.txt"]
 }

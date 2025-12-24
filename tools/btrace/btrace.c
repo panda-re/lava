@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <cjson/cJSON.h>
 
 #define BTRACE_LOG_VAR "BTRACE_LOG"
 
@@ -35,8 +36,7 @@ static PidList *reversePidList(PidList *pidList);
 static void freePidList(PidList *pidList);
 
 __attribute__((constructor))
-static void processInit(void)
-{
+static void processInit(void) {
     const char *logFileName = getenv(BTRACE_LOG_VAR);
     if (logFileName == NULL || logFileName[0] == '\0')
         return;
@@ -50,8 +50,7 @@ static void processInit(void)
     fclose(logfp);
 }
 
-static void lockFile(FILE *fp)
-{
+static void lockFile(FILE *fp) {
     struct flock lock;
     memset(&lock, 0, sizeof(lock));
     lock.l_type = F_WRLCK;
@@ -62,8 +61,7 @@ static void lockFile(FILE *fp)
     assert(lockRet == 0 && "Error locking trace file.");
 }
 
-static void unlockFile(FILE *fp)
-{
+static void unlockFile(FILE *fp) {
     struct flock lock;
     memset(&lock, 0, sizeof(lock));
     lock.l_type = F_UNLCK;
@@ -77,8 +75,7 @@ static void unlockFile(FILE *fp)
 /* This function behaves the same as getcwd(NULL, 0) on most Unix operating
  * systems (Linux/glibc, BSD, OS X).  Unfortunately, getcwd(NULL, 0) is not
  * supported by Solaris or POSIX.1-2008. */
-static char *portableGetCwd(void)
-{
+static char *portableGetCwd(void) {
     char *buffer = NULL;
     for (size_t size = 1024; size >= 1024; size *= 2) {
         buffer = realloc(buffer, size);
@@ -90,62 +87,72 @@ static char *portableGetCwd(void)
     return NULL;
 }
 
-static void logExecution(FILE *logfp)
-{
-    fputs("{", logfp);
+static void logExecution(FILE *logfp) {
+    // 1. Create the Root Object
+    cJSON *root = cJSON_CreateObject();
 
-    {
-        fputs("\"cwd\":", logfp);
-        char *cwd = portableGetCwd();
-        btrace_writeJsonStr(logfp, cwd != NULL ? cwd : "");
-        free(cwd);
-        fputs(",", logfp);
+    // 2. Add CWD
+    char *cwd = portableGetCwd();
+    cJSON_AddStringToObject(root, "cwd", cwd != NULL ? cwd : "");
+    free(cwd);
+
+    // 3. Add PID List (Ancestry)
+    // The original code created a flat array: [deltaPid, deltaTime, deltaPid, deltaTime...]
+    cJSON *pidArray = cJSON_AddArrayToObject(root, "pidlist");
+
+    PidList *const pidList = reversePidList(getPidList(getpid()));
+    assert(pidList != NULL && "Error getting PID ancestor list.");
+
+    int prevPid = 0;
+    long long prevStartTime = 0;
+
+    for (PidList *p = pidList; p != NULL; p = p->next) {
+        int deltaPid = (int)p->pid - prevPid;
+        long long deltaStartTime = (long long)p->startTime - prevStartTime;
+
+        // Add the numbers to the array
+        cJSON_AddItemToArray(pidArray, cJSON_CreateNumber(deltaPid));
+        cJSON_AddItemToArray(pidArray, cJSON_CreateNumber(deltaStartTime)); // cJSON handles 'long long' internally usually
+
+        prevPid = p->pid;
+        prevStartTime = p->startTime;
+    }
+    freePidList(pidList);
+
+    // 4. Add Argv
+    cJSON *argvArray = cJSON_AddArrayToObject(root, "argv");
+
+    char *argBlock = NULL;
+    size_t argBlockSize = 0;
+    btrace_getArgBlock(&argBlock, &argBlockSize); // Keep existing helper
+
+    size_t argIndex = 0;
+    while (argIndex < argBlockSize) {
+        // Add string to array
+        cJSON_AddItemToArray(argvArray, cJSON_CreateString(&argBlock[argIndex]));
+        argIndex += strlen(&argBlock[argIndex]) + 1;
+    }
+    free(argBlock);
+
+    // 5. PRINT IT (The Magic Part)
+    // cJSON_Print returns a malloc'd string
+    char *rendered = cJSON_PrintUnformatted(root);
+
+    if (rendered) {
+        fputs(rendered, logfp);
+        fputs("\n", logfp); // Newline at end
+        free(rendered);     // Don't forget to free the string!
     }
 
-    {
-        PidList *const pidList = reversePidList(getPidList(getpid()));
-        assert(pidList != NULL && "Error getting PID ancestor list.");
-        fputs("\"pidlist\":[", logfp);
-        int prevPid = 0;
-        long long prevStartTime = 0;
-        for (PidList *p = pidList; p != NULL; p = p->next) {
-            if (p != pidList)
-                fputs(",", logfp);
-            int deltaPid = (int)p->pid - prevPid;
-            long long deltaStartTime = (long long)p->startTime - prevStartTime;
-            fprintf(logfp, "%d,%lld", deltaPid, deltaStartTime);
-            prevPid = p->pid;
-            prevStartTime = p->startTime;
-        }
-        fputs("],", logfp);
-        freePidList(pidList);
-    }
-
-    {
-        fputs("\"argv\":[", logfp);
-        char *argBlock = NULL;
-        size_t argBlockSize = 0;
-        btrace_getArgBlock(&argBlock, &argBlockSize);
-        size_t argIndex = 0;
-        while (argIndex < argBlockSize) {
-            if (argIndex > 0)
-                putc_unlocked(',', logfp);
-            btrace_writeJsonStr(logfp, &argBlock[argIndex]);
-            argIndex += strlen(&argBlock[argIndex]) + 1;
-        }
-        free(argBlock);
-        fputs("]", logfp);
-    }
-
-    fputs("}\n", logfp);
+    // 6. Cleanup the object
+    cJSON_Delete(root);
 }
 
 /* Get the list of all ancestor processes (and a start time to guard against
  * wrap-around).  A parent process can die while we're building this list, and
  * in theory, the dead parent's PID could immediately be reused.  Guard against
  * this race condition by rechecking the parent PID. */
-static PidList *getPidList(pid_t pid)
-{
+static PidList *getPidList(pid_t pid) {
     if (pid == 0 || pid == 1) {
         /* There's no need to record information for these PIDs. */
         return NULL;
@@ -160,15 +167,18 @@ static PidList *getPidList(pid_t pid)
 
     while (true) {
         status = btrace_procStat(pid, &parentPid, &startTime);
-        if (!status)
+        if (!status) {
             goto fail;
+        }
         parent = getPidList(parentPid);
 
         status = btrace_procStat(pid, &parentPidCheck, &startTimeCheck);
-        if (!status)
+        if (!status) {
             goto fail;
-        if (parentPid == parentPidCheck && startTime == startTimeCheck)
+        }
+        if (parentPid == parentPidCheck && startTime == startTimeCheck) {
             goto succeed;
+        }
         freePidList(parent);
         parent = NULL;
     }
@@ -185,8 +195,7 @@ fail:
     return NULL;
 }
 
-static PidList *reversePidList(PidList *pidList)
-{
+static PidList *reversePidList(PidList *pidList) {
     PidList *ret = NULL;
     while (pidList != NULL) {
         PidList *const next = pidList->next;
@@ -197,56 +206,11 @@ static PidList *reversePidList(PidList *pidList)
     return ret;
 }
 
-static void freePidList(PidList *pidList)
-{
+static void freePidList(PidList *pidList) {
     while (pidList != NULL) {
         PidList *const next = pidList->next;
         free(pidList);
         pidList = next;
-    }
-}
-
-void btrace_writeJsonStr(FILE *logfp, const char *str)
-{
-    putc_unlocked('"', logfp);
-    for (size_t i = 0; str[i] != '\0'; ++i)
-        btrace_writeJsonStrChar(logfp, str[i]);
-    putc_unlocked('"', logfp);
-}
-
-void btrace_writeJsonStrChar(FILE *logfp, char ch)
-{
-#define CASE(in, out)                   \
-        case in:                        \
-            putc_unlocked('\\', logfp); \
-            putc_unlocked(out, logfp);  \
-            break;
-
-    /* A JSON string can contain any Unicode character other than '"' or '\' or
-     * a control character.  Encode control characters specially.  Assume the
-     * bytes [0x01...0x1F, 0x7F] correspond to codepoints
-     * [U+0001...U+001F, U+007F], which is correct for UTF-8. */
-    switch (ch) {
-        CASE('"',  '"')
-        CASE('\\', '\\')
-        CASE('\b', 'b')
-        CASE('\f', 'f')
-        CASE('\n', 'n')
-        CASE('\r', 'r')
-        CASE('\t', 't')
-        default: {
-            const unsigned char uch = ch;
-            if (uch <= 31 || uch == 0x7f) {
-                putc_unlocked('\\', logfp);
-                putc_unlocked('u', logfp);
-                putc_unlocked('0', logfp);
-                putc_unlocked('0', logfp);
-                putc_unlocked("0123456789abcdef"[uch >> 4], logfp);
-                putc_unlocked("0123456789abcdef"[uch & 0xf], logfp);
-            } else {
-                putc_unlocked(ch, logfp);
-            }
-        }
     }
 }
 
@@ -258,18 +222,15 @@ void btrace_writeJsonStrChar(FILE *logfp, char ch)
  * allocated with malloc and must be passed to free.  The content may contain
  * NUL characters.  This routine appends a NUL terminator to the file content;
  * this extra terminator is not counted as part of sizeOut. */
-bool btrace_readEntireFile(
-    const char *path,
-    char **contentOut,
-    size_t *sizeOut)
-{
+bool btrace_readEntireFile(const char *path, char **contentOut, size_t *sizeOut) {
     *contentOut = NULL;
     if (sizeOut != NULL)
         *sizeOut = 0;
 
     FILE *fp = fopen(path, "r");
-    if (fp == NULL)
+    if (fp == NULL) {
         return false;
+    }
 
     const size_t chunkSize = 64 * 1024;
     char *chunk = malloc(chunkSize);
@@ -282,8 +243,9 @@ bool btrace_readEntireFile(
 
     while (true) {
         size_t bytesRead = fread(chunk, 1, chunkSize, fp);
-        if (bytesRead == 0)
+        if (bytesRead == 0) {
             break;
+        }
         if (blockSize + bytesRead > blockBufSize) {
             blockBufSize = blockBufSize * 2;
             block = realloc(block, blockBufSize);
@@ -302,9 +264,9 @@ bool btrace_readEntireFile(
     block[blockSize] = '\0';
 
     *contentOut = block;
-    if (sizeOut != NULL)
+    if (sizeOut != NULL) {
         *sizeOut = blockSize;
-
+    }
     return true;
 }
 
@@ -312,11 +274,11 @@ void btrace_makeArgBlockWithArgcArgv(
     char **argBlock,
     size_t *argBlockSize,
     int argc,
-    char **argv)
-{
+    char **argv) {
     size_t blockSize = 0;
-    for (int i = 0; i < argc; ++i)
+    for (int i = 0; i < argc; ++i) {
         blockSize += strlen(argv[i]) + 1;
+    }
     char *block = (char*)malloc(blockSize);
     assert(block != NULL && "malloc() call failed.");
     char *out = block;

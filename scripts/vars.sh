@@ -61,8 +61,6 @@ tarfiledir="$tar_dir"
 tarfile="$tarfiledir/$(jq -r '.tarfile' "$json")"
 directory=$output_dir
 
-inputs=`jq -r '.inputs' "$json"  | jq 'join (" ")' | sed 's/\"//g' `
-
 fixupscript="null"
 if [ "$(jq -r .fixupscript "$json")" != "null" ]; then
     fixupscript="$config_dir/$(jq -r .fixupscript "$json")"

@@ -59,19 +59,6 @@ jobs:
           python3 -m pip install --upgrade build
           PRETEND_VERSION=${{ needs.create_release.outputs.v-version }} python3 -m build --wheel .
 
-      - name: Upload wheel and debian packages to release
-        uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ needs.create_release.outputs.v-version }}
-          draft: false
-          generate_release_notes: true
-          prerelease: false
-          files: |
-            dist/*.whl
-            tools/build/lava*.deb
-
       - name: Upload deb packages as artifacts
         uses: actions/upload-artifact@v5
         with:
