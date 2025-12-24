@@ -2,9 +2,6 @@ import json
 import sys
 import ijson
 import os
-from database_types import AttackPoint, Bug, \
-    ASTLoc, DuaBytes, SourceLval, LabelSet, Dua, Range, LavaDatabase, AtpKind, BugKind
-from vars import parse_vars
 from sqlalchemy.exc import IntegrityError
 from typing import Iterable, TypeVar, DefaultDict, Set
 from collections import defaultdict
@@ -12,6 +9,10 @@ import random
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from bisect import bisect_left
+from ..utils.database_types import AttackPoint, Bug, \
+    ASTLoc, DuaBytes, SourceLval, LabelSet, Dua, Range, LavaDatabase, AtpKind, BugKind
+from ..utils.vars import parse_vars
+
 
 T = TypeVar("T")
 
@@ -980,12 +981,11 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
     if num_potential_bugs == 0:
         print("No bugs found", file=sys.stderr)
         raise RuntimeError("No bugs found by FBI")
-    print_bug_stats(project_data)
 
 
 def print_bug_stats(project_data: dict):
     with LavaDatabase(project_data) as db:
-        print("Count\tBug Type Num\tName")
+        print("Count\tBug Num\tName")
         for kind in BugKind:
             n = db.session.query(Bug).filter(Bug.type == kind).count()
             print("%d\t%d\t%s" % (n, kind.value, kind.name))
@@ -996,12 +996,11 @@ def print_bug_stats(project_data: dict):
 
 
 if __name__ == "__main__":
-    host_json = sys.argv[1]
-    project_name = sys.argv[2]
-    panda_log = sys.argv[3]
+    project_name = sys.argv[1]
+    panda_log = sys.argv[2]
 
     # host_json reads overall config from host.json, project_name finds configs for specific project
-    project = parse_vars(host_json, project_name)
+    project = parse_vars(project_name)
 
     if "max_liveness" not in project:
         print("max_liveness not set, using default 100000")
@@ -1030,12 +1029,10 @@ if __name__ == "__main__":
         raise RuntimeError("Could not parse max_lval_size")
 
     if "curtail" not in project:
-        print("max_lval_size not set, using default 0")
+        print("curtail not set, using default 0")
         project["curtail"] = 0
     if not isinstance(project["curtail"], int):
         raise RuntimeError("Could not parse curtail")
 
-    from dotenv import load_dotenv
-    load_dotenv()
     parse_panda_log(panda_log, project)
 

@@ -31,7 +31,7 @@ def get_host_config():
 
 
 class Project:
-    """ Simple getter/setter class so we can support .get like a json file"""
+    """ Simple getter/setter class so we can support .get like a JSON file"""
 
     def __init__(self, data):
         self.values = data
@@ -74,14 +74,14 @@ def validate_project(project_dict: dict):
     assert 'db' in project_dict
 
 
-def parse_vars(host_json, project_name):
+def parse_vars(project_name: str):
     host_json_path = get_host_config()
     with open(host_json_path, 'r') as f:
         host = json.load(f)
 
     try:
         validate_host(host)
-    except AssertionError as e:
+    except AssertionError:
         print("Your host.json file is missing a required field")
         raise
 
@@ -143,6 +143,10 @@ def parse_vars(host_json, project_name):
             {'CC': os.path.join(project_data["llvm-dir"], 'bin/clang'),
             'CXX': os.path.join(project_data["llvm-dir"], 'bin/clang++'),
             'CFLAGS': '-Wno-int-conversion -O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
+    project_data["panda_compile"] = \
+            {'CC': os.path.join(project_data["llvm-dir"], 'bin/clang'),
+            'CXX': os.path.join(project_data["llvm-dir"], 'bin/clang++'),
+            'CFLAGS': '-static -O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
 
     return Project(project_data)
 
@@ -152,8 +156,8 @@ if __name__ == '__main__':
     import sys
     import pprint
 
-    project = parse_vars(sys.argv[1], sys.argv[2])
-    # project = parse_vars("../host.json", "toy")
+    project = parse_vars(sys.argv[1])
+    # project = parse_vars("toy")
     pprint.pprint(project.values)
     project["foo"] = "good_fake_val"
     assert "good" in (project.get('fake', 'good_fake_val'))

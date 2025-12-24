@@ -24,8 +24,9 @@ class Command(object):
         self.isCompilerDriver = (os.path.basename(self.argv[0]).split('-', 1)[0] in kDrivers)
 
 
-def readPidList(pidlist):
-    """The pidlist field of a record is a flattened list of
+def read_pid_list(pidlist: list[int]):
+    """
+    The pidlist field of a record is a flattened list of
     (pidDelta, startTimeDelta) pairs, where each successive pair is the delta
     from the previous pair to the new pair.  Return a list of
     (pid, startTime) pairs.
@@ -37,39 +38,43 @@ def readPidList(pidlist):
     return ret
 
 
-def readFile(path):
-    commandList = []
-    commandIDToCommand = {}
+def read_file(path: str):
+    command_list = []
+    command_id_to_command = {}
     line = 0
 
-    with open(path) as fp:
-        for recordString in fp:
-            line += 1
-            record = json.loads(recordString)
-            parent = None
-            procList = readPidList(record["pidlist"])
-            for procID in procList[:-1]:
-                parent = commandIDToCommand.get(procID, parent)
-            command = Command(record["cwd"], parent, record["argv"], line)
-            commandList.append(command)
-            commandIDToCommand[procList[-1]] = command
-    return commandList
+    try:
+        with open(path) as fp:
+            for recordString in fp:
+                line += 1
+                record = json.loads(recordString)
+                parent = None
+                process_list = read_pid_list(record["pidlist"])
+                for procID in process_list[:-1]:
+                    parent = command_id_to_command.get(procID, parent)
+                command = Command(record["cwd"], parent, record["argv"], line)
+                command_list.append(command)
+                command_id_to_command[process_list[-1]] = command
+        return command_list
+    except FileNotFoundError as e:
+        print(f"Error: Could not find btrace log file at {os.getcwd()}")
+        raise e
 
 
-def endsWithOneOf(text, extensions):
+def ends_with_one_of(text, extensions):
     for extension in extensions:
         if text.endswith(extension):
             return True
     return False
 
 
-def joinCommandLine(argv):
+def join_command_line(argv):
     # TODO: Actually get this right -- quotes,spaces,escapes,newlines
     # TODO: Review what Clang's libtooling and CMake do, especially on Windows.
     return " ".join(argv)
 
 
-def isChildOfCompilerDriver(command):
+def is_child_of_compiler_driver(command):
     parent = command.parent
     while parent is not None:
         if parent.isCompilerDriver:
@@ -78,17 +83,17 @@ def isChildOfCompilerDriver(command):
     return False
 
 
-def compileMode(argv):
+def compile_mode(argv):
     """Return the last compile-mode argument in a command line."""
-    kModes = ["-c", "-S", "-E"]
+    k_modes = ["-c", "-S", "-E"]
     mode = None
     for arg in argv:
-        if arg in kModes:
+        if arg in k_modes:
             mode = arg
     return mode
 
 
-def extractSourceFile(command, include_path):
+def extract_source_file(command, clang_include_path):
     """Attempt to extract a compile step from a driver command line."""
 
     # Accommodate ccache.  With ccache, a parent process will be exec'ed using
@@ -105,58 +110,55 @@ def extractSourceFile(command, include_path):
 
     # TODO: this misses gcc foo.c -o foo; it only catches gcc -c foo.c -o foo. Can't we default to assuming it's -c?
 
-    if not command.isCompilerDriver or isChildOfCompilerDriver(command) or \
-            compileMode(command.argv) != "-c":
+    if not command.isCompilerDriver or is_child_of_compiler_driver(command) or \
+            compile_mode(command.argv) != "-c":
         return None
 
     args = command.argv[1:]
-    inputFile = None
-
+    input_file = None
 
     while len(args) > 0:
         arg = args.pop(0)
         if arg[0] == "-":
             pass
-        elif endsWithOneOf(arg, kSourceExtensions):
-            assert inputFile is None
-            inputFile = arg
-        elif endsWithOneOf(arg, kAssemblyExtensions):
+        elif ends_with_one_of(arg, kSourceExtensions):
+            assert input_file is None
+            input_file = arg
+        elif ends_with_one_of(arg, kAssemblyExtensions):
             return None
 
-    if inputFile is None:
+    if input_file is None:
         return None
     if not os.path.isdir(command.cwd):
-        print('warning: line %d: directory %s does not exist, skipping' %
-            (command.line, command.cwd))
+        print(f'warning: line {command.line}: directory {command.cwd} does not exist, skipping')
         return None
-    absoluteInputFile = os.path.join(command.cwd, inputFile)
-    if not os.path.isfile(absoluteInputFile):
-        print('warning: line %d: input file %s does not exist, skipping' %
-            (command.line, absoluteInputFile))
+    absolute_input_file = os.path.join(command.cwd, input_file)
+    if not os.path.isfile(absolute_input_file):
+        print(f'warning: line {command.line}: input file {absolute_input_file} does not exist, skipping')
         return None
 
-    cmd = joinCommandLine(command.argv) + " -I" + include_path
-
-    output = {"directory": command.cwd, "command": cmd, "file": inputFile}
-
+    cmd = join_command_line(command.argv) + " -I" + clang_include_path
+    output = {"directory": command.cwd, "command": cmd, "file": input_file}
     return output
 
 
-def main():
-    import sys
-    if len(sys.argv) < 2:
-        print("Need to specify include path.")
-        print("usage: %s <clang_system_headers>" % sys.argv[0])
-        return
-    include_path = sys.argv[1]
-
-    commands = readFile("btrace.log")
+def main(include_clang_path: str):
+    """
+    Parse the btrace.log file and generate compile_commands.json
+    This JSON file has the following fields:
+    directory: The working directory where the compile command was run
+    command: The full compile command
+    file: The source file being compiled
+    Args:
+        include_clang_path: The path to Clang system headers to include
+    """
+    commands = read_file("btrace.log")
 
     results = []
     for x in commands:
-        sourceFile = extractSourceFile(x, include_path)
-        if sourceFile is not None:
-            results.append(sourceFile)
+        source_file = extract_source_file(x, include_clang_path)
+        if source_file is not None:
+            results.append(source_file)
 
     if not len(results):
         raise RuntimeError("No source files found by sw-btrace-to-compilerdb")
@@ -166,4 +168,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) < 2:
+        print("Need to specify include path.")
+        print(f"Usage: {sys.argv[0]} <clang_system_headers>")
+        sys.exit(1)
+    include_path = sys.argv[1]
+    main(include_path)

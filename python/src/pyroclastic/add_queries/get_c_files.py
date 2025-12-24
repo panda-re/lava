@@ -6,54 +6,48 @@ import shutil
 import sys
 
 
-def processCompileCommands(srcPath):
-    '''
+def process_compile_commands(source_path: str) -> list[dict]:
+    """"
     Remove duplicate entries from compile_commands.json and rewrite while
     preserving the original, if necessary.  This prevents the clang tool from
     processing the same files multiple times causing redundant queries and other
     problems.  Not currently clear that this won't introduce other problems
     though...
-    '''
-    cFiles = []
-    modificationNeeded = False
-    pathStr = os.path.join(srcPath, 'compile_commands.json')
-    with open(pathStr, 'r') as jsonFile:
-        compileCommands = json.load(jsonFile)
+    """
+    c_files = []
+    modification_needed = False
+    path_string = os.path.join(source_path, 'compile_commands.json')
+    with open(path_string, 'r') as jsonFile:
+        compile_commands = json.load(jsonFile)
 
-    newCompileCommands = compileCommands[:]
-    for i in compileCommands:
+    new_compile_commands = compile_commands[:]
+    for i in compile_commands:
         if 'Werror' in i['command']:
-            modificationNeeded = True
-            newCompileCommands.remove(i)
+            modification_needed = True
+            new_compile_commands.remove(i)
             i['command'] = i['command'].replace('-Werror ', '')
-            newCompileCommands.append(i)
-        f = os.path.realpath(os.path.join(i['directory'], i['file']))
-        if f in cFiles:
-            modificationNeeded = True
-            newCompileCommands.remove(i)
+            new_compile_commands.append(i)
+        file = os.path.realpath(os.path.join(i['directory'], i['file']))
+        if file in c_files:
+            modification_needed = True
+            new_compile_commands.remove(i)
         else:
-            cFiles.append(f)
+            c_files.append(file)
 
-    if modificationNeeded:
-        shutil.copyfile(pathStr,
-            os.path.join(srcPath, 'compile_commands_original.json'))
-        with open(pathStr, 'w') as jsonFile:
-            json.dump(newCompileCommands, jsonFile, indent=4)
+    if modification_needed:
+        shutil.copyfile(path_string,
+                        os.path.join(source_path, 'compile_commands_original.json'))
+        with open(path_string, 'w') as jsonFile:
+            json.dump(new_compile_commands, jsonFile, indent=4)
 
-    return newCompileCommands
-
-
-def getCFiles(compileCommands):
-    for d in compileCommands:
-        print(os.path.join(d['directory'], d['file']))
+    return new_compile_commands
 
 
 def main():
-    if (len(sys.argv) < 2):
+    if len(sys.argv) < 2:
         print('Usage: ./get_c_files.py <src dir>')
         sys.exit(1)
-    newCompileCommands = processCompileCommands(sys.argv[1])
-    getCFiles(newCompileCommands)
+    process_compile_commands(sys.argv[1])
 
 
 if __name__ == '__main__':
