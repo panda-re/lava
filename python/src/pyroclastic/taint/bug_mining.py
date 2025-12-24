@@ -15,7 +15,7 @@ import subprocess
 from colorama import Fore, Style
 from pandare.extras import dwarfdump
 from python.src.pyroclastic.taint.find_bug_injection import parse_panda_log, print_bug_stats
-from vars import parse_vars
+from ..utils.vars import parse_vars
 from pandare import Panda
 from dotenv import load_dotenv
 import argparse

@@ -9,7 +9,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import load_only, relationship, sessionmaker, composite, Mapped, mapped_column
 from sqlalchemy.sql.expression import func
-from sqlalchemy.types import BigInteger, Boolean, Float, Integer, Text
+from sqlalchemy.types import BigInteger, Boolean, Integer, Text
 from sqlalchemy.engine.url import URL
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy import UniqueConstraint
