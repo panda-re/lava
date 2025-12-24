@@ -1,5 +1,33 @@
 import json
 import os
+from pathlib import Path
+
+
+def get_valid_architectures():
+    return ['panda-system-x86_64', 'panda-system-aarch64', 'panda-system-arm', 'panda-system-i386']
+
+
+def get_host_config():
+    """
+    Finds host.json in a prioritized search order to support both
+    CI/CD (local repo) and Installed (Wheel) modes.
+    """
+    # 1. Check for an environment variable override (Best for CI/CD)
+    env_path = os.environ.get("LAVA_HOST_CONFIG")
+    if env_path and os.path.exists(env_path):
+        return env_path
+
+    # 2. Check the current directory (Repo mode)
+    cwd_path = Path.cwd() / "host.json"
+    if cwd_path.exists():
+        return str(cwd_path)
+
+    # 3. Check the standard installed location
+    home_path = Path.home() / ".lava" / "host.json"
+    if home_path.exists():
+        return str(home_path)
+
+    raise FileNotFoundError("Could not find host.json. Run 'lava init' first.")
 
 
 class Project:
@@ -27,27 +55,29 @@ class Project:
         return self.values.keys()
 
 
-def validate_host(host):
+def validate_host(host: dict):
     # Path to configs
     assert 'config_dir' in host
     # path to qemu exec (correct guest)
     assert 'qemu' in host
+    assert host['qemu'] in get_valid_architectures()
 
 
-def validate_project(project):
+def validate_project(project_dict: dict):
     # name of project
-    assert 'name' in project
+    assert 'name' in project_dict
     # command line to run the target program (already instrumented with taint and attack queries)
-    assert 'command' in project
+    assert 'command' in project_dict
     # path to tarfile for target (original source)
-    assert 'tarfile' in project
+    assert 'tarfile' in project_dict
     # namespace in db for prospective bugs
-    assert 'db' in project
+    assert 'db' in project_dict
 
 
 def parse_vars(host_json, project_name):
-    with open(host_json, 'r') as host_f:
-        host = json.load(host_f)
+    host_json_path = get_host_config()
+    with open(host_json_path, 'r') as f:
+        host = json.load(f)
 
     try:
         validate_host(host)
@@ -60,61 +90,61 @@ def parse_vars(host_json, project_name):
         raise RuntimeError("Could not find project config file at {}".format(config_path))
 
     with open(config_path, 'r') as host_f:
-        project = json.load(host_f)
+        project_data = json.load(host_f)
 
     try:
-        validate_project(project)
+        validate_project(project_data)
     except AssertionError as e:
         print("Your project config file is missing a required field:\n{}".format(e))
         raise
 
     for field, prefix in [("tarfile", "tar_dir")]:
-        project[field] = host[prefix] + os.path.sep + project[field]
+        project_data[field] = host[prefix] + os.path.sep + project_data[field]
 
     for field, suffix in [("db", "db_suffix")]:
-        project[field] = project[field] + host[suffix]
+        project_data[field] = project_data[field] + host[suffix]
 
     for field in ["inputs"]:
-        if field not in project.keys(): continue
+        if field not in project_data.keys(): continue
         target_val = []
-        for inp in project["inputs"]:
+        for inp in project_data["inputs"]:
             target_val.append("{config_dir}/{name}/{field}".format(config_dir=host["config_dir"],
-                                                                   name=project["name"], field=inp))
-        project["inputs"] = target_val
+                                                                   name=project_data["name"], field=inp))
+        project_data["inputs"] = target_val
 
     for field in ["injfixupsscript", "fixupsscript"]:
-        if field not in project.keys():
+        if field not in project_data.keys():
             continue
-        project[field] = ("{config_dir}/{name}/{field}".format(config_dir=host["config_dir"],
-                                                               name=project["name"], field=project[field]))
+        project_data[field] = ("{config_dir}/{name}/{field}".format(config_dir=host["config_dir"],
+                                                                    name=project_data["name"], field=project_data[field]))
 
     # Database config
-    project["database"] = host.get("host", "database")
-    project["database_port"] = host.get("port", 5432)
-    project["database_user"] = host.get("pguser", "postgres")
+    project_data["database"] = host.get("host", "database")
+    project_data["database_port"] = host.get("port", 5432)
+    project_data["database_user"] = host.get("pguser", "postgres")
 
     # Other config
-    project["qemu"] = host["qemu"]
-    project["output_dir"] = host["output_dir"] + os.path.sep + project["name"]
-    project["directory"] = host["output_dir"]
-    project["config_dir"] = host["config_dir"] + os.path.sep + project["name"]
-    project["debug"] = host.get("debug", False)
+    project_data["qemu"] = host["qemu"]
+    project_data["output_dir"] = host["output_dir"] + os.path.sep + project_data["name"]
+    project_data["directory"] = host["output_dir"]
+    project_data["config_dir"] = host["config_dir"] + os.path.sep + project_data["name"]
+    project_data["debug"] = host.get("debug", False)
 
     # Replace format strings in project configs
-    project["install"] = project["install"].format(config_dir=project["config_dir"])
-    project["llvm-dir"] = host.get("llvm", "/usr/lib/llvm-14")
-    project["llvm-version"] = project["llvm-dir"].split('-')[-1]
-    project["complete_rr"] = host.get("complete_rr", False)
-    project["env_var"] = \
-            {'CC': os.path.join(project["llvm-dir"], 'bin/clang'),
-            'CXX': os.path.join(project["llvm-dir"], 'bin/clang++'),
+    project_data["install"] = project_data["install"].format(config_dir=project_data["config_dir"])
+    project_data["llvm-dir"] = host.get("llvm", "/usr/lib/llvm-14")
+    project_data["llvm-version"] = project_data["llvm-dir"].split('-')[-1]
+    project_data["complete_rr"] = host.get("complete_rr", False)
+    project_data["env_var"] = \
+            {'CC': os.path.join(project_data["llvm-dir"], 'bin/clang'),
+            'CXX': os.path.join(project_data["llvm-dir"], 'bin/clang++'),
             'CFLAGS': '-O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
-    project["full_env_var"] = \
-            {'CC': os.path.join(project["llvm-dir"], 'bin/clang'),
-            'CXX': os.path.join(project["llvm-dir"], 'bin/clang++'),
+    project_data["full_env_var"] = \
+            {'CC': os.path.join(project_data["llvm-dir"], 'bin/clang'),
+            'CXX': os.path.join(project_data["llvm-dir"], 'bin/clang++'),
             'CFLAGS': '-Wno-int-conversion -O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
 
-    return Project(project)
+    return Project(project_data)
 
 
 if __name__ == '__main__':
