@@ -1,6 +1,6 @@
 include(GNUInstallDirs)
 set (GENERATED ${CMAKE_CURRENT_SOURCE_DIR}/../generated)
-set (SCRIPTS ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts)
+set (PYTHON_DATA ${CMAKE_CURRENT_SOURCE_DIR}/../../../python/src/pyroclastic/data)
 
 if (NOT EXISTS ${GENERATED})
     file(MAKE_DIRECTORY ${GENERATED})
@@ -20,7 +20,7 @@ set(ODB_HXX ${CMAKE_CURRENT_SOURCE_DIR}/../include/lava.hxx)
 add_custom_command (
     OUTPUT ${ODB_GENERATED_FILES}
     COMMAND odb ${ODB_OPTS} ${ODB_HXX}
-    COMMAND ${CMAKE_COMMAND} -E copy ${sqlFile} ${SCRIPTS}/lava.sql
+    COMMAND ${CMAKE_COMMAND} -E copy ${sqlFile} ${PYTHON_DATA}/lava.sql
     DEPENDS cleanup ${ODB_HXX}
     COMMENT "Generating ODB files and syncing SQL to scripts folder"
 )

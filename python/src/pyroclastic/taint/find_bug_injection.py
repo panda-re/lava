@@ -2,9 +2,9 @@ import json
 import sys
 import ijson
 import os
-from database_types import AttackPoint, Bug, \
+from ..utils.database_types import AttackPoint, Bug, \
     ASTLoc, DuaBytes, SourceLval, LabelSet, Dua, Range, LavaDatabase, AtpKind, BugKind
-from vars import parse_vars
+from ..utils.vars import parse_vars
 from sqlalchemy.exc import IntegrityError
 from typing import Iterable, TypeVar, DefaultDict, Set
 from collections import defaultdict
