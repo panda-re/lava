@@ -93,7 +93,7 @@ def parse_lava_args():
     return args
 
 
-def lava_main():
+def main():
     # 1. Parse arguments using the logic we refactored
     args = parse_lava_args()
 
@@ -132,4 +132,4 @@ def lava_main():
 
 
 if __name__ == "__main__":
-    lava_main()
+    main()
