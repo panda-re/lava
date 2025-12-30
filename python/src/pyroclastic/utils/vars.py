@@ -4,25 +4,20 @@ from pathlib import Path
 
 
 def get_valid_architectures():
-    return ['panda-system-x86_64', 'panda-system-aarch64', 'panda-system-arm', 'panda-system-i386']
+    return ['x86_64', 'aarch64', 'arm', 'i386']
 
 
 def get_host_config():
     """
-    Finds host.json in a prioritized search order to support both
-    CI/CD (local repo) and Installed (Wheel) modes.
+    First, check the LAVA_HOST_CONFIG environment variable for an override path.
+    Next, check the standard installed location at ~/.lava/host.json.
     """
     # 1. Check for an environment variable override (Best for CI/CD)
     env_path = os.environ.get("LAVA_HOST_CONFIG")
     if env_path and os.path.exists(env_path):
         return env_path
 
-    # 2. Check the current directory (Repo mode)
-    cwd_path = Path.cwd() / "host.json"
-    if cwd_path.exists():
-        return str(cwd_path)
-
-    # 3. Check the standard installed location
+    # 2. Check the standard installed location
     home_path = Path.home() / ".lava" / "host.json"
     if home_path.exists():
         return str(home_path)
@@ -31,7 +26,9 @@ def get_host_config():
 
 
 class Project:
-    """ Simple getter/setter class so we can support .get like a JSON file"""
+    """
+    Simple getter/setter class so we can support .get like a JSON file
+    """
 
     def __init__(self, data):
         self.values = data
@@ -56,6 +53,8 @@ class Project:
 
 
 def validate_host(host: dict):
+    # Path to binaries
+    assert 'tar_dir' in host
     # Path to configs
     assert 'config_dir' in host
     # path to qemu exec (correct guest)
@@ -72,6 +71,46 @@ def validate_project(project_dict: dict):
     assert 'tarfile' in project_dict
     # namespace in db for prospective bugs
     assert 'db' in project_dict
+
+
+def get_project_env(llvm_dir: str, arch: str = "x86_64", mode:str = "default"):
+    """
+    Generates environment variables based on target architecture.
+    mode: 'default', 'full', or 'panda'
+    """
+    clang = os.path.join(llvm_dir, 'bin/clang')
+    clang_pp = os.path.join(llvm_dir, 'bin/clang++')
+
+    # 1. Base flags common to ALL architectures
+    base_cflags = [
+        "-O0", "-DHAVE_CONFIG_H", "-g", "-gdwarf-2",
+        "-fno-stack-protector", "-D_FORTIFY_SOURCE=0",
+        "-I.", "-I..", "-I../include", "-I./src/"
+    ]
+
+    # 2. Architecture-Specific Flags
+    arch_flags = {
+        "x86_64": [],
+        "i386": ["-m32"],
+        "arm": ["-marm", "-march=armv7-a"],
+        "aarch64": ["-march=armv8-a"]
+    }
+
+    # 3. Mode-Specific Flags
+    mode_extras = {
+        "default": [],
+        "full": ["-Wno-int-conversion"],
+        "panda": ["-static"]
+    }
+
+    # Build the final CFLAGS string
+    final_cflags = base_cflags + arch_flags.get(arch, []) + mode_extras.get(mode, [])
+
+    return {
+        'CC': clang,
+        'CXX': clang_pp,
+        'CFLAGS': " ".join(final_cflags)
+    }
 
 
 def parse_vars(project_name: str):
@@ -105,7 +144,8 @@ def parse_vars(project_name: str):
         project_data[field] = project_data[field] + host[suffix]
 
     for field in ["inputs"]:
-        if field not in project_data.keys(): continue
+        if field not in project_data.keys():
+            continue
         target_val = []
         for inp in project_data["inputs"]:
             target_val.append("{config_dir}/{name}/{field}".format(config_dir=host["config_dir"],
@@ -125,9 +165,9 @@ def parse_vars(project_name: str):
 
     # Other config
     project_data["qemu"] = host["qemu"]
-    project_data["output_dir"] = host["output_dir"] + os.path.sep + project_data["name"]
+    project_data["output_dir"] = os.path.join(host["output_dir"], project_data["name"])
     project_data["directory"] = host["output_dir"]
-    project_data["config_dir"] = host["config_dir"] + os.path.sep + project_data["name"]
+    project_data["config_dir"] = os.path.join(host["config_dir"], project_data["name"])
     project_data["debug"] = host.get("debug", False)
 
     # Replace format strings in project configs
@@ -135,19 +175,9 @@ def parse_vars(project_name: str):
     project_data["llvm-dir"] = host.get("llvm", "/usr/lib/llvm-14")
     project_data["llvm-version"] = project_data["llvm-dir"].split('-')[-1]
     project_data["complete_rr"] = host.get("complete_rr", False)
-    project_data["env_var"] = \
-            {'CC': os.path.join(project_data["llvm-dir"], 'bin/clang'),
-            'CXX': os.path.join(project_data["llvm-dir"], 'bin/clang++'),
-            'CFLAGS': '-O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
-    project_data["full_env_var"] = \
-            {'CC': os.path.join(project_data["llvm-dir"], 'bin/clang'),
-            'CXX': os.path.join(project_data["llvm-dir"], 'bin/clang++'),
-            'CFLAGS': '-Wno-int-conversion -O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
-    project_data["panda_compile"] = \
-            {'CC': os.path.join(project_data["llvm-dir"], 'bin/clang'),
-            'CXX': os.path.join(project_data["llvm-dir"], 'bin/clang++'),
-            'CFLAGS': '-static -O0 -DHAVE_CONFIG_H -g -gdwarf-2 -fno-stack-protector -D_FORTIFY_SOURCE=0 -I. -I.. -I../include -I./src/'}
-
+    project_data["env_var"] = get_project_env(project_data["llvm-dir"], host["qemu"], "default")
+    project_data["full_env_var"] = get_project_env(project_data["llvm-dir"], host["qemu"], "full")
+    project_data["panda_compile"] = get_project_env(project_data["llvm-dir"], host["qemu"], "panda")
     return Project(project_data)
 
 

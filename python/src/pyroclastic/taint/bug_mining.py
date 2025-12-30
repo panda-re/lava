@@ -28,8 +28,7 @@ def run_taint_pipeline(lava_project: str):
     project = parse_vars(lava_project)
 
     # Initialize PANDA
-    qemu_path = project['qemu']
-    panda = Panda(generic=qemu_path.split('-')[-1])
+    panda = Panda(generic=project['qemu'])
 
     class State:
         command_args = []

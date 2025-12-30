@@ -34,22 +34,35 @@ $ DOCKER_BUILDKIT=1 docker build lava .
 ```
 
 ## Ubuntu, Debian
-On a system running Ubuntu 22.04, you should be able to just run `bash install.sh`. Note that this [install script](./install.sh) will install packages and make changes to your system.
+### Local Installation
+On a system running Ubuntu 22.04, you should be able to just run `bash install.sh`. 
+Note that this [install script](https://github.com/panda-re/lava/blob/master/install.sh) will install packages and make changes to your system. 
+You can remove the binaries using `sudo apt-get remove lava`.
+
+Once you finish installing the binary, then you can install locally running `pip install python/`. 
+
+**NOTE** that the Python package requires a SQL file generated from compiling the binaries that is placed into `python/src/pyroclastic/data/lava.sql`. 
+Without this file, the Python package will not work correctly.
+
+### Regular installation
+Alternatively, you can manually install LAVA's dependencies and then build from source. 
+Download the Debian packages located in the [releases](https://github.com/panda-re/lava/releases). Then install the python package `pip install pyroclastic`.
 
 ## Final steps
 
 ### Utilizing host.json
-Next, run `init-host.py` to generate a `host.json`.
+Next, run `init_host` to generate a `host.json` in your `~/.lava` directory.
 This file is used by LAVA to store settings specific
 to your machine. You can edit these settings as necessary, but the default
-values should work, see [vars.sh](scripts/vars.sh).
+values should work, see [vars.py](https://github.com/panda-re/lava/blob/master/python/src/pyroclastic/utils/vars.py).
 
 A few values to keep in mind are the following:
-* **buildhost** This is the location of where LAVA is being executed from. Currently, it defaults to `localhost`
-* **docker** is the name of the docker image to use that has the LAVA binaries. Currently it defaults to `lava32`, but you can switch this to `pandare/lava`
 * **pguser** This is the name of database user, currently defaults to `postgres`
-* **pgpass** This is the password of the database user, currently defaults to `postgrespostgres`
-* **host** is the name of the Postgres SQL database with all the LAVA bugs. Currently it defaults to `database`, although if you installed LAVA locally, you likely should change this to `localhost`
+* **host** is the name of the Postgres SQL database with all the LAVA bugs. Currently, it defaults to `database`, although if you installed LAVA locally, you likely should change this to `localhost`
+
+**NOTE**: You also need two environment variables for the Postgres SQL database:
+* `POSTGRES_PASS` This is the password for the Postgres SQL user`
+* `POSTGRES_USER` This is the hostname for the Postgres SQL database
 
 ### Project configurations
 Project configurations are located in the `target_configs` directory, where
@@ -58,47 +71,26 @@ Paths specified within these configuration files are relative to values set
 in your `host.json` file.
 
 ### Setting up postgres SQL database
-As alluded to, you should create a Postgres SQL user. You can use a script to [use default credentials](setup_postgres.sh) for the following:
-* Create the user with default password
+As alluded to, you should create a Postgres SQL user. You can use a script to [using the environment variables](https://github.com/panda-re/lava/blob/master/scripts/setup_postgres.sh) for the following:
+* Create the user with provided username and password from environment variables.
 * Update Postgres SQL database on host to accept traffic from external sources (e. g. LAVA Docker container)
-* Switch password encryption to md5 (Do we need this?)
 
 # Usage
 
-Finally, you can run `./scripts/lava.sh` to actually inject bugs into a program. Just provide the name of a project that is in the `target_configs` directory, for example:
+Finally, you can run `lava` to actually inject bugs into a program. 
+Just provide the name of a project that is in the `target_configs` directory, for example:
 
 ```
-./scripts/lava.sh toy
+lava -ak toy
 ```
 
 You should now have a buggy copy of toy!
 
 If you want to inject bugs into a new target, you will likely need to make some
-modifications. Check out [How-to-Lava](docs/how-to-lava.md) for guidance.
+modifications. Check out [How-to-Lava](https://github.com/panda-re/lava/blob/master/docs/how-to-lava.md) for guidance.
 
 # Documentation
-Check out the [docs](docs/) folder to get started.
-
-
-# Current Status
-## Version 2.0.0
-
-Expected results from test suite:
-```
-Project       RESET    CLEAN    ADD      MAKE     TAINT    INJECT   COMP
-blecho        PASS     PASS     PASS     PASS     PASS     PASS     PASS
-libyaml       PASS     PASS     PASS     PASS     PASS     PASS     PASS
-file          PASS     PASS     PASS     PASS     PASS     PASS     PASS
-toy           PASS     PASS     PASS     PASS     PASS     PASS     PASS
-pcre2         PASS     PASS     PASS     PASS     PASS     PASS     PASS
-jq            PASS     PASS     PASS     PASS     PASS     PASS     PASS
-grep          PASS     PASS     PASS     PASS     PASS     FAIL
-libjpeg       PASS     PASS     PASS     PASS     FAIL
-tinyexpr      PASS     PASS     PASS     PASS     FAIL
-duktape       PASS     PASS     PASS     FAIL
-tweetNaCl     PASS     PASS     FAIL
-gzip          FAIL
-```
+Check out the [docs](https://github.com/panda-re/lava/blob/master/docs/) folder to get started.
 
 # Authors
 
