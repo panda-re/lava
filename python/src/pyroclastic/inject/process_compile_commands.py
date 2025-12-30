@@ -5,7 +5,7 @@ from os.path import join
 
 # processes compile_commands.json to remove duplicate entries and add extra entries
 
-def process_compile_commands(cc_filename, extra_cc_filename):
+def process_compile_commands(cc_filename: str, extra_cc_filename: str):
     print('Processing compile_commands')
     with open(cc_filename, 'r') as cc_file:
         compile_commands = json.load(cc_file)
@@ -28,13 +28,13 @@ def process_compile_commands(cc_filename, extra_cc_filename):
         json.dump(new_compile_commands, cc_file)
 
 
-def get_c_files(bugs_build, cc_filename):
-    with open(cc_filename, 'r') as cc_file:
+def get_c_files(bugs_build_directory: str, compile_command_filename: str) -> set[str]:
+    with open(compile_command_filename, 'r') as cc_file:
         compile_commands = json.load(cc_file)
     
     c_files = set()
     for f in compile_commands:
-        if not (bugs_build == f['directory']):
+        if not (bugs_build_directory == f['directory']):
             c_files.add(os.path.join(os.path.basename(f['directory']), f['file']))
         else:
             c_files.add(f['file'])

@@ -58,7 +58,7 @@ Paths specified within these configuration files are relative to values set
 in your `host.json` file.
 
 ### Setting up postgres SQL database
-As alluded to, you should create a Postgres SQL user. You can use a script to [use default credentials](scripts/setup_postgres.sh) for the following:
+As alluded to, you should create a Postgres SQL user. You can use a script to [use default credentials](setup_postgres.sh) for the following:
 * Create the user with default password
 * Update Postgres SQL database on host to accept traffic from external sources (e. g. LAVA Docker container)
 * Switch password encryption to md5 (Do we need this?)

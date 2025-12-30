@@ -10,5 +10,4 @@ host.json
 host.json.example
 install.sh
 lava_template.json
-requirements.txt
 VERSION.md

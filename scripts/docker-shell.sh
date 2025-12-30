@@ -1,14 +1,5 @@
 #!/bin/bash
 
-# Single argument of project name will get Docker name
-# from project config. Then 2nd optional argument is command to run
-# With no arguments, just give us a shell
-
-lava="$(dirname $(dirname $(readlink -f $0)))"
-
-# This project_name is a dummy value, we just want shell access
-project_name="toy"
-. `dirname $0`/vars.sh
 
 echo "You are connecting to the Docker container: ${dockername}"
 
@@ -23,11 +14,7 @@ if [ "$#" -ne 0 ]; then
     if [[ "$directory" = "$tarfiledir"* ]]; then true; else
       docker_map_args="$docker_map_args -v $directory:$directory"
     fi
-
-    if ! ( docker images ${dockername} | grep -q ${dockername} ); then
-        docker build -t ${dockername} "$(dirname $(dirname $(readlink -f $0)))/docker/debug"
-    fi
-else 
+else
     echo "No extra args"
 fi
 

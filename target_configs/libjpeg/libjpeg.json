@@ -13,5 +13,5 @@
 
     "main_file": [ "src/example-pre.c" ],
 
-    "injfixupsscript": "fixup.sh",
+    "injfixupsscript": "fixup.sh"
 }

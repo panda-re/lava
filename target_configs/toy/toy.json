@@ -5,7 +5,6 @@
     
     "tarfile": "toy-pre.tar.gz",
 
-    "configure": "true",
     "make": "make CFLAGS+=-gdwarf-2",
     "clean": "make clean",
     "install": "make install",

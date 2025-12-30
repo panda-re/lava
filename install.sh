@@ -56,10 +56,6 @@ else
 fi
 progress "Installed build dependencies"
 
-pip3 install --upgrade pip
-pip3 install -r requirements.txt
-progress "Installed Python requirements"
-
 progress "Configure lavaTool"
 rm -rf "./tools/build"
 cmake -B"./tools/build" \
