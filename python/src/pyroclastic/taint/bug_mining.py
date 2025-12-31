@@ -191,7 +191,7 @@ def run_taint_pipeline(lava_project: str):
         panda.run_replay("recording")
 
         replay_time = tock(start)
-        progress("bug_mining", 1, "taint analysis complete %.2f seconds" % replay_time)
+        progress("bug_mining", 1, f"taint analysis complete {replay_time} seconds")
         sys.stdout.flush()
 
     def parse_replay_output():
