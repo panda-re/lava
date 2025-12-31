@@ -41,7 +41,7 @@ def get_inject_parser():
     return parser
 
 
-def print_tail(logfile, n=8):
+def print_tail(logfile, n=9):
     if os.path.exists(logfile):
         with open(logfile, "r") as f:
             for line in deque(f, n):

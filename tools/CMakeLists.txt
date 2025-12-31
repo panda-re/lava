@@ -34,7 +34,11 @@ endif()
 # Set the project version dynamically
 project(LAVA VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH})
 include(GNUInstallDirs)
-set(CMAKE_VERBOSE_MAKEFILE OFF)
+if (DEFINED DEBUG)
+    set(CMAKE_VERBOSE_MAKEFILE ON)
+else()
+    set(CMAKE_VERBOSE_MAKEFILE OFF)
+endif()
 
 # Print the project version for debugging
 message(STATUS "LAVA Project version: ${PROJECT_VERSION}")

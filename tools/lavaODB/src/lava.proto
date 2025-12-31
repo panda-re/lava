@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package lava;
+
+message Loc {
+    uint32 line = 2;
+    uint32 column = 3;
+}
+
+message ASTLoc {
+    string filename = 1;
+    Loc begin = 2;
+    Loc end = 3;
+}
+
+message Range {
+    uint32 low = 1;
+    uint32 high = 2;
+}
+
+message SourceLval {
+    uint64 id = 1;
+    ASTLoc loc = 2;
+    string ast_name = 3;
+    uint32 len_bytes = 4;
+}
+
+message LabelSet {
+    uint64 id = 1;
+    uint64 ptr = 2;         // Pointer to labelset during taint run
+    string inputfile = 3;   // Inputfile used for this run.
+    repeated uint32 labels = 4;
+};
+
+message Dua {
+    uint64 id = 1;
+    SourceLval lval = 2;
+    repeated LabelSet viable_bytes = 3;
+    repeated uint32 byte_tcn = 4;
+    repeated uint32 all_labels = 5;
+    string inputfile = 6;
+    uint32 max_tcn = 7;
+    uint32 max_cardinality = 8;
+    uint64 instr = 9;
+    bool fake_dua = 10;
+}
+
+message DuaBytes {
+    uint64 id = 1;
+    Dua dua = 2;
+    Range selected = 3;
+    repeated uint32 all_labels = 4;
+}
+
+message AttackPoint {
+    enum AtpKind {
+        FUNCTION_CALL = 0;
+        POINTER_READ = 1;
+        POINTER_WRITE = 2;
+        QUERY_POINT = 3;
+        PRINTF_LEAK = 4;
+        MALLOC_OFF_BY_ONE = 5;
+    }
+    uint64 id = 1;
+    ASTLoc loc = 2;
+    AtpKind type = 3;
+}
+
+message Bug {
+    enum BugKind {
+        BUG_PTR_ADD = 0;
+        BUG_RET_BUFFER = 1;
+        BUG_REL_WRITE = 2;
+        BUG_PRINTF_LEAK = 3;
+        BUG_MALLOC_OFF_BY_ONE = 4;
+    }
+    uint64 id = 1;
+    BugKind type = 2;
+    DuaBytes trigger = 3;
+    SourceLval trigger_lval = 4;
+    AttackPoint atp = 5;
+    uint64 max_liveness = 6;
+    repeated uint64 extra_duas = 7;
+    uint32 magic = 8;
+}
+
+message Build {
+    uint64 id = 1;
+    repeated Bug bugs = 2;
+    string output = 3;      // path to executable
+    bool compile = 4;       // did the build compile?
+}
+
+message Run {
+    uint64 id = 1;
+    Build build = 2;
+    Bug fuzzed = 3;         // was this run on fuzzed or orig input?
+    int32 exitcode = 4;     // exit code of program
+    string output = 5;      // output of program
+    bool success = 6;       // true unless python script failed somehow.
+    bool validated = 7;     // true if bug successfully triggered by inject.py
+}
+
+message SourceFunction {
+    uint64 id = 1;
+    ASTLoc loc = 2;
+    string name = 3;       // Function name
+}
+
+message Call {
+    uint64 id = 1;
+    uint64 call_instr = 2;    // Instruction count at call
+    uint64 ret_instr = 3;     // Instruction count at ret
+    SourceFunction called_function = 4;
+    string callsite_file = 5;
+    uint32 callsite_line = 6;
+}

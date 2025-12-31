@@ -9,7 +9,7 @@ if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
 	set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "arm64")
 endif()
 
-set(CPACK_STRIP_FILES false)
+set(CPACK_STRIP_FILES true)
 
 # Compression settings
 set(CPACK_DEBIAN_PACKAGE_COMPRESSION_TYPE "xz") # Use xz compression for smaller package size

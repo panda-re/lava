@@ -1,6 +1,7 @@
 #ifndef __LAVA_HXX__
 #define __LAVA_HXX__
 
+#include "lava.pb.h"
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -12,6 +13,23 @@
 #include <sstream>
 #include <algorithm>
 #include <iterator>
+#include <typeinfo>
+
+/**
+ * enforce_name_match: The "Contract Lock"
+ * This function ensures that the C++ Struct, the Protobuf Message,
+ * and the expected Name string are all identical.
+ */
+template <typename T_STRUCT, typename T_PROTO>
+void enforce_name_match(const std::string& expected_name) {
+    // We use std::string here instead of string_view for safety
+    std::string proto_name = T_PROTO::descriptor()->name();
+
+    if (proto_name != expected_name) {
+        std::cerr << "[!] SCHEMA NAME MISMATCH: " << expected_name << std::endl;
+        assert(false && "Case-sensitive name mismatch");
+    }
+}
 
 template<typename T, class InputIt>
 inline void merge_into(InputIt first, InputIt last, size_t size, std::vector<T> &dest) {
@@ -69,19 +87,28 @@ struct Loc {
     bool operator<(const Loc &other) const {
         return std::tie(line, column) < std::tie(other.line, other.column);
     }
+
+    // SCHEMA ENFORCEMENT:
+    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
+    void __enforce_proto() const {
+        enforce_name_match<Loc, lava::Loc>("Loc");
+        lava::Loc p;
+        p.set_line(this->line);
+        p.set_column(this->column);
+    }
 };
 
 #pragma db value
-struct LavaASTLoc {
+struct ASTLoc {
     std::string filename;
     Loc begin;
     Loc end;
 
-    LavaASTLoc() {}
-    LavaASTLoc(std::string filename, Loc begin, Loc end) :
+    ASTLoc() {}
+    ASTLoc(std::string filename, Loc begin, Loc end) :
         filename(filename), begin(begin), end(end) {}
 
-    explicit LavaASTLoc(std::string serialized) {
+    explicit ASTLoc(std::string serialized) {
         std::vector<std::string> components;
         std::istringstream iss(serialized);
         for (std::string item; std::getline(iss, item, ':');) {
@@ -97,25 +124,35 @@ struct LavaASTLoc {
         return os.str();
     }
 
-    friend std::ostream &operator<<(std::ostream &os, const LavaASTLoc &loc) {
+    friend std::ostream &operator<<(std::ostream &os, const ASTLoc &loc) {
         os << loc.filename << ":" << loc.begin << ":" << loc.end;
         return os;
     }
 
-    LavaASTLoc adjust_line(uint32_t line_offset) const {
-        return LavaASTLoc(filename,
+    ASTLoc adjust_line(uint32_t line_offset) const {
+        return ASTLoc(filename,
                 begin.adjust_line(line_offset),
                 end.adjust_line(line_offset));
     }
 
-    bool operator==(const LavaASTLoc &other) const {
+    bool operator==(const ASTLoc &other) const {
         return std::tie(begin, end, filename)
             == std::tie(other.begin, other.end, other.filename);
     }
 
-    bool operator<(const LavaASTLoc &other) const {
+    bool operator<(const ASTLoc &other) const {
         return std::tie(begin, end, filename)
             < std::tie(other.begin, other.end, other.filename);
+    }
+
+    // SCHEMA ENFORCEMENT:
+    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
+    void __enforce_proto() const {
+        enforce_name_match<ASTLoc, lava::ASTLoc>("ASTLoc");
+        lava::ASTLoc p;
+        p.set_filename(this->filename);
+        this->begin.__enforce_proto();
+        this->end.__enforce_proto();
     }
 };
 
@@ -146,15 +183,24 @@ struct Range {
 
     inline uint32_t size() const { return high - low; }
     inline bool empty() const { return high <= low; }
+
+    // SCHEMA ENFORCEMENT:
+    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
+    void __enforce_proto() const {
+        enforce_name_match<Range, lava::Range>("Range");
+        lava::Range p;
+        p.set_low(this->low);
+        p.set_high(this->high);
+    }
 };
 
 
 #pragma db object
-struct SourceLval { // was DuaKey
+struct SourceLval {
 #pragma db id auto
     uint64_t id;
 
-    LavaASTLoc loc;
+    ASTLoc loc;
 
     std::string ast_name;
 
@@ -171,6 +217,17 @@ struct SourceLval { // was DuaKey
         os << "Lval [" << m.loc.filename << " " << m.loc.begin << " ";
         os << "\"" << m.ast_name << "\"]";
         return os;
+    }
+
+    // SCHEMA ENFORCEMENT:
+    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
+    void __enforce_proto() const {
+        enforce_name_match<SourceLval, lava::SourceLval>("SourceLval");
+        lava::SourceLval p;
+        p.set_id(this->id);
+        p.set_ast_name(this->ast_name);
+        p.set_len_bytes(this->len_bytes);
+        this->loc.__enforce_proto();
     }
 };
 
@@ -189,6 +246,17 @@ struct LabelSet {
     bool operator<(const LabelSet &other) const {
         return std::tie(ptr, inputfile, labels) <
             std::tie(other.ptr, other.inputfile, other.labels);
+    }
+
+    // SCHEMA ENFORCEMENT:
+    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
+    void __enforce_proto() const {
+        enforce_name_match<LabelSet, lava::LabelSet>("LabelSet");
+        lava::LabelSet p;
+        p.set_id(this->id);
+        p.set_ptr(this->ptr);
+        p.set_inputfile(this->inputfile);
+        p.add_labels(0);
     }
 };
 
@@ -255,6 +323,29 @@ struct Dua {
         os << "]";
         return os;
     }
+
+    // SCHEMA ENFORCEMENT:
+    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
+    void __enforce_proto() const {
+        enforce_name_match<Dua, lava::Dua>("Dua");
+        lava::Dua p;
+        p.set_id(this->id);
+        if (this->lval) {
+            this->lval->__enforce_proto();
+        }
+        for (auto ls : this->viable_bytes) {
+            if (ls) {
+                ls->__enforce_proto();
+            }
+        }
+        p.add_byte_tcn(0);
+        p.add_all_labels(0);
+        p.set_inputfile(this->inputfile);
+        p.set_max_tcn(this->max_tcn);
+        p.set_max_cardinality(this->max_cardinality);
+        p.set_instr(this->instr);
+        p.set_fake_dua(this->fake_dua);
+    }
 };
 
 #pragma db object
@@ -295,6 +386,19 @@ struct DuaBytes {
         os << "DUABytes " << dua_bytes.selected << " of " << *dua_bytes.dua;
         return os;
     }
+
+    // SCHEMA ENFORCEMENT:
+    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
+    void __enforce_proto() const {
+        enforce_name_match<DuaBytes, lava::DuaBytes>("DuaBytes");
+        lava::DuaBytes p;
+        p.set_id(this->id);
+        if (this->dua) {
+            this->dua->__enforce_proto();
+        }
+        this->selected.__enforce_proto();
+        p.add_all_labels(0);
+    }
 };
 
 #pragma db object
@@ -302,7 +406,7 @@ struct AttackPoint {
 #pragma db id auto
     uint64_t id;
 
-    LavaASTLoc loc;
+    ASTLoc loc;
 
     enum Type {
         FUNCTION_ARG,
@@ -339,6 +443,16 @@ struct AttackPoint {
         os << "ATP [" << m.loc.filename << " " << m.loc.begin << "] {";
         os << names[m.type] << "}";
         return os;
+    }
+
+    // SCHEMA ENFORCEMENT:
+    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
+    void __enforce_proto() const {
+        enforce_name_match<AttackPoint, lava::AttackPoint>("AttackPoint");
+        lava::AttackPoint p;
+        p.set_id(this->id);
+        this->loc.__enforce_proto();
+        p.set_type(static_cast<lava::AttackPoint::AtpKind>(this->type));
     }
 };
 
@@ -416,10 +530,31 @@ struct Bug {
     // can either be (LAVA - id) & 0xffff
     // or (LAVA & 0xffff) - id
     // the second way seems like a better solution for id's greater than
-    // LAVA & 0xffff because we get wrap arounds that still create unique
+    // LAVA & 0xffff because we get wrap around that still create unique
     // magic values
     inline uint16_t magic_kt() const {
-        return (uint16_t)magic;
+        return (uint16_t) magic;
+    }
+
+    // SCHEMA ENFORCEMENT:
+    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
+    void __enforce_proto() const {
+        enforce_name_match<Bug, lava::Bug>("Bug");
+        lava::Bug p;
+        p.set_id(this->id);
+        p.set_type(static_cast<lava::Bug::BugKind>(this->type));
+        if (this->trigger) {
+            this->trigger->__enforce_proto();
+        }
+        if (this->trigger_lval) {
+            this->trigger_lval->__enforce_proto();
+        }
+        if (this->atp) {
+            this->atp->__enforce_proto();
+        }
+        p.set_max_liveness(this->max_liveness);
+        p.add_extra_duas(0);
+        p.set_magic(this->magic);
     }
 };
 
@@ -445,6 +580,19 @@ struct Build {
         return std::tie(bugs, output, compile) <
             std::tie(other.bugs, other.output, other.compile);
     }
+
+    // SCHEMA ENFORCEMENT:
+    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
+    void __enforce_proto() const {
+        enforce_name_match<Build, lava::Build>("Build");
+        lava::Build p;
+        p.set_id(this->id);
+        for (const Bug *bug : this->bugs) {
+            bug->__enforce_proto();
+        }
+        p.set_output(this->output);
+        p.set_compile(this->compile);
+    }
 };
 
 #pragma db object
@@ -465,6 +613,20 @@ struct Run {
             std::tie(other.build->id, other.fuzzed->id, other.exitcode,
                     other.output, other.success);
     }
+
+    // SCHEMA ENFORCEMENT:
+    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
+    void __enforce_proto() const {
+        enforce_name_match<Run, lava::Run>("Run");
+        lava::Run p;
+        p.set_id(this->id);
+        this->build->__enforce_proto();
+        this->fuzzed->__enforce_proto();
+        p.set_exitcode(this->exitcode);
+        p.set_output(this->output);
+        p.set_success(this->success);
+        p.set_validated(this->validated);
+    }
 };
 
 #pragma db object
@@ -472,7 +634,7 @@ struct SourceFunction {
 #pragma db id auto
     uint64_t id;
 
-    LavaASTLoc loc;
+    ASTLoc loc;
     std::string name;       // Function name
 
 #pragma db index("SourceFunctionUniq") unique members(loc, name)
@@ -480,6 +642,15 @@ struct SourceFunction {
     bool operator<(const SourceFunction &other) const {
         return std::tie(loc, name) <
             std::tie(other.loc, other.name);
+    }
+
+    // SCHEMA ENFORCEMENT:
+    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
+    void __enforce_proto() const {
+        lava::SourceFunction p;
+        p.set_id(this->id);
+        this->loc.__enforce_proto();
+        p.set_name(this->name);
     }
 };
 
@@ -504,6 +675,19 @@ struct Call {
             std::tie(other.call_instr, other.ret_instr,
                     other.called_function->id, other.callsite_file,
                     other.callsite_line);
+    }
+
+    // SCHEMA ENFORCEMENT:
+    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
+    void __enforce_proto() const {
+        enforce_name_match<Call, lava::Call>("Call");
+        lava::Call p;
+        p.set_id(this->id);
+        p.set_call_instr(this->call_instr);
+        p.set_ret_instr(this->ret_instr);
+        this->called_function->__enforce_proto();
+        p.set_callsite_file(this->callsite_file);
+        p.set_callsite_line(this->callsite_line);
     }
 };
 #endif

@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Union, Any
 import random
 from dataclasses import dataclass
 from enum import IntEnum
@@ -18,6 +18,13 @@ from sqlalchemy.ext.orderinglist import ordering_list
 from sqlalchemy.ext.associationproxy import association_proxy
 
 Base = declarative_base()
+
+build_bugs = Table(
+    'build_bugs', Base.metadata,
+    Column('object_id', BigInteger, ForeignKey('build.id'), primary_key=True),
+    Column('index', Integer, default=0), # ODB often uses an index for vectors
+    Column('value', BigInteger, ForeignKey('bug.id'), primary_key=True)
+)
 
 def create_range(l, h):
     return Range(l, h)
@@ -49,13 +56,6 @@ class DuaViableByte(Base):
         return f"<DuaViableByte index={self.index} ls={self.labelset_id}>"
 
 
-build_bugs = \
-    Table('build_bugs', Base.metadata,
-          Column('object_id', BigInteger, ForeignKey('build.id')),
-          Column('index', BigInteger, default=0),
-          Column('value', BigInteger, ForeignKey('bug.id')))
-
-
 class SortedIntArray(TypeDecorator):
     """
     Automatically sorts a list of integers before sending it to the database.
@@ -78,7 +78,7 @@ class SortedIntArray(TypeDecorator):
 
 
 class LavaDatabase(object):
-    def __init__(self, project):
+    def __init__(self, project: dict[str, Any]):
         self.project = project
         db_url = URL.create(
             drivername="postgresql+psycopg2",
@@ -131,7 +131,7 @@ class LavaDatabase(object):
         #    bugtype2:[[atp0_bug0, atp0_bug1,..], [atp1_bug0, atp1_bug1,..]]}
         # Where sublists are randomly sorted
         if atp_types:
-            _atps = self.session.query(AttackPoint.id).filter(AttackPoint.typ.in_(atp_types)).all()
+            _atps = self.session.query(AttackPoint.id).filter(AttackPoint.type.in_(atp_types)).all()
         else:
             _atps = self.session.query(AttackPoint.id).all()
 
@@ -145,7 +145,7 @@ class LavaDatabase(object):
         for bugtype in allowed_bugtypes:
             results[bugtype] = []
             for atp in atps:
-                q = self.session.query(Bug).filter(Bug.atp_id == atp).filter(~Bug.builds.any()) \
+                q = self.session.query(Bug).filter(Bug.atp == atp).filter(~Bug.builds.any()) \
                     .filter(Bug.type == bugtype) \
                     .join(Bug.atp) \
                     .join(Bug.trigger) \
@@ -163,7 +163,7 @@ class LavaDatabase(object):
         # Where sublists are randomly sorted
         if atp_types:
             _atps = self.session.query(AttackPoint.id) \
-                .filter(AttackPoint.typ.in_(atp_types)).all()
+                .filter(AttackPoint.type.in_(atp_types)).all()
         else:
             _atps = self.session.query(AttackPoint.id).all()
 
@@ -173,7 +173,7 @@ class LavaDatabase(object):
 
         results = []
         for atp in atps:
-            q = self.session.query(Bug).filter(Bug.atp_id == atp) \
+            q = self.session.query(Bug).filter(Bug.atp == atp) \
                 .filter(~Bug.builds.any()) \
                 .join(Bug.atp) \
                 .join(Bug.trigger) \
@@ -216,7 +216,7 @@ class LavaDatabase(object):
             if i in bug_types:
                 num_avail += 1
         print("%d bugs available of allowed types" % num_avail)
-        assert (num_avail > 0)
+        assert num_avail > 0
         num_per = num_required / num_avail
         for (i,) in types_present:
             if i in bug_types:
@@ -248,18 +248,19 @@ class Bug(Base):
 
     # 2. Foreign Keys
     # mapped_column('db_col_name', Type, ForeignKey)
-    trigger_id: Mapped[int] = mapped_column('trigger', BigInteger, ForeignKey('duabytes.id'), nullable=False)
-    trigger_lval_id: Mapped[int] = mapped_column('trigger_lval', BigInteger, ForeignKey('sourcelval.id'),
-                                                 nullable=False)
-    atp_id: Mapped[int] = mapped_column('atp', BigInteger, ForeignKey('attackpoint.id'), nullable=False)
-
+    trigger: Mapped[int] = mapped_column('trigger', BigInteger, ForeignKey('duabytes.id'), nullable=False)
+    atp: Mapped[int] = mapped_column('atp', BigInteger, ForeignKey('attackpoint.id'), nullable=False)
+    trigger_lval: Mapped[int] = mapped_column('trigger_lval', BigInteger, ForeignKey('sourcelval.id'), nullable=False)
     # 3. Type Column
     type: Mapped[BugKind] = mapped_column("type", Integer, nullable=False)
 
     # 4. Relationships
-    trigger: Mapped["DuaBytes"] = relationship("DuaBytes")
-    trigger_lval: Mapped["SourceLval"] = relationship("SourceLval")
-    atp: Mapped["AttackPoint"] = relationship("AttackPoint")
+    trigger_relationship: Mapped["DuaBytes"] = relationship("DuaBytes", foreign_keys=[trigger],
+                                                            overlaps="trigger", viewonly=True)
+    atp_relationship: Mapped["AttackPoint"] = relationship("AttackPoint", foreign_keys=[atp],
+                                                           overlaps="atp", viewonly=True)
+    lval_relationship: Mapped["SourceLval"] = relationship("SourceLval", foreign_keys=[trigger_lval],
+                                                           viewonly=True, overlaps="lval")
 
     # 5. Data Columns
     # Note: C++ uses uint64_t for max_liveness, but Python often treats liveness as float.
@@ -274,7 +275,11 @@ class Bug(Base):
     extra_duas: Mapped[List[int]] = mapped_column(postgresql.ARRAY(BigInteger), nullable=False)
 
     # 7. Reverse Relationships
-    builds: Mapped[List["Build"]] = relationship("Build", secondary="build_bugs", back_populates="bugs")
+    builds: Mapped[List["Build"]] = relationship(
+        "Build",
+        secondary=build_bugs,
+        back_populates="bugs"
+    )
 
     # 8. Constraints
     __table_args__ = (
@@ -291,8 +296,12 @@ class Bug(Base):
         BugKind.BUG_MALLOC_OFF_BY_ONE: 0
     }
 
-    def __init__(self, bug_type: BugKind, trigger, atp, extra_duas: Union[List[int], List["DuaBytes"]], max_liveness=0,
-                 **kwargs):
+    def __init__(self,
+                 bug_type: "BugKind",
+                 trigger: Union[int, "DuaBytes"],
+                 atp: Union[int, "AttackPoint"],
+                 extra_duas: Union[List[int], List["DuaBytes"]],
+                 max_liveness: int = 0, **kwargs):
         """
         Mirroring C++ Constructor logic:
         Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
@@ -354,24 +363,25 @@ class Build(Base):
     id = Column(BigInteger, primary_key=True)
     compile = Column(Boolean)
     output = Column(Text)
-
-    bugs = relationship("Bug", secondary=build_bugs,
-                        back_populates="builds")
-
+    bugs: Mapped[List["Bug"]] = relationship(
+        "Bug",
+        secondary=build_bugs,
+        back_populates="builds"
+    )
 
 class Run(Base):
     __tablename__ = 'run'
 
     id = Column(BigInteger, primary_key=True)
-    build_id = Column('build', BigInteger, ForeignKey('build.id'))
-    fuzzed_id = Column('fuzzed', BigInteger, ForeignKey('bug.id'))
+    build = Column('build', BigInteger, ForeignKey('build.id'))
+    fuzzed = Column('fuzzed', BigInteger, ForeignKey('bug.id'))
     exitcode = Column(Integer)
     output = Column(Text)
     success = Column(Boolean)
     validated = Column(Boolean)
 
-    build = relationship("Build")
-    fuzzed = relationship("Bug")
+    build_relationship = relationship("Build")
+    fuzzed_relationship = relationship("Bug")
 
 class Composite(object):
     def __init__(self, *args):
@@ -387,7 +397,7 @@ class Composite(object):
                 arg_idx += count
             else: assert False
 
-    def _all_values(self, prefix):
+    def _all_values(self):
         result = []
         for name, column_type in self._columns():
             if issubclass(column_type, TypeEngine):
@@ -398,7 +408,7 @@ class Composite(object):
         return result
 
     def __composite_values__(self):
-        return tuple(self._all_values(''))
+        return tuple(self._all_values())
 
     def __eq__(self, other):
         return type(self) == type(other) and \
@@ -563,7 +573,7 @@ class Dua(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
 
     # 2. Foreign Key (Column name is 'lval' to match C++ ODB default)
-    lval_id: Mapped[int] = mapped_column('lval', BigInteger, ForeignKey('sourcelval.id'))
+    lval: Mapped[int] = mapped_column('lval', BigInteger, ForeignKey('sourcelval.id'))
 
     # 3. Vectors / Arrays
     # 1. Internal Relationship to the Association Object
@@ -571,21 +581,14 @@ class Dua(Base):
     _viable_bytes_assoc: Mapped[List["DuaViableByte"]] = relationship(
         "DuaViableByte",
         order_by="DuaViableByte.index",
-        collection_class=ordering_list("index"),  # Automatically sets DuaViableByte.index
+        collection_class=ordering_list("index"),
         cascade="all, delete-orphan"
     )
 
-    @staticmethod
-    def _create_viable_byte(ls: "LabelSet") -> "DuaViableByte":
-        return DuaViableByte(labelset=ls)
-
-    # 2. Public Proxy
-    # This allows you to say: my_dua.viable_bytes = [labelset1, labelset2]
-    # It automatically creates the DuaViableByte objects in the background.
     viable_bytes = association_proxy(
         '_viable_bytes_assoc',
         'labelset',
-        creator=_create_viable_byte  # How to create the link
+        creator=lambda ls: DuaViableByte(labelset=ls)
     )
 
     # The missing column from C++ std::vector<uint32_t> byte_tcn
@@ -602,7 +605,8 @@ class Dua(Base):
     fake_dua: Mapped[bool] = mapped_column(Boolean)
 
     # 5. Relationship Backref
-    lval: Mapped["SourceLval"] = relationship("SourceLval")
+    lval_relationship: Mapped["SourceLval"] = relationship("SourceLval",
+                                                           viewonly=True, overlaps="lval")
 
     # 6. Unique Constraint (Matches #pragma db index("DuaUniq")...)
     __table_args__ = (
@@ -614,6 +618,9 @@ class Dua(Base):
             name='DuaUniq'
         ),
     )
+
+    def get_lval_object(self, session):
+        return session.get(SourceLval, self.lval)
 
     def __str__(self):
         # Mirrors the C++ operator<< logic fairly closely
@@ -639,15 +646,15 @@ class Dua(Base):
 
         # We use lval_id directly (the Foreign Key ID) as it is much faster
         # than triggering a lazy load for the full SourceLval object.
-        return (self.lval_id, self.inputfile, self.instr, self.fake_dua) < \
-            (other.lval_id, other.inputfile, other.instr, other.fake_dua)
+        return (self.lval, self.inputfile, self.instr, self.fake_dua) < \
+            (other.lval, other.inputfile, other.instr, other.fake_dua)
 
 
 class DuaBytes(Base):
     __tablename__ = 'duabytes'
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    dua_id: Mapped[int] = mapped_column('dua', BigInteger, ForeignKey('dua.id'))
+    dua: Mapped[int] = mapped_column('dua', BigInteger, ForeignKey('dua.id'))
 
     # Composite Range Columns
     _low: Mapped[int] = mapped_column("selected_low", Integer, nullable=False)
@@ -657,14 +664,14 @@ class DuaBytes(Base):
     all_labels: Mapped[List[int]] = mapped_column(postgresql.ARRAY(Integer), nullable=False)
 
     # Relationship
-    dua: Mapped["Dua"] = relationship("Dua")
+    dua_relationship: Mapped["Dua"] = relationship("Dua", viewonly=True, overlaps="dua")
 
     # Mirroring the C++ Index: unique members(dua, selected)
     __table_args__ = (
         UniqueConstraint('dua', 'selected_low', 'selected_high', name='DuaBytesUniq'),
     )
 
-    def __init__(self, dua=None, selected=None, **kwargs):
+    def __init__(self, dua: Dua = None, selected : Range = None, **kwargs):
         """
         Mirroring the C++ Constructor:
         DuaBytes(const Dua *dua, Range selected)
@@ -688,12 +695,12 @@ class DuaBytes(Base):
 
     def __str__(self):
         # Using .getattr or checking if relationship is loaded to avoid LazyLoad errors in logs
-        dua_info = f"DUA[{self.dua_id}]"
-        if self.dua and self.dua.lval:
+        dua_info = f"DUA[{self.dua}]"
+        if self.dua and self.dua_relationship.lval:
             dua_info = '{}:{}:{}'.format(
-                self.dua.lval.loc.filename,
-                self.dua.lval.loc.begin.line,
-                self.dua.lval.ast_name
+                self.dua_relationship.lval_relationship.loc.filename,
+                self.dua_relationship.lval_relationship.loc.begin.line,
+                self.dua_relationship.lval_relationship.loc.end.line,
             )
 
         return 'DUABytes[{}][{}:{}](labels={})'.format(
@@ -743,3 +750,60 @@ class AttackPoint(Base):
             name='_atp_unique_constraint'
         ),
     )
+
+class SourceFunction(Base):
+    __tablename__ = 'sourcefunction'
+
+    # Matches: uint64 id = 1
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+
+    # Matches: ASTLoc loc = 2
+    # --- 1. Define the ACTUAL Database Columns ---
+    # These hold the raw data. We prefix them with "loc_" to namespace them.
+    _f: Mapped[str] = mapped_column("loc_filename", Text)
+    _bl: Mapped[int] = mapped_column("loc_begin_line", Integer, nullable=False)
+    _bc: Mapped[int] = mapped_column("loc_begin_column", Integer, nullable=False)
+    _el: Mapped[int] = mapped_column("loc_end_line", Integer, nullable=False)
+    _ec: Mapped[int] = mapped_column("loc_end_column", Integer, nullable=False)
+
+    # --- 2. Define the Composite Bridge ---
+    # This maps the 5 columns above into your ASTLoc class.
+    loc: Mapped[ASTLoc] = composite(create_ast_loc, _f, _bl, _bc, _el, _ec)
+
+    # Matches: string name = 3
+    name: Mapped[str] = mapped_column(Text)
+
+    def __repr__(self):
+        return f"<SourceFunction(name='{self.name}', loc={self.loc})>"
+
+
+class Call(Base):
+    __tablename__ = 'call'
+
+    # Matches: uint64 id = 1
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+
+    # Matches: uint64 call_instr = 2
+    call_instr: Mapped[int] = mapped_column(BigInteger)
+
+    # Matches: uint64 ret_instr = 3
+    ret_instr: Mapped[int] = mapped_column(BigInteger)
+
+    # Matches: SourceFunction called_function = 4
+    # We name the column 'called_function' to satisfy the Auditor's field check
+    called_function: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey('sourcefunction.id')
+    )
+
+    # Matches: string callsite_file = 5
+    callsite_file: Mapped[str] = mapped_column(Text)
+
+    # Matches: uint32 callsite_line = 6
+    callsite_line: Mapped[int] = mapped_column(Integer)
+
+    # ORM Relationship (Internal use, ignored by Auditor if it looks for the column name)
+    called_function_obj: Mapped["SourceFunction"] = relationship("SourceFunction")
+
+    def __repr__(self):
+        return f"<Call(id={self.id}, file='{self.callsite_file}', line={self.callsite_line})>"

@@ -74,13 +74,14 @@ set_target_properties(lavaFnTool PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
 add_executable(lavaInitTool lavaInitTool.cpp)
 target_compile_features(lavaInitTool PRIVATE cxx_std_17)
 target_include_directories(lavaInitTool PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/generated
     ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaODB/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../include
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${LLVM_INCLUDE_DIRS}
     ${CLANG_INCLUDE_DIRS}
 )
-target_link_libraries(lavaInitTool PRIVATE ${LLVM_CLANG_LINK_LIBRARIES})
+target_link_libraries(lavaInitTool PRIVATE ${LLVM_CLANG_LINK_LIBRARIES} lava-odb_x64)
 set_target_properties(lavaInitTool PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
 
 # Add dependencies
