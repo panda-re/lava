@@ -38,7 +38,7 @@ struct MemoryAccessHandler : public LavaMatchHandler {
         }
 
         const SourceManager &sm = *Result.SourceManager;
-        LavaASTLoc ast_loc = GetASTLoc(sm, toAttack);
+        ASTLoc ast_loc = GetASTLoc(sm, toAttack);
         //debug(INJECT) << "PointerAtpHandler @ " << ast_loc << "\n";
 
         const Expr *rhs = nullptr;

@@ -106,7 +106,7 @@ struct LvalBytes {
 
 
 // Map of bugs with siphon of a given  lval name at a given loc.
-std::map<LavaASTLoc, vector_set<LvalBytes>> siphons_at;
+std::map<ASTLoc, vector_set<LvalBytes>> siphons_at;
 std::map<LvalBytes, uint32_t> data_slots;
 
 std::string LavaPath;
@@ -121,7 +121,7 @@ static std::set<std::string> main_files;
 static std::map<std::string, uint32_t> StringIDs;
 
 // Map of bugs with attack points at a given loc.
-std::map<std::pair<LavaASTLoc, AttackPoint::Type>, std::vector<const Bug *>>
+std::map<std::pair<ASTLoc, AttackPoint::Type>, std::vector<const Bug *>>
     bugs_with_atp_at;
 
 static cl::OptionCategory
