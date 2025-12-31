@@ -1,9 +1,18 @@
+# Don't save protobuf files
+*.pb.h
+*.pb.cc
+*_pb2.py
+
+# Don't saved generated SQL file used in wheel'
+*.sql
+
 # ignore IDE and any panda wheel/debian packages
 .vscode
 .idea
 *.deb
 *.whl
 .env
+-.s
 
 # this existed before
 .gdb_history

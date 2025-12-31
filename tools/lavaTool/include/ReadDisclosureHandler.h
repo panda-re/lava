@@ -61,7 +61,7 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
             const Expr *arg = dyn_cast<Expr>(*it);
             if (arg) {
                 if (arg->IgnoreImpCasts()->isLValue() && arg->getType()->isIntegerType()) {
-                    LavaASTLoc ast_loc = GetASTLoc(sm, arg);
+                    ASTLoc ast_loc = GetASTLoc(sm, arg);
                     Mod.Change(arg);
                     if (LavaAction == LavaQueries)  {
                         addend = LavaAtpQuery(GetASTLoc(sm, arg),

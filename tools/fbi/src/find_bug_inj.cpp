@@ -551,7 +551,7 @@ void taint_query_pri(Json::Value& ple) {
         // NB: we don't know liveness info yet. defer byte selection until later.
         assert(si.isMember("astLocId"));
         unsigned long ast_loc_id = std::strtoul(si["astLocId"].asString().c_str(), 0, 0);
-        LavaASTLoc ast_loc(ind2str[ast_loc_id]);
+        ASTLoc ast_loc(ind2str[ast_loc_id]);
         assert(ast_loc.filename.size() > 0);
 
         const SourceLval *lval = create(SourceLval{0, ast_loc, si["astnodename"].asString(), len});
@@ -885,7 +885,7 @@ void attack_point_lval_usage(Json::Value ple) {
 
     dprintf("%lu viable duas remain\n", recent_dead_duas.size());
     assert(si.isMember("astLocId"));
-    LavaASTLoc ast_loc(ind2str[ast_id]);
+    ASTLoc ast_loc(ind2str[ast_id]);
     assert(ast_loc.filename.size() > 0);
     transaction t(db->begin());
     const AttackPoint *atp;

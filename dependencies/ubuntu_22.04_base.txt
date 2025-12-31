@@ -24,5 +24,6 @@ libjsoncpp-dev
 g++-10
 
 # FBI needs this, but I think we can remove once Python swap is in
+protobuf-compiler
 libprotobuf-dev
 libprotobuf-c-dev
