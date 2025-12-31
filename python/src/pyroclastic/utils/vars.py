@@ -73,7 +73,7 @@ def validate_project(project_dict: dict):
     assert 'db' in project_dict
 
 
-def get_project_env(llvm_dir: str, arch: str = "x86_64", mode:str = "default"):
+def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
     """
     Generates environment variables based on target architecture.
     mode: 'default', 'full', or 'panda'
@@ -137,6 +137,7 @@ def parse_vars(project_name: str):
         print("Your project config file is missing a required field:\n{}".format(e))
         raise
 
+    project_data["host_path"] = host_json_path
     for field, prefix in [("tarfile", "tar_dir")]:
         project_data[field] = host[prefix] + os.path.sep + project_data[field]
 

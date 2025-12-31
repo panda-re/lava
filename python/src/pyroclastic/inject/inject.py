@@ -8,6 +8,7 @@ import shlex
 import struct
 import subprocess
 import random
+from typing import List
 from subprocess import PIPE, check_call
 # LAVA imports
 from .process_compile_commands import get_c_files, process_compile_commands
@@ -165,9 +166,9 @@ def get_allowed_bugtype_num(arguments) -> list[int]:
 
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
-def inject_bugs(bug_list, db, lp, project, arguments,
-                update_db, dataflow=False, competition=False,
-                validated=False, lavatoolseed=0):
+def inject_bugs(bug_list, db, lp, project: dict, arguments,
+                update_db: bool, dataflow: bool = False, competition: bool = False,
+                validated: bool=False, lavatoolseed: int = 0):
     # TODO: don't pass args, just pass the data we need to run
     # TODO: split into multiple functions, this is huge
 
@@ -397,7 +398,7 @@ def inject_bugs(bug_list, db, lp, project, arguments,
     if 'post_install' in project.keys():
         check_call(project['post_install'], cwd=lp.bugs_build, shell=True)
 
-    build = Build(compile=(rv == 0), output=(output[0].decode('utf-8') + ";" + output[1].decode('utf-8')),
+    build: Build = Build(compile=(rv == 0), output=(output[0].decode('utf-8') + ";" + output[1].decode('utf-8')),
                   bugs=bugs_to_inject)
 
     # add a row to the build table in the db
@@ -531,7 +532,7 @@ def mutfile(unfuzzed_filename: str, fuzz_labels_list, new_filename: str, bug,
 
 
 # run lavatool on this file to inject any parts of this list of bugs
-def run_lavatool(bug_list, lp, project, filename,
+def run_lavatool(bug_list: List[Bug], lp: LavaPaths, project: dict, filename: str,
                  knob_trigger=False, dataflow=False, competition=False,
                  randseed=0):
     lt_debug = False
@@ -618,11 +619,11 @@ def run_lavatool(bug_list, lp, project, filename,
 
 # Given a list of bugs, return the IDs for a subset of bugs with
 # `max_per_line` bugs on each line of source
-def limit_atp_reuse(bugs, max_per_line=1):
+def limit_atp_reuse(bugs: List[Bug], max_per_line: int = 1):
     uniq_bugs = []
     seen = {}
     for bug in bugs:
-        tloc = (bug.atp.loc.filename, bug.atp.loc.begin.line)
+        tloc = (bug.atp_relationship.loc.filename, bug.atp_relationship.loc.begin.line)
         if tloc not in seen.keys():
             seen[tloc] = 0
         seen[tloc] += 1
@@ -640,16 +641,16 @@ def collect_src_and_print(bugs_to_inject, db):
     for bug_index, bug in enumerate(bugs_to_inject):
         print("------------\n")
         print("SELECTED ")
-        if bug.trigger.dua.fake_dua:
+        if bug.trigger_relationship.dua_relationship.fake_dua:
             print("NON-BUG")
         else:
             print("BUG {} id={}".format(bug_index, bug.id))
-        print("    ATP file: ", bug.atp.loc.filename)
-        print("        line: ", bug.atp.loc.begin.line)
+        print("    ATP file: ", bug.atp_relationship.loc.filename)
+        print("        line: ", bug.atp_relationship.loc.begin.line)
         print("DUA:")
-        print("   ", bug.trigger.dua)
-        print("      Src_file: ", bug.trigger_lval.loc.filename)
-        print("      Filename: ", bug.trigger.dua.inputfile)
+        print("   ", bug.trigger_relationship.dua_relationship)
+        print("      Src_file: ", bug.lval_relationship.loc.filename)
+        print("      Filename: ", bug.trigger_relationship.dua_relationship.inputfile)
 
         if len(bug.extra_duas):
             print("EXTRA DUAS:")
@@ -672,14 +673,14 @@ def collect_src_and_print(bugs_to_inject, db):
         print("ATP:")
         print("   ", bug.atp)
         print("max_tcn={}  max_liveness={}".format(
-            bug.trigger.dua.max_tcn, bug.max_liveness))
-        src_files.add(bug.trigger_lval.loc.filename)
-        src_files.add(bug.atp.loc.filename)
+            bug.trigger_relationship.dua_relationship.max_tcn, bug.max_liveness))
+        src_files.add(bug.lval_relationship.loc.filename)
+        src_files.add(bug.atp_relationship.loc.filename)
     sys.stdout.flush()
     return src_files
 
 
-def get_suffix(fn):
+def get_suffix(fn: str) -> str:
     split = os.path.basename(fn).split(".")
     if len(split) == 1:
         return ""
@@ -688,8 +689,8 @@ def get_suffix(fn):
 
 
 # run the bugged-up program
-def run_modified_program(project, install_dir, input_file,
-                         timeout, shell=False):
+def run_modified_program(project: dict, install_dir: str, input_file: str,
+                         timeout: int, shell: bool= False):
     cmd = project['command'].format(install_dir=install_dir,
                                     input_file=input_file)
     # cmd = "{}".format(cmd) # ... this is a nop?
@@ -712,10 +713,10 @@ def run_modified_program(project, install_dir, input_file,
 
 
 # Find actual line number of attack point for this bug in source
-def get_trigger_line(lp, bug):
+def get_trigger_line(lp: LavaPaths, bug: Bug) -> int | None:
     # TODO the triggers aren't a simple mapping from trigger of 0xlava - bug_id
     # But are the lava_get's still correlated to triggers?
-    with open(os.path.join(lp.bugs_build, bug.atp.loc.filename), "r") as f:
+    with open(os.path.join(lp.bugs_build, bug.atp_relationship.loc.filename), "r") as f:
         # TODO: should really check for lava_get(bug_id), but bug_id in db
         # isn't matching source for now, we'll just look for "(0x[magic]" since
         # that seems to always be there, at least for old bug types
@@ -724,7 +725,7 @@ def get_trigger_line(lp, bug):
                      lava_get in line]  # and "lava_get" in line
         # return closest to original begin line.
         distances = [
-            (abs(line - bug.atp.loc.begin.line), line) for line in atp_lines
+            (abs(line - bug.atp_relationship.loc.begin.line), line) for line in atp_lines
         ]
         if not distances:
             return None
@@ -743,7 +744,7 @@ def check_competition_bug(rv: int, output):
     return process_crash(error)
 
 
-def unfuzzed_input_for_bug(project) -> list:
+def unfuzzed_input_for_bug(project: dict) -> list[str]:
     """
     Get the path to the original unfuzzed input file for this bug
     Args:
@@ -760,7 +761,7 @@ def unfuzzed_input_for_bug(project) -> list:
     return all_files
 
 
-def fuzzed_input_for_bug(project, bug) -> str:
+def fuzzed_input_for_bug(project: dict, bug: Bug) -> str:
     """
     Generate a fuzzed input filename for this bug.
     Select one file at random from the unfuzzed inputs.
@@ -777,8 +778,8 @@ def fuzzed_input_for_bug(project, bug) -> str:
     return "{}-fuzzed-{}{}".format(prefix, bug.id, suffix)
 
 
-def validate_bug(db, lp, project, bug, build, arguments, update_db,
-                 unfuzzed_outputs=None, competition=False, solution=None):
+def validate_bug(db, lp: LavaPaths, project: dict, bug: Bug, build: Build, arguments, update_db: bool,
+                 unfuzzed_outputs=None, competition: bool = False, solution=None):
     unfuzzed_input_files = unfuzzed_input_for_bug(project)
     unfuzzed_input_file = random.choice(unfuzzed_input_files)
     fuzzed_input_file_name = fuzzed_input_for_bug(project, bug)
@@ -789,7 +790,7 @@ def validate_bug(db, lp, project, bug, build, arguments, update_db,
         print("Knob size: {}".format(arguments.knobTrigger))
         mutfile_kwargs = {'kt': True, 'knob': arguments.knobTrigger}
 
-    fuzz_labels_list = [bug.trigger.all_labels]
+    fuzz_labels_list = [bug.trigger_relationship.all_labels]
     if len(bug.extra_duas) > 0:
         extra_query = db.session.query(DuaBytes) \
             .filter(DuaBytes.id.in_(bug.extra_duas))
@@ -801,10 +802,10 @@ def validate_bug(db, lp, project, bug, build, arguments, update_db,
                                       fuzzed_input_file_name, timeout, shell=True)
     print("retval = %d" % rv)
     validated = False
-    if bug.trigger.dua.fake_dua is False:
+    if not bug.trigger_relationship.dua_relationship.fake_dua:
         print("bug type is " + Bug.type)
         if bug.type == BugKind.BUG_PRINTF_LEAK:
-            if output != unfuzzed_outputs[bug.trigger.dua.inputfile]:
+            if output != unfuzzed_outputs[bug.trigger_relationship.dua_relationship.inputfile]:
                 print("printf bug -- outputs disagree\n")
                 validated = True
         else:
@@ -838,7 +839,7 @@ def validate_bug(db, lp, project, bug, build, arguments, update_db,
         validated = False
 
     if update_db:
-        db.session.add(Run(build=build, fuzzed=bug, exitcode=rv,
+        db.session.add(Run(build_relationship=build, fuzzed_relationship=bug, exitcode=rv,
                            output=(output[0].decode('ascii', 'ignore') + '\n' + output[1].decode('ascii', 'ignore')),
                            success=True, validated=validated))
 
@@ -846,8 +847,8 @@ def validate_bug(db, lp, project, bug, build, arguments, update_db,
 
 
 # validate this set of bugs
-def validate_bugs(bug_list, db, lp, project, input_files, build,
-                  arguments, update_db, competition=False, bug_solutions=None):
+def validate_bugs(bug_list, db, lp, project: dict, input_files: list, build,
+                  arguments, update_db: bool, competition: bool = False, bug_solutions=None):
     timeout = project.get('timeout', 5)
 
     print("------------\n")
@@ -860,7 +861,7 @@ def validate_bugs(bug_list, db, lp, project, input_files, build,
         unfuzzed_input = os.path.join(project["output_dir"],
                               'inputs', os.path.basename(input_file))
         rv, output = run_modified_program(project, lp.bugs_install,
-                                          unfuzzed_input, timeout, shell=True)
+                                          str(unfuzzed_input), timeout, shell=True)
         unfuzzed_outputs[os.path.basename(input_file)] = output
         if rv != arguments.exitCode:
             print("***** buggy program fails on original input - \
@@ -876,7 +877,7 @@ def validate_bugs(bug_list, db, lp, project, input_files, build,
         print("output:")
         lines = output[0].decode('ascii') + " ; " + output[1].decode('ascii')
         if update_db:
-            db.session.add(Run(build=build, fuzzed=None, exitcode=rv,
+            db.session.add(Run(build_relationship=build, fuzzed=None, exitcode=rv,
                                output=lines,
                                success=True, validated=False))
     print("ORIG INPUT STILL WORKS\n")
@@ -1002,7 +1003,7 @@ def main(arguments: argparse.Namespace):
     except Exception as e:
         print("TESTING FAIL")
         if update_db:
-            db.session.add(Run(build=build, fuzzed=None, exitcode=-22,
+            db.session.add(Run(build_relationship=build, fuzzed=None, exitcode=-22,
                                output=str(e), success=False, validated=False))
             db.session.commit()
         raise

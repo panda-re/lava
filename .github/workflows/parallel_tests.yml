@@ -58,7 +58,16 @@ jobs:
         run: |
           cd python
           python3 -m pip install --upgrade build
+          python3 -m pip install pytest protobuf>=4.21.0
           python3 -m build --wheel .
+          python3 -m pip install dist/*.whl
+
+      - name: Quick Python Test
+        run: |
+          cd python
+          pytest
+        env:
+          PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION : 'python'
 
   test_install_script:
     if: github.repository == 'panda-re/lava'
@@ -103,7 +112,7 @@ jobs:
       run: |
         echo "localhost:5432:*:${POSTGRES_USER}:${POSTGRES_PASSWORD}" > ~/.pgpass
         chmod 600 ~/.pgpass
-        lava -ak toy
+        python -m pyroclastic.lava -ak toy
       env:
         USER: ${{ github.actor }}
         POSTGRES_USER: postgres

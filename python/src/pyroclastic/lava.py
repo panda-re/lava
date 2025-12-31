@@ -197,10 +197,10 @@ def reset_database(lava_paths: Paths, config: dict):
 
 def make(lava_paths: Paths, config: dict):
     """
-    This compiles the target program with LAVA's LLVM passes to enable bug triggering.
+    This compiles the target program with LAVA taint queries added.
     This requires static compiling as the generic PANDA QCows might not have all libraries for dynamic linking.
     The binary will be in ./target_injections/<project>/<tar-directory>/
-    Then, during the "make install" step, it will be placed in the
+    Then, during the "make install" step, the binary should be in
     ./target_injections/<project>/<tar-directory>/lava-install/bin/ folder
     Eventually, in the taint step, we will copy the input folders to go with the binary for dynamic analysis.
     """
@@ -270,6 +270,7 @@ def main():
             progress("everything", 1, "No fixups")
         time_diff = tock(start)
         progress("everything", 1, f"add queries complete {time_diff} seconds")
+
     if args.make:
         make(path_manager, config)
 

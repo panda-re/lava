@@ -136,7 +136,7 @@ def run_taint_pipeline(lava_project: str):
         shutil.copytree(input_file_directory, 'inputs/')
 
         record_time = tock(start)
-        progress("bug_mining", 1, "panda record complete %.2f seconds" % record_time)
+        progress("bug_mining", 1, f"panda record complete {record_time} seconds")
         sys.stdout.flush()
 
     def replay():
@@ -158,7 +158,7 @@ def run_taint_pipeline(lava_project: str):
         proc_name = os.path.basename(guest_executable)
         pandalog = "{}/queries-{}.plog".format(project['output_dir'], project['name'])
 
-        progress("bug_mining", 0, "pandalog = [%s] " % pandalog)
+        progress("bug_mining", 0, f"pandalog = [{pandalog}]" )
 
         panda.set_pandalog(pandalog)
         panda.load_plugin("pri")
@@ -191,7 +191,7 @@ def run_taint_pipeline(lava_project: str):
         panda.run_replay("recording")
 
         replay_time = tock(start)
-        progress("bug_mining", 1, "taint analysis complete %.2f seconds" % replay_time)
+        progress("bug_mining", 1, f"taint analysis complete {replay_time} seconds")
         sys.stdout.flush()
 
     def parse_replay_output():
@@ -209,7 +209,7 @@ def run_taint_pipeline(lava_project: str):
         os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
         progress("bug_mining", 0, "Calling the FBI on queries.plog...")
         convert_json_args = ['python3', '-m', 'pandare.plog_reader', pandalog]
-        print("panda log JSON invocation: [%s > %s]" % (subprocess.list2cmdline(convert_json_args), pandalog_json))
+        print(f"panda log JSON invocation: [{subprocess.list2cmdline(convert_json_args)} > {pandalog_json}]")
         try:
             with open(pandalog_json, 'wb') as fd:
                 subprocess.check_call(convert_json_args, stdout=fd, stderr=sys.stderr)
@@ -221,16 +221,36 @@ def run_taint_pipeline(lava_project: str):
         project["curtail"] = project.get("curtail", 0)
 
         print("Calling fbi - Mining PANDA log and populating database...")
+        # TODO: Python FBI is still funky... don't swap out Python just yet...We will only swap once chaff is checked
         sys.stdout.flush()
 
-        # Set a few variables before you call fbi
-        project["max_liveness"] = 100000
-        project["max_cardinality"] = 100
-        project["max_tcn"] = 100
-        project["max_lval_size"] = 100
-        project["input"] = input_file_base
-        parse_panda_log(pandalog_json, project)
+        if project.get("use_c_fbi", True):
+            fbi_args = ['fbi',
+                        project["host_path"],
+                        lava_project,
+                        pandalog_json,
+                        input_file_base]
 
+            print(f"C++ fbi invocation: [{subprocess.list2cmdline(fbi_args)}]")
+            sys.stdout.flush()
+            try:
+                subprocess.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
+            except subprocess.CalledProcessError as e:
+                print("FBI Failed. Possible causes: \n" +
+                      "\tNo DUAs found because taint analysis failed: \n"
+                      "\t\t Ensure PANDA 'saw open of file we want to taint'\n"
+                      "\t\t Make sure target has debug symbols (version2): No 'failed DWARF loading' messages\n"
+                      "\tFBI crashed (bad arguments, config, or other untested code)")
+                raise e
+        else:
+            # Set a few variables before you call fbi
+            project["max_liveness"] = 100000
+            project["max_cardinality"] = 100
+            project["max_tcn"] = 100
+            project["max_lval_size"] = 100
+            project["input"] = input_file_base
+
+            parse_panda_log(pandalog_json, project)
         fib_time = tock(start)
         progress("bug_mining", 1, f"FBI complete {fib_time} seconds")
         sys.stdout.flush()
