@@ -26,7 +26,7 @@ def main():
                         help='If set, have host.json assume LAVA will be run from Docker environment')
     parser.add_argument('--container', '-c', dest='container', default='lava64',
                         help='Set the name of the Docker container with LAVA installed. (default: lava64)')
-    parser.add_argument('--qemu', '-q', dest='qemu', default='panda-system-x86_64',
+    parser.add_argument('--qemu', '-q', dest='qemu', default='x86_64',
                         choices=get_valid_architectures(),
                         help='Set the name of the Docker container with LAVA installed. (default: lava64)')
     parser.add_argument('--action', '-a', dest='action', action='store_true',

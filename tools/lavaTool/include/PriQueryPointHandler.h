@@ -84,7 +84,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
     // for dua x, offset o, generates:
     // lava_set(slot, *(const unsigned int *)(((const unsigned char *)x)+o)
     // Each lval gets an if clause containing one siphon
-    std::string SiphonsForLocation(LavaASTLoc ast_loc) {
+    std::string SiphonsForLocation(ASTLoc ast_loc) {
         std::stringstream result_ss;
         // We iterate over variables (lvals) that LAVA identified as "siphons" (data sources)
         for (const LvalBytes &lval_bytes : map_get_default(siphons_at, ast_loc)) {
@@ -111,7 +111,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         return result;
     }
 
-    std::string AttackRetBuffer(LavaASTLoc ast_loc) {
+    std::string AttackRetBuffer(ASTLoc ast_loc) {
         std::stringstream result_ss;
         auto key = std::make_pair(ast_loc, AttackPoint::QUERY_POINT);
         for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
@@ -165,7 +165,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             debug(PRI) << "PriQueryPointHandler handle: ok to instrument " << fnname.second << "\n";
         }
 
-        LavaASTLoc ast_loc = GetASTLoc(sm, toSiphon);
+        ASTLoc ast_loc = GetASTLoc(sm, toSiphon);
         debug(PRI) << "Have a query point @ " << ast_loc << "!\n";
 
         std::string before;

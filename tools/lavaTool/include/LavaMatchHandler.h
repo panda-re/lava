@@ -192,18 +192,18 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
         return s.str();
     }
 
-    LavaASTLoc GetASTLoc(const SourceManager &sm, const Stmt *s) {
+    ASTLoc GetASTLoc(const SourceManager &sm, const Stmt *s) {
         assert(!SourceDir.empty());
         FullSourceLoc fullLocStart(sm.getExpansionLoc(s->getBeginLoc()), sm);
         FullSourceLoc fullLocEnd(sm.getExpansionLoc(s->getEndLoc()), sm);
         std::string src_filename = StripPrefix(
                 getAbsolutePath(sm.getFilename(fullLocStart)), SourceDir);
-        return LavaASTLoc(src_filename, fullLocStart, fullLocEnd);
+        return ASTLoc(src_filename, fullLocStart, fullLocEnd);
     }
 
     // A query inserted at a possible attack point. Used, dynamically, just to
     // tell us when an input gets to the attack point.
-    LExpr LavaAtpQuery(LavaASTLoc ast_loc, AttackPoint::Type atpType) {
+    LExpr LavaAtpQuery(ASTLoc ast_loc, AttackPoint::Type atpType) {
         return LBlock({
                 LFunc("vm_lava_attack_point",
                     { LDecimal(GetStringID(StringIDs, ast_loc)), LDecimal(0),
@@ -218,7 +218,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
     */
     void AttackExpression(const SourceManager &sm, const Expr *toAttack,
             const Expr *parent, const Expr *rhs, AttackPoint::Type atpType) {
-        LavaASTLoc ast_loc = GetASTLoc(sm, toAttack);
+        ASTLoc ast_loc = GetASTLoc(sm, toAttack);
         std::vector<LExpr> pointerAddends;
         std::vector<LExpr> valueAddends;
         std::vector<LExpr> triggers;

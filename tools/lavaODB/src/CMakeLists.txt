@@ -1,47 +1,65 @@
-include(GNUInstallDirs)
-set (GENERATED ${CMAKE_CURRENT_SOURCE_DIR}/../generated)
-set (PYTHON_DATA ${CMAKE_CURRENT_SOURCE_DIR}/../../../python/src/pyroclastic/data)
+set(GENERATED ${CMAKE_CURRENT_SOURCE_DIR}/../generated)
+set(PYTHON_DATA ${CMAKE_CURRENT_SOURCE_DIR}/../../../python/src/pyroclastic/data)
+set(PYTHON_TEST ${CMAKE_CURRENT_SOURCE_DIR}/../../../python/tests)
 
-if (NOT EXISTS ${GENERATED})
-    file(MAKE_DIRECTORY ${GENERATED})
-endif()
+# Ensure folders exist
+file(MAKE_DIRECTORY ${GENERATED})
 
-set(cxxFile "${GENERATED}/lava-odb.cxx")
-set(hxxFile "${GENERATED}/lava-odb.hxx")
-set(ixxFile "${GENERATED}/lava-odb.ixx")
-set(sqlFile "${GENERATED}/lava.sql")
+# --- STEP 1: PROTOBUF GENERATION ---
+set(PROTO_HXX "${GENERATED}/lava.pb.h")
+set(PROTO_CXX "${GENERATED}/lava.pb.cc")
+set(PROTO_PY  "${PYTHON_TEST}/lava_pb2.py")
 
-set(ODB_GENERATED_FILES ${cxxFile} ${hxxFile} ${ixxFile} ${sqlFile})
+add_custom_command(
+    OUTPUT ${PROTO_HXX} ${PROTO_CXX} ${PROTO_PY}
+    COMMAND protoc -I=${CMAKE_CURRENT_SOURCE_DIR}
+                   --cpp_out=${GENERATED}
+                   --python_out=${PYTHON_TEST}
+                   ${CMAKE_CURRENT_SOURCE_DIR}/lava.proto
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/lava.proto
+    COMMENT "Building Protobuf: lava.proto"
+)
 
-set(ODB_OPTS -d pgsql -o ${GENERATED} --std c++11 --generate-query --generate-schema --generate-prepared --cxx-prologue '\#include \"pgarray.hxx\"' --sql-name-case lower )
-set(ODB_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
-set(ODB_HXX ${CMAKE_CURRENT_SOURCE_DIR}/../include/lava.hxx)
+# --- STEP 2: ODB GENERATION ---
+set(ODB_HXX_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../include/lava.hxx)
+set(ODB_GENERATED_FILES
+    "${GENERATED}/lava-odb.cxx"
+    "${GENERATED}/lava-odb.hxx"
+    "${GENERATED}/lava-odb.ixx"
+    "${GENERATED}/lava.sql")
 
-add_custom_command (
+# Note the -I${GENERATED} so ODB can find lava.pb.h
+set(ODB_OPTS -d pgsql -o ${GENERATED} --std c++14
+             -I${GENERATED} -I${CMAKE_CURRENT_SOURCE_DIR}/../include
+             --generate-query --generate-schema --generate-prepared
+             --cxx-prologue '\#include \"pgarray.hxx\"' --sql-name-case lower)
+
+# --- STEP 2.5: TELL CMAKE THESE FILES ARE PRODUCED DURING BUILD ---
+set_source_files_properties(
+    ${PROTO_CXX}
+    ${PROTO_HXX}
+    "${GENERATED}/lava-odb.cxx"
+    "${GENERATED}/lava-odb.hxx"
+    PROPERTIES GENERATED TRUE
+)
+
+add_custom_command(
     OUTPUT ${ODB_GENERATED_FILES}
-    COMMAND odb ${ODB_OPTS} ${ODB_HXX}
-    COMMAND ${CMAKE_COMMAND} -E copy ${sqlFile} ${PYTHON_DATA}/lava.sql
-    DEPENDS cleanup ${ODB_HXX}
-    COMMENT "Generating ODB files and syncing SQL to scripts folder"
+    COMMAND odb ${ODB_OPTS} ${ODB_HXX_SRC}
+    COMMAND ${CMAKE_COMMAND} -E copy "${GENERATED}/lava.sql" ${PYTHON_DATA}/lava.sql
+    DEPENDS ${PROTO_HXX} ${ODB_HXX_SRC}
+    COMMENT "Building ODB mappings from lava.hxx (depends on lava.pb.h)"
 )
 
-add_custom_target (cleanup
-    rm -rf ${GENERATED}/*
-    COMMENT "Cleaning up tools/lavaODB/generated folder"
-)
+# --- STEP 3: THE TARGETS ---
+# Library needs BOTH Protobuf source and ODB source
+add_library(lava-odb_x64 STATIC ${PROTO_CXX} ${GENERATED}/lava-odb.cxx)
 
-# create liblava-odb_x64.a library used by lavaFnTool and lavaTool
-add_library(lava-odb_x64 STATIC ${GENERATED}/lava-odb.cxx)
 set_property(TARGET lava-odb_x64 PROPERTY CXX_STANDARD 17)
-target_link_libraries(lava-odb_x64 odb odb-pgsql)
-add_dependencies(lava-odb_x64 cleanup)
-target_include_directories(lava-odb_x64 BEFORE
-    PUBLIC
-    ${GENERATED}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+target_link_libraries(lava-odb_x64 odb odb-pgsql protobuf) # Added protobuf link
 
-install(TARGETS lava-odb_x64
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}  # For shared libraries
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}  # For executables (if applicable)
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}  # For static libraries (if applicable)
+target_include_directories(lava-odb_x64
+    PUBLIC
+    $<BUILD_INTERFACE:${GENERATED}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
 )

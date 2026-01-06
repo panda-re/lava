@@ -29,7 +29,7 @@ struct MallocOffByOneArgHandler : public LavaMatchHandler {
         LExpr addend = LDecimal(0);
         const Expr *size_arg = callExpr->getArg(callExpr->getNumArgs() - 1);
 	if (size_arg) {
-        	LavaASTLoc ast_loc = GetASTLoc(sm, size_arg);
+        	ASTLoc ast_loc = GetASTLoc(sm, size_arg);
 		Mod.Change(size_arg);
 		if (LavaAction == LavaQueries)  {
 		    addend = LavaAtpQuery(ast_loc,

@@ -110,7 +110,7 @@ int main(int argc, const char **argv) {
                 [&](uint32_t bug_id) { return db->load<Bug>(bug_id); });
 
         for (const Bug *bug : bugs) {
-            LavaASTLoc atp_loc = bug->atp->loc;
+            ASTLoc atp_loc = bug->atp->loc;
             auto key = std::make_pair(atp_loc, bug->atp->type);
             bugs_with_atp_at[key].push_back(bug);
 

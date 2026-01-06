@@ -129,8 +129,8 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
         # In C++, this query was cached. In Python/Postgres, just run it.
         # We want to find all 'trigger_lval_id's that successfully generated
         # a bug for this specific ATP and BUG TYPE.
-        stmt = select(Bug.trigger_lval_id).where(
-            Bug.atp_id == atp.id,
+        stmt = select(Bug.trigger_lval).where(
+            Bug.atp == atp.id,
             Bug.type == bug_type
         )
         # scalars() extracts the single value from the row automatically
@@ -172,7 +172,7 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
         trigger_duabytes, _ = get_or_create(
             session,
             DuaBytes,
-            dua=trigger_dua,
+            dua=trigger_dua.id,
             selected=selected
         )
 
@@ -212,7 +212,7 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
                     extra, _ = get_or_create(
                         session,
                         DuaBytes,
-                        dua=extra_dua,
+                        dua=extra_dua.id,
                         selected=selected_extra
                     )
 
@@ -229,7 +229,7 @@ def record_injectable_bugs_at(bug_type: BugKind, atp: AttackPoint, is_new_atp: b
         if len(extra_duas) < required_extra:
             continue
 
-        if not trigger_duabytes.dua.fake_dua:
+        if not trigger_duabytes.dua_relationship.fake_dua:
             if not (len(labels_so_far) >= 4 * required_extra):
                 continue
 
@@ -594,7 +594,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         dua, is_new_dua = get_or_create(
             session,
             Dua,
-            lval=lval,
+            lval=lval.id,
             inputfile=project_data.get("input", "unknown"),
             instr=instr_addr,
             fake_dua=is_fake_dua,
@@ -630,7 +630,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             dua_bytes, _ = get_or_create(
                 session,
                 DuaBytes,
-                dua=dua,
+                dua=dua.id,
                 selected=exploit_range
             )
 
@@ -812,7 +812,7 @@ def update_liveness(panda_log_entry: dict, project_data: dict):
     for dua in duas_to_check:
         if not is_dua_dead(dua, project_data):
             dprint(project_data, f"{str(dua)}\n ** DUA not viable\n")
-            recent_dead_duas.pop(dua.lval.id, None)
+            recent_dead_duas.pop(dua.lval_relationship.id, None)
             if dua in recent_duas_by_instr:
                 recent_duas_by_instr.remove(dua)
             assert len(recent_dead_duas) == len(recent_duas_by_instr)
@@ -832,8 +832,8 @@ def is_dua_dead(dua: Dua, project_data: dict) -> bool:
 def get_dua_dead_range(dua: Dua, to_avoid: list[int], project_data: dict) -> Range:
     viable_bytes = dua.viable_bytes
     dprint(project_data, f"checking viability of dua: currently {count_nonzero(viable_bytes)} viable bytes")
-    if "nodua" in dua.lval.ast_name:
-        dprint(project_data, f"Found nodua symbol, skipping {dua.lval.ast_name}")
+    if "nodua" in dua.lval_relationship.ast_name:
+        dprint(project_data, f"Found nodua symbol, skipping {dua.lval_relationship.ast_name}")
         empty = Range(0, 0)
         return empty
     result = get_dead_range(dua.viable_bytes, to_avoid, project_data)
