@@ -138,7 +138,7 @@ class QueryManager:
         # Given the Debian package installed in /usr/include, we now copy it to LAVA project.
         # TODO: Once PANDA puts hypercall in its include path, we can likely remove all but pirate file.
         include_dir = Path("/usr/include")
-        headers = ["hypercall.h", "pirate_mark_lava.h", "panda_hypercall_struct.h"]
+        headers = ["pirate_mark_lava.h", "panda_hypercall_struct.h"]
         for directory in c_dirs:
             dir_path = Path(directory)
             if dir_path.is_dir():
