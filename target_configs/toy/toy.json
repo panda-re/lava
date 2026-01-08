@@ -1,9 +1,8 @@
 {
     "name": "toy",
     "db": "toy",
-    "preprocessed": true,
     
-    "tarfile": "toy-pre.tar.gz",
+    "tarfile": "toy.tar.gz",
 
     "make": "make CFLAGS+=-gdwarf-2",
     "clean": "make clean",

@@ -17,9 +17,6 @@ progress() {
 # So take our major version, find the first match in dependencies directory and run with it.
 # This will give us "./panda/dependencies/ubuntu:20.04" where ubuntu:20.04_build.txt or 20.04_base.txt exists
 version=$(lsb_release -r | awk '{print $2}' | awk -F'.' '{print $1}')
-ubuntu_version=$(lsb_release -r | awk '{print $2}')
-# Minimum Acceptable version is 1.8.78
-PANDA_VERSION="v1.8.78"
 CAPSTONE_VERSION="5.0.5"
 
 # shellcheck disable=SC2086
@@ -46,6 +43,8 @@ fi
 # Check if pandare is installed
 if ! dpkg -l | grep -q pandare; then
     echo "pandare is not installed. Installing now..."
+    PANDA_VERSION=$(curl -s https://api.github.com/repos/panda-re/panda/releases/latest | jq -r .tag_name)
+    ubuntu_version=$(lsb_release -rs)
     # shellcheck disable=SC2086
     curl -LJ -o /tmp/pandare_${ubuntu_version}.deb https://github.com/panda-re/panda/releases/download/${PANDA_VERSION}/pandare_${ubuntu_version}.deb
     # shellcheck disable=SC2086
@@ -53,6 +52,22 @@ if ! dpkg -l | grep -q pandare; then
     rm "/tmp/pandare_${ubuntu_version}.deb"
 else
     echo "pandare is already installed."
+fi
+
+# TODO: Switch to panda-re libhc when available
+# Check if libhc is installed
+if ! dpkg -l | grep -q libhc-dev; then
+    echo "libhc-dev is not installed. Installing now..."
+    # shellcheck disable=SC2034
+    LIBHC_VERSION=$(curl -s https://api.github.com/repos/AndrewQuijano/libhc/releases/latest | jq -r .tag_name)
+    LIBHC_TAG=${LIBHC_VERSION#v}
+    # shellcheck disable=SC2086
+    curl -LJ -o /tmp/libhc-dev_${LIBHC_TAG}_all.deb https://github.com/AndrewQuijano/libhc/releases/download/${LIBHC_VERSION}/libhc-dev_${LIBHC_TAG}_all.deb
+    # shellcheck disable=SC2086
+    $SUDO apt-get -y install /tmp/libhc-dev_${LIBHC_TAG}_all.deb
+    rm "/tmp/libhc-dev_${LIBHC_TAG}_all.deb"
+else
+    echo "libhc is already installed."
 fi
 progress "Installed build dependencies"
 

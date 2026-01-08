@@ -124,7 +124,7 @@ jobs:
     env:
       DEBIAN_FRONTEND: noninteractive
     steps:
-      - name: 'Login to Docker Registry'
+      - name: Login to Docker Registry
         uses: docker/login-action@v3
         with:
           username: pandare
@@ -152,4 +152,4 @@ jobs:
           context: ${{ github.workspace }}
           push: true
           tags: |
-            pandare/lava:latest
+            pandare/lava:test

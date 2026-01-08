@@ -4,9 +4,9 @@
 // For LAVA use only
 #define LAVA_MAGIC 0xabcd
 
-// Taken from here
 // https://github.com/panda-re/libhc/blob/main/hypercall.h
-#include "hypercall.h"
+#include <panda/hypercall.h>
+// https://github.com/panda-re/panda/blob/dev/panda/include/panda/lava_hypercall_struct.h
 #include "panda_hypercall_struct.h"
 
 static const int LABEL_BUFFER = 7;

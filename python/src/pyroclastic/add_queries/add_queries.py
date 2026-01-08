@@ -47,7 +47,7 @@ class QueryManager:
 
         # 2. Extract Tarball
         with tarfile.open(self.tarfile_path) as tar:
-            # Get top level directory name
+            # Get top level directory name of the tar-ball
             source_dirname = tar.getnames()[0].split(os.path.sep)[0]
             source_path = self.project_dir / source_dirname
 
@@ -74,6 +74,19 @@ class QueryManager:
         install_dir.mkdir(exist_ok=True)
 
         env = self.config['env_var']
+        # First pre-process, append the makefile.fixup to Makefile for easy pre-processing.
+        if not self.config.get('preprocessed', False):
+            print("Preprocessing Source code...")
+            with open(Path(__file__).parent.parent / "data/makefile.fixup", "r") as mf:
+                modified_make = mf.read()
+
+            with open(source_path / "Makefile", "a+") as mf:
+                mf.write("\n" + modified_make + "\n")
+
+            run_cmd(shlex.split("make lava_preprocess"), env=env)
+            run_cmd(["git", "add", "."])
+            run_cmd(["git", "commit", "-m", "Pre-processed source."])
+
         configure_command = self.config.get('configure', '')
         if configure_command != '':
             full_config = f"{configure_command} --prefix={install_dir}"
@@ -125,7 +138,7 @@ class QueryManager:
         # Given the Debian package installed in /usr/include, we now copy it to LAVA project.
         # TODO: Once PANDA puts hypercall in its include path, we can likely remove all but pirate file.
         include_dir = Path("/usr/include")
-        headers = ["hypercall.h", "pirate_mark_lava.h", "panda_hypercall_struct.h"]
+        headers = ["pirate_mark_lava.h", "panda_hypercall_struct.h"]
         for directory in c_dirs:
             dir_path = Path(directory)
             if dir_path.is_dir():
