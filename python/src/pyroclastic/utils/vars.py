@@ -139,7 +139,7 @@ def parse_vars(project_name: str):
 
     project_data["host_path"] = host_json_path
     for field, prefix in [("tarfile", "tar_dir")]:
-        project_data[field] = host[prefix] + os.path.sep + project_data[field]
+        project_data[field] = os.path.join(host[prefix], project_data[field])
 
     for field, suffix in [("db", "db_suffix")]:
         project_data[field] = project_data[field] + host[suffix]

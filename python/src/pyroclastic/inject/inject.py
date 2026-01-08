@@ -10,6 +10,7 @@ import subprocess
 import random
 from typing import List
 from subprocess import PIPE, check_call
+from pathlib import Path
 # LAVA imports
 from .process_compile_commands import get_c_files, process_compile_commands
 from ..utils.vars import parse_vars
@@ -199,20 +200,24 @@ def inject_bugs(bug_list, db, lp, project: dict, arguments,
         run(['git', 'config', 'user.email', 'nobody@nowhere'])
         run(['git', 'add', '-f', '-A', '.'])
         run(['git', 'commit', '-m', 'Unmodified source.'])
-    if not os.path.exists(os.path.join(lp.bugs_build, 'config.log')) \
-            and 'configure' in project.keys():
-        print('Re-configuring...')
-        run(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install])
+
+        configure_command = project.get('configure', '')
         envv = project["env_var"]
-        if project['configure']:
-            run_cmd(' '.join(shlex.split(project['configure']) + ['--prefix=' + lp.bugs_install]),
+        if configure_command != '':
+            print('Re-configuring...')
+            run_cmd(' '.join(shlex.split(configure_command) + ['--prefix=' + lp.bugs_install]),
                     project, envv, 30, cwd=lp.bugs_build, shell=True)
+
+        if not project.get('preprocessed', False):
+            with open(os.path.join(lp.bugs_build, 'Makefile'), 'a') as fd, \
+                open(Path(__file__).parent.parent / "data/makefile.fixup", 'r') as fdd:
+                fd.write(fdd.read())
+            print("Preprocessing Source code...")
+            run_cmd(' '.join(['make', 'lava_preprocess']), project, envv, 30, cwd=lp.bugs_build, shell=True)
+            run_cmd(["git", "add", "."], project)
+            run_cmd(["git", "commit", "-m", "Pre-processed source."], project)
     if not os.path.exists(os.path.join(lp.bugs_build, 'btrace.log')):
         print("Making with btrace...")
-
-        # Do we need to configure here? I don't think so...
-        # run(shlex.split(project['configure']) +
-        # ['--prefix=' + lp.bugs_install])
 
         # Silence warnings related to adding integers to pointers since we already
         # know that it's unsafe.
