@@ -365,13 +365,10 @@ class ASTLoc:
         if len(parts) < 5:
             raise ValueError(f"Invalid serialized ASTLoc: {serialized_str}")
 
-        # The last 4 parts are always numbers.
-        # Everything before them is the filename (re-join in case filename has ':')
-        filename = ":".join(parts[:-4])
-
         # Parse the coordinates
-        begin_line, begin_col = int(parts[-4]), int(parts[-3])
-        end_line, end_col = int(parts[-2]), int(parts[-1])
+        begin_line, begin_col = int(parts[0]), int(parts[1])
+        end_line, end_col = int(parts[2]), int(parts[3])
+        filename = parts[4]
 
         return ASTLoc(
             filename=filename,

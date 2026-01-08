@@ -114,9 +114,9 @@ struct ASTLoc {
         for (std::string item; std::getline(iss, item, ':');) {
             components.push_back(item);
         }
-        filename = components[0];
-        begin = Loc(std::stol(components[1]), std::stol(components[2]));
-        end = Loc(std::stol(components[3]), std::stol(components[4]));
+        begin = Loc(std::stol(components[0]), std::stol(components[1]));
+        end = Loc(std::stol(components[2]), std::stol(components[3]));
+        filename = components[4];
     }
     operator std::string() const {
         std::stringstream os;
@@ -125,7 +125,7 @@ struct ASTLoc {
     }
 
     friend std::ostream &operator<<(std::ostream &os, const ASTLoc &loc) {
-        os << loc.filename << ":" << loc.begin << ":" << loc.end;
+        os << loc.begin << ":" << loc.end << ":" << loc.filename;
         return os;
     }
 

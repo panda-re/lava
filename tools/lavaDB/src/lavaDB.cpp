@@ -40,17 +40,28 @@ std::map<std::string,uint32_t> LoadDB(std::string dbfile) {
 
 void SaveDB(const std::map<std::string, uint32_t> &StringIDs, std::string dbfile) {
     std::ofstream db(dbfile);
-    for (auto p : StringIDs) {
+
+    // 1. Copy map pairs to a vector
+    std::vector<std::pair<std::string, uint32_t>> sorted_vec(StringIDs.begin(), StringIDs.end());
+
+    // 2. Sort the vector based on the ID (the .second element)
+    std::sort(sorted_vec.begin(), sorted_vec.end(),
+        [](const auto &a, const auto &b) {
+            return a.second < b.second;
+        }
+    );
+
+    // 3. Write to the database file
+    for (const auto &p : sorted_vec) {
         db << p.second << '\t' << p.first << '\n';
     }
-    std::cout << "Saved LavaDB" << std::endl;
+    std::cout << "Saved LavaDB (Sorted by ID)" << std::endl;
 }
 
 uint32_t GetStringID(std::map<std::string, uint32_t> &StringIDs, std::string s) {
     std::map<std::string, uint32_t>::iterator it;
     // This does nothing if s is already in StringIDs.
-    std::tie(it, std::ignore) =
-        StringIDs.insert(std::make_pair(s, StringIDs.size()));
+    std::tie(it, std::ignore) = StringIDs.insert(std::make_pair(s, StringIDs.size()));
     return it->second;
 }
 
