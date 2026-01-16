@@ -31,13 +31,20 @@ RUN cd /tmp && \
     dpkg -i /tmp/libcapstone-dev_${CAPSTONE_VERSION}_amd64.deb && \
     rm -rf /tmp/libcapstone-dev_${CAPSTONE_VERSION}_amd64.deb
 
-# Finally: Install panda debian package, you need a version that has the Dwarf2 Plugin
+# Finally: Install panda debian package, the latest version should have all necessary components for LAVA
 RUN cd /tmp && \
     apt-get -qq update -y || (sleep 10 && apt-get -qq update -y) && \
     UBUNTU_VERSION=$(echo "$BASE_IMAGE" | awk -F':' '{print $2}') && \
-    curl --retry 5 --retry-delay 10 -LJO https://github.com/panda-re/panda/releases/download/${PANDA_VERSION}/pandare_${UBUNTU_VERSION}.deb && \
+    curl --retry 5 --retry-delay 10 -LJO https://github.com/panda-re/panda/releases/latest/download/pandare_${UBUNTU_VERSION}.deb && \
     apt-get install -qq -y --fix-missing /tmp/pandare_${UBUNTU_VERSION}.deb && \
     rm -f /tmp/pandare_${UBUNTU_VERSION}.deb
+
+# Install libhc for hypercalls
+RUN LIBHC_VERSION=$(curl -s https://api.github.com/repos/AndrewQuijano/libhc/releases/latest | jq -r .tag_name) && \
+    LIBHC_TAG=${LIBHC_VERSION#v} && \
+    curl -LJ -o /tmp/libhc-dev_${LIBHC_TAG}_all.deb https://github.com/AndrewQuijano/libhc/releases/download/${LIBHC_VERSION}/libhc-dev_${LIBHC_TAG}_all.deb && \
+    $SUDO apt-get -y install /tmp/libhc-dev_${LIBHC_TAG}_all.deb && \
+    rm "/tmp/libhc-dev_${LIBHC_TAG}_all.deb"
 
 RUN [ -e /tmp/build_dep.txt ] && \
     apt-get -qq update && \
