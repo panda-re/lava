@@ -153,8 +153,12 @@ def run_taint_pipeline(lava_project: str):
         ).strip()
 
         dwarf_cmd = ["dwarfdump", "-dil", guest_executable]
-        dwarf_output = subprocess.check_output(dwarf_cmd)
-        dwarfdump.parse_dwarfdump(dwarf_output, guest_executable)
+        result = subprocess.run(
+            dwarf_cmd,
+            capture_output=True,
+            text=True
+        )
+        dwarfdump.parse_dwarfdump(result.stdout, guest_executable)
         proc_name = os.path.basename(guest_executable)
         pandalog = "{}/queries-{}.plog".format(project['output_dir'], project['name'])
 

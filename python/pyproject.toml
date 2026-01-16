@@ -34,13 +34,11 @@ authors = [
 keywords = ["lava", "panda", "bug-injection", "fuzzing", "dynamic-analysis"]
 requires-python = ">=3.10"
 dependencies = [
-    "dotenv",
     "colorama",
     "db",
     "ipython",
-    "lockfile",
     "numpy",
-    "pandare==1.8.78",
+    "pandare>=1.8.81",
     "PyYAML",
     "sqlalchemy",
     "tabulate",
