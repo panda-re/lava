@@ -1,12 +1,58 @@
 set(CPACK_PACKAGE_NAME "lava")
 set(CPACK_PACKAGE_DESCRIPTION "Large Scale Automated Vulnerability Addition (LAVA) is a tool designed to automatically inject synthetic vulnerabilities into C source code for testing and evaluation purposes.")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "LAVA enables researchers and developers to study and improve vulnerability detection tools by planting controlled memory errors in C programs.")
-set(CPACK_PACKAGE_VENDOR "PANDA")
+set(CPACK_PACKAGE_VENDOR "pandare")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "andrew.quijano@nyu.edu")
-set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE amd64)
 
-if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
-	set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "arm64")
+# Extract OS and Version (e.g., ubuntu and 22.04)
+execute_process(COMMAND lsb_release -is OUTPUT_VARIABLE LAVA_OS_ID OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND lsb_release -rs OUTPUT_VARIABLE LAVA_OS_VER OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+# Convert OS ID to lowercase (e.g., Ubuntu -> ubuntu)
+string(TOLOWER "${LAVA_OS_ID}" LAVA_OS_ID_L)
+message(STATUS "LAVA Packaging for: ${LAVA_OS_ID_L} ${LAVA_OS_VER}")
+
+# Define the dependency parser function
+function(parse_dep_file FILE_PATH OUTPUT_VAR)
+    if(EXISTS ${FILE_PATH})
+        file(STRINGS ${FILE_PATH} RAW_LIST)
+        set(CLEAN_LIST "")
+        foreach(DEP ${RAW_LIST})
+            # Remove comments and trim
+            string(REGEX REPLACE "#.*" "" DEP "${DEP}")
+            string(STRIP "${DEP}" DEP)
+            if(NOT "${DEP}" STREQUAL "")
+                list(APPEND CLEAN_LIST "${DEP}")
+            endif()
+        endforeach()
+        string(REPLACE ";" ", " JOINED_LIST "${CLEAN_LIST}")
+        set(${OUTPUT_VAR} "${JOINED_LIST}" PARENT_SCOPE)
+    else()
+        message(WARNING "Dependency file NOT FOUND: ${FILE_PATH}")
+    endif()
+endfunction()
+
+# Dynamically resolve filenames and parse contents
+get_filename_component(PARENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" DIRECTORY)
+set(BASE_DEP_FILE  "${PARENT_DIR}/dependencies/${LAVA_OS_ID_L}_${LAVA_OS_VER}_base.txt")
+set(BUILD_DEP_FILE "${PARENT_DIR}/dependencies/${LAVA_OS_ID_L}_${LAVA_OS_VER}_build.txt")
+
+parse_dep_file("${BASE_DEP_FILE}"  RESOLVED_BASE_DEPS)
+parse_dep_file("${BUILD_DEP_FILE}" RESOLVED_BUILD_DEPS)
+
+# Set compile and run-time dependencies
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "${RESOLVED_BASE_DEPS}")
+set(CPACK_DEBIAN_PACKAGE_BUILD_DEPENDS "${RESOLVED_BUILD_DEPS}")
+
+# Architecture handling (amd64 vs arm64)
+if(NOT CPACK_DEBIAN_PACKAGE_ARCHITECTURE)
+    if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64")
+        set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+    elseif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm64")
+        set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "arm64")
+    else()
+        set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE ${CMAKE_SYSTEM_PROCESSOR})
+    endif()
 endif()
 
 set(CPACK_STRIP_FILES true)

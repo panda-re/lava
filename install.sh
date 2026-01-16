@@ -43,10 +43,9 @@ fi
 # Check if pandare is installed
 if ! dpkg -l | grep -q pandare; then
     echo "pandare is not installed. Installing now..."
-    PANDA_VERSION=$(curl -s https://api.github.com/repos/panda-re/panda/releases/latest | jq -r .tag_name)
     ubuntu_version=$(lsb_release -rs)
     # shellcheck disable=SC2086
-    curl -LJ -o /tmp/pandare_${ubuntu_version}.deb https://github.com/panda-re/panda/releases/download/${PANDA_VERSION}/pandare_${ubuntu_version}.deb
+    curl -LJ -o /tmp/pandare_${ubuntu_version}.deb https://github.com/panda-re/panda/releases/latest/download/pandare_${ubuntu_version}.deb
     # shellcheck disable=SC2086
     $SUDO apt-get -y install /tmp/pandare_${ubuntu_version}.deb
     rm "/tmp/pandare_${ubuntu_version}.deb"
