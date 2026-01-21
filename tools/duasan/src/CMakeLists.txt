@@ -1,4 +1,5 @@
-project (duasan VERSION 2.0.0 LANGUAGES CXX)
+project (duasan LANGUAGES CXX)
+include(GNUInstallDirs)
 # LLVM variables to compile our clang tool
 set (LLVM_LINK_COMPONENTS support)
 
@@ -16,9 +17,11 @@ set (LLVM_LIBS
     LLVMSupport
 )
 
-if(DEFINED ENV{LLVM_DIR})
-    find_package(LLVM CONFIG)
-endif()
+# Duasan needs LLVM/Clang
+list(APPEND CMAKE_PREFIX_PATH "${LLVM_DIR}/lib/cmake/llvm")
+list(APPEND CMAKE_PREFIX_PATH "${LLVM_DIR}/lib/cmake/clang")
+find_package(LLVM REQUIRED CONFIG)
+find_package(Clang REQUIRED CONFIG)
 
 set (LLVM_CLANG_LINK_LIBRARIES
     ${CLANG_LIBS}
@@ -39,12 +42,10 @@ add_definitions(${LLVM_DEFINITIONS})
 include_directories(${LLVM_INCLUDE_DIRS})
 
 
-# duasan target compiled against llvm, /*omg*/, odb odb-pgsql and lava odb
 add_executable(duasan duasan.cpp)
-target_compile_options(duasan PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0 -fno-omit-frame-pointer -O3 -fexceptions -frtti)
-#set_target_properties(duasan PROPERTIES COMPILE_FLAGS "-m32" LINK_FLAGS "-m32 -flto -fuse-ld=gold")
+set_property(TARGET duasan PROPERTY CXX_STANDARD 17)
+target_compile_options(duasan PRIVATE -fno-omit-frame-pointer -O3 -fexceptions -frtti)
 set_target_properties(duasan PROPERTIES LINK_FLAGS "-flto -fuse-ld=gold")
-set_property(TARGET duasan PROPERTY CXX_STANDARD 14)
 target_include_directories(duasan BEFORE
         PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/../../lavaDB/include
@@ -53,14 +54,12 @@ target_include_directories(duasan BEFORE
         ${CMAKE_CURRENT_SOURCE_DIR}/../../include
     )
 
-
-# omg is pre-built in lavaTool, just link if needed
-#target_link_libraries(duasan lavaDB_x32 omg odb odb-pgsql lava-odb_x32 ${LLVM_CLANG_LINK_LIBRARIES})
 target_link_libraries(duasan lavaDB_x64 odb odb-pgsql lava-odb_x64 ${LLVM_CLANG_LINK_LIBRARIES})
 
 install (TARGETS duasan
-         RUNTIME DESTINATION bin
-         LIBRARY DESTINATION lib
-         ARCHIVE DESTINATION lib/static
-         OPTIONAL
-         )
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}         # For shared libraries
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}         # For executables (if applicable)
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}         # For static libraries (if applicable)
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}    # For header files (if applicable)
+)
+

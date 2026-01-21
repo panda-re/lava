@@ -14,6 +14,8 @@
 #include <odb/pgsql/database.hxx>
 #include "lava-odb.hxx"
 #include "lava.hxx"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace clang;
 using namespace clang::ast_matchers;
@@ -57,9 +59,9 @@ std::string StripPrefix(std::string filename, std::string prefix) {
     return filename.substr(prefix_len);
 }
 
-LavaASTLoc GetASTLoc(const SourceManager &sm, const Stmt *s) {
-    FullSourceLoc fullLocStart(sm.getExpansionLoc(s->getLocStart()), sm);
-    FullSourceLoc fullLocEnd(sm.getExpansionLoc(s->getLocEnd()), sm);
+ASTLoc GetASTLoc(const SourceManager &sm, const Stmt *s) {
+    FullSourceLoc fullLocStart(sm.getExpansionLoc(s->getBeginLoc()), sm);
+    FullSourceLoc fullLocEnd(sm.getExpansionLoc(s->getEndLoc()), sm);
     std::string src_filename = StripPrefix(
             getAbsolutePath(sm.getFilename(fullLocStart)), SourceDir);
     size_t findhint = 0;
@@ -73,12 +75,12 @@ LavaASTLoc GetASTLoc(const SourceManager &sm, const Stmt *s) {
         else
             src_filename.erase(0, matchindex + 4);
     }
-    return LavaASTLoc(src_filename, fullLocStart, fullLocEnd);
+    return ASTLoc(src_filename, fullLocStart, fullLocEnd);
 }
 
-bool locInScope(const SourceManager &sm, const CompoundStmt *body, const LavaASTLoc &locdua)
+bool locInScope(const SourceManager &sm, const CompoundStmt *body, const ASTLoc &locdua)
 {
-    LavaASTLoc loccomp = GetASTLoc(sm, body);
+    ASTLoc loccomp = GetASTLoc(sm, body);
     return loccomp.filename == locdua.filename
         && (!(locdua.begin < loccomp.begin))
         && (!(loccomp.end < locdua.end));
@@ -294,13 +296,13 @@ public :
         const FunctionDecl *FS = Result.Nodes.getNodeAs<clang::FunctionDecl>("func");
         sm = Result.SourceManager;
 
-        if (sm->isInSystemHeader(FS->getLocStart()))    return;
+        if (sm->isInSystemHeader(FS->getBeginLoc()))    return;
 
         const CompoundStmt *body = dyn_cast<CompoundStmt>(FS->getBody());
 
         if(body == nullptr) return;
 
-        FullSourceLoc fullloc(sm->getExpansionLoc(body->getLocStart()), *sm);
+        FullSourceLoc fullloc(sm->getExpansionLoc(body->getBeginLoc()), *sm);
         if (getAbsolutePath(sm->getFilename(fullloc)).compare(0, 12, "/llvm-3.6.2/")
             == 0)
             return;
@@ -359,15 +361,15 @@ public:
         langop = &Result.Context->getLangOpts();
         call->dump();
         call->getDirectCallee()->dump();
-        FullSourceLoc fullloc(sm->getExpansionLoc(call->getLocStart()), *sm);
+        FullSourceLoc fullloc(sm->getExpansionLoc(call->getBeginLoc()), *sm);
         fullloc.dump();
-        call->getLocStart().dump(*sm);
-        FullSourceLoc fullloc2(sm->getExpansionLoc(call->getLocEnd()), *sm);
+        call->getBeginLoc().dump(*sm);
+        FullSourceLoc fullloc2(sm->getExpansionLoc(call->getEndLoc()), *sm);
         fullloc2.dump();
-        call->getLocEnd().dump(*sm);
+        call->getEndLoc().dump(*sm);
 
-        std::cerr << call->getLocStart().isMacroID() << "\n";
-        SourceLocation callloc = call->getLocStart();
+        std::cerr << call->getBeginLoc().isMacroID() << "\n";
+        SourceLocation callloc = call->getBeginLoc();
         if (callloc.isMacroID())
             callloc = sm->getSpellingLoc(callloc);
             //callloc = SourceLocation::getFromRawEncoding(callloc.getRawEncoding());
@@ -386,12 +388,36 @@ private:
 static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::OptionCategory ToolTemplateCategory("tool-template options");
 
-int main(int argc, const char **argv)
-{
-    CommonOptionsParser OptionsParser(argc, argv, ToolTemplateCategory);
-    //cl::ParseCommandLineOptions(argc, argv);
+int main(int argc, const char **argv) {
+    auto ExpectedParser = CommonOptionsParser::create(argc, argv, ToolTemplateCategory);
+    if (!ExpectedParser) {
+        // Print the error message from LLVM
+        llvm::errs() << ExpectedParser.takeError();
+        return 1;
+    }
+    CommonOptionsParser &op = ExpectedParser.get();
 
-    db.reset(new odb::pgsql::database("postgres", "postgrespostgres",
+    const char* pgpass = std::getenv("POSTGRES_PASSWORD");
+    const char* pguser = std::getenv("POSTGRES_USER");
+    if (pgpass) {
+        // PGPASS environment variable is set, and pgpass points to its value.
+        std::cout << "POSTGRES_PASSWORD IS SET" << std::endl;
+    } else {
+        // PGPASS environment variable is not set.
+        std::cout << "POSTGRES_PASSWORD is not set" << std::endl;
+        exit(1);
+    }
+
+    if (pguser) {
+        // PGUSER environment variable is set, and pgpass points to its value.
+        std::cout << "POSTGRES_USER IS SET: " << pguser << std::endl;
+    } else {
+        // PGUSER environment variable is not set.
+        std::cout << "POSTGRES_USER is not set" << std::endl;
+        exit(1);
+    }
+
+    db.reset(new odb::pgsql::database(pguser, pgpass,
                 BugDB, DBHost, DBPort));
     odb::transaction *t = new odb::transaction(db->begin());
 
@@ -401,7 +427,7 @@ int main(int argc, const char **argv)
             functionDecl(has(compoundStmt())).bind("func"),
             &Matcher);
 
-    std::vector<std::string> sourcefiles = OptionsParser.getSourcePathList();
+    std::vector<std::string> sourcefiles = op.getSourcePathList();
     /*
     std::vector<std::string> sourcefiles;
     std::error_code ErrorCode;
@@ -436,7 +462,7 @@ int main(int argc, const char **argv)
         }
 
         //std::cerr << sfile << "\n";
-        ClangTool Tool(OptionsParser.getCompilations(), sourcefiles);
+        ClangTool Tool(op.getCompilations(), sourcefiles);
         Tool.run(newFrontendActionFactory(&Finder).get());
         //std::cerr << "Intermediate Result : " << finallvals.size() << "\n";
 
