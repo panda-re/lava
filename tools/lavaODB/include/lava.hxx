@@ -411,7 +411,7 @@ struct SourceTrace {
 #pragma db not_null
     uint64_t index;
 #pragma db not_null
-    LavaASTLoc loc;
+    ASTLoc loc;
 
 #pragma db index("SourceTraceUniq") unique members(index)
 

@@ -557,8 +557,8 @@ void taint_query_pri(Json::Value& ple) {
     dprintf("is_dua=%d is_fake_dua=%d\n", is_dua, is_fake_dua);
     assert(!(is_dua && is_fake_dua));
 
-    assert(si->has_ast_loc_id);
-    LavaASTLoc ast_loc(ind2str[si->ast_loc_id]);
+    assert(si["has_ast_loc_id"]);
+    ASTLoc ast_loc(ind2str[std::strtoul(si["ast_loc_id"].asString().c_str(), 0, 0)]);
     assert(ast_loc.filename.size() > 0);
 
     // Track Callers
@@ -586,7 +586,7 @@ void taint_query_pri(Json::Value& ple) {
 
         const Dua *dua = create(Dua(lval, std::move(viable_byte),
                 std::move(byte_tcn), std::move(all_labels), inputfile,
-                c_max_tcn, c_max_card, std::strtoull(ple["instr"].asString().c_str(), 0, 0), is_fake_dua));
+                c_max_tcn, c_max_card, std::strtoull(ple["instr"].asString().c_str(), 0, 0), is_fake_dua, source_trace_index));
 
         if (is_dua) {
             // Only track liveness for non-fake duas.
@@ -656,8 +656,10 @@ void taint_query_pri(Json::Value& ple) {
                 si["astnodename"].asString().c_str());
     }
 
+    uint32_t stack_offset = std::strtoul(si["insertionpoint"].asString().c_str(), 0, 0);
+
     record_injectable_bugs_at<Bug::CHAFF_STACK_UNUSED>(
-            si->insertionpoint, pad_atp, is_new_atp, {});
+            stack_offset, pad_atp, is_new_atp, {});
 #define RANDOM_SAMPLING_THRESHOLD   2
     uint64_t randcount = RANDOM_SAMPLING_THRESHOLD;
     if (RANDOM_SAMPLING_THRESHOLD > recent_duas_by_instr.size()) {
@@ -666,11 +668,11 @@ void taint_query_pri(Json::Value& ple) {
             if (r.empty())  continue;
             const DuaBytes *k = create(DuaBytes{exploit_dua.second, r});
             record_injectable_bugs_at<Bug::CHAFF_STACK_CONST>(
-                    si->insertionpoint, pad_atp, is_new_atp, { k });
+                    stack_offset, pad_atp, is_new_atp, { k });
             record_injectable_bugs_at<Bug::CHAFF_HEAP_CONST>(
-                    si->insertionpoint, pad_atp, is_new_atp, { k });
+                    stack_offset, pad_atp, is_new_atp, { k });
             record_injectable_bugs_at<Bug::CHAFF_DIVZERO>(
-                    si->insertionpoint, pad_atp, is_new_atp, { k });
+                    stack_offset, pad_atp, is_new_atp, { k });
             //break;
         }
     } else {
@@ -680,11 +682,11 @@ void taint_query_pri(Json::Value& ple) {
             if (r.empty())  continue;
             const DuaBytes *k = create(DuaBytes{exploit_dua, r});
             record_injectable_bugs_at<Bug::CHAFF_STACK_CONST>(
-                    si->insertionpoint, pad_atp, is_new_atp, { k });
+                    stack_offset, pad_atp, is_new_atp, { k });
             record_injectable_bugs_at<Bug::CHAFF_HEAP_CONST>(
-                    si->insertionpoint, pad_atp, is_new_atp, { k });
+                    stack_offset, pad_atp, is_new_atp, { k });
             record_injectable_bugs_at<Bug::CHAFF_DIVZERO>(
-                    si->insertionpoint, pad_atp, is_new_atp, { k });
+                    stack_offset, pad_atp, is_new_atp, { k });
             //break;
         }
     }
@@ -877,11 +879,17 @@ void record_injectable_bugs_at(const uint32_t stackoff, const AttackPoint *atp, 
                     std::advance(it, rand() % distance);
                     const Dua *extra_dua = *it;
                     Range selected = get_dua_dead_range(extra_dua, labels_so_far);
-                    if (selected.empty()) continue;
+                    if (selected.empty()) {
+                        continue;
+                    }
                     extra = create(DuaBytes(extra_dua, selected));
-                    if (disjoint(labels_so_far, extra->all_labels)) break;
+                    if (disjoint(labels_so_far, extra->all_labels)) {
+                        break;
+                    }
                 }
-                if (tries == RANDOM_DUA_TRIES) break;
+                if (tries == RANDOM_DUA_TRIES) {
+                    break;
+                }
                 extra_duas.push_back(extra);
 
                 size_t new_size = extra->all_labels.size() + labels_so_far.size();
@@ -954,20 +962,22 @@ void attack_point_lval_usage(Json::Value ple) {
             ast_loc, (AttackPoint::Type) std::strtoul(pleatp["info"].asString().c_str(), 0, 0)});
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
 
+    uint32_t stack_offset = std::strtoul(pleatp["insertionpoint"].asString().c_str(), 0, 0);
+
     // Don't decimate PTR_ADD bugs.
     switch ((AttackPoint::Type) std::strtoul(pleatp["info"].asString().c_str(), 0, 0)) {
     case AttackPoint::POINTER_WRITE:
-        record_injectable_bugs_at<Bug::REL_WRITE>(si->insertionpoint, atp, is_new_atp, { });
+        record_injectable_bugs_at<Bug::REL_WRITE>(stack_offset, atp, is_new_atp, { });
         // fall through
     case AttackPoint::POINTER_READ:
     case AttackPoint::FUNCTION_ARG:
-        record_injectable_bugs_at<Bug::PTR_ADD>(si->insertionpoint, atp, is_new_atp, { });
+        record_injectable_bugs_at<Bug::PTR_ADD>(stack_offset, atp, is_new_atp, { });
         break;
     case AttackPoint::PRINTF_LEAK:
-        record_injectable_bugs_at<Bug::PRINTF_LEAK>(si->insertionpoint, atp, is_new_atp, { });
+        record_injectable_bugs_at<Bug::PRINTF_LEAK>(stack_offset, atp, is_new_atp, { });
         break;
     case AttackPoint::MALLOC_OFF_BY_ONE:
-        record_injectable_bugs_at<Bug::MALLOC_OFF_BY_ONE>(atp, is_new_atp, { });
+        record_injectable_bugs_at<Bug::MALLOC_OFF_BY_ONE>(stack_offset, atp, is_new_atp, { });
         break;
     }
     t.commit();
@@ -975,42 +985,44 @@ void attack_point_lval_usage(Json::Value ple) {
 
 const char *except_list = "libc-2.13.so!";
 
-void record_call(Panda__LogEntry *ple) {
-    Panda__DwarfCall *call = ple->dwarf_call;
+void record_call(Json::Value ple) {
+    Json::Value call = ple["dwarf2Call"];
 
     // Skip library calls
-    if (strstr(call->function_name_callee, except_list) != NULL)
+    if (strstr(call["function_name_callee"].asString().c_str(), except_list) != NULL) {
         return;
-
+    }
     cur_call_stack.push_back(std::make_pair(
-                std::string(call->file_callee),
-                std::string(call->function_name_callee)));
+                call["file_callee"].asString().c_str(),
+                call["function_name_callee"].asString().c_str()));
 
     // Restrict call stack size
     assert(cur_call_stack.size() < 100);
 }
 
-void record_ret(Panda__LogEntry *ple) {
-    Panda__DwarfCall *ret = ple->dwarf_ret;
+void record_ret(Json::Value ple) {
+    Json::Value ret = ple["dwarf2Ret"];
 
     // Skip library calls
-    if (strstr(ret->function_name_callee, except_list) != NULL)
+    if (strstr(ret["function_name_callee"].asString().c_str(), except_list) != NULL) {
         return;
+    }
 
-    if (cur_call_stack.size() == 0) return;
-
-    assert (cur_call_stack.back() == std::make_pair(std::string(ret->file_callee),
-                std::string(ret->function_name_callee)));
+    if (cur_call_stack.size() == 0) {
+        return;
+    }
+    assert (cur_call_stack.back() == std::make_pair(
+                ret["file_callee"].asString().c_str(),
+                ret["function_name_callee"].asString().c_str()));
     cur_call_stack.pop_back();
 }
 
 
-void record_trace(Panda__LogEntry *ple) {
+void record_trace(Json::Value ple) {
     transaction t(db->begin());
-    Panda__SourceTraceId *stid = ple->source_trace_id;
-    LavaASTLoc ast_loc(ind2str[stid->ast_loc_id]);
-    const SourceTrace *srctr = create(
-            SourceTrace{0, source_trace_index++, ast_loc});
+    Json::Value stid = ple["sourceTraceId"];
+    ASTLoc ast_loc(ind2str[std::strtoul(stid.asString().c_str(), 0, 0)]);
+    const SourceTrace *srctr = create(SourceTrace{0, source_trace_index++, ast_loc});
     t.commit();
 }
 
@@ -1176,11 +1188,10 @@ int main (int argc, char **argv) {
             update_liveness(ple);
         } else if (ple.isMember("attackPoint")) {
             attack_point_lval_usage(ple);
-        } else if (ple.isMember("dwarfCall")) {
+        } else if (ple.isMember("dwarf2Call")) {
             record_call(ple);
-        } else if (ple.isMember("dwarfRet")) {
+        } else if (ple.isMember("dwarf2Ret")) {
             record_ret(ple);
-<<<<<<< HEAD
         } else if (ple.isMember("fileTaintMatch")) {
             // 1. Extract the filename path string from the JsonCpp object
             std::string full_path = ple["fileTaintMatch"]["filename"].asString();
@@ -1194,10 +1205,8 @@ int main (int argc, char **argv) {
             // 3. Update your live tracker state variable
             // (Ensure inputfilename or a similar string tracker is accessible)
             inputfile = base_filename;
-=======
-        } else if (ple->source_trace_id) {
+        } else if (ple.isMember("sourceTraceId")) {
             record_trace(ple);
->>>>>>> dba0393 (implement overconstrain strategy)
         }
         // pandalog_free_entry(ple);
 
