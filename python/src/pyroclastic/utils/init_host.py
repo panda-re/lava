@@ -17,15 +17,14 @@ def progress(msg):
 
 def main():
     # Download PyPanda QCows and set up a new home for all lava-configs in ~/.lava/
-    Qcows.get_qcow('x86_64')
     lava_config_directory = os.path.join(os.path.expanduser("~"), ".lava")
     os.makedirs(lava_config_directory, exist_ok=True)
 
     parser = argparse.ArgumentParser(description='Arguments to modify host.json for LAVA depending on the environment')
     parser.add_argument('--docker', '-d', dest='docker', action='store_true',
                         help='If set, have host.json assume LAVA will be run from Docker environment')
-    parser.add_argument('--container', '-c', dest='container', default='lava64',
-                        help='Set the name of the Docker container with LAVA installed. (default: lava64)')
+    parser.add_argument('--container', '-c', dest='container', action='store', default='pandare/lava',
+                        help='Set the name of the Docker container with LAVA installed. (default: pandare/lava)')
     parser.add_argument('--qemu', '-q', dest='qemu', default='x86_64',
                         choices=get_valid_architectures(),
                         help='Set the name of the Docker container with LAVA installed. (default: lava64)')
@@ -33,28 +32,36 @@ def main():
                         help='Use this flag only for the GitHub Actions environment.')
     parser.add_argument('--force', '-f', dest='force', action='store_true',
                         help='Use this flag to force over-write of existing host.json.')
+    parser.add_argument('--bin', '-b', dest='binary', action='store', default='target_bins',
+                        help='Set the directory name for target binaries. (default: target_bins)')
+    parser.add_argument('--config', dest='config', action='store', default='target_configs',
+                        help='Set the name of the directory for target configurations. (default: target_configs)')
+    parser.add_argument('--output', '-o', dest='output', action='store', default='target_injections',
+                        help='Set the name of the directory for create LAVA targets and injections. '
+                             '(default: target_injections)')
     args = parser.parse_args()
+    Qcows.get_qcow(args.qemu)
 
     progress(f"Using LAVA config directory at {os.getcwd()}")
 
     # Check if 'target_bins' and 'target_configs' exist. If not, stop and warn user.
     # Create a 'target_injections' directory.
-    if not os.path.isdir(os.path.join(os.getcwd(), "target_bins")):
+    if not os.path.isdir(os.path.join(os.getcwd(), args.binary)):
         progress("Error: 'target_bins' directory not found in current working directory. "
                  "Please create it and add target binaries before running 'lava init-host'.")
         return 1
-    if not os.path.isdir(os.path.join(os.getcwd(), "target_configs")):
+    if not os.path.isdir(os.path.join(os.getcwd(), args.config)):
         progress("Error: 'target_configs' directory not found in current working directory. "
                  "Please create it and add target configurations before running 'lava init-host'.")
         return 1
-    os.makedirs(os.path.join(os.getcwd(), "target_injections"), exist_ok=True)
+    os.makedirs(os.path.join(os.getcwd(), args.output), exist_ok=True)
 
     host_json_path = os.path.join(lava_config_directory, "host.json")
     json_configs = {
         "qemu": args.qemu,
-        "output_dir": os.path.join(os.getcwd(), "target_injections"),
-        "config_dir": os.path.join(os.getcwd(), "target_configs"),
-        "tar_dir": os.path.join(os.getcwd(), "target_bins"),
+        "output_dir": os.path.join(os.getcwd(), args.output),
+        "config_dir": os.path.join(os.getcwd(), args.config),
+        "tar_dir": os.path.join(os.getcwd(), args.binary),
         "db_suffix": "_" + os.environ["USER"],
         "port": 5432,
         "pguser": "postgres",
