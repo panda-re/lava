@@ -39,6 +39,9 @@ def main():
     parser.add_argument('--output', '-o', dest='output', action='store', default='target_injections',
                         help='Set the name of the directory for create LAVA targets and injections. '
                              '(default: target_injections)')
+    parser.add_argument('--generate', '-g', dest='generate', action='store', default='target_generation',
+                        help='Set the name of the directory for create LAVA to obtain code coverage and generate new inputs.'
+                             '(default: target_generation)')
     args = parser.parse_args()
     Qcows.get_qcow(args.qemu)
 
@@ -55,6 +58,7 @@ def main():
                  "Please create it and add target configurations before running 'lava init-host'.")
         return 1
     os.makedirs(os.path.join(os.getcwd(), args.output), exist_ok=True)
+    os.makedirs(os.path.join(os.getcwd(), args.generate), exist_ok=True)
 
     host_json_path = os.path.join(lava_config_directory, "host.json")
     json_configs = {
@@ -62,6 +66,7 @@ def main():
         "output_dir": os.path.join(os.getcwd(), args.output),
         "config_dir": os.path.join(os.getcwd(), args.config),
         "tar_dir": os.path.join(os.getcwd(), args.binary),
+        "generation_dir":  os.path.join(os.getcwd(), args.generate),
         "db_suffix": "_" + os.environ["USER"],
         "port": 5432,
         "pguser": "postgres",

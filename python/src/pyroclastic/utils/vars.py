@@ -59,6 +59,8 @@ def validate_host(host: dict):
     assert 'config_dir' in host
     # path to qemu exec (correct guest)
     assert 'qemu' in host
+    # path for input generation/coverage testing
+    assert 'generation_dir' in host
     assert host['qemu'] in get_valid_architectures()
 
 
@@ -76,10 +78,10 @@ def validate_project(project_dict: dict):
 def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
     """
     Generates environment variables based on target architecture.
-    mode: 'default', 'full', or 'panda'
+    mode: 'default', 'full', 'llvm_cov' or 'panda'
     """
-    clang = os.path.join(llvm_dir, 'bin/clang')
-    clang_pp = os.path.join(llvm_dir, 'bin/clang++')
+    clang = os.path.join(llvm_dir, 'bin', 'clang')
+    clang_pp = os.path.join(llvm_dir, 'bin', 'clang++')
 
     # 1. Base flags common to ALL architectures
     base_cflags = [
@@ -99,18 +101,29 @@ def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
     # 3. Mode-Specific Flags
     mode_extras = {
         "default": [],
+        # On injection step, we will mess with points, so we need this flag
         "full": ["-Wno-int-conversion"],
-        "panda": ["-static"]
+        # When compiling for PANDA, we need to ensure static linking
+        "panda": ["-static"],
+        # Modern LLVM coverage (uses llvm_cov/llvm-profdata)
+        "llvm_cov": ["-fprofile-instr-generate", "-fcoverage-mapping"]
     }
 
     # Build the final CFLAGS string
-    final_cflags = base_cflags + arch_flags.get(arch, []) + mode_extras.get(mode, [])
+    selected_mode_flags = mode_extras.get(mode, [])
+    final_cflags = base_cflags + arch_flags.get(arch, []) + selected_mode_flags
 
-    return {
+    env = {
         'CC': clang,
         'CXX': clang_pp,
-        'CFLAGS': " ".join(final_cflags)
+        'CFLAGS': " ".join(final_cflags),
+        'CXXFLAGS': " ".join(final_cflags)
     }
+
+    # If we are doing coverage, we often need to pass the same flags to the linker
+    if mode in ["llvm_cov"]:
+        env['LDFLAGS'] = " ".join(selected_mode_flags)
+    return env
 
 
 def parse_vars(project_name: str):
@@ -166,6 +179,7 @@ def parse_vars(project_name: str):
 
     # Other config
     project_data["qemu"] = host["qemu"]
+    project_data["generation_dir"] = host["generation_dir"]
     project_data["output_dir"] = os.path.join(host["output_dir"], project_data["name"])
     project_data["directory"] = host["output_dir"]
     project_data["config_dir"] = os.path.join(host["config_dir"], project_data["name"])
@@ -178,6 +192,7 @@ def parse_vars(project_name: str):
     project_data["env_var"] = get_project_env(project_data["llvm-dir"], host["qemu"], "default")
     project_data["full_env_var"] = get_project_env(project_data["llvm-dir"], host["qemu"], "full")
     project_data["panda_compile"] = get_project_env(project_data["llvm-dir"], host["qemu"], "panda")
+    project_data["llvm_cov"] = get_project_env(project_data["llvm-dir"], host["qemu"], "llvm_cov")
     return Project(project_data)
 
 
