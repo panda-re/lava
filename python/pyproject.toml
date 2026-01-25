@@ -21,7 +21,7 @@ include = ["pyroclastic", "pyroclastic.*"]
 
 [tool.setuptools.package-data]
 # This explicitly attaches the ODB files ONLY to the 'generated' sub-package
-"pyroclastic.data" = ["*.cxx", "*.hxx", "*.ixx", "*.sql"]
+"pyroclastic.data" = ["*.sql"]
 
 [project]
 name = "pyroclastic"
@@ -34,6 +34,7 @@ authors = [
 keywords = ["lava", "panda", "bug-injection", "fuzzing", "dynamic-analysis"]
 requires-python = ">=3.10"
 dependencies = [
+    "compiledb",
     "colorama",
     "db",
     "ipython",

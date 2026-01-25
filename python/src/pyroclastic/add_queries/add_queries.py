@@ -6,11 +6,9 @@ import shlex
 import shutil
 from pathlib import Path
 import argparse
-import json
 # LAVA
+from ..utils.funcs import read_compile_db
 from ..utils.vars import parse_vars
-from ..utils.sw_btrace_to_compiledb import main as sw_btrace_to_compiledb
-from .get_c_files import process_compile_commands
 from .fninstr import analysis
 
 
@@ -77,7 +75,7 @@ class QueryManager:
         # First pre-process, append the makefile.fixup to Makefile for easy pre-processing.
         if not self.config.get('preprocessed', False):
             print("Preprocessing Source code...")
-            with open(Path(__file__).parent.parent / "data/makefile.fixup", "r") as mf:
+            with open(Path(__file__).parent.parent / "data" / "makefile.fixup", "r") as mf:
                 modified_make = mf.read()
 
             with open(source_path / "Makefile", "a+") as mf:
@@ -93,35 +91,10 @@ class QueryManager:
             run_cmd(shlex.split(full_config), env=env)
 
         # 5. Make with Btrace
-        # Handling the '&&' split logic from bash
-        make_commands = [c.strip() for c in self.config['make'].split('&&')]
-        env["LD_PRELOAD"] = "libsw-btrace.so"
-        env["BTRACE_LOG"] = "btrace.log"
-
-        for m_cmd in make_commands:
-            run_cmd(shlex.split(m_cmd), env=env)
+        run_cmd(f"compiledb -- {self.config['make']}", env=env, shell=True)
 
         # 6. Install
         run_cmd(self.config['install'], shell=True)
-
-        # 7. Create compile_commands.json
-        # Logic for clang include path
-        clang_include = self.llvm_path / "lib/clang" / self.config["llvm-version"] / "include"
-
-        # Call sw_btrace_to_compiledb main
-        sw_btrace_to_compiledb(str(clang_include))
-
-        # Handle extra_compile_commands.json if exists
-        extra_json = self.project_dir / "extra_compile_commands.json"
-        if extra_json.exists():
-            # Standard Python JSON merge would be safer, but mimicking sed/tail logic:
-            with open("compile_commands.json", "r") as f:
-                base = json.load(f)
-            with open(extra_json, "r") as f:
-                extra = json.load(f)
-            base.extend(extra)
-            with open("compile_commands.json", "w") as f:
-                json.dump(base, f, indent=4)
 
         run_cmd(["git", "add", "compile_commands.json"])
         run_cmd(["git", "commit", "-m", "Add compile_commands.json."])
@@ -129,11 +102,7 @@ class QueryManager:
         # 8. Get C files and Insert Headers
         os.chdir(self.project_dir)
 
-        c_files = []
-        c_dirs = []
-        for entry in process_compile_commands(source_dirname):
-            c_files.append(os.path.join(entry['directory'], entry['file']))
-            c_dirs.append(entry['directory'])
+        c_dirs, c_files = read_compile_db(source_path)
 
         # Given the Debian package installed in /usr/include, we now copy it to LAVA project.
         include_dir = Path("/usr/include")

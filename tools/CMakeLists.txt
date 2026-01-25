@@ -53,7 +53,6 @@ install(FILES "../LICENSE"
         DESTINATION "${CMAKE_INSTALL_DOCDIR}"
         RENAME "copyright")
 
-add_subdirectory(btrace)
 add_subdirectory(lavaODB)
 add_subdirectory(lavaDB)
 add_subdirectory(lavaTool)

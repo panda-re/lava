@@ -43,16 +43,6 @@ jobs:
           cd ./tools/build
           cpack -G DEB
           sudo apt-get install ./lava*.deb
-          # Force the cache to update NOW so we don't rely on the background trigger timing
-          sudo ldconfig
-          if ldconfig -p | grep -q "libsw-btrace.so"; then
-            echo "[DEBIAN INSTALL] Lava Debian package installed successfully"
-          else
-            echo "[DEBIAN INSTALL] Error: libsw-btrace.so not found in ldconfig cache"
-            echo "[DEBIAN INSTALL] Checking if the file exists on disk at least..."
-            find /usr/lib -name "libsw-btrace.so"
-            exit 1
-          fi
 
       - name: Create Wheel file
         run: |

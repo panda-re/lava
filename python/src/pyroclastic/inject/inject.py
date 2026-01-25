@@ -12,10 +12,8 @@ from typing import List
 from subprocess import PIPE, check_call
 from pathlib import Path
 # LAVA imports
-from .process_compile_commands import get_c_files, process_compile_commands
 from ..utils.vars import parse_vars
-from ..utils.funcs import get_inject_parser
-from ..utils.sw_btrace_to_compiledb import main as sw_btrace_to_compiledb
+from ..utils.funcs import get_inject_parser, read_compile_db
 from ..utils.database_types import Bug, DuaBytes, Build, Run, BugKind, LavaDatabase
 
 NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
@@ -61,7 +59,7 @@ class LavaPaths(object):
 
 
 # get list of bugs either from cmd line or db
-def get_bug_list(arguments, db, allowed_bugtypes):
+def get_bug_list(arguments: argparse.Namespace, db: LavaDatabase, allowed_bugtypes):
     update_db = False
     print("Picking bugs to inject.")
     sys.stdout.flush()
@@ -128,7 +126,7 @@ def get_bugs_parent(lp: LavaPaths):
     return bugs_parent
 
 
-def get_bugs(db, bug_id_list):
+def get_bugs(db: LavaDatabase, bug_id_list: List):
     bugs = []
     for bug_id in bug_id_list:
         bugs.append(db.session.query(Bug).filter(Bug.id == bug_id).all()[0])
@@ -167,7 +165,7 @@ def get_allowed_bugtype_num(arguments) -> list[int]:
 
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
-def inject_bugs(bug_list, db, lp, project: dict, arguments,
+def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, arguments,
                 update_db: bool, dataflow: bool = False, competition: bool = False,
                 validated: bool=False, lavatoolseed: int = 0):
     # TODO: don't pass args, just pass the data we need to run
@@ -191,8 +189,7 @@ def inject_bugs(bug_list, db, lp, project: dict, arguments,
 
     if not os.path.isdir(lp.bugs_build):
         print("Untarring...")
-        check_call(['tar', '--no-same-owner', '-xf', project['tarfile']],
-                   cwd=lp.bugs_parent)
+        check_call(['tar', '--no-same-owner', '-xf', project['tarfile']], cwd=lp.bugs_parent)
     if not os.path.exists(os.path.join(lp.bugs_build, '.git')):
         print("Initializing git repo...")
         run(['git', 'init'])
@@ -210,42 +207,25 @@ def inject_bugs(bug_list, db, lp, project: dict, arguments,
 
         if not project.get('preprocessed', False):
             with open(os.path.join(lp.bugs_build, 'Makefile'), 'a') as fd, \
-                open(Path(__file__).parent.parent / "data/makefile.fixup", 'r') as fdd:
+                open(Path(__file__).parent.parent / "data" / "makefile.fixup", 'r') as fdd:
                 fd.write(fdd.read())
             print("Preprocessing Source code...")
             run_cmd(' '.join(['make', 'lava_preprocess']), project, envv, 30, cwd=lp.bugs_build, shell=True)
             run_cmd(["git", "add", "."], project)
             run_cmd(["git", "commit", "-m", "Pre-processed source."], project)
-    if not os.path.exists(os.path.join(lp.bugs_build, 'btrace.log')):
-        print("Making with btrace...")
-
-        # Silence warnings related to adding integers to pointers since we already
-        # know that it's unsafe.
-        envv = project["full_env_var"]
-        if competition:
-            envv["CFLAGS"] += " -DLAVA_LOGGING"
-        envv["BTRACE_LOG"] = "btrace.log"
-        envv["LD_PRELOAD"] = "libsw-btrace.so"
-        print("Running btrace make command: {} with env: {} in {}"
-              .format(project['make'], envv, lp.bugs_build))
-        rv, output = run_cmd(project['make'], project, envv, 30,
-                             cwd=lp.bugs_build, shell=True)
-        assert rv == 0, "Make with btrace failed"
 
     sys.stdout.flush()
     sys.stderr.flush()
 
     if not os.path.exists(os.path.join(lp.bugs_build, 'compile_commands.json')):
-        clang_include = os.path.join(project["llvm-dir"], "lib/clang", project["llvm-version"], "include")
-        previous_dir = os.getcwd()
-        os.chdir(lp.bugs_build)
-        sw_btrace_to_compiledb(str(clang_include))
-        os.chdir(previous_dir)
-
-        process_compile_commands(
-            os.path.join(lp.bugs_build, 'compile_commands.json'),
-            os.path.join(lp.bugs_top_dir, '../extra_compile_commands.json')
-        )
+        envv = project["full_env_var"]
+        if competition:
+            envv["CFLAGS"] += " -DLAVA_LOGGING"
+        print("Running compiledb -- make command: {} with env: {} in {}"
+              .format(project['make'], envv, lp.bugs_build))
+        rv, output = run_cmd(f"compiledb -- {project['make']}", project, envv, 30,
+                             cwd=lp.bugs_build, shell=True)
+        assert rv == 0, "Make with compiledb failed"
 
         run(['git', 'add', '-f', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json.'])
@@ -277,7 +257,7 @@ def inject_bugs(bug_list, db, lp, project: dict, arguments,
         pass
 
     # collect set of src files into which we must inject code
-    src_files = collect_src_and_print(bugs_to_inject, db)
+    src_files : set = collect_src_and_print(bugs_to_inject, db)
     input_files = unfuzzed_input_for_bug(project)
 
     # cleanup
@@ -292,17 +272,30 @@ def inject_bugs(bug_list, db, lp, project: dict, arguments,
 
     all_files = src_files | set(project['main_file'])
 
-    if dataflow:
-        # if we're injecting with dataflow, we must modify all files in src
-        compile_commands = os.path.join(lp.bugs_build, 'compile_commands.json')
-        print('compile commands is here: {}'.format(compile_commands))
-        all_c_files = get_c_files(lp.bugs_build, compile_commands)
-        # print('all_c_files: {}'.format(all_c_files))
-        # print('all_files: {}'.format(all_files))
-        all_files = all_files.union(all_c_files)
+    compile_commands = os.path.join(lp.bugs_build, 'compile_commands.json')
+    print('compile commands is here: {}'.format(compile_commands))
+    src_dirs, all_c_files = read_compile_db(lp.bugs_build)
 
-    def modify_source(directory_name):
-        return run_lavatool(bugs_to_inject, lp, project, directory_name, knob_trigger=arguments.knobTrigger,
+    # Debug printing for inspection
+    print("DEBUG: src_dirs (count={}):".format(len(src_dirs)))
+    for d in sorted(src_dirs):
+        print("  - {}".format(d))
+
+    print("DEBUG: all_c_files (count={}):".format(len(all_c_files)))
+    for f in sorted(all_c_files):
+        print("  - {}".format(f))
+
+    if dataflow:
+        for c_full_path in all_c_files:
+            file_name_only = os.path.basename(c_full_path)
+            all_files.union(file_name_only)
+
+    print("DEBUG: all_files (count={}):".format(len(all_files)))
+    for f in sorted(all_c_files):
+        print("  - {}".format(f))
+
+    def modify_source(file_name: str):
+        return run_lavatool(bugs_to_inject, lp, project, file_name, knob_trigger=arguments.knobTrigger,
                             dataflow=dataflow, competition=competition, randseed=lavatoolseed)
 
     bug_solutions = {}  # Returned by lavaTool
@@ -313,24 +306,6 @@ def inject_bugs(bug_list, db, lp, project: dict, arguments,
         bug_solutions.update(modify_source(filename))
 
     clang_apply = os.path.join(project['llvm-dir'], 'bin', 'clang-apply-replacements')
-
-    src_dirs = set()
-    src_dirs.add("")  # Empty path for root
-    for filename in all_files:
-        src_dir = os.path.dirname(filename)
-        if len(src_dir):
-            src_dirs.add(src_dir.encode("ascii", "ignore"))
-
-    # Here we need to apply replacements. Unfortunately it can be a little complicated
-    # compile_commands.json will be in lp.bugs_build. But then it contains data like:
-    # directory: "[lp.bugs_build]/" file: src/foo.c" OR
-    # directory: "[lp.bugs_build]/src" file: foo.c"
-    # depending on how the makefile works
-
-    # In theory, we should be able to run clang-apply-replacements
-    # from the lp.bugs_build directory, and it should _just work_ but that doesn't
-    # always happen. Instead, we'll run it inside each unique src directory
-
     one_replacement_success = False
     for src_dir in src_dirs:
         if project['debug']:
@@ -423,7 +398,7 @@ def inject_bugs(bug_list, db, lp, project: dict, arguments,
     return build, input_files, bug_solutions
 
 
-def run_cmd(cmd, project, envv=None, timeout=30, cwd=None, shell=False):
+def run_cmd(cmd, project: dict, envv = None, timeout: int = 30, cwd = None, shell: bool = False):
     if type(cmd) in [str] and not shell:
         cmd = shlex.split(cmd)
 
@@ -459,7 +434,7 @@ def run_cmd(cmd, project, envv=None, timeout=30, cwd=None, shell=False):
     return p.returncode, output
 
 
-def run_cmd_notimeout(cmd, project, **kwargs):
+def run_cmd_notimeout(cmd, project: dict, **kwargs):
     return run_cmd(cmd, project,None, None, **kwargs)
 
 
@@ -469,7 +444,7 @@ def run_cmd_notimeout(cmd, project, **kwargs):
 # file named new_filename
 
 
-def mutfile(unfuzzed_filename: str, fuzz_labels_list, new_filename: str, bug,
+def mutfile(unfuzzed_filename: str, fuzz_labels_list: list, new_filename: str, bug: Bug,
             kt=False, knob=0, solution=None):
     # Open filename, mutate it and store in new_filename such that
     # it hopefully triggers the passed bug
@@ -538,8 +513,8 @@ def mutfile(unfuzzed_filename: str, fuzz_labels_list, new_filename: str, bug,
 
 # run lavatool on this file to inject any parts of this list of bugs
 def run_lavatool(bug_list: List[Bug], lp: LavaPaths, project: dict, filename: str,
-                 knob_trigger=False, dataflow=False, competition=False,
-                 randseed=0):
+                 knob_trigger: bool = False, dataflow : bool = False, competition : bool = False,
+                 randseed: int = 0):
     lt_debug = False
     print("Running lavaTool on [{}]...".format(filename))
     if len(bug_list) == 0:
@@ -554,12 +529,15 @@ def run_lavatool(bug_list: List[Bug], lp: LavaPaths, project: dict, filename: st
     main_files = ','.join([os.path.join(str(lp.bugs_build), f) for f in project['main_file']])
 
     cmd = [
-        lp.lava_tool, '-action=inject', '-bug-list=' + bug_list_str,
-                                        '-src-prefix=' + lp.bugs_build,
-                                        '-host=' + db_hostname,
-                                        '-db=' + db_name,
-                                        '-main-files=' + main_files,
-                                        os.path.join(lp.bugs_build, filename)]
+        lp.lava_tool,
+        '-action=inject',
+        '-bug-list=' + bug_list_str,
+        '-src-prefix=' + lp.bugs_build,
+        '-host=' + db_hostname,
+        '-db=' + db_name,
+        '-main-files=' + main_files,
+        os.path.join(lp.bugs_build, filename)
+    ]
 
     # Todo either parameterize here or hardcode everywhere else
     # For now, lavaTool will only work if it has a whitelist, so we always pass this
@@ -640,7 +618,7 @@ def limit_atp_reuse(bugs: List[Bug], max_per_line: int = 1):
 
 
 # Build a set of src/input files that we need to modify to inject these bugs
-def collect_src_and_print(bugs_to_inject, db):
+def collect_src_and_print(bugs_to_inject: List[Bug], db: LavaDatabase):
     src_files = set()
 
     for bug_index, bug in enumerate(bugs_to_inject):
@@ -783,7 +761,8 @@ def fuzzed_input_for_bug(project: dict, bug: Bug) -> str:
     return "{}-fuzzed-{}{}".format(prefix, bug.id, suffix)
 
 
-def validate_bug(db, lp: LavaPaths, project: dict, bug: Bug, build: Build, arguments, update_db: bool,
+def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
+                 build: Build, arguments: argparse.Namespace, update_db: bool,
                  unfuzzed_outputs=None, competition: bool = False, solution=None):
     unfuzzed_input_files = unfuzzed_input_for_bug(project)
     unfuzzed_input_file = random.choice(unfuzzed_input_files)
@@ -852,7 +831,7 @@ def validate_bug(db, lp: LavaPaths, project: dict, bug: Bug, build: Build, argum
 
 
 # validate this set of bugs
-def validate_bugs(bug_list, db, lp, project: dict, input_files: list, build,
+def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths, project: dict, input_files: list, build : Build,
                   arguments, update_db: bool, competition: bool = False, bug_solutions=None):
     timeout = project.get('timeout', 5)
 
