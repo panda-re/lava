@@ -31,7 +31,7 @@ struct ChaffFuncDeclArgAdditionHandler : public LavaMatchHandler {
                 data << "int lava_chaff_var_1 = 0;\n";
                 // Use another probing var to avoid gcc local var rearrangement
                 data << "int lava_chaff_var_2 = &" << func->getNameAsString() << ";\n";
-                Mod.InsertAt(first->getLocStart(), data.str());
+                Mod.InsertAt(first->getBeginLoc(), data.str());
             }
             return;
         }
@@ -59,7 +59,7 @@ struct ChaffFuncDeclArgAdditionHandler : public LavaMatchHandler {
                 data << "int lava_chaff_data = 0;\n";
                 data << "int *" ARG_NAME << "= &lava_chaff_data;\n";
                 // Use InsertAfter - leave room for Abritriary variables in Stack Overrun bugs
-                Mod.InsertTo(first->getLocStart(), data.str());
+                Mod.InsertTo(first->getBeginLoc(), data.str());
             }
         }
 
@@ -74,8 +74,8 @@ struct ChaffFuncDeclArgAdditionHandler : public LavaMatchHandler {
                 data << "int lava_chaff_var_1 = 0;\n";
                 // To keep var_0 and var_1 of the same use count - to avoid local var rearragement
                 data << "int lava_chaff_var_2 = &lava_chaff_var_0;\n";
-                // Use InsertAfter - leave room for Abritriary variables in Stack Overrun bugs
-                Mod.InsertAt(first->getLocStart(), data.str());
+                // Use InsertAfter - leave room for Arbitrary variables in Stack Overrun bugs
+                Mod.InsertAt(first->getBeginLoc(), data.str());
             }
         }
 

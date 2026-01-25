@@ -113,10 +113,10 @@ struct LvalBytes {
 std::map<ASTLoc, vector_set<LvalBytes>> siphons_at;
 std::map<LvalBytes, uint32_t> data_slots;
 // Same mapping for siphon of extra_duas
-std::map<LavaASTLoc, vector_set<LvalBytes>> extra_siphons_at;
+std::map<ASTLoc, vector_set<LvalBytes>> extra_siphons_at;
 std::map<LvalBytes, uint32_t> extra_data_slots;
 
-std::map<LavaASTLoc, std::vector<LExpr>> extra_overconst_expr;
+std::map<ASTLoc, std::vector<LExpr>> extra_overconst_expr;
 
 std::string LavaPath;
 
@@ -556,7 +556,7 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
             tr_start = tr_start + (rand() % (tr_end - tr_start));
         std::unique_ptr<SourceTrace> tr(
                 db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tr_start));
-        LavaASTLoc ast_loc = tr->loc;
+        ASTLoc ast_loc = tr->loc;
         LExpr checker  = Test(bug);
         if (flipflag) {
             if (i > 0) {
