@@ -94,10 +94,6 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v5
-    - name: Manually download Qcow
-      run: |
-        mkdir -p $HOME/.panda
-        wget --show-progress --quiet --tries=5 --wait=10 https://panda-re.mit.edu/qcows/linux/ubuntu/1804/x86_64/bionic-server-cloudimg-amd64-noaslr-nokaslr.qcow2 -O $HOME/.panda/bionic-server-cloudimg-amd64-noaslr-nokaslr.qcow2
     - name: Update and install all requirements
       run: |
         bash install.sh
