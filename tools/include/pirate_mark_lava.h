@@ -1,13 +1,10 @@
 #ifndef __PIRATE_MARK_LAVA_H__
 #define __PIRATE_MARK_LAVA_H__
 
-// For LAVA use only
-#define LAVA_MAGIC 0xabcd
-
 // https://github.com/panda-re/libhc/blob/main/hypercall.h
 #include <panda/hypercall.h>
 // https://github.com/panda-re/panda/blob/dev/panda/include/panda/lava_hypercall_struct.h
-#include "panda_hypercall_struct.h"
+#include <panda/lava_hypercall_struct.h>
 
 static const int LABEL_BUFFER = 7;
 static const int LABEL_BUFFER_POS = 8;
@@ -19,7 +16,7 @@ static const int LAVA_PRI_QUERY_POINT = 13;
 
 // see tools/lavaTool/include/LavaMatchHandler.h
 static inline 
-void vm_lava_attack_point(lavaint ast_loc_id, unsigned long linenum, lavaint info) {
+void vm_lava_attack_point(unsigned int ast_loc_id, unsigned long linenum, unsigned int info) {
   volatile PandaHypercallStruct phs = {0};
   phs.magic = LAVA_MAGIC;
   phs.action = LAVA_ATTACK_POINT;
