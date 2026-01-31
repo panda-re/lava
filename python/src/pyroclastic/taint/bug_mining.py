@@ -129,12 +129,6 @@ def run_taint_pipeline(lava_project: str):
 
         panda.run()
 
-        # inject.py will use this folder for fuzzing, we likely should update this structure to sort inputs better
-        if os.path.exists('inputs/'):
-            shutil.rmtree('inputs/')
-
-        shutil.copytree(input_file_directory, 'inputs/')
-
         record_time = tock(start)
         progress("bug_mining", 1, f"panda record complete {record_time} seconds")
         sys.stdout.flush()

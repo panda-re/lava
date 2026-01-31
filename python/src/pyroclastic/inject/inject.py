@@ -8,6 +8,7 @@ import shlex
 import struct
 import subprocess
 import random
+import shutil
 from typing import List
 from subprocess import PIPE, check_call
 from pathlib import Path
@@ -211,8 +212,8 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
                 fd.write(fdd.read())
             print("Preprocessing Source code...")
             run_cmd(' '.join(['make', 'lava_preprocess']), project, envv, 30, cwd=lp.bugs_build, shell=True)
-            run_cmd(["git", "add", "."], project)
-            run_cmd(["git", "commit", "-m", "Pre-processed source."], project)
+            run_cmd(["git", "add", "."], project, cwd=lp.bugs_build, shell=True)
+            run_cmd(["git", "commit", "-m", "Pre-processed source."], project, cwd=lp.bugs_build, shell=True)
 
     sys.stdout.flush()
     sys.stderr.flush()
@@ -444,7 +445,7 @@ def run_cmd_notimeout(cmd, project: dict, **kwargs):
 # file named new_filename
 
 
-def mutfile(unfuzzed_filename: str, fuzz_labels_list: list, new_filename: str, bug: Bug,
+def mutate_file(unfuzzed_filename: str, fuzz_labels_list: list, new_filename: str, bug: Bug,
             kt=False, knob=0, solution=None):
     # Open filename, mutate it and store in new_filename such that
     # it hopefully triggers the passed bug
@@ -663,19 +664,41 @@ def collect_src_and_print(bugs_to_inject: List[Bug], db: LavaDatabase):
     return src_files
 
 
-def get_suffix(fn: str) -> str:
-    split = os.path.basename(fn).split(".")
+def get_suffix(file_name: str) -> str:
+    """
+    Get the suffix (file extension) of this filename
+    Args:
+        file_name: The input filename that was the original input file name
+
+    Returns:
+        The suffix (file extension) of this filename
+    """
+    split = os.path.basename(file_name).split(".")
     if len(split) == 1:
         return ""
     else:
         return "." + split[-1]
 
 
-# run the bugged-up program
-def run_modified_program(project: dict, install_dir: str, input_file: str,
+def run_modified_program(project: dict, install_dir: str, original_input_file: str,
                          timeout: int, shell: bool= False):
-    cmd = project['command'].format(install_dir=install_dir,
-                                    input_file=input_file)
+    """
+    Run the command to test if the injected bug did crash the program or not.
+    This is to confirm, even with modifications, the program does NOT crash with the original input.
+
+    We also use this to test to confirm that with bug injection and new input file that it DOES crash.
+    Args:
+        project: LAVA project configuration
+        install_dir: directory with binary
+        original_input_file: The input file passed into the modified program
+        timeout: time to wait before killing program
+        shell: Run on bash shell or not
+
+    Returns:
+        return value: the return output code. This determines success vs segfault.
+        stdout, stderror: A tuple of both standard output and standard error
+    """
+    cmd = project['command'].format(install_dir=install_dir, input_file=original_input_file)
     # cmd = "{}".format(cmd) # ... this is a nop?
     # cmd = '/bin/bash -c '+ pipes.quote(cmd)
     envv = {}
@@ -685,7 +708,6 @@ def run_modified_program(project: dict, install_dir: str, input_file: str,
     if len(lib_path):
         lib_path = lib_path.format(install_dir=install_dir)
         envv["LD_LIBRARY_PATH"] = os.path.join(install_dir, lib_path)
-
         print("Run modified program: LD_LIBRARY_PATH={} {}"
               .format(os.path.join(install_dir, lib_path), cmd))
     else:
@@ -735,13 +757,13 @@ def unfuzzed_input_for_bug(project: dict) -> list[str]:
     Returns:
         list of all input files
     """
-    all_files = []
-    for file in os.listdir(os.path.join(project["output_dir"], 'inputs')):
-        path = os.path.join(project["output_dir"], 'inputs', file)
-        # TODO: I think we should have different folders for initial inputs and good fuzzed inputs
-        if os.path.isfile(path) and "-fuzzed-" not in file:
-            all_files.append(path)
-    return all_files
+    input_files = []
+    input_file_directory = os.path.abspath(os.path.join(project["config_dir"], "inputs"))
+    for file in os.listdir(input_file_directory):
+        if not os.path.isfile(os.path.join(input_file_directory, file)):
+            continue
+        input_files.append(file)
+    return input_files
 
 
 def fuzzed_input_for_bug(project: dict, bug: Bug) -> str:
@@ -755,10 +777,14 @@ def fuzzed_input_for_bug(project: dict, bug: Bug) -> str:
         The filename for the fuzzed input for this bug
     """
     unfuzzed_inputs = unfuzzed_input_for_bug(project)
-    unfuzzed_input = random.choice(unfuzzed_inputs)
-    suffix = get_suffix(unfuzzed_input)
-    prefix = unfuzzed_input[:-len(suffix)] if suffix != "" else unfuzzed_input
-    return "{}-fuzzed-{}{}".format(prefix, bug.id, suffix)
+    unfuzzed_input_file_name = random.choice(unfuzzed_inputs)
+    suffix = get_suffix(unfuzzed_input_file_name)
+    prefix = unfuzzed_input_file_name[:-len(suffix)] if suffix != "" else unfuzzed_input_file_name
+    new_full_file_name = "{}-fuzzed-{}{}".format(prefix, bug.id, suffix)
+    generated_inputs_directory = os.path.join(project['output_dir'], 'generated-inputs')
+    os.makedirs(generated_inputs_directory, exist_ok=True)
+    new_full_file_path = os.path.join(generated_inputs_directory, new_full_file_name)
+    return new_full_file_path
 
 
 def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
@@ -766,9 +792,10 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
                  unfuzzed_outputs=None, competition: bool = False, solution=None):
     unfuzzed_input_files = unfuzzed_input_for_bug(project)
     unfuzzed_input_file = random.choice(unfuzzed_input_files)
+    unfuzzed_input_file = os.path.join(project["config_dir"], 'inputs', unfuzzed_input_file)
     fuzzed_input_file_name = fuzzed_input_for_bug(project, bug)
     print(str(bug))
-    print("fuzzed = [%s]" % fuzzed_input_file_name)
+    print(f"fuzzed = [{fuzzed_input_file_name}]")
     mutfile_kwargs = {}
     if arguments.knobTrigger:
         print("Knob size: {}".format(arguments.knobTrigger))
@@ -779,12 +806,12 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
         extra_query = db.session.query(DuaBytes) \
             .filter(DuaBytes.id.in_(bug.extra_duas))
         fuzz_labels_list.extend([d.all_labels for d in extra_query])
-    mutfile(unfuzzed_input_file, fuzz_labels_list, fuzzed_input_file_name, bug,
+    mutate_file(str(unfuzzed_input_file), fuzz_labels_list, fuzzed_input_file_name, bug,
             solution=solution, **mutfile_kwargs)
     timeout = project.get('timeout', 5)
     rv, output = run_modified_program(project, lp.bugs_install,
                                       fuzzed_input_file_name, timeout, shell=True)
-    print("retval = %d" % rv)
+    print(f"retval = {rv}")
     validated = False
     if not bug.trigger_relationship.dua_relationship.fake_dua:
         print("bug type is " + Bug.type)
@@ -812,6 +839,14 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
                         validated &= False
                         print("... but competition infrastructure"
                               " misidentified it ({} vs {})".format(found_bugs, bug.id))
+                # We should move this input to a separate folder for easier tracking
+                if validated:
+                    base_fuzzed_file_name = os.path.basename(fuzzed_input_file_name)
+                    crashes_dir = os.path.join(project['output_dir'], 'crashes')
+                    os.makedirs(crashes_dir, exist_ok=True)
+                    new_crash_file = os.path.join(crashes_dir, base_fuzzed_file_name)
+                    print(f"Moving crashing input file to {new_crash_file}")
+                    shutil.move(fuzzed_input_file_name, new_crash_file)
             else:
                 print("RV does not indicate memory corruption")
                 validated = False
@@ -831,8 +866,9 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
 
 
 # validate this set of bugs
-def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths, project: dict, input_files: list, build : Build,
-                  arguments, update_db: bool, competition: bool = False, bug_solutions=None):
+def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths,
+                  project: dict, input_files: list[str], build : Build,
+                  arguments: argparse.Namespace, update_db: bool, competition: bool = False, bug_solutions=None):
     timeout = project.get('timeout', 5)
 
     print("------------\n")
@@ -842,8 +878,7 @@ def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths, project: dict, inpu
     print("------------\n")
     unfuzzed_outputs = {}
     for input_file in input_files:
-        unfuzzed_input = os.path.join(project["output_dir"],
-                              'inputs', os.path.basename(input_file))
+        unfuzzed_input = os.path.join(project["config_dir"], 'inputs', os.path.basename(input_file))
         rv, output = run_modified_program(project, lp.bugs_install,
                                           str(unfuzzed_input), timeout, shell=True)
         unfuzzed_outputs[os.path.basename(input_file)] = output
@@ -886,6 +921,7 @@ def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths, project: dict, inpu
             validated = validate_bug(db, lp, project, bug, build,
                                      arguments, update_db, unfuzzed_outputs,
                                      competition=competition)
+        # We should move the files that crash to a different folder for easier identification
         if validated:
             real_bugs.append(bug.id)
         print()
