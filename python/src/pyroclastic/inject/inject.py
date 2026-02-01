@@ -207,9 +207,17 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
                     project, envv, 30, cwd=lp.bugs_build, shell=True)
 
         if not project.get('preprocessed', False):
-            with open(os.path.join(lp.bugs_build, 'Makefile'), 'a') as fd, \
-                open(Path(__file__).parent.parent / "data" / "makefile.fixup", 'r') as fdd:
-                fd.write(fdd.read())
+            with open(Path(__file__).parent.parent / "data" / "makefile.fixup", "r") as mf:
+                modified_make = mf.read()
+
+            current_make_file = os.path.join(lp.bugs_build, "Makefile")
+            if os.path.isfile(current_make_file):
+                with open(current_make_file, "a+") as mf:
+                    mf.write("\n" + modified_make + "\n")
+            else:
+                print(f"Warning: Makefile not found for preprocessing at directory: {lp.bugs_build}")
+                sys.exit(1)
+
             print("Preprocessing Source code...")
             run_cmd(' '.join(['make', 'lava_preprocess']), project, envv, 30, cwd=lp.bugs_build, shell=True)
             run_cmd(["git", "add", "."], project, cwd=lp.bugs_build, shell=True)

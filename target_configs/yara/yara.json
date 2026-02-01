@@ -1,10 +1,9 @@
 {
     "name": "yara",
     "db": "yara",
-    "preprocessed": true,
     "dataflow": true,
 
-    "tarfile": "yara-3.8.1-pre.tar.gz",
+    "tarfile": "yara-3.8.1.tar.gz",
 
     "make": "make",
     "clean": "make clean",

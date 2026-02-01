@@ -71,24 +71,29 @@ class QueryManager:
         install_dir = source_path / "lava-install"
         install_dir.mkdir(exist_ok=True)
 
+        configure_command = self.config.get('configure', '')
         env = self.config['env_var']
+        if configure_command != '':
+            print('Configuring...')
+            full_config = f"{configure_command} --prefix={install_dir}"
+            run_cmd(shlex.split(full_config), env=env)
+
         # First pre-process, append the makefile.fixup to Makefile for easy pre-processing.
         if not self.config.get('preprocessed', False):
             print("Preprocessing Source code...")
             with open(Path(__file__).parent.parent / "data" / "makefile.fixup", "r") as mf:
                 modified_make = mf.read()
 
-            with open(source_path / "Makefile", "a+") as mf:
-                mf.write("\n" + modified_make + "\n")
+            if os.path.isfile(source_path / "Makefile"):
+                with open(source_path / "Makefile", "a+") as mf:
+                    mf.write("\n" + modified_make + "\n")
+            else:
+                print(f"Warning: Makefile not found for preprocessing at directory: {source_path}")
+                sys.exit(1)
 
             run_cmd(shlex.split("make lava_preprocess"), env=env)
             run_cmd(["git", "add", "."])
             run_cmd(["git", "commit", "-m", "Pre-processed source."])
-
-        configure_command = self.config.get('configure', '')
-        if configure_command != '':
-            full_config = f"{configure_command} --prefix={install_dir}"
-            run_cmd(shlex.split(full_config), env=env)
 
         # 5. Make with Btrace
         run_cmd(f"compiledb -- {self.config['make']}", env=env, shell=True)

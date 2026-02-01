@@ -142,9 +142,13 @@ def run_taint_pipeline(lava_project: str):
         start = tick()
         progress("bug_mining", 1, "Starting first and only replay, tainting on file open...")
         guest_executable = project['command'].format(
-            install_dir=shlex.quote(state.install_directory),
+            install_dir=state.install_directory,
             input_file=""
-        ).strip()
+        ).split()[0].strip()
+
+        if not os.path.exists(guest_executable):
+            print(f"Critical Error: {guest_executable} not found")
+            sys.exit(1)
 
         dwarf_cmd = ["dwarfdump", "-dil", guest_executable]
         result = subprocess.run(
