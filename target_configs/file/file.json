@@ -1,17 +1,17 @@
 {
     "name": "file",
     "db": "file",
-    "preprocessed": true,
     "dataflow": true,
-    "tarfile": "file-5.22-pre.tar.gz",
+    "tarfile": "file-5.30.tar.gz",
+
+    "configure" : "./configure",
 
     "make": "make",
     "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/file -m {install_dir}/share/misc/magic.mgc {input_file}",
-    "injfixupsscript": "file_fixup.sh {bug_build}",
 
-    "max_tcn": 10,
+    "max_tcn": 0,
 
     "main_file": [ "src/file.c" ]
 }

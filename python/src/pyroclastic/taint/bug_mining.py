@@ -129,12 +129,6 @@ def run_taint_pipeline(lava_project: str):
 
         panda.run()
 
-        # inject.py will use this folder for fuzzing, we likely should update this structure to sort inputs better
-        if os.path.exists('inputs/'):
-            shutil.rmtree('inputs/')
-
-        shutil.copytree(input_file_directory, 'inputs/')
-
         record_time = tock(start)
         progress("bug_mining", 1, f"panda record complete {record_time} seconds")
         sys.stdout.flush()
@@ -148,9 +142,13 @@ def run_taint_pipeline(lava_project: str):
         start = tick()
         progress("bug_mining", 1, "Starting first and only replay, tainting on file open...")
         guest_executable = project['command'].format(
-            install_dir=shlex.quote(state.install_directory),
+            install_dir=state.install_directory,
             input_file=""
-        ).strip()
+        ).split()[0].strip()
+
+        if not os.path.exists(guest_executable):
+            print(f"Critical Error: {guest_executable} not found")
+            sys.exit(1)
 
         dwarf_cmd = ["dwarfdump", "-dil", guest_executable]
         result = subprocess.run(

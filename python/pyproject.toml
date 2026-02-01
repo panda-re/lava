@@ -21,7 +21,7 @@ include = ["pyroclastic", "pyroclastic.*"]
 
 [tool.setuptools.package-data]
 # This explicitly attaches the ODB files ONLY to the 'generated' sub-package
-"pyroclastic.data" = ["*.cxx", "*.hxx", "*.ixx", "*.sql"]
+"pyroclastic.data" = ["*.sql"]
 
 [project]
 name = "pyroclastic"
@@ -34,6 +34,7 @@ authors = [
 keywords = ["lava", "panda", "bug-injection", "fuzzing", "dynamic-analysis"]
 requires-python = ">=3.10"
 dependencies = [
+    "compiledb",
     "colorama",
     "db",
     "ipython",
@@ -54,7 +55,6 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: C",
     "Programming Language :: C++",
     "Operating System :: POSIX :: Linux",
     "Environment :: Console",
@@ -70,5 +70,5 @@ lava-init = "pyroclastic.utils.init_host:main"
 Homepage = "https://github.com/panda-re/lava"
 Source = "https://github.com/panda-re/lava"
 Tracker = "https://github.com/panda-re/lava/issues"
-Documentation = "https://github.com/panda-re/lava/tree/master/docs"
+Documentation = "https://github.com/panda-re/lava/wiki/LAVA-Wiki"
 Download = "https://github.com/panda-re/lava/releases/download/v3.1.4/lava_3.1.4_amd64.deb"

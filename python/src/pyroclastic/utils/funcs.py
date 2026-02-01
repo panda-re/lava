@@ -7,6 +7,8 @@ import os
 import shutil
 import time
 import argparse
+import json
+from typing import Tuple, Set
 
 
 def get_inject_parser():
@@ -46,6 +48,26 @@ def print_tail(logfile, n=9):
         with open(logfile, "r") as f:
             for line in deque(f, n):
                 print(line.strip())
+
+
+def read_compile_db(compile_directory: str) -> Tuple[Set[str], Set[str]]:
+    """
+    Reads a compile_commands.json file and returns its contents as a list of dictionaries.
+
+    :param compile_directory: Path to the compile_commands.json file
+    :return: A tuple containing:
+             - A set of directories where C files are located
+             - A set of full paths to C files
+    """
+    with open(os.path.join(compile_directory, 'compile_commands.json'), 'r') as f:
+        compile_commands = json.load(f)
+
+    c_files = set()
+    c_dirs = set()
+    for entry in compile_commands:
+        c_files.add(os.path.join(entry['directory'], entry['file']))
+        c_dirs.add(entry['directory'])
+    return c_dirs, c_files
 
 
 def progress(step_name: str, show_date: int | bool, message: str):
