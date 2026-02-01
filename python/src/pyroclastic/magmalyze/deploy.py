@@ -52,12 +52,6 @@ class GenerationManager:
         install_dir.mkdir(exist_ok=True)
         self.install_dir = install_dir
 
-        configure_command = self.config.get('configure', '')
-        env = self.config['env_var']
-        if configure_command != '':
-            print('Configuring...')
-            full_config = f"{configure_command} --prefix={install_dir}"
-            run_cmd(shlex.split(full_config), env=env)
 
     def copy_inputs(self):
         input_file_directory = os.path.abspath(os.path.join(self.config["config_dir"], "inputs"))
@@ -77,6 +71,11 @@ class GenerationManager:
         else:
             envv = self.config['env_var']
 
+        configure_command = self.config.get('configure', '')
+        if configure_command != '':
+            print('Configuring...')
+            full_config = f"{configure_command} --prefix={self.install_dir}"
+            run_cmd(shlex.split(full_config), env=envv, cwd=self.source_path)
         run_cmd(self.config['make'], env=envv, shell=True, cwd=self.source_path)
         run_cmd(self.config['install'], env=envv, shell=True, cwd=self.source_path)
 
@@ -153,7 +152,10 @@ class GenerationManager:
 
         # --- Step 3: Generate HTML report using llvm-cov ---
         # We need the path to the actual instrumented binary to read coverage mapping
-        instrumented_binary = os.path.join(self.install_dir, "bin", self.name)
+        instrumented_binary = self.config['command'].format(
+            install_dir=str(self.install_dir),
+            input_file=""
+            ).split()[0].strip()
 
         html_output = os.path.join(self.project_dir, "html")
         show_cmd = [

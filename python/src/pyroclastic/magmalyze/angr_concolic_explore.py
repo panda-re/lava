@@ -3,26 +3,14 @@
 import angr
 import claripy
 import os
-import random # Needed for picking a random seed and offset
+import random
+from .deploy import GenerationManager
 
 # To disable some of angr's logging output (optional, useful for cleaner output)
 import logging
 logging.getLogger('angr').setLevel(logging.WARNING)
 
 from KLEERandomSearch import KLEERandomSearch
-
-def filter_main_binary_blocks(project: angr.project, blocks) -> set:
-    """
-    Filter blocks to include only those from the main binary.
-    Also, converts to a set for code coverage calculation.
-    """
-    main_binary = project.loader.main_object
-    main_binary_start = main_binary.min_addr
-    main_binary_end = main_binary.max_addr
-
-    # Filter blocks within the main binary's address range
-    filtered_blocks = {addr for addr in blocks if main_binary_start <= addr <= main_binary_end}
-    return filtered_blocks
 
 
 def perform_initial_concolic_exploration(binary: str, initial_input_file: str = None, symbolic_bytes_count: int = 64):
@@ -127,13 +115,9 @@ def perform_initial_concolic_exploration(binary: str, initial_input_file: str = 
         # The user assumes initial inputs are OK and won't crash, so no special options needed here
     )
 
-    # Initialize the SimulationManager with our state
-    sm = p.factory.simulation_manager(init_state)
-
-    custom_tech = KLEERandomSearch(
-        project=p
-    )
-    sm.use_technique(custom_tech)
+    # Initialize the SimulationManager with our state. Enforce using KLEE Random Search
+    sm = p.factory.simulation_manager(init_state,
+                                      suggestion=False, techniques=[KLEERandomSearch(project=p)])
 
     print(f"[*] Starting symbolic execution until dead ended states...")
 
@@ -171,21 +155,7 @@ def perform_initial_concolic_exploration(binary: str, initial_input_file: str = 
         except Exception as e:
             print(f"    Could not concretize input for this path: {e}")
 
-        for addr in filter_main_binary_blocks(p, dead_ended_state.history.bbl_addrs):
-            total_basic_blocks_covered.add(addr) # Track overall coverage
-            debug_info_string = ""
-            try:
-                # This will show source file, line number, and function if compiled with -g
-                if line_info:
-                    binary_path, line_number = next(iter(p.loader.main_object.addr_to_line[addr]))
-                    debug_info_string = f" ({os.path.basename(binary_path)}:{line_number})"
-            except KeyError:
-                # Only occurs if address is not in the main function
-                pass
-            except Exception as e:
-                print(f"[!] Exception occurred while retrieving line info: {e}")
-                pass
-            print(f"        - {hex(addr)}{debug_info_string}")
+
         
         # Check if the backdoor message was printed in this specific path's stdout
         path_stdout = dead_ended_state.posix.dumps(1)
@@ -193,7 +163,6 @@ def perform_initial_concolic_exploration(binary: str, initial_input_file: str = 
         
         # You can add more checks here, e.g., if deadened_state.errored: print error details
 
-    print(f"\n[*] Total unique basic blocks covered across all paths: {len(filter_main_binary_blocks(p, total_basic_blocks_covered))}")
     print(f"[*] Raw deadened states: {sm.deadended}") # For debugging/inspection if needed
 
     # After initial execution, we can explore further if needed.
@@ -222,7 +191,8 @@ def perform_initial_concolic_exploration(binary: str, initial_input_file: str = 
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description="Perform initial concolic exploration and report path history.")
+    parser = argparse.ArgumentParser(
+        description="Perform initial concolic exploration and report path history.")
     parser.add_argument("--binary", "-b", type=str, required=True,
                         help="Path to the binary to analyze (e.g., 'toy').")
     parser.add_argument("--input-file", "-i", type=str, 

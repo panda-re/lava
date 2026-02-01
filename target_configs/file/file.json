@@ -4,7 +4,7 @@
     "dataflow": true,
     "tarfile": "file-5.30.tar.gz",
 
-    "configure" : "./configure",
+    "configure" : "./configure --enable-static=yes --enable-shared=no",
 
     "make": "make",
     "clean": "make clean",

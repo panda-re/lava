@@ -1,5 +1,5 @@
 import argparse
-from .utils import GenerationManager
+from .deploy import GenerationManager
 
 
 def main():
