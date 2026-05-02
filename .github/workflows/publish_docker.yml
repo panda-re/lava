@@ -2,13 +2,23 @@ name: Publish Lava Package and Container
 
 on:
   workflow_dispatch:
+    inputs:
+      bump_type:
+        type: choice
+        required: true
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+        description: "Select the type of version bump for the release"
   #push:
   #  branches:
   #    - master
 
 jobs:
   create_release:
-    if: github.repository == 'panda-re/lava'
+    if: github.repository == 'panda-re/lava' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     outputs:
       v-version: ${{ steps.version.outputs.v-version }}
@@ -19,11 +29,11 @@ jobs:
         with:
           release_branch: master
           use_api: true
-          increment: patch
+          increment: ${{ github.event.inputs.bump_type || 'patch' }}
 
   create_release_assets:
     needs: [create_release]
-    if: github.repository == 'panda-re/lava'
+    if: github.repository == 'panda-re/lava' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-22.04
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -76,7 +86,7 @@ jobs:
 
   publish-to-pypi-and-release:
     name: Publish Python 🐍 distribution 📦 to PyPI and Make Release
-    if: github.repository == 'panda-re/lava'
+    if: github.repository == 'panda-re/lava'  && github.ref == 'refs/heads/master'
     needs: [create_release, create_release_assets]
     runs-on: ubuntu-latest
     environment:
@@ -120,7 +130,7 @@ jobs:
 
   build_container:
     needs: [create_release, publish-to-pypi-and-release]
-    if: github.repository == 'panda-re/lava'
+    if: github.repository == 'panda-re/lava' && github.ref == 'refs/heads/master'
     runs-on: panda-arc
     steps:
     - name: Login to Docker Registry
