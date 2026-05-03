@@ -25,6 +25,12 @@ class GenerationManager:
         self.copy_inputs()
 
     def unpack(self):
+        """
+        This is used within the initialization but completes the following steps:
+        1. Create the project directory in the target_generation
+        2. unpack the Tar package, it deletes any existing unpacking
+        3. Create the installation directory which will be used for code coverage and/or generating inputs
+        """
         # 1. Setup Directories
         if not self.project_dir.exists():
             self.project_dir.mkdir(parents=True)
@@ -54,6 +60,10 @@ class GenerationManager:
 
 
     def copy_inputs(self):
+        """
+        Copy the inputs folder from the config_dir into the `target_generation`/<project> folder.
+        We use this so when we generate new inputs, it is in target_generation/<project>/inputs folder
+        """
         input_file_directory = os.path.abspath(os.path.join(self.config["config_dir"], "inputs"))
         self.guest_directory_inputs_path = os.path.join(self.install_dir, 'inputs')
         if os.path.exists(self.guest_directory_inputs_path):
@@ -79,7 +89,7 @@ class GenerationManager:
         run_cmd(self.config['make'], env=envv, shell=True, cwd=self.source_path)
         run_cmd(self.config['install'], env=envv, shell=True, cwd=self.source_path)
 
-    def get_coverage(self):
+    def get_coverage(self) -> float:
         """
         Calculates code coverage using GCC's GCOV/LCOV profiling tools.
 
@@ -171,8 +181,7 @@ class GenerationManager:
         print(f"[*] Generating HTML report via llvm-cov...")
         try:
             subprocess.run(show_cmd, check=True)
-            print(
-                f"[+] HTML coverage report generated: file://{os.path.abspath(os.path.join(html_output, 'index.html'))}")
+            print(f"[+] HTML coverage report generated: file://{os.path.abspath(os.path.join(html_output, 'index.html'))}")
         except subprocess.CalledProcessError as e:
             print(f"[-] Error generating HTML report: {e}")
             return -1.0

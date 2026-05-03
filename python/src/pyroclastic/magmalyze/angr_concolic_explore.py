@@ -4,247 +4,188 @@ import angr
 import claripy
 import os
 import random
+import argparse
+import logging
+import shlex
+import time
+from .KLEERandomSearch import KLEERandomSearch
 from .deploy import GenerationManager
 
-# To disable some of angr's logging output (optional, useful for cleaner output)
-import logging
-logging.getLogger('angr').setLevel(logging.WARNING)
+logging.getLogger('angr').setLevel(logging.ERROR)
+logging.getLogger('pyvex').setLevel(logging.ERROR)
+logging.getLogger('claripy').setLevel(logging.ERROR)
 
-from KLEERandomSearch import KLEERandomSearch
-
-
-def perform_initial_concolic_exploration(binary: str, initial_input_file: str = None, symbolic_bytes_count: int = 64):
+def create_state_for_file(project, actual_argv, input_file_path, symbolic_bytes_count):
     """
-    Performs initial concolic execution using Angr on a binary, running until dead ended states,
-    and reports the basic block execution history for the explored paths.
-
-    This version supports:
-    1. Symbolic input content based on an initial concrete input file (hybrid approach).
-    2. Dynamically setting the symbolic file size based on the initial input file's length.
-
-    NOTE: This script assumes the 'fauxware' binary (or a similar LAVA binary)
-    has been compiled from a C code that takes a single command-line argument which
-    is the path to an input file.
-
-    Args:
-        binary: (str): Path to the binary to analyze (e.g., 'toy').
-        initial_input_file (str, optional): Path to a concrete file to use as the base
-                                            for symbolic input (for hybrid concolic execution).
-                                            If None, a fully symbolic input is used.
-        symbolic_bytes_count (int): Number of bytes to make symbolic in hybrid mode.
-                                    Only relevant if initial_input_file is provided.
+    Helper function to create a single Angr state for a specific input file.
+    Supports hybrid symbolic execution and custom argv.
     """
+    SYMBOLIC_FS_PATH = '/tmp/input.txt'
 
-    # Load the binary.
-    # auto_load_libs=True ensures Angr's SimProcedures for library functions (like fopen, fread) are used.
-    p = angr.Project(binary, auto_load_libs=True, load_debug_info=True)
+    # 1. Read the concrete seed
+    with open(input_file_path, 'rb') as fd:
+        concrete_seed_content = fd.read()
 
-    # Define the path for the symbolic input file within the simulated filesystem
-    SYMBOLIC_FILE_PATH = '/tmp/input.txt'
-    
-    concrete_seed_content = b''
+    actual_file_size = len(concrete_seed_content)
 
-    if initial_input_file and os.path.exists(initial_input_file):
-        print(f"[*] Reading initial concrete input from: {initial_input_file}")
-        with open(initial_input_file, 'rb') as fd:
-            concrete_seed_content = fd.read()
-        actual_file_size = len(concrete_seed_content)
-        print(f"[*] Initial input file size: {actual_file_size} bytes.")
+    # 2. Hybrid Symbolic Generation
+    # We want to keep the file mostly concrete but make a section symbolic
+    symbolic_bytes_to_make = min(symbolic_bytes_count, actual_file_size)
+
+    if actual_file_size > 0 and (actual_file_size - symbolic_bytes_to_make) >= 0:
+        symbolic_start_offset = random.randint(0, actual_file_size - symbolic_bytes_to_make)
     else:
-        print("[!] No valid initial input file provided. Falling back to a fully symbolic input.")
-        # Default size if no concrete input is provided. A minimum size for useful exploration.
-        actual_file_size = 64 
+        symbolic_start_offset = 0
 
-    # Determine the total size of the symbolic input.
-    # It will be at least the size of the concrete seed (if provided), or a default size.
-    total_symbolic_input_size = max(actual_file_size, symbolic_bytes_count) # Ensure enough space for symbolic part
+    parts = []
+    # Prefix (Concrete)
+    if symbolic_start_offset > 0:
+        parts.append(claripy.BVV(concrete_seed_content[:symbolic_start_offset]))
 
-    if concrete_seed_content:
-        # Hybrid symbolic input:
-        # Make a portion of the concrete input symbolic.
-        
-        # Ensure symbolic_bytes_count doesn't exceed the actual file size
-        symbolic_bytes_to_make = min(symbolic_bytes_count, actual_file_size)
+    # Middle (Symbolic)
+    symbolic_label = f'sym_{os.path.basename(input_file_path)}_{symbolic_start_offset}'
+    symbolic_chunk = claripy.BVS(symbolic_label, symbolic_bytes_to_make * 8)
+    parts.append(symbolic_chunk)
 
-        # Choose a random offset within the concrete content to make symbolic
-        # Ensure there's enough room for symbolic_bytes_to_make
-        if actual_file_size > 0 and (actual_file_size - symbolic_bytes_to_make) >= 0:
-            symbolic_start_offset = random.randint(0, actual_file_size - symbolic_bytes_to_make)
-        else:
-            symbolic_start_offset = 0 # If a file is too small or symbolic_bytes_to_make is too large
+    # Suffix (Concrete)
+    if (symbolic_start_offset + symbolic_bytes_to_make) < actual_file_size:
+        parts.append(claripy.BVV(concrete_seed_content[symbolic_start_offset + symbolic_bytes_to_make:]))
 
-        parts = []
-
-        # Part 1: Concrete prefix
-        if symbolic_start_offset > 0:
-            parts.append(claripy.BVV(concrete_seed_content[:symbolic_start_offset]))
-        
-        # Part 2: Symbolic chunk
-        symbolic_chunk = claripy.BVS(f'file_content_symbolic_{symbolic_start_offset}', symbolic_bytes_to_make * 8)
-        parts.append(symbolic_chunk)
-        
-        # Part 3: Concrete suffix
-        if (symbolic_start_offset + symbolic_bytes_to_make) < actual_file_size:
-            parts.append(claripy.BVV(concrete_seed_content[symbolic_start_offset + symbolic_bytes_to_make:]))
-        
-        # Concatenate all parts to form the full symbolic content
+    # Handle cases where file might be empty or logic results in no parts
+    if not parts:
+        symbolic_file_content = claripy.BVS(f'sym_empty_{os.path.basename(input_file_path)}', 8)
+        actual_file_size = 1
+    else:
         symbolic_file_content = claripy.Concat(*parts)
-        
-        print(f"[*] Hybrid symbolic input: {symbolic_bytes_to_make} bytes symbolic from offset {symbolic_start_offset}")
-        print(f"    (Total input size based on initial file: {actual_file_size} bytes)")
-    else:
-        # Fully symbolic input (fallback or if no initial file is given)
-        symbolic_file_content = claripy.BVS('file_content_full_symbolic', total_symbolic_input_size * 8)
-        print(f"[*] Full symbolic input of size: {total_symbolic_input_size} bytes.")
 
-    # Create a SimFile object with the (hybrid) symbolic content and dynamic size
+    # 3. Create SimFile
     symbolic_sim_file = angr.SimFile(
-        SYMBOLIC_FILE_PATH,
+        SYMBOLIC_FS_PATH,
         content=symbolic_file_content,
-        size=total_symbolic_input_size # Use the dynamically determined size
+        size=actual_file_size
     )
 
-    # Create the initial state.
-    # We pass the binary path as argv[0] and our symbolic file path as argv[1].
-    # We also inject our symbolic SimFile into the simulated filesystem (state.fs).
-    init_state = p.factory.full_init_state(
-        args=[p.filename, SYMBOLIC_FILE_PATH],
-        fs={SYMBOLIC_FILE_PATH: symbolic_sim_file},
-        # You can add Angr options here for performance, e.g.:
-        pylgr_options={angr.options.ZERO_FILL_UNCONSTRAINED_MEMORY}
-        # The user assumes initial inputs are OK and won't crash, so no special options needed here
+    # 4. Create State
+    state = project.factory.full_init_state(
+        args=actual_argv,
+        fs={SYMBOLIC_FS_PATH: symbolic_sim_file},
+        add_options={
+            angr.options.ZERO_FILL_UNCONSTRAINED_MEMORY,
+            angr.options.ALL_FILES_EXIST
+        }
     )
 
-    # Initialize the SimulationManager with our state. Enforce using KLEE Random Search
-    sm = p.factory.simulation_manager(init_state,
-                                      suggestion=False, techniques=[KLEERandomSearch(project=p)])
+    # Store metadata for later extraction
+    state.globals['sym_content'] = symbolic_file_content
+    state.globals['origin_seed'] = os.path.basename(input_file_path)
 
-    print(f"[*] Starting symbolic execution until dead ended states...")
+    print(f"[*] State initialized for seed: {os.path.basename(input_file_path)} "
+          f"({actual_file_size} bytes, {symbolic_bytes_to_make} symbolic)")
 
-    # Run the simulation manager until all active paths are exhausted (reach deadended states).
-    sm.run()
-
-    print(f"\n[*] Initial exploration complete. {len(sm.deadended)} dead ended states found.")
-    
-    total_basic_blocks_covered = set()
-
-    # Iterate through all deadended states and print their execution history
-    for i, dead_ended_state in enumerate(sm.deadended):
-        print(f"\n--- Path {i+1} ---")
-        print(f"    Path terminated at address: {hex(dead_ended_state.addr)}")
-        print(f"    Path History (Basic Block Addresses):")
-
-        try:
-            # Concretize the input that led to this specific deadended state
-            path_concrete_input = dead_ended_state.solver.eval(symbolic_file_content, cast_to=bytes)
-            print(f"    Input that led to this path: '{path_concrete_input}' (Hex: {path_concrete_input.hex()})")
-            
-            # Save the concretized input to a file
-            output_dir = "concretized_inputs"
-            os.makedirs(output_dir, exist_ok=True)  # Ensure the output directory exists
-
-            # Generate a unique filename
-            file_name = f"input_path{i+1}_{dead_ended_state.addr}.bin"  # Use the state's address or another unique identifier
-            output_file_path = os.path.join(output_dir, file_name)
-
-            # Write the concretized input to the file
-            with open(output_file_path, "wb") as fd:
-                fd.write(path_concrete_input)
-            print(f"    Concretized input saved to: {output_file_path}")
-            
-        except Exception as e:
-            print(f"    Could not concretize input for this path: {e}")
+    return state
 
 
-        
-        # Check if the backdoor message was printed in this specific path's stdout
-        path_stdout = dead_ended_state.posix.dumps(1)
-        print(f"    [+] Found this path's stdout: {path_stdout}")
-        
-        # You can add more checks here, e.g., if deadened_state.errored: print error details
+def perform_batch_concolic_exploration(project_paths: GenerationManager, symbolic_bytes_count: int = 64, timeout: int = 3600):
+    """
+    Performs batch concolic execution with progress tracking and timeouts.
+    Supports complex binaries like 'file' that require multiple arguments.
+    """
+    # 1. Setup Binary and Arguments
+    # Placeholder for the simulated FS path used in the command template
+    SYMBOLIC_FS_PATH = '/tmp/input.txt'
 
-    print(f"[*] Raw deadened states: {sm.deadended}") # For debugging/inspection if needed
+    full_cmd_str = project_paths.config['command'].format(
+        install_dir=shlex.quote(str(project_paths.install_dir)),
+        input_file="{SYMBOLIC_FILE_PATH}"
+    ).strip()
 
-    # After initial execution, we can explore further if needed.
-    # Print the number of active states
-    print(f"Number of active states: {len(sm.active)}")
+    argv_template = shlex.split(full_cmd_str)
+    binary_path = argv_template[0]
 
-    # Print the number of stashed states
-    for stash_name, stash_states in sm.stashes.items():
-        print(f"Number of states in stash '{stash_name}': {len(stash_states)}")
+    # Load the binary into the project
+    p = angr.Project(binary_path, auto_load_libs=True, load_debug_info=True)
 
-    # Check if there are active states remaining
-    if len(sm.active) > 0:
-        print(f"[*] {len(sm.active)} active states remaining. Re-running simulation...")
-        # sm.run()
+    # 2. Gather Input Seeds
+    inputs_directory = os.path.join(project_paths.install_dir, 'inputs')
+    files_to_process = []
+    if os.path.isdir(inputs_directory):
+        for f in os.listdir(inputs_directory):
+            full_path = os.path.join(inputs_directory, f)
+            if os.path.isfile(full_path):
+                files_to_process.append(full_path)
 
-    # Check if there are stashed states
-    if 'deferred' in sm.stashes and len(sm.stashes['deferred']) > 0:
-        print(f"[*] {len(sm.stashes['deferred'])} deferred states found. Moving them to active...")
-        sm.active.extend(sm.stashes['deferred'])
-        sm.stashes['deferred'] = []  # Clear the stash
-        # sm.run()
-    
-    # Return the simulation manager so we can continue exploration in the next step
-    return sm, symbolic_file_content, p
+    if not files_to_process:
+        print("[!] No input files found in inputs directory.")
+        return None
+
+    # 3. Initialize States
+    initial_states = []
+    print(f"[*] Initializing fleet with {len(files_to_process)} seeds...")
+
+    # Prepare the argv list once, replacing our placeholder with the Angr internal path
+    actual_argv = [arg.replace("{SYMBOLIC_FILE_PATH}", SYMBOLIC_FS_PATH) for arg in argv_template]
+
+    for file_path in files_to_process:
+        state = create_state_for_file(p, actual_argv, file_path, symbolic_bytes_count)
+        initial_states.append(state)
+
+    # 4. Simulation Manager
+    sm = p.factory.simulation_manager(initial_states)
+    sm.use_technique(KLEERandomSearch(project=p))
+
+    # 5. Progress Tracking Callback
+    start_time = time.time()
+    last_print = 0
+    step_counter = 0
+    def progress_callback(mgr):
+        nonlocal last_print, step_counter
+        step_counter += 1
+        now = time.time()
+        if now - last_print > 30:
+            elapsed = int(now - start_time)
+            # Single line status update
+            print(f"[*] Progress: {elapsed}s | Active Paths: {len(mgr.active)} | Found: {len(mgr.deadended)} | Steps: {step_counter}", end='\r')
+            last_print = now
+        return mgr
+
+    print(f"[*] Starting exploration (Timeout: {timeout}s)...")
+    try:
+        sm.run(step_func=progress_callback, timeout=timeout)
+    except Exception as e:
+        print(f"\n[!] Simulation interrupted: {e}")
+
+    print(f"\n[*] Exploration finished. Results: {len(sm.deadended)} paths.")
+
+    # 6. Saving results
+    for i, state in enumerate(sm.deadended):
+        sym_var = state.globals.get('sym_content')
+        origin = state.globals.get('origin_seed', 'unknown')
+        if sym_var is not None:
+            try:
+                solved = state.solver.eval(sym_var, cast_to=bytes)
+                out_name = f"gen_{origin}_{hex(state.addr)}_{i}.bin"
+                with open(os.path.join(inputs_directory, out_name), "wb") as fd:
+                    fd.write(solved)
+            except Exception:
+                pass
+    return sm
 
 
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser(
-        description="Perform initial concolic exploration and report path history.")
-    parser.add_argument("--binary", "-b", type=str, required=True,
-                        help="Path to the binary to analyze (e.g., 'toy').")
-    parser.add_argument("--input-file", "-i", type=str, 
-                        help="Path to an initial concrete input file to base symbolic input on.")
-    parser.add_argument("--symbolic-bytes", "-s", type=int, default=64,
-                        help="Number of bytes to make symbolic in the input file (for hybrid mode). Default: 64")
+def main():
+    parser = argparse.ArgumentParser(description="Perform initial concolic exploration and report path history.")
+    parser.add_argument("--project", "-p", required=True, dest="project_name",
+                        help="Provide the LAVA project name")
+    parser.add_argument("--symbolic-bytes", "-s", type=int, default=64)
+    parser.add_argument("--timeout", "-t", type=int, default=3600)
     args = parser.parse_args()
 
-    dummy_input_path = "dummy_seed.txt"
-    input_file_to_use = args.input_file
-    
-    # Check if a dummy file needs to be created because the user provided no input file
-    create_dummy_file = False
-    if args.input_file is None:
-        create_dummy_file = True
-        input_file_to_use = dummy_input_path # Set to a dummy path for the function call
-        with open(dummy_input_path, "wb") as f:
-            f.write(b"A" * 32) # Write some dummy content
-        print(f"[*] Created a dummy input file: {dummy_input_path}")
+    generation_manager = GenerationManager(args)
+    generation_manager.compile()
 
     # Call the main exploration function
     # We now return the simgr, symbolic_file_content, and project for potential future steps
-    simgr_result, symbolic_content_var, project_obj = perform_initial_concolic_exploration(
-        binary=args.binary,
-        initial_input_file=input_file_to_use,
-        symbolic_bytes_count=args.symbolic_bytes
-    )
+    perform_batch_concolic_exploration(generation_manager, symbolic_bytes_count=args.symbolic_bytes, timeout=args.timeout)
 
-    # Analyze deadended states
-    if len(simgr_result.deadended) > 0:
-        print(f"Number of dead ended states: {len(simgr_result.deadended)}")
-        for state in simgr_result.deadended:
-            print(f"Dead ended state at address: {hex(state.addr)}")
-            try:
-                line_info = project_obj.loader.main_object.addr_to_line[state.addr]
-                if line_info:
-                    file_path, line_num = next(iter(line_info))
-                    # Format the line info string
-                    if file_path and line_num:
-                        line_info_str = f" ({os.path.basename(file_path)}:{line_num})"
-                        print(f"Line info: {line_info_str}")
-            except KeyError:
-                pass
-    else:
-        print("No dead ended states found.")
-    
-    # Example of how you might continue from here in a future step:
-    # If you want to find a backdoor *after* the initial run:
-    # find_condition = lambda s: b'Welcome to the admin console, trusted user!' in s.posix.dumps(1)
-    # simgr_result.explore(find=find_condition)
-    # ... then process simgr_result.found as before
 
-    # Clean up the dummy file if it was created during this run
-    if create_dummy_file and os.path.exists(dummy_input_path):
-        os.remove(dummy_input_path)
+if __name__ == '__main__':
+    main()
