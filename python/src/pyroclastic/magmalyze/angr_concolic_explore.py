@@ -14,14 +14,17 @@ from .deploy import GenerationManager
 logging.getLogger('angr').setLevel(logging.ERROR)
 logging.getLogger('pyvex').setLevel(logging.ERROR)
 logging.getLogger('claripy').setLevel(logging.ERROR)
+logging.getLogger('KLEERandomSearch').setLevel(logging.INFO)
+
+logger = logging.getLogger(__name__)
+SYMBOLIC_FS_PATH = '/tmp/input.txt'
+
 
 def create_state_for_file(project, actual_argv, input_file_path, symbolic_bytes_count):
     """
     Helper function to create a single Angr state for a specific input file.
     Supports hybrid symbolic execution and custom argv.
     """
-    SYMBOLIC_FS_PATH = '/tmp/input.txt'
-
     # 1. Read the concrete seed
     with open(input_file_path, 'rb') as fd:
         concrete_seed_content = fd.read()
@@ -29,7 +32,6 @@ def create_state_for_file(project, actual_argv, input_file_path, symbolic_bytes_
     actual_file_size = len(concrete_seed_content)
 
     # 2. Hybrid Symbolic Generation
-    # We want to keep the file mostly concrete but make a section symbolic
     symbolic_bytes_to_make = min(symbolic_bytes_count, actual_file_size)
 
     if actual_file_size > 0 and (actual_file_size - symbolic_bytes_to_make) >= 0:
@@ -38,23 +40,30 @@ def create_state_for_file(project, actual_argv, input_file_path, symbolic_bytes_
         symbolic_start_offset = 0
 
     parts = []
+    # Layout Tracking for Logging
+    layout = []
+
     # Prefix (Concrete)
     if symbolic_start_offset > 0:
         parts.append(claripy.BVV(concrete_seed_content[:symbolic_start_offset]))
+        layout.append(f"[0-{symbolic_start_offset}] Concrete")
 
     # Middle (Symbolic)
     symbolic_label = f'sym_{os.path.basename(input_file_path)}_{symbolic_start_offset}'
     symbolic_chunk = claripy.BVS(symbolic_label, symbolic_bytes_to_make * 8)
     parts.append(symbolic_chunk)
+    layout.append(f"[{symbolic_start_offset}-{symbolic_start_offset + symbolic_bytes_to_make}] SYMBOLIC")
 
     # Suffix (Concrete)
     if (symbolic_start_offset + symbolic_bytes_to_make) < actual_file_size:
         parts.append(claripy.BVV(concrete_seed_content[symbolic_start_offset + symbolic_bytes_to_make:]))
+        layout.append(f"[{symbolic_start_offset + symbolic_bytes_to_make}-{actual_file_size}] Concrete")
 
-    # Handle cases where file might be empty or logic results in no parts
+    # Handle empty files
     if not parts:
         symbolic_file_content = claripy.BVS(f'sym_empty_{os.path.basename(input_file_path)}', 8)
         actual_file_size = 1
+        layout = [" [0-1] SYMBOLIC (Empty File Fallback)"]
     else:
         symbolic_file_content = claripy.Concat(*parts)
 
@@ -79,11 +88,15 @@ def create_state_for_file(project, actual_argv, input_file_path, symbolic_bytes_
     state.globals['sym_content'] = symbolic_file_content
     state.globals['origin_seed'] = os.path.basename(input_file_path)
 
-    print(f"[*] State initialized for seed: {os.path.basename(input_file_path)} "
-          f"({actual_file_size} bytes, {symbolic_bytes_to_make} symbolic)")
+    # Detailed Log for newbie understanding
+    layout_str = " | ".join(layout)
+    print(f"[*] State Initialized: {os.path.basename(input_file_path)}")
+    print(f"    - Total Size: {actual_file_size} bytes")
+    print(f"    - Layout:     {layout_str}")
+    if actual_file_size == symbolic_bytes_to_make:
+        print(f"    - Note:       Full file is symbolic.")
 
     return state
-
 
 def perform_batch_concolic_exploration(project_paths: GenerationManager, symbolic_bytes_count: int = 64, timeout: int = 3600):
     """
@@ -92,8 +105,6 @@ def perform_batch_concolic_exploration(project_paths: GenerationManager, symboli
     """
     # 1. Setup Binary and Arguments
     # Placeholder for the simulated FS path used in the command template
-    SYMBOLIC_FS_PATH = '/tmp/input.txt'
-
     full_cmd_str = project_paths.config['command'].format(
         install_dir=shlex.quote(str(project_paths.install_dir)),
         input_file="{SYMBOLIC_FILE_PATH}"
@@ -138,7 +149,7 @@ def perform_batch_concolic_exploration(project_paths: GenerationManager, symboli
     last_print = 0
     step_counter = 0
     def progress_callback(mgr):
-        nonlocal last_print, step_counter
+        nonlocal last_print, step_counter, start_time
         step_counter += 1
         now = time.time()
         if now - last_print > 30:
@@ -148,13 +159,27 @@ def perform_batch_concolic_exploration(project_paths: GenerationManager, symboli
             last_print = now
         return mgr
 
-    print(f"[*] Starting exploration (Timeout: {timeout}s)...")
-    try:
-        sm.run(step_func=progress_callback, timeout=timeout)
-    except Exception as e:
-        print(f"\n[!] Simulation interrupted: {e}")
+    def check_timeout(mgr):
+        """Returns True if the simulation should stop."""
+        nonlocal start_time
+        return (time.time() - start_time) > timeout
 
-    print(f"\n[*] Exploration finished. Results: {len(sm.deadended)} paths.")
+    print(f"[*] Starting exploration (Timeout: {timeout}s). Press CTRL+C to stop early.")
+
+    try:
+        # Using 'until' is the standard way to stop simgr.run based on a condition
+        # We also pass the progress_callback to keep the UI updated
+        sm.run(until=check_timeout, step_func=progress_callback)
+
+        if (time.time() - start_time) > timeout:
+            print(f"\n[!] Time limit reached ({timeout}s). Wrapping up...")
+
+    except KeyboardInterrupt:
+        print(f"\n[!] User interrupted (CTRL+C). Proceeding to save discovered paths...")
+    except Exception as e:
+        print(f"\n[!] Simulation error: {e}")
+
+    print(f"[*] Exploration ended. Found {len(sm.deadended)} paths. Solving symbolic constraints...")
 
     # 6. Saving results
     for i, state in enumerate(sm.deadended):

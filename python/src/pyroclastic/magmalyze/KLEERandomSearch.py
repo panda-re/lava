@@ -1,65 +1,71 @@
 import logging
 import random
-
 from angr.exploration_techniques import ExplorationTechnique
+# https://github.com/angr/angr/blob/9fa64a7ce22a4ca3f43e159cb4a831ce586a3241/angr/sim_manager.py#L27
+from angr.sim_manager import SimulationManager
+# https://github.com/angr/angr/blob/9fa64a7ce22a4ca3f43e159cb4a831ce586a3241/angr/sim_state.py#L60
+from angr.sim_state import SimState
 
-l = logging.getLogger('KLEERandomSearch')
+logger = logging.getLogger('KLEERandomSearch')
+logger.setLevel(logging.DEBUG)
 
 
 class KLEERandomSearch(ExplorationTechnique):
     """
-    Random path selection. https://hci.stanford.edu/cstr/reports/2008-03.pdf
-
-    Maintains a binary tree recording the program path followed for all active processes,
-    i.e. the leaves of the tree are the current processes and the internal nodes are places
-    where execution forked. Processes are selected by traversing this tree from the root
-    and randomly selecting the path to follow at branch points. Therefore when a branch point
-    is reached the set of processes in each subtree will have equal probability of being selected,
-    regardless of their size.
-
-    This is implemented as a Non-Uniform-Random-Search where child nodes inherit parent weight, divided by the number
-    of siblings
+    KLEE Random Path Selection (General Purpose Version)
+    Paper: https://hci.stanford.edu/cstr/reports/2008-03.pdf
     """
 
     def __init__(self, **kwargs):
         super(KLEERandomSearch, self).__init__()
-    
-    @staticmethod
-    def rank(s, reverse=False):
-        k = -1 if reverse else 1
-        return k * s.globals['weight']
-        
-    def step(self, simgr, stash='active', **kwargs):
-        simgr = simgr.step(stash=stash, **kwargs)
-        print(simgr.active)
 
-        # if there's no branch just go on
-        if len(simgr.stashes[stash]) == 1:
+    def step(self, simgr: SimulationManager, stash: str = 'active', **kwargs):
+        # 1. Execute the next step
+        simgr : SimulationManager = simgr.step(stash=stash, **kwargs)
+
+        # 2. Pool all states (Active + Deferred) to make a global weighted choice
+        simgr.move(from_stash=stash, to_stash='deferred')
+
+        # Adding the type hint as requested: list[SimState]
+        # In Angr, the stashes are essentially lists of SimState objects.
+        deferred: list[SimState] = simgr.stashes['deferred']
+
+        if not deferred:
             return simgr
 
-        # if we there are no successors randomly pick a new path
-        elif len(simgr.stashes[stash]) == 0:
-            pass  # weighted choice code is always executed before returning
+        # 3. Calculate weights
+        weights: list[float] = []
+        for state in deferred:
+            # FIX: Using 'state.history.depth' as a fallback,
+            # or specifically counting 'branch' events in the history.
+            # Most robust way across angr versions to find "how many times have I branched":
+            fork_count = sum(1 for ev in state.history.events if ev.type == 'branch')
 
-        # if there is more than one successor update the binary tree and randomly pick a new path
-        elif len(simgr.stashes[stash]) > 1:
-            l.debug(f'{"-" * 0x10}\nStatus:\t\t{simgr} --> active: {simgr.stashes[stash]}')
-            # update binary tree
-            for s in simgr.stashes[stash]:
-                s.globals['weight'] = s.globals.get('weight', 1) / len(simgr.stashes[stash])
-            pass  # weighted choice code is always executed before returning
+            # If for some reason 'branch' events aren't being logged in your config,
+            # we use state.history.depth (block count) as a fallback, though it's less 'pure' KLEE.
+            if fork_count == 0 and state.history.depth > 0:
+                # We'll use a scaled version of depth if no explicit branches found
+                weight = 0.5 ** min(state.history.depth // 10, 1022)
+            else:
+                weight = 0.5 ** min(fork_count, 1022)
 
-        # randomly pick new path
-        simgr.move(from_stash=stash, to_stash='deferred')
-        if max([s.globals['weight'] for s in simgr.stashes['deferred']]) < 0.1:
-            for s in simgr.stashes['deferred']:
-                s.globals['weight'] *= 10
-        n = random.uniform(0, sum([s.globals['weight'] for s in simgr.stashes['deferred']]))
-        for s in simgr.stashes['deferred']:
-            if n < s.globals['weight']:
-                simgr.stashes['deferred'].remove(s)
-                simgr.stashes[stash] = [s]
-                break
-            n = n - s.globals['weight']
+            weights.append(weight)
+
+        # 4. Weighted Random Selection
+        try:
+            selected_state: SimState = random.choices(deferred, weights=weights, k=1)[0]
+        except (ValueError, IndexError):
+            selected_state: SimState = random.choice(deferred)
+
+        # 5. Restore the chosen state to active
+        simgr.stashes['deferred'].remove(selected_state)
+        simgr.stashes[stash] = [selected_state]
+
+        # Detailed logging for your debugging
+        logger.debug(f"KLEE Select: Pool={len(deferred)} | Chosen Depth={selected_state.history.depth}")
 
         return simgr
+
+    def setup(self, simgr: SimulationManager):
+        if 'deferred' not in simgr.stashes:
+            simgr.stashes['deferred'] = []
