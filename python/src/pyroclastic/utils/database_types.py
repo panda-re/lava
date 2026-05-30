@@ -163,6 +163,10 @@ class BugKind(IntEnum):
     BUG_REL_WRITE = 2
     BUG_PRINTF_LEAK = 3
     BUG_MALLOC_OFF_BY_ONE = 4
+    BUG_CHAFF_STACK_UNUSED = 5,
+    BUG_CHAFF_STACK_CONST = 6,
+    BUG_CHAFF_HEAP_CONST = 7,
+    BUG_CHAFF_DIVZERO = 8
 
     def __str__(self):
         return self.name
@@ -607,6 +611,33 @@ class AtpKind(IntEnum):
 
     def __str__(self):
         return f"ATP_{self.name}"
+
+
+class CallTrace(Base):
+    __tablename__ = 'calltrace'
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    caller: Mapped[str] = mapped_column("caller", Text, nullable=False)
+    file: Mapped[str] = mapped_column("file", Text, nullable=False)
+    # Enforce Uniqueness at the Database Level
+    # This is critical once we start passing lots of files via concolic execution, expect lots of duplicates.
+    __table_args__ = (
+        UniqueConstraint(
+            'caller', 'file',
+            name='_calltrace_unique_constraint'
+        ),
+    )
+
+    def __lt__(self, other):
+        """
+        Mirrors C++ operator<:
+        """
+        if not isinstance(other, CallTrace):
+            return NotImplemented
+
+        # We use lval_id directly (the Foreign Key ID) as it is much faster
+        # than triggering a lazy load for the full SourceLval object.
+        return (self.caller, self.file ) < (other.caller, other.file)
+
 
 class AttackPoint(Base):
     __tablename__ = 'attackpoint'
