@@ -1,7 +1,7 @@
 import cPickle as pickle
 
-from fninstr import Function, Call, FnPtrAssign
-from lava import LavaDatabase, CallTrace, Bug, AttackPoint
+from ..add_queries.fninstr import Function, Call, FnPtrAssign
+from ..utils import LavaDatabase, CallTrace, Bug, AttackPoint
 
 
 def genFnTraceHelper(db, bug_list, fnwhitelist, fnpickle):

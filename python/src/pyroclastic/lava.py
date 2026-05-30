@@ -36,6 +36,7 @@ def parse_lava_args() -> argparse.Namespace:
     steps.add_argument("-q", "--add-queries", action="store_true", help="Run add queries step")
     steps.add_argument("-m", "--make", action="store_true", help="Run make step")
     steps.add_argument("-t", "--taint", action="store_true", help="Run taint step")
+    steps.add_argument("--sanitize", action="store_true", help="Run sanitize step")
     steps.add_argument("-i", "--inject", type=int, metavar="NUM_TRIALS",
                        help="Run inject step with specified number of trials")
 
@@ -73,6 +74,7 @@ def parse_lava_args() -> argparse.Namespace:
         args.add_queries = True
         args.make = True
         args.taint = True
+        args.sanitize = True
         args.inject = 3 if args.inject is None else args.inject
         if args.ak:
             args.force = True
@@ -85,6 +87,7 @@ def parse_lava_args() -> argparse.Namespace:
         args.add_queries = True
         args.make = True
         args.taint = True
+        args.sanitize = True
         args.inject = 3
         args.project_name = sys.argv[1]
 
@@ -279,6 +282,10 @@ def main():
         # Default print last 8 lines of the log, which should have the summary of bug_injection
         # Number might increase with more bug types or debug messages
         print_tail(lf)
+
+    if args.sanitize:
+        # This will assume a compile_commands.json exists to sanitize. If none exists, skip!
+        progress("everything", 1, "Sanitize step -- ")
 
     if args.inject:
         progress("everything", 1, f"Injecting step -- {args.inject} trials")
