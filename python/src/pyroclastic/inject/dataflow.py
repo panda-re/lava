@@ -1,15 +1,14 @@
-import cPickle as pickle
+import json
 from pyroclastic.utils.database_types import LavaDatabase, CallTrace, Bug, BugKind
 
 
-def genFnTraceHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist: str, fnpickle):
-    fundefs = {}
-    calls = {}
-    fpas = {}
-    with open(fnpickle, "r") as f:
-        fundefs = pickle.load(f)
-        calls = pickle.load(f)
-        fpas = pickle.load(f)
+def genFnTraceHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist: str, combined_json: str):
+    with open(combined_json, "r") as f:
+        raw_data = json.load(f)
+
+    fundefs = raw_data["fundefs"]  # Now a flat list of strings
+    fpas = raw_data["fpas"]  # Now a flat list of strings
+    calls = raw_data["calls"]  # Now a dict mapping: { "fn_name": ["caller1", "caller2"] }
 
     function_dataflow = []
     function_root = []
@@ -23,17 +22,17 @@ def genFnTraceHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist: 
         likely_root = None
         for calltrace_id in atp.ctrace[::-1]:
             calltrace = filter(lambda x: x.id == calltrace_id, calltrace_list)[0]
-            fn = calltrace.caller.split('!')[1]
-            if fn in fundefs and fn not in fpas:
+            function = calltrace.caller.split('!')[1]
+            if function in fundefs and function not in fpas:
                 if likely_root is None:
-                    function_end.append(fn)
+                    function_end.append(function)
                 else:
                     function_dataflow.append(likely_root)
-                likely_root = fn
+                likely_root = function
             else:
                 # Truncate the CallTrace when function pointer call is found
                 if not likely_root:  
-                    likely_root = fn  # Set End-of-dataflow it's fnptr
+                    likely_root = function  # Set End-of-dataflow it's fnptr
                 break
 
         if likely_root:
@@ -43,9 +42,10 @@ def genFnTraceHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist: 
             function_end.append("main")
 
     # Fixup dataflow arg list From other callers
-    for fn in function_dataflow:
-        for caller in calls[fn]:
-            function_root.append(caller.containing_function)
+    for function in function_dataflow:
+        if function in calls:
+            for containing_function in calls[function]:
+                function_root.append(containing_function)
 
     with open(function_whitelist, 'w') as fd:
         for fn in function_dataflow:
