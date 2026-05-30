@@ -34,6 +34,7 @@ authors = [
 keywords = ["lava", "panda", "bug-injection", "fuzzing", "dynamic-analysis"]
 requires-python = ">=3.10"
 dependencies = [
+    "angr",
     "compiledb",
     "colorama",
     "db",
@@ -65,10 +66,12 @@ classifiers = [
 [project.scripts]
 lava = "pyroclastic.lava:main"
 lava-init = "pyroclastic.utils.init_host:main"
+lava-coverage = "pyroclastic.magmalyze.coverage:main"
+magmalyze = "pyroclastic.magmalyze.angr_concolic_explore:main"
 
 [project.urls]
 Homepage = "https://github.com/panda-re/lava"
 Source = "https://github.com/panda-re/lava"
 Tracker = "https://github.com/panda-re/lava/issues"
 Documentation = "https://github.com/panda-re/lava/wiki/LAVA-Wiki"
-Download = "https://github.com/panda-re/lava/releases/download/v3.1.4/lava_3.1.4_amd64.deb"
+Download = "https://github.com/panda-re/lava/releases/latest"
