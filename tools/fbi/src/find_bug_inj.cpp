@@ -989,12 +989,12 @@ void record_call(Json::Value ple) {
     Json::Value call = ple["dwarf2Call"];
 
     // Skip library calls
-    if (strstr(call["function_name_callee"].asString().c_str(), except_list) != NULL) {
+    if (strstr(call["functionNameCallee"].asString().c_str(), except_list) != NULL) {
         return;
     }
     cur_call_stack.push_back(std::make_pair(
-                call["file_callee"].asString().c_str(),
-                call["function_name_callee"].asString().c_str()));
+                call["fileCallee"].asString().c_str(),
+                call["functionNameCallee"].asString().c_str()));
 
     // Restrict call stack size
     assert(cur_call_stack.size() < 100);
@@ -1004,7 +1004,7 @@ void record_ret(Json::Value ple) {
     Json::Value ret = ple["dwarf2Ret"];
 
     // Skip library calls
-    if (strstr(ret["function_name_callee"].asString().c_str(), except_list) != NULL) {
+    if (strstr(ret["functionNameCallee"].asString().c_str(), except_list) != NULL) {
         return;
     }
 
@@ -1012,16 +1012,17 @@ void record_ret(Json::Value ple) {
         return;
     }
     assert (cur_call_stack.back() == std::make_pair(
-                ret["file_callee"].asString().c_str(),
-                ret["function_name_callee"].asString().c_str()));
+                ret["fileCallee"].asString().c_str(),
+                ret["functionNameCallee"].asString().c_str()));
     cur_call_stack.pop_back();
 }
 
 
 void record_trace(Json::Value ple) {
     transaction t(db->begin());
-    Json::Value stid = ple["sourceTraceId"];
-    ASTLoc ast_loc(ind2str[std::strtoul(stid.asString().c_str(), 0, 0)]);
+    Json::Value source_trace_id = ple["sourceTraceId"];
+    uint64_t ast_id = source_trace_id["astLocId"].asLargestUInt();
+    ASTLoc ast_loc(ind2str[ast_id]);
     const SourceTrace *srctr = create(SourceTrace{0, source_trace_index++, ast_loc});
     t.commit();
 }
