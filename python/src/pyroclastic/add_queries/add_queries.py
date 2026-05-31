@@ -1,28 +1,12 @@
 import os
 import sys
-import tarfile
-import subprocess
 import shlex
 import shutil
 from pathlib import Path
 # LAVA
-from ..utils.funcs import read_compile_db
+from ..utils.funcs import read_compile_db, configure_project, run_cmd, preprocess, unpack_tar
 from ..utils.vars import Paths
 from .fninstr import analysis
-
-
-def run_cmd(cmd, cwd=None, env=None, shell=False):
-    """Helper to run shell commands and exit on error."""
-    print(f"Executing: {cmd if isinstance(cmd, str) else ' '.join(cmd)}, with env: {env}")
-    full_env = os.environ.copy()
-    if env:
-        # Merge your CC, CXX, CFLAGS
-        full_env.update({key: str(value) for key, value in env.items()})
-    try:
-        subprocess.check_call(cmd, cwd=cwd, env=full_env, shell=shell)
-    except subprocess.CalledProcessError as e:
-        print(f"Error executing command: {e}")
-        sys.exit(1)
 
 
 def step_add_queries(lava_path: Paths, atp_type=None):
@@ -33,20 +17,10 @@ def step_add_queries(lava_path: Paths, atp_type=None):
     os.chdir(lava_path.project_dir)
 
     # 2. Extract Tarball
-    with tarfile.open(lava_path.tar_to_unzip_path) as tar:
-        # Get top level directory name of the tar-ball
-        source_dirname = tar.getnames()[0].split(os.path.sep)[0]
-        source_path = lava_path.project_dir / source_dirname
+    unpack_tar(lava_path)
 
-        if source_path.exists():
-            print(f"Deleting existing source: {source_path}")
-            shutil.rmtree(source_path)
-
-        print(f"Extracting {lava_path.tar_to_unzip_path}...")
-        tar.extractall(path=lava_path.project_dir)
-
-    print(f"Changing to source directory to {source_path}")
-    os.chdir(source_path)
+    print(f"Changing to source directory to {lava_path.source_directory}")
+    os.chdir(lava_path.source_directory)
 
     # 3. Git Initialization
     run_cmd("rm -rf .git || true", shell=True)
@@ -57,34 +31,14 @@ def step_add_queries(lava_path: Paths, atp_type=None):
     run_cmd(["git", "commit", "-m", "Unmodified source."])
 
     # 4. Configure
-    install_dir = source_path / "lava-install"
+    install_dir = lava_path.source_directory / "lava-install"
     install_dir.mkdir(exist_ok=True)
 
-    configure_command = lava_path.config.get('configure', '')
-    env = lava_path.config['env_var']
-    if configure_command != '':
-        print('Configuring...')
-        full_config = f"{configure_command} --prefix={install_dir}"
-        run_cmd(shlex.split(full_config), env=env)
-
-    # First pre-process, append the makefile.fixup to Makefile for easy pre-processing.
-    if not lava_path.config.get('preprocessed', False):
-        print("Preprocessing Source code...")
-        with open(Path(__file__).parent.parent / "data" / "makefile.fixup", "r") as mf:
-            modified_make = mf.read()
-
-        if os.path.isfile(source_path / "Makefile"):
-            with open(source_path / "Makefile", "a+") as mf:
-                mf.write("\n" + modified_make + "\n")
-        else:
-            print(f"Warning: Makefile not found for preprocessing at directory: {source_path}")
-            sys.exit(1)
-
-        run_cmd(shlex.split("make lava_preprocess"), env=env)
-        run_cmd(["git", "add", "."])
-        run_cmd(["git", "commit", "-m", "Pre-processed source."])
+    configure_project(lava_path)
+    preprocess(lava_path)
 
     # 5. Make with Btrace (well compile db now)
+    env = lava_path.config['env_var']
     run_cmd(f"compiledb -- {lava_path.config['make']}", env=env, shell=True)
 
     # 6. Install
@@ -96,7 +50,7 @@ def step_add_queries(lava_path: Paths, atp_type=None):
     # 8. Get C files and Insert Headers
     os.chdir(lava_path.project_dir)
 
-    c_dirs, c_files = read_compile_db(source_path)
+    c_dirs, c_files = read_compile_db(lava_path.source_directory)
 
     # Given the Debian package installed in /usr/include, we now copy it to LAVA project.
     include_dir = Path("/usr/include")
@@ -129,8 +83,8 @@ def step_add_queries(lava_path: Paths, atp_type=None):
             "lavaTool", "-action=query",
             f"-lava-db={lava_path.project_dir}/lavadb",
             f"-lava-wl={fninstr_path}",
-            f"-p={source_path}/compile_commands.json",
-            f"-src-prefix={source_path.resolve()}",
+            f"-p={lava_path.source_directory}/compile_commands.json",
+            f"-src-prefix={lava_path.source_directory.resolve()}",
             f"-db={lava_path.config['db']}",
             file
         ]

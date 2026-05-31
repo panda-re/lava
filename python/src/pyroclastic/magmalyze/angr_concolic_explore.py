@@ -9,7 +9,7 @@ import logging
 import shlex
 import time
 from pyroclastic.magmalyze.KLEERandomSearch import KLEERandomSearch
-from pyroclastic.magmalyze.coverage import unpack, copy_inputs, compile
+from pyroclastic.magmalyze.coverage import setup, compile
 from pyroclastic.utils.vars import Paths
 
 logging.getLogger('angr').setLevel(logging.ERROR)
@@ -118,7 +118,7 @@ def perform_batch_concolic_exploration(project_paths: Paths, symbolic_bytes_coun
     p = angr.Project(binary_path, auto_load_libs=True, load_debug_info=True)
 
     # 2. Gather Input Seeds
-    inputs_directory = os.path.join(project_paths.generate_executable_install_dir, 'inputs')
+    inputs_directory = project_paths.generate_directory_inputs_path
     files_to_process = []
     if os.path.isdir(inputs_directory):
         for f in os.listdir(inputs_directory):
@@ -206,8 +206,7 @@ def main():
     args = parser.parse_args()
 
     lava_paths = Paths(args)
-    unpack(lava_paths)
-    copy_inputs(lava_paths)
+    setup(lava_paths)
     compile(lava_paths)
 
     # Call the main exploration function

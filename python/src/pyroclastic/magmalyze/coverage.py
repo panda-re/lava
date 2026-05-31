@@ -9,50 +9,23 @@ import subprocess
 
 from pyroclastic.utils.vars import parse_vars, Paths
 from pyroclastic.add_queries.add_queries import run_cmd
+from pyroclastic.utils.funcs import unpack_tar, configure_project
 
 
-def unpack(lava_path: Paths):
+def setup(lava_path: Paths):
     """
-    This is used within the initialization but completes the following steps:
-    1. Create the project directory in the target_generation
-    2. unpack the Tar package, it deletes any existing unpacking
-    3. Create the installation directory which will be used for code coverage and/or generating inputs
+    Copy the inputs folder from the config_dir into the `target_generation`/<project> folder.
+    We use this so when we generate new inputs, it is in target_generation/<project>/inputs folder
     """
     # 1. Setup Directories
     if not lava_path.generate_project_root_directory.exists():
         lava_path.generate_project_root_directory.mkdir(parents=True)
 
     os.chdir(lava_path.generate_project_root_directory)
-
-    # 2. Extract Tarball
-    with tarfile.open(lava_path.tar_to_unzip_path) as tar:
-        # Get top level directory name of the tar-ball
-
-        if lava_path.generate_project_root_unpacked_tar_directory.exists():
-            print(f"Deleting existing source: {lava_path.generate_project_root_unpacked_tar_directory}")
-            shutil.rmtree(lava_path.generate_project_root_unpacked_tar_directory)
-
-        print(f"Extracting {lava_path.generate_project_root_unpacked_tar_directory}...")
-        tar.extractall(path=lava_path.generate_project_root_directory)
+    unpack_tar(lava_path)
 
     print(f"Changing to source directory to {lava_path.generate_project_root_unpacked_tar_directory}")
     os.chdir(lava_path.generate_project_root_unpacked_tar_directory)
-
-    # 3. Configure
-    lava_path.generate_executable_install_dir = lava_path.generate_project_root_unpacked_tar_directory / "lava-install"
-    lava_path.generate_executable_install_dir.mkdir(exist_ok=True)
-
-
-def copy_inputs(lava_path: Paths):
-    """
-    Copy the inputs folder from the config_dir into the `target_generation`/<project> folder.
-    We use this so when we generate new inputs, it is in target_generation/<project>/inputs folder
-    """
-    input_file_directory = os.path.abspath(os.path.join(lava_path.config["config_dir"], "inputs"))
-    lava_path.guest_directory_inputs_path = os.path.join(lava_path.generate_executable_install_dir, 'inputs')
-    if os.path.exists(lava_path.guest_directory_inputs_path):
-        shutil.rmtree(lava_path.guest_directory_inputs_path)
-    shutil.copytree(input_file_directory, lava_path.guest_directory_inputs_path)
 
 
 def compile(lava_path: Paths, coverage: bool = False):
@@ -61,21 +34,23 @@ def compile(lava_path: Paths, coverage: bool = False):
     Args:
         coverage: if True, use coverage environment variables for compilation.
     """
+    lava_path.generate_executable_install_dir = configure_project(lava_path)
     if coverage:
         envv = lava_path.config['llvm_cov']
     else:
         envv = lava_path.config['env_var']
-
-    configure_command = lava_path.config.get('configure', '')
-    if configure_command != '':
-        print('Configuring...')
-        full_config = f"{configure_command} --prefix={lava_path.generate_executable_install_dir}"
-        run_cmd(shlex.split(full_config), env=envv, cwd=lava_path.generate_project_root_unpacked_tar_directory)
     run_cmd(lava_path.config['make'], env=envv, shell=True, cwd=lava_path.generate_project_root_unpacked_tar_directory)
     run_cmd(lava_path.config['install'], env=envv, shell=True, cwd=lava_path.generate_project_root_unpacked_tar_directory)
 
+    # Copy the inputs from the original project to the generation folder to make new inputs
+    input_file_directory = os.path.abspath(os.path.join(lava_path.config["config_dir"], "inputs"))
+    lava_path.generate_directory_inputs_path = os.path.join(lava_path.generate_executable_install_dir, 'inputs')
+    if os.path.exists(lava_path.generate_directory_inputs_path):
+        shutil.rmtree(lava_path.generate_directory_inputs_path)
+    shutil.copytree(input_file_directory, lava_path.generate_directory_inputs_path)
 
-def get_coverage(lava_path) -> float:
+
+def get_coverage(lava_path: Paths) -> float:
     """
     Calculates code coverage using GCC's GCOV/LCOV profiling tools.
 
@@ -103,8 +78,8 @@ def get_coverage(lava_path) -> float:
     env["LLVM_PROFILE_FILE"] = os.path.join(profraw_dir, "data-%p.profraw")
 
     # --- Step 1: Execute binary with all inputs to generate .gcda files ---
-    for filename in os.listdir(lava_path.guest_directory_inputs_path):
-        filepath = os.path.join(lava_path.guest_directory_inputs_path, filename)
+    for filename in os.listdir(lava_path.generate_directory_inputs_path):
+        filepath = os.path.join(lava_path.generate_directory_inputs_path, filename)
         if os.path.isfile(filepath):
             # Using the compiled binary from the installation path
             full_command = lava_path.config['command'].format(
@@ -205,8 +180,7 @@ def main():
     args = parser.parse_args()
 
     lava_paths = Paths(args)
-    unpack(lava_paths)
-    copy_inputs(lava_paths)
+    setup(lava_paths)
     coverage_percentage = get_coverage(lava_paths)
 
     if coverage_percentage >= 0:

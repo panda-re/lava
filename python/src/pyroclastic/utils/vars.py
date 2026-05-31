@@ -25,7 +25,7 @@ class Paths(object):
         self.generate_project_root_directory = Path(self.config['generation_dir']) / self.name
         self.generate_project_root_unpacked_tar_directory = self.generate_project_root_directory / self.tar_source_root
         self.generate_executable_install_dir = ''
-        self.guest_directory_inputs_path = ''
+        self.generate_directory_inputs_path = ''
 
         # Used for Injection
 
