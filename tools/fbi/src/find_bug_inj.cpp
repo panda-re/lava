@@ -516,7 +516,6 @@ void taint_query_pri(Json::Value& ple) {
         }
     }
 
-#ifdef LEGACY_CHAFF_BUGS
     // create a fake dua if we can
     if (chaff_bugs && !is_dua
             && std::strtoul(tqh["len"].asString().c_str(), 0, 0) - num_tainted >= LAVA_MAGIC_VALUE_SIZE) {
@@ -552,19 +551,16 @@ void taint_query_pri(Json::Value& ple) {
         assert(count >= LAVA_MAGIC_VALUE_SIZE);
         is_fake_dua = true;
     }
-#endif
 
     dprintf("is_dua=%d is_fake_dua=%d\n", is_dua, is_fake_dua);
     assert(!(is_dua && is_fake_dua));
 
-    assert(si["has_ast_loc_id"]);
-    ASTLoc ast_loc(ind2str[std::strtoul(si["ast_loc_id"].asString().c_str(), 0, 0)]);
+    ASTLoc ast_loc(ind2str[std::strtoul(si["astLocId"].asString().c_str(), 0, 0)]);
     assert(ast_loc.filename.size() > 0);
 
     // Track Callers
     std::vector<uint64_t> calltrace;
-    for (auto stkframe : cur_call_stack)
-    {
+    for (auto stkframe : cur_call_stack) {
         const CallTrace *ct = create(CallTrace{0, stkframe.second, stkframe.first});
         calltrace.push_back(ct->id);
     }
@@ -595,16 +591,14 @@ void taint_query_pri(Json::Value& ple) {
             }
         }
 
-#ifdef LEGACY_CHAFF_BUGS
+        // TODO: What does adding 0 stackoff set do to RET_BUFFER?
         if (len >= 20 && decimate_by_type(Bug::RET_BUFFER)) {
             Range range = get_dua_exploit_pad(dua);
             const DuaBytes *dua_bytes = create(DuaBytes(dua, range));
             if (is_fake_dua || range.size() >= 20) {
-                record_injectable_bugs_at<Bug::RET_BUFFER>(
-                        pad_atp, is_new_atp, { dua_bytes });
+                record_injectable_bugs_at<Bug::RET_BUFFER>(0, pad_atp, is_new_atp, { dua_bytes });
             }
         }
-#endif
         dprintf("OK DUA.\n");
 
         // Update recent_dead_duas + recent_duas_by_instr:
@@ -660,12 +654,14 @@ void taint_query_pri(Json::Value& ple) {
 
     record_injectable_bugs_at<Bug::CHAFF_STACK_UNUSED>(
             stack_offset, pad_atp, is_new_atp, {});
-#define RANDOM_SAMPLING_THRESHOLD   2
+#define RANDOM_SAMPLING_THRESHOLD 2
     uint64_t randcount = RANDOM_SAMPLING_THRESHOLD;
     if (RANDOM_SAMPLING_THRESHOLD > recent_duas_by_instr.size()) {
         for (const auto &exploit_dua : recent_dead_duas) {
             Range r = get_dua_dead_range(exploit_dua.second, {});
-            if (r.empty())  continue;
+            if (r.empty()) {
+                continue;
+            }
             const DuaBytes *k = create(DuaBytes{exploit_dua.second, r});
             record_injectable_bugs_at<Bug::CHAFF_STACK_CONST>(
                     stack_offset, pad_atp, is_new_atp, { k });
@@ -679,7 +675,9 @@ void taint_query_pri(Json::Value& ple) {
         while (randcount--) {
             const Dua *exploit_dua = recent_duas_by_instr[rand() % recent_duas_by_instr.size()];
             Range r = get_dua_dead_range(exploit_dua, {});
-            if (r.empty())  continue;
+            if (r.empty()) {
+                continue;
+            }
             const DuaBytes *k = create(DuaBytes{exploit_dua, r});
             record_injectable_bugs_at<Bug::CHAFF_STACK_CONST>(
                     stack_offset, pad_atp, is_new_atp, { k });
@@ -989,12 +987,12 @@ void record_call(Json::Value ple) {
     Json::Value call = ple["dwarf2Call"];
 
     // Skip library calls
-    if (strstr(call["function_name_callee"].asString().c_str(), except_list) != NULL) {
+    if (strstr(call["functionNameCallee"].asString().c_str(), except_list) != NULL) {
         return;
     }
     cur_call_stack.push_back(std::make_pair(
-                call["file_callee"].asString().c_str(),
-                call["function_name_callee"].asString().c_str()));
+                call["fileCallee"].asString().c_str(),
+                call["functionNameCallee"].asString().c_str()));
 
     // Restrict call stack size
     assert(cur_call_stack.size() < 100);
@@ -1004,7 +1002,7 @@ void record_ret(Json::Value ple) {
     Json::Value ret = ple["dwarf2Ret"];
 
     // Skip library calls
-    if (strstr(ret["function_name_callee"].asString().c_str(), except_list) != NULL) {
+    if (strstr(ret["functionNameCallee"].asString().c_str(), except_list) != NULL) {
         return;
     }
 
@@ -1012,16 +1010,17 @@ void record_ret(Json::Value ple) {
         return;
     }
     assert (cur_call_stack.back() == std::make_pair(
-                ret["file_callee"].asString().c_str(),
-                ret["function_name_callee"].asString().c_str()));
+                ret["fileCallee"].asString().c_str(),
+                ret["functionNameCallee"].asString().c_str()));
     cur_call_stack.pop_back();
 }
 
 
 void record_trace(Json::Value ple) {
     transaction t(db->begin());
-    Json::Value stid = ple["sourceTraceId"];
-    ASTLoc ast_loc(ind2str[std::strtoul(stid.asString().c_str(), 0, 0)]);
+    Json::Value source_trace_id = ple["sourceTraceId"];
+    uint64_t ast_id = source_trace_id["astLocId"].asLargestUInt();
+    ASTLoc ast_loc(ind2str[ast_id]);
     const SourceTrace *srctr = create(SourceTrace{0, source_trace_index++, ast_loc});
     t.commit();
 }
