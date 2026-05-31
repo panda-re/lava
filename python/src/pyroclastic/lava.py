@@ -9,7 +9,7 @@ from collections import deque
 from .inject import inject
 from .taint import bug_mining
 from .add_queries.add_queries import step_add_queries
-from .utils.vars import parse_vars, Paths
+from .utils.vars import parse_vars, LavaPaths
 from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, print_tail
 
 
@@ -145,7 +145,7 @@ def log_to_file(logfile: str):
             os.close(old_stderr_fd)
 
 
-def reset(lava_paths: Paths, config: dict, force: bool = False):
+def reset(lava_paths: LavaPaths, config: dict, force: bool = False):
     """
     This function resets the LAVA environment by deleting generated files and resetting the database.
     Args:
@@ -170,7 +170,7 @@ def reset(lava_paths: Paths, config: dict, force: bool = False):
     progress("everything", 1, f"reset complete {total_time} seconds")
 
 
-def reset_database(lava_paths: Paths, config: dict):
+def reset_database(lava_paths: LavaPaths, config: dict):
     """
     This function resets the LAVA database to a clean state.
     This is only trigger upon a --clean flag, or other flags that force a --clean.
@@ -184,7 +184,7 @@ def reset_database(lava_paths: Paths, config: dict):
     run_local("echo 'dbwipe complete'", log_file)
 
 
-def make(lava_paths: Paths, config: dict):
+def make(lava_paths: LavaPaths, config: dict):
     """
     This compiles the target program with LAVA taint queries added.
     This requires static compiling as the generic PANDA QCows might not have all libraries for dynamic linking.
@@ -227,7 +227,7 @@ def main():
         print("[!] Please set the POSTGRES_USER and POSTGRES_PASSWORD environment variables to access the database.")
         sys.exit(1)
 
-    path_manager = Paths(args)
+    path_manager = LavaPaths(args)
 
     # 2. Handle the "Can of Worms": Remote/Docker logic
     # Since you're sticking to local CI/CD for now, we just verify

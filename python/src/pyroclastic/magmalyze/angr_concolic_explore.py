@@ -10,7 +10,7 @@ import shlex
 import time
 from pyroclastic.magmalyze.KLEERandomSearch import KLEERandomSearch
 from pyroclastic.magmalyze.coverage import setup, compile
-from pyroclastic.utils.vars import Paths
+from pyroclastic.utils.vars import LavaPaths
 
 logging.getLogger('angr').setLevel(logging.ERROR)
 logging.getLogger('pyvex').setLevel(logging.ERROR)
@@ -99,7 +99,8 @@ def create_state_for_file(project, actual_argv: list[str], input_file_path: str,
 
     return state
 
-def perform_batch_concolic_exploration(project_paths: Paths, symbolic_bytes_count: int = 64, timeout: int = 3600):
+
+def perform_batch_concolic_exploration(project_paths: LavaPaths, symbolic_bytes_count: int = 64, timeout: int = 3600):
     """
     Performs batch concolic execution with progress tracking and timeouts.
     Supports complex binaries like 'file' that require multiple arguments.
@@ -205,7 +206,7 @@ def main():
     parser.add_argument("--timeout", "-t", type=int, default=3600)
     args = parser.parse_args()
 
-    lava_paths = Paths(args)
+    lava_paths = LavaPaths(args)
     setup(lava_paths)
     compile(lava_paths)
 

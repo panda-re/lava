@@ -12,7 +12,7 @@ import tarfile
 import shlex
 from typing import Tuple, Set
 from pathlib import Path
-from pyroclastic.utils.vars import Paths
+from pyroclastic.utils.vars import LavaPaths
 
 
 def get_inject_parser():
@@ -227,8 +227,10 @@ def run_cmd(cmd, cwd=None, env=None, shell=False):
         print(f"Error executing command: {e}")
         sys.exit(1)
 
-def unpack_tar(lava_path: Paths):
-    main_directory = Path.cwd()
+
+def unpack_tar(lava_path: LavaPaths, main_directory=None):
+    if main_directory is None:
+        main_directory = Path.cwd()
     with tarfile.open(lava_path.tar_to_unzip_path) as tar:
         # Get top level directory name of the tar-ball
         unpacked_tar_directory = main_directory / lava_path.tar_source_root
@@ -241,7 +243,7 @@ def unpack_tar(lava_path: Paths):
         tar.extractall(path=main_directory)
 
 
-def configure_project(lava_path: Paths, coverage: bool = False) -> Path:
+def configure_project(lava_path: LavaPaths, coverage: bool = False) -> Path:
     """
     This function first creates the install directory. If there is a configure, it will run it 
     and set install to the install path in the current working directory
@@ -264,7 +266,7 @@ def configure_project(lava_path: Paths, coverage: bool = False) -> Path:
     return install_dir
 
 
-def preprocess(lava_path: Paths):
+def preprocess(lava_path: LavaPaths):
     env = lava_path.config['env_var']
     main_directory = Path.cwd()
     if not lava_path.config.get('preprocessed', False):

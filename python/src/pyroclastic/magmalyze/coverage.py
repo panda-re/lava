@@ -7,12 +7,12 @@ import shlex
 import re
 import subprocess
 
-from pyroclastic.utils.vars import parse_vars, Paths
+from pyroclastic.utils.vars import parse_vars, LavaPaths
 from pyroclastic.add_queries.add_queries import run_cmd
 from pyroclastic.utils.funcs import unpack_tar, configure_project
 
 
-def setup(lava_path: Paths):
+def setup(lava_path: LavaPaths):
     """
     Copy the inputs folder from the config_dir into the `target_generation`/<project> folder.
     We use this so when we generate new inputs, it is in target_generation/<project>/inputs folder
@@ -28,7 +28,7 @@ def setup(lava_path: Paths):
     os.chdir(lava_path.generate_project_root_unpacked_tar_directory)
 
 
-def compile(lava_path: Paths, coverage: bool = False):
+def compile(lava_path: LavaPaths, coverage: bool = False):
     """
     Compiles the project using `make` and installs it.
     Args:
@@ -50,7 +50,7 @@ def compile(lava_path: Paths, coverage: bool = False):
     shutil.copytree(input_file_directory, lava_path.generate_directory_inputs_path)
 
 
-def get_coverage(lava_path: Paths) -> float:
+def get_coverage(lava_path: LavaPaths) -> float:
     """
     Calculates code coverage using GCC's GCOV/LCOV profiling tools.
 
@@ -179,7 +179,7 @@ def main():
                         help="Provide the LAVA project name")
     args = parser.parse_args()
 
-    lava_paths = Paths(args)
+    lava_paths = LavaPaths(args)
     setup(lava_paths)
     coverage_percentage = get_coverage(lava_paths)
 

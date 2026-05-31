@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 
-class Paths(object):
+class LavaPaths(object):
     def __init__(self, args: argparse.Namespace):
         self.config = parse_vars(args.project_name)
         self.name = self.config['name'] # Project name
@@ -27,7 +27,21 @@ class Paths(object):
         self.generate_executable_install_dir = ''
         self.generate_directory_inputs_path = ''
 
-        # Used for Injection
+        # Injection
+        self.output_dir = self.config['output_dir']
+        self.lavadb = os.path.join(self.output_dir, 'lavadb')
+        self.lava_tool = 'lavaTool'
+        self.queries_build = os.path.join(self.output_dir, self.tar_source_root)
+        self.bugs_top_dir = os.path.join(self.output_dir, 'bugs')
+        self.bugs_parent = ''
+        self.bugs_build = ''
+        self.bugs_install = ''
+
+    def set_bugs_parent(self, bugs_parent):
+        assert self.bugs_top_dir == os.path.dirname(bugs_parent)
+        self.bugs_parent = bugs_parent
+        self.bugs_build = os.path.join(self.bugs_parent, self.tar_source_root)
+        self.bugs_install = os.path.join(str(self.bugs_build), 'lava-install')
 
 
 def get_valid_architectures():

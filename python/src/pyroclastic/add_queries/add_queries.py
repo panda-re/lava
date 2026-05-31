@@ -5,11 +5,11 @@ import shutil
 from pathlib import Path
 # LAVA
 from ..utils.funcs import read_compile_db, configure_project, run_cmd, preprocess, unpack_tar
-from ..utils.vars import Paths
+from ..utils.vars import LavaPaths
 from .fninstr import analysis
 
 
-def step_add_queries(lava_path: Paths, atp_type=None):
+def step_add_queries(lava_path: LavaPaths, atp_type=None):
     # 1. Setup Directories
     if not lava_path.project_dir.exists():
         lava_path.project_dir.mkdir(parents=True)
@@ -29,10 +29,6 @@ def step_add_queries(lava_path: Paths, atp_type=None):
     run_cmd(["git", "config", "user.email", "nobody@nowhere"])
     run_cmd(["git", "add", "-A", "."])
     run_cmd(["git", "commit", "-m", "Unmodified source."])
-
-    # 4. Configure
-    install_dir = lava_path.source_directory / "lava-install"
-    install_dir.mkdir(exist_ok=True)
 
     configure_project(lava_path)
     preprocess(lava_path)
