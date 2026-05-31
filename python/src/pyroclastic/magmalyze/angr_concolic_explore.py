@@ -8,8 +8,9 @@ import argparse
 import logging
 import shlex
 import time
-from .KLEERandomSearch import KLEERandomSearch
-from .deploy import GenerationManager
+from pyroclastic.magmalyze.KLEERandomSearch import KLEERandomSearch
+from pyroclastic.magmalyze.coverage import unpack, copy_inputs, compile
+from pyroclastic.utils.vars import Paths
 
 logging.getLogger('angr').setLevel(logging.ERROR)
 logging.getLogger('pyvex').setLevel(logging.ERROR)
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 SYMBOLIC_FS_PATH = '/tmp/input.txt'
 
 
-def create_state_for_file(project, actual_argv, input_file_path, symbolic_bytes_count):
+def create_state_for_file(project, actual_argv: list[str], input_file_path: str, symbolic_bytes_count: int):
     """
     Helper function to create a single Angr state for a specific input file.
     Supports hybrid symbolic execution and custom argv.
@@ -98,7 +99,7 @@ def create_state_for_file(project, actual_argv, input_file_path, symbolic_bytes_
 
     return state
 
-def perform_batch_concolic_exploration(project_paths: GenerationManager, symbolic_bytes_count: int = 64, timeout: int = 3600):
+def perform_batch_concolic_exploration(project_paths: Paths, symbolic_bytes_count: int = 64, timeout: int = 3600):
     """
     Performs batch concolic execution with progress tracking and timeouts.
     Supports complex binaries like 'file' that require multiple arguments.
@@ -106,7 +107,7 @@ def perform_batch_concolic_exploration(project_paths: GenerationManager, symboli
     # 1. Setup Binary and Arguments
     # Placeholder for the simulated FS path used in the command template
     full_cmd_str = project_paths.config['command'].format(
-        install_dir=shlex.quote(str(project_paths.install_dir)),
+        install_dir=shlex.quote(str(project_paths.generate_executable_install_dir)),
         input_file="{SYMBOLIC_FILE_PATH}"
     ).strip()
 
@@ -117,7 +118,7 @@ def perform_batch_concolic_exploration(project_paths: GenerationManager, symboli
     p = angr.Project(binary_path, auto_load_libs=True, load_debug_info=True)
 
     # 2. Gather Input Seeds
-    inputs_directory = os.path.join(project_paths.install_dir, 'inputs')
+    inputs_directory = os.path.join(project_paths.generate_executable_install_dir, 'inputs')
     files_to_process = []
     if os.path.isdir(inputs_directory):
         for f in os.listdir(inputs_directory):
@@ -204,13 +205,14 @@ def main():
     parser.add_argument("--timeout", "-t", type=int, default=3600)
     args = parser.parse_args()
 
-    generation_manager = GenerationManager(args)
-    # unpack, and copy_inputs too!
-    generation_manager.compile()
+    lava_paths = Paths(args)
+    unpack(lava_paths)
+    copy_inputs(lava_paths)
+    compile(lava_paths)
 
     # Call the main exploration function
     # We now return the simgr, symbolic_file_content, and project for potential future steps
-    perform_batch_concolic_exploration(generation_manager, symbolic_bytes_count=args.symbolic_bytes, timeout=args.timeout)
+    perform_batch_concolic_exploration(lava_paths, symbolic_bytes_count=args.symbolic_bytes, timeout=args.timeout)
 
 
 if __name__ == '__main__':

@@ -7,8 +7,8 @@ import shlex
 import re
 import subprocess
 
-from ..utils.vars import parse_vars, Paths
-from ..add_queries.add_queries import run_cmd
+from pyroclastic.utils.vars import parse_vars, Paths
+from pyroclastic.add_queries.add_queries import run_cmd
 
 
 def unpack(lava_path: Paths):
