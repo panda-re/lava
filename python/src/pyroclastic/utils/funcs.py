@@ -8,7 +8,11 @@ import shutil
 import time
 import argparse
 import json
+import tarfile
+import shlex
 from typing import Tuple, Set
+from pathlib import Path
+from pyroclastic.utils.vars import LavaPaths
 
 
 def get_inject_parser():
@@ -208,3 +212,86 @@ def tock(start_time: float, decimal_places: int = 2) -> float:
     end_time = time.perf_counter()
     elapsed = end_time - start_time
     return round(elapsed, decimal_places)
+
+
+def run_cmd(cmd, cwd=None, env=None, shell=False):
+    """Helper to run shell commands and exit on error."""
+    print(f"Executing: {cmd if isinstance(cmd, str) else ' '.join(cmd)}, with env: {env}")
+    full_env = os.environ.copy()
+    if env:
+        # Merge your CC, CXX, CFLAGS
+        full_env.update({key: str(value) for key, value in env.items()})
+    try:
+        subprocess.check_call(cmd, cwd=cwd, env=full_env, shell=shell)
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing command: {e}")
+        sys.exit(1)
+
+
+def unpack_tar(lava_path: LavaPaths, main_directory: str = ""):
+    if main_directory == "":
+        main_directory = Path.cwd()
+    else:
+        main_directory = Path(main_directory)
+    
+    with tarfile.open(lava_path.tar_to_unzip_path) as tar:
+        # Get top level directory name of the tar-ball
+        unpacked_tar_directory = main_directory / lava_path.tar_source_root
+
+        if unpacked_tar_directory.exists():
+            print(f"Deleting existing source: {unpacked_tar_directory}")
+            shutil.rmtree(unpacked_tar_directory)
+
+        print(f"Extracting {lava_path.tar_to_unzip_path} to {main_directory}...")
+        tar.extractall(path=main_directory)
+
+
+def configure_project(lava_path: LavaPaths, main_directory: str = "", coverage: bool = False) -> Path:
+    """
+    This function first creates the install directory. If there is a configure, it will run it 
+    and set install to the install path in the current working directory
+    Args:
+        lava_path: The class used to track all paths for the specific project and configs
+    """
+    if main_directory == "":
+        main_directory = Path.cwd()
+    else:
+        main_directory = Path(main_directory)
+    install_dir = main_directory / "lava-install"
+    install_dir.mkdir(exist_ok=True)
+
+    configure_command = lava_path.config.get('configure', '')
+    if coverage:
+        envv = lava_path.config['llvm_cov']
+    else:
+        envv = lava_path.config['env_var']
+
+    if configure_command != '':
+        full_config = f"{configure_command} --prefix={install_dir}"
+        print(f'Configuring... {full_config}')
+        run_cmd(shlex.split(full_config), env=env, cwd=str(main_directory))
+    return install_dir
+
+
+def preprocess(lava_path: LavaPaths, main_directory : str = ""):
+    env = lava_path.config['env_var']
+    if main_directory == "":
+        main_directory = Path.cwd()
+    else:
+        main_directory = Path(main_directory)
+
+    if not lava_path.config.get('preprocessed', False):
+        print("Preprocessing Source code...")
+        with open(Path(__file__).parent.parent / "data" / "makefile.fixup", "r") as mf:
+            modified_make = mf.read()
+
+        if os.path.isfile(main_directory / "Makefile"):
+            with open(main_directory / "Makefile", "a+") as mf:
+                mf.write("\n" + modified_make + "\n")
+        else:
+            print(f"Warning: Makefile not found for preprocessing at directory: {main_directory}")
+            sys.exit(1)
+
+        run_cmd(shlex.split("make lava_preprocess"), env=env, cwd=str(main_directory))
+        run_cmd(["git", "add", "."], cwd=str(main_directory))
+        run_cmd(["git", "commit", "-m", "Pre-processed source."], cwd=str(main_directory))

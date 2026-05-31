@@ -1,9 +1,11 @@
 import argparse
 import yaml
+import json
+from typing import Dict, List, Any
 from ..utils.vars import parse_vars
 
 
-def parse_fundecl(fd):
+def parse_fundecl(fd: dict):
     ret_type = fd['ret_type']
     params = fd['params']
     if 'extern' in fd:
@@ -13,17 +15,17 @@ def parse_fundecl(fd):
     return ext, ret_type, params
 
 
-def check_start_end(x):
+def check_start_end(x: dict):
     start = x['start']
     end = x['end']
-    f1 = start.split(":")[0]
-    f2 = end.split(":")[0]
+    f1 = start.split(":", 1)[0]
+    f2 = end.split(":", 1)[0]
     assert f1 == f2
     return f1, start, end, start == end
 
 
 class Function:
-    def __init__(self, fun):
+    def __init__(self, fun: dict):
         self.filename, self.start, self.end, see = check_start_end(fun)
         self.name = fun['name']
         self.extern, self.ret_type, self.params = parse_fundecl(fun['fundecl'])
@@ -33,7 +35,7 @@ class Function:
 
 
 class FnPtrAssign:
-    def __init__(self, fpa):
+    def __init__(self, fpa: dict):
         self.filename, self.start, self.end, see = check_start_end(fpa)
         self.extern, self.ret_type, self.params = parse_fundecl(fpa['fundecl'])
         # this is the value being assigned to the fn ptr, i.e., the RHS
@@ -42,7 +44,7 @@ class FnPtrAssign:
 
 
 class Call:
-    def __init__(self, call):
+    def __init__(self, call: dict):
         # this is the name of the fn called
         self.name = call['name']
         # and this is what fn the call is in
@@ -54,23 +56,23 @@ class Call:
         assert not see
 
 
-def addtohl(h, key, value):
-    if not key in h:
-        h[key] = []
-    h[key].append(value)
+def append_to_dict_list(dictionary: Dict[str, List[Any]], key: str, value: Any) -> None:
+    if key not in dictionary:
+        dictionary[key] = []
+    dictionary[key].append(value)
 
 
-def analysis(project_name: str, output_file: str, inputs: list[str]):
-    """
-    First analysis.
-    Determine complete set of named function we have seen.
-    Four sources of information for this.
-
-    1. Function definitions. We know it's a definition if it contains an implementation (body)
-    2. Function declarations (prototype, with return type, and param types)
-    3. Function calls.  No fn should be called unless we have a prototype for it?  If we are looking at preprocessed code.
+def analysis(project_name: str, output_file: str, inputs: list[str], ignore_function_pointers=False):
     """
 
+    :param project_name:
+    :param output_file:
+    :param inputs:
+    :param ignore_function_pointers:
+    :return:
+    """
+
+    # Parse all the .fn files
     fundefs = {}
     prots = {}
     calls = {}
@@ -88,16 +90,39 @@ def analysis(project_name: str, output_file: str, inputs: list[str]):
                 if fd.start == fd.end:
                     continue
                 if fd.hasbody:
-                    addtohl(fundefs, fd.name, fd)
+                    append_to_dict_list(fundefs, fd.name, fd)
                 else:
-                    addtohl(prots, fd.name, fd)
+                    append_to_dict_list(prots, fd.name, fd)
             elif 'call' in entry:
                 call = Call(entry['call'])
-                addtohl(calls, call.name, call)
+                append_to_dict_list(calls, call.name, call)
             elif 'fnPtrAssign' in entry:
                 fpa = FnPtrAssign(entry['fnPtrAssign'])
-                addtohl(fpas, fpa.name, fpa)
+                append_to_dict_list(fpas, fpa.name, fpa)
 
+    export_data = {
+        # We only need the keys (function names) for presence checks
+        "fundefs": list(fundefs.keys()),
+        "fpas": list(fpas.keys()),
+        # Map function names to a simple list of strings of their containing functions
+        "calls": {
+            fn_name: [c.containing_function for c in call_objects]
+            for fn_name, call_objects in calls.items()
+        }
+    }
+
+    with open("getfns.json", "w") as f:
+        json.dump(export_data, f, indent=4)
+
+    """
+    First analysis.
+    Determine complete set of named function we have seen.
+    Four sources of information for this.
+
+    1. Function definitions. We know it's a definition if it contains an implementation (body)
+    2. Function declarations (prototype, with return type, and param types)
+    3. Function calls.  No fn should be called unless we have a prototype for it?  If we are looking at preprocessed code.
+    """
     all_fns = set()
     fns_passed_as_args = {}
     for name in prots.keys():
@@ -120,7 +145,7 @@ def analysis(project_name: str, output_file: str, inputs: list[str]):
                         continue
                     if arg['info'] == "function" and arg['name'] != "None":
                         all_fns.add(arg['name'])
-                        addtohl(fns_passed_as_args, arg['name'], call.name)
+                        append_to_dict_list(fns_passed_as_args, arg['name'], call.name)
 
     print(f"{len(all_fns)} fn names in prots+fundefs+calls+callargs")
 
@@ -148,12 +173,10 @@ def analysis(project_name: str, output_file: str, inputs: list[str]):
     4. Probably we can safely ignore 'extern' since it is often, oddly,
        applied to functions for which we observe a body.
     """
-    # When IGNORE_FN_PTRS is set, we don't inject dataflow as an argument when a
+    # When `ignore_functin_pointers` is set, we don't inject dataflow as an argument when a
     # function pointer is called. This needs to match with the same variable
     # in lavaTool/include/MatchFinder.h
     # Note, no tests pass if this is true
-    # TODO: parameterize this
-    IGNORE_FN_PTRS = False
     instr_judgement = {}
 
     # ok to instrument
@@ -205,7 +228,7 @@ def analysis(project_name: str, output_file: str, inputs: list[str]):
     If so, (for now) we won't inject in them since we can't control the
     type of the function pointer
     """
-    if IGNORE_FN_PTRS:
+    if ignore_function_pointers:
         for name in fpas:
             instr_judgement[name] |= DADFA | DIB
 
@@ -262,6 +285,8 @@ if __name__ == "__main__":
                         help="The project name of the LAVA project to read vars.py")
     parser.add_argument('-o', '--output', action="store", default=None,
                         help="name of output yaml file containing instrumentation decisions")
+    parser.add_argument('-f', '--function', action="store_true",
+                        help="Set ignore function pointers or not, it is off by default")
 
     args, input_list = parser.parse_known_args()
     analysis(args.project, args.output, input_list)

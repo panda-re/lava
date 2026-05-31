@@ -13,50 +13,12 @@ from typing import List
 from subprocess import PIPE, check_call
 from pathlib import Path
 # LAVA imports
-from ..utils.vars import parse_vars
-from ..utils.funcs import get_inject_parser, read_compile_db
+from ..utils.vars import parse_vars, LavaPaths
+from ..utils.funcs import get_inject_parser, read_compile_db, unpack_tar, configure_project, preprocess
 from ..utils.database_types import Bug, DuaBytes, Build, Run, BugKind, LavaDatabase
 
 NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
 start_time = time.time()
-
-
-class LavaPaths(object):
-    def __init__(self, project):
-        self.top_dir = project['output_dir']
-        self.lavadb = os.path.join(self.top_dir, 'lavadb')
-        self.lava_tool = 'lavaTool'
-        if 'source_root' in project:
-            self.source_root = project['source_root']
-        else:
-            tar_files = subprocess.check_output(['tar', 'tf',
-                                                project['tarfile']],
-                                                stderr=sys.stderr)
-            self.source_root = tar_files.decode().splitlines()[0].split(os.path.sep)[0]
-        self.queries_build = os.path.join(self.top_dir, self.source_root)
-        self.bugs_top_dir = os.path.join(self.top_dir, 'bugs')
-        self.bugs_parent = ''
-        self.bugs_build = ''
-        self.bugs_install = ''
-
-    def __str__(self):
-        rets = ""
-        rets += "top_dir =       %s\n" % self.top_dir
-        rets += "lavadb =        %s\n" % self.lavadb
-        rets += "lava_tool =     %s\n" % self.lava_tool
-        rets += "source_root =   %s\n" % self.source_root
-        rets += "queries_build = %s\n" % self.queries_build
-        rets += "bugs_top_dir =  %s\n" % self.bugs_top_dir
-        rets += "bugs_parent =   %s\n" % self.bugs_parent
-        rets += "bugs_build =    %s\n" % self.bugs_build
-        rets += "bugs_install =  %s\n" % self.bugs_install
-        return rets
-
-    def set_bugs_parent(self, bugs_parent):
-        assert self.bugs_top_dir == os.path.dirname(bugs_parent)
-        self.bugs_parent = bugs_parent
-        self.bugs_build = os.path.join(self.bugs_parent, self.source_root)
-        self.bugs_install = os.path.join(str(self.bugs_build), 'lava-install')
 
 
 # get list of bugs either from cmd line or db
@@ -175,7 +137,7 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
     if not os.path.exists(lp.bugs_parent):
         os.makedirs(lp.bugs_parent)
 
-    print("source_root = " + lp.source_root + "\n")
+    print("source_root = " + lp.tar_source_root + "\n")
 
     # Make sure directories and btrace is ready for bug injection.
     def run(run_arguments, **kwargs):
@@ -189,8 +151,8 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
         check_call(run_arguments, cwd=lp.bugs_build, **kwargs)
 
     if not os.path.isdir(lp.bugs_build):
-        print("Untarring...")
-        check_call(['tar', '--no-same-owner', '-xf', project['tarfile']], cwd=lp.bugs_parent)
+        unpack_tar(lp, lp.bugs_parent)
+    
     if not os.path.exists(os.path.join(lp.bugs_build, '.git')):
         print("Initializing git repo...")
         run(['git', 'init'])
@@ -199,29 +161,8 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
         run(['git', 'add', '-f', '-A', '.'])
         run(['git', 'commit', '-m', 'Unmodified source.'])
 
-        configure_command = project.get('configure', '')
-        envv = project["env_var"]
-        if configure_command != '':
-            print('Re-configuring...')
-            run_cmd(' '.join(shlex.split(configure_command) + ['--prefix=' + lp.bugs_install]),
-                    project, envv, 30, cwd=lp.bugs_build, shell=True)
-
-        if not project.get('preprocessed', False):
-            with open(Path(__file__).parent.parent / "data" / "makefile.fixup", "r") as mf:
-                modified_make = mf.read()
-
-            current_make_file = os.path.join(lp.bugs_build, "Makefile")
-            if os.path.isfile(current_make_file):
-                with open(current_make_file, "a+") as mf:
-                    mf.write("\n" + modified_make + "\n")
-            else:
-                print(f"Warning: Makefile not found for preprocessing at directory: {lp.bugs_build}")
-                sys.exit(1)
-
-            print("Preprocessing Source code...")
-            run_cmd(' '.join(['make', 'lava_preprocess']), project, envv, 30, cwd=lp.bugs_build, shell=True)
-            run_cmd(["git", "add", "."], project, cwd=lp.bugs_build, shell=True)
-            run_cmd(["git", "commit", "-m", "Pre-processed source."], project, cwd=lp.bugs_build, shell=True)
+        configure_project(lp, lp.bugs_build)
+        preprocess(lp, lp.bugs_build)
 
     sys.stdout.flush()
     sys.stderr.flush()
@@ -238,25 +179,10 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
 
         run(['git', 'add', '-f', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json.'])
-        run(shlex.split(project['make']))
-        try:
-            run(['find', '.', '-name', '*.[ch]', '-exec',
-                 'git', 'add', '-f', '{}', ';'])
-            run(['git', 'commit', '-m', 'Adding source files'])
-        except subprocess.CalledProcessError:
-            pass
 
         # Here we run make install, but it may also run again later
-        if not os.path.exists(lp.bugs_install):
-            check_call(project['install'].format(install_dir="lava-install"),
+        check_call(project['install'].format(install_dir="lava-install"),
                        cwd=lp.bugs_build, shell=True)
-
-        run(shlex.split(project['make']))
-        run(['find', '.', '-name', '*.[ch]', '-exec', 'git', 'add', '{}', ';'])
-        try:
-            run(['git', 'commit', '-m', 'Adding any make-generated source files'])
-        except subprocess.CalledProcessError:
-            pass
 
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
 
@@ -975,16 +901,15 @@ def process_crash(buf: str):
 
 
 def main(arguments: argparse.Namespace):
-    project = parse_vars(arguments.project_name)
-    dataflow = project.get("dataflow", False)
+    # Set various paths
+    lp = LavaPaths(arguments)
+    project = lp.config
+    db = LavaDatabase(project)
 
+    dataflow = project.get("dataflow", False)
     allowed_bugtypes = get_allowed_bugtype_num(arguments)
 
     print("allowed bug types: " + (str(allowed_bugtypes)))
-
-    # Set various paths
-    lp = LavaPaths(project)
-    db = LavaDatabase(project)
 
     os.makedirs(lp.bugs_top_dir, exist_ok=True)
 
