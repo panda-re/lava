@@ -21,6 +21,14 @@ class Paths(object):
         self.tar_to_unzip_path = Path(self.config['tarfile'])
         self.llvm_path = Path(self.config.get('llvm', '/usr/lib/llvm-14'))
 
+        # Used by the Coverage/Generate Inputs step
+        self.generate_project_root_directory = Path(self.config['generation_dir']) / self.name
+        self.generate_project_root_unpacked_tar_directory = self.generate_project_root_directory / self.tar_source_root
+        self.generate_executable_install_dir = ''
+        self.guest_directory_inputs_path = ''
+
+        # Used for Injection
+
 
 def get_valid_architectures():
     return ['x86_64', 'aarch64', 'arm', 'i386']

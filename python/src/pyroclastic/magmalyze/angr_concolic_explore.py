@@ -205,6 +205,7 @@ def main():
     args = parser.parse_args()
 
     generation_manager = GenerationManager(args)
+    # unpack, and copy_inputs too!
     generation_manager.compile()
 
     # Call the main exploration function
