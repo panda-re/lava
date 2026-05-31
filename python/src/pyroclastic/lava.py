@@ -8,8 +8,8 @@ from collections import deque
 # All LAVA steps are imported here
 from .inject import inject
 from .taint import bug_mining
-from .add_queries.add_queries import QueryManager
-from .utils.vars import parse_vars
+from .add_queries.add_queries import step_add_queries
+from .utils.vars import parse_vars, Paths
 from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, print_tail
 
 
@@ -95,17 +95,6 @@ def parse_lava_args() -> argparse.Namespace:
         args.count = 0
 
     return args
-
-
-class Paths(object):
-    def __init__(self, config: dict):
-        self.directory = Path(config['directory'])
-        self.bugs_directory = self.directory / config['name'] / "bugs"
-        self.logs_directory = self.directory / config['name'] / "logs"
-        self.sql_file = Path(__file__).parent / "data/lava.sql"
-        tar_files = subprocess.check_output(['tar', 'tf', config['tarfile']], stderr=sys.stderr)
-        self.tar_source_root = tar_files.decode().splitlines()[0].split(os.path.sep)[0]
-        self.source_directory = self.directory / config['name'] / self.tar_source_root
 
 
 @contextmanager
@@ -238,9 +227,7 @@ def main():
         print("[!] Please set the POSTGRES_USER and POSTGRES_PASSWORD environment variables to access the database.")
         sys.exit(1)
 
-    config = parse_vars(args.project_name)
-    manager = QueryManager(args)
-    path_manager = Paths(config)
+    path_manager = Paths(args)
 
     # 2. Handle the "Can of Worms": Remote/Docker logic
     # Since you're sticking to local CI/CD for now, we just verify
@@ -251,16 +238,16 @@ def main():
     # This replaces the 'if [ $add_queries -eq 1 ]' blocks in lava.sh
 
     if args.reset:
-        reset(path_manager, config, args.force)
+        reset(path_manager, path_manager.config, args.force)
 
     if args.add_queries:
         start = tick()
         lf = str(path_manager.logs_directory / "add_queries.log")
         with log_to_file(lf):
             progress("everything", 1, f"Adding Taint Queries to Source code -- logging to {lf}")
-            manager.step_add_queries(atp_type=args.atp_type)
+            step_add_queries(path_manager, atp_type=args.atp_type)
 
-        fixup_script = config.get('fixupscript', "")
+        fixup_script = path_manager.config.get('fixupscript', "")
         if fixup_script != "":
             lf = str(path_manager.logs_directory / "fixups.log")
             truncate_file(lf)
@@ -272,22 +259,22 @@ def main():
         progress("everything", 1, f"add queries complete {time_diff} seconds")
 
     if args.make:
-        make(path_manager, config)
+        make(path_manager, path_manager.config)
 
     if args.clean:
-        reset_database(path_manager, config)
+        reset_database(path_manager, path_manager.config)
 
     if args.taint:
         start = tick()
         progress("everything", 1, "Taint step -- running panda and fbi")
         if not args.clean:
             lf = path_manager.logs_directory / "dbwipe_taint.log"
-            run_local(f"psql -U {config['database_user']} -h {config['database']} -c \"delete from dua_viable_bytes; delete from labelset;\" {config['db']}", lf)
+            run_local(f"psql -U {path_manager.config['database_user']} -h {path_manager.config['database']} -c \"delete from dua_viable_bytes; delete from labelset;\" {path_manager.config['db']}", lf)
 
         lf = str(path_manager.logs_directory / "bug_mining.log")
         progress("everything", 1, f"PANDA taint analysis prospective bug mining -- logging to {lf}")
         with log_to_file(lf):
-            bug_mining.run_taint_pipeline(config['name'])
+            bug_mining.run_taint_pipeline(path_manager.config['name'])
         time_diff = tock(start)
         progress("everything", 1, f"bug_mining complete {time_diff} seconds")
         # Default print last 8 lines of the log, which should have the summary of bug_injection

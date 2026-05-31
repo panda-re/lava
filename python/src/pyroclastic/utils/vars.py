@@ -1,6 +1,25 @@
 import json
 import os
+import argparse
+import subprocess
+import sys
 from pathlib import Path
+
+
+class Paths(object):
+    def __init__(self, args: argparse.Namespace):
+        self.config = parse_vars(args.project_name)
+        self.name = self.config['name'] # Project name
+        self.directory = Path(self.config['directory'])
+        self.bugs_directory = self.directory / self.name / "bugs"
+        self.logs_directory = self.directory / self.name / "logs"
+        self.sql_file = Path(__file__).parent.parent / "data" / "lava.sql"
+        tar_files = subprocess.check_output(['tar', 'tf', self.config['tarfile']], stderr=sys.stderr)
+        self.tar_source_root = tar_files.decode().splitlines()[0].split(os.path.sep)[0]
+        self.source_directory = self.directory / self.name / self.tar_source_root
+        self.project_dir = self.directory / self.name
+        self.tar_to_unzip_path = Path(self.config['tarfile'])
+        self.llvm_path = Path(self.config.get('llvm', '/usr/lib/llvm-14'))
 
 
 def get_valid_architectures():
@@ -80,7 +99,7 @@ def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
     Generates environment variables based on target architecture.
     mode: 'default', 'full', 'llvm_cov' or 'panda'
     """
-    clang = os.path.join(llvm_dir, 'bin', 'clang')
+    clang = os.path.join(llvm_dir, 'bin' , 'clang')
     clang_pp = os.path.join(llvm_dir, 'bin', 'clang++')
 
     # 1. Base flags common to ALL architectures
