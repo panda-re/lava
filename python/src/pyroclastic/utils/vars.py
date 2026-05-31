@@ -37,7 +37,7 @@ class LavaPaths(object):
         self.bugs_build = ''
         self.bugs_install = ''
 
-    def set_bugs_parent(self, bugs_parent):
+    def set_bugs_parent(self, bugs_parent: str):
         assert self.bugs_top_dir == os.path.dirname(bugs_parent)
         self.bugs_parent = bugs_parent
         self.bugs_build = os.path.join(self.bugs_parent, self.tar_source_root)

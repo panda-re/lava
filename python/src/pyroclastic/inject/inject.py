@@ -14,7 +14,7 @@ from subprocess import PIPE, check_call
 from pathlib import Path
 # LAVA imports
 from ..utils.vars import parse_vars, LavaPaths
-from ..utils.funcs import get_inject_parser, read_compile_db
+from ..utils.funcs import get_inject_parser, read_compile_db, unpack_tar, configure_project, preprocess
 from ..utils.database_types import Bug, DuaBytes, Build, Run, BugKind, LavaDatabase
 
 NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
@@ -151,8 +151,8 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
         check_call(run_arguments, cwd=lp.bugs_build, **kwargs)
 
     if not os.path.isdir(lp.bugs_build):
-        print("Untarring...")
-        check_call(['tar', '--no-same-owner', '-xf', project['tarfile']], cwd=lp.bugs_parent)
+        unpack_tar(lp, lp.bugs_parent)
+    
     if not os.path.exists(os.path.join(lp.bugs_build, '.git')):
         print("Initializing git repo...")
         run(['git', 'init'])
@@ -161,29 +161,8 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
         run(['git', 'add', '-f', '-A', '.'])
         run(['git', 'commit', '-m', 'Unmodified source.'])
 
-        configure_command = project.get('configure', '')
-        envv = project["env_var"]
-        if configure_command != '':
-            print('Re-configuring...')
-            run_cmd(' '.join(shlex.split(configure_command) + ['--prefix=' + lp.bugs_install]),
-                    project, envv, 30, cwd=lp.bugs_build, shell=True)
-
-        if not project.get('preprocessed', False):
-            with open(Path(__file__).parent.parent / "data" / "makefile.fixup", "r") as mf:
-                modified_make = mf.read()
-
-            current_make_file = os.path.join(lp.bugs_build, "Makefile")
-            if os.path.isfile(current_make_file):
-                with open(current_make_file, "a+") as mf:
-                    mf.write("\n" + modified_make + "\n")
-            else:
-                print(f"Warning: Makefile not found for preprocessing at directory: {lp.bugs_build}")
-                sys.exit(1)
-
-            print("Preprocessing Source code...")
-            run_cmd(' '.join(['make', 'lava_preprocess']), project, envv, 30, cwd=lp.bugs_build, shell=True)
-            run_cmd(["git", "add", "."], project, cwd=lp.bugs_build, shell=True)
-            run_cmd(["git", "commit", "-m", "Pre-processed source."], project, cwd=lp.bugs_build, shell=True)
+        configure_project(lp, lp.bugs_build)
+        preprocess(lp, lp.bugs_build)
 
     sys.stdout.flush()
     sys.stderr.flush()
@@ -200,25 +179,10 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
 
         run(['git', 'add', '-f', 'compile_commands.json'])
         run(['git', 'commit', '-m', 'Add compile_commands.json.'])
-        run(shlex.split(project['make']))
-        try:
-            run(['find', '.', '-name', '*.[ch]', '-exec',
-                 'git', 'add', '-f', '{}', ';'])
-            run(['git', 'commit', '-m', 'Adding source files'])
-        except subprocess.CalledProcessError:
-            pass
 
         # Here we run make install, but it may also run again later
-        if not os.path.exists(lp.bugs_install):
-            check_call(project['install'].format(install_dir="lava-install"),
+        check_call(project['install'].format(install_dir="lava-install"),
                        cwd=lp.bugs_build, shell=True)
-
-        run(shlex.split(project['make']))
-        run(['find', '.', '-name', '*.[ch]', '-exec', 'git', 'add', '{}', ';'])
-        try:
-            run(['git', 'commit', '-m', 'Adding any make-generated source files'])
-        except subprocess.CalledProcessError:
-            pass
 
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
 
