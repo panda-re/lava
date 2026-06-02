@@ -269,7 +269,7 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", coverage: 
     if configure_command != '':
         full_config = f"{configure_command} --prefix={install_dir}"
         print(f'Configuring... {full_config}')
-        run_cmd(shlex.split(full_config), env=env, cwd=str(main_directory))
+        run_cmd(shlex.split(full_config), env=envv, cwd=str(main_directory))
     return install_dir
 
 
