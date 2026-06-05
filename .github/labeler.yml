@@ -1,16 +1,20 @@
-Documentation:
-  - '**/*.md'
-  - 'docs/**'
+documentation:
+  - changed-files:
+    - any-glob-to-any-file: '**/*.md'
+    - any-glob-to-any-file: 'docs/**'
 
-Github-files:
-  - '.github/**'
+github-files:
+  - changed-files:
+    - any-glob-to-any-file: '.github/**'
 
-Dependencies:
-  - 'dependencies/**'
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file: 'dependencies/**'
 
-Pyroclastic:
-  - 'python/**'
+pyroclastic:
+  - changed-files:
+    - any-glob-to-any-file: 'python/**'
 
-Lava-Core:
-  - 'tools/**'
-
+lava-core:
+  - changed-files:
+    - any-glob-to-any-file: 'tools/**'
