@@ -1,7 +1,7 @@
 # Target Programs
 This folder has the list of binaries used in publications.
 
-# Misc binaries
+## Misc binaries
 * The [original toy](https://github.com/moyix/toy/tree/main) source code.
 * [Graphland](https://github.com/moyix/graphland/), albeit slightly modified to work on run-time
 * labyrinth was generated with AI, but this was used to confirm that Angr is in fact using the KLEE random search algorithm
@@ -17,3 +17,12 @@ The copies were obtained from here:
     * Currently, there is an issue on dwarf2 output where it says `src/src` meaning debug symbols can't be found in recording.
 * [libflac-1.3.2](https://ftp.osuosl.org/pub/xiph/releases/flac/flac-1.3.2.tar.xz)
   * Haven't tested building this yet.
+
+## LAVA-M Dataset
+To replicate building the LAVA-M data using version 8.24 as specified in the paper, run the following
+
+```bash
+wget https://ftp.gnu.org/gnu/coreutils/coreutils-8.24.tar.xz
+tar -xf coreutils-8.24.tar.xz
+cd coreutils-8.24/src/
+```

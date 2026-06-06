@@ -216,7 +216,9 @@ def tock(start_time: float, decimal_places: int = 2) -> float:
 
 def run_cmd(cmd, cwd=None, env=None, shell=False):
     """Helper to run shell commands and exit on error."""
-    print(f"Executing: {cmd if isinstance(cmd, str) else ' '.join(cmd)}, with env: {env}")
+    cmd_str = cmd if isinstance(cmd, str) else ' '.join(cmd)
+    print(f"Executing: {cmd_str}, with env: {env}")
+    
     full_env = os.environ.copy()
     if env:
         # Merge your CC, CXX, CFLAGS
@@ -267,9 +269,13 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", coverage: 
         envv = lava_path.config['env_var']
 
     if configure_command != '':
-        full_config = f"{configure_command} --prefix={install_dir}"
+        if "{install_dir}" in configure_command:
+            full_config = configure_command.replace("{install_dir}", str(install_dir))
+        else:
+            full_config = f"{configure_command} --prefix={install_dir}"
+            
         print(f'Configuring... {full_config}')
-        run_cmd(shlex.split(full_config), env=envv, cwd=str(main_directory))
+        run_cmd(full_config, env=envv, cwd=str(main_directory), shell=True)
     return install_dir
 
 
