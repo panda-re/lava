@@ -1,9 +1,15 @@
+# Universal FuzzBench pattern: Scan the project root, but aggressively prune known non-source folders.
+LAVA_C_FILES := $(shell find . -maxdepth 3 -type d \( -name '*test*' -o -name '*doc*' -o -name '*example*' -o -name 'm4' -o -name 'build-aux' \) -prune -o -name '*.c' -print 2>/dev/null)
 
-LAVA_C_FILES := $(shell find . -name '*.c')
 .PHONY: lava_preprocess
 lava_preprocess: $(LAVA_C_FILES)
 	for lavafile in $^; do \
-   		$(CC) -include stdio.h $(CFLAGS) -E $${lavafile} -o $${lavafile}_pre; \
-		cp $${lavafile} $${lavafile}.bak; \
-		mv $${lavafile}_pre $${lavafile}; \
+		echo "Processing: $${lavafile}"; \
+		if $(CC) -include stdio.h $(CFLAGS) -I. -Ilib -Isrc -E $${lavafile} -o $${lavafile}_pre; then \
+			cp $${lavafile} $${lavafile}.bak; \
+			mv -f $${lavafile}_pre $${lavafile}; \
+		else \
+			echo "Warning: Skipping $${lavafile} (preprocessing failed, target macro missing)"; \
+			rm -f $${lavafile}_pre; \
+		fi; \
 	done

@@ -258,22 +258,6 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
 
     assert one_replacement_success, "clang-apply-replacements failed in all possible directories"
 
-    # Ugh, Lavatool very hard to get right
-    # Permit automated fixups via script after bugs inject but before make.
-    if "injfixupsscript" in project.keys():
-        print("Running injfixupsscript: {}"
-              .format(project["injfixupsscript"].format(bug_build=lp.bugs_build),
-                      cwd=lp.bugs_build))
-        run_cmd(project["injfixupsscript"].format(bug_build=lp.bugs_build),
-                project, cwd=lp.bugs_build)
-
-    if "fixupscript" in project.keys():
-        print("Running fixupscript: {}"
-              .format(project["fixupsscript"].format(bug_build=lp.bugs_build),
-                      cwd=lp.bugs_build))
-        run_cmd(project["fixupsscript"].format(bug_build=lp.bugs_build),
-                project, cwd=lp.bugs_build)
-
     # paranoid clean -- some build systems need this
     if 'clean' in project.keys():
         check_call(project['clean'], cwd=lp.bugs_build, shell=True)
@@ -310,8 +294,6 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
     print("build succeeded")
     check_call(project['install'].format(install_dir="lava-install"),
                cwd=lp.bugs_build, shell=True)
-    if 'post_install' in project.keys():
-        check_call(project['post_install'], cwd=lp.bugs_build, shell=True)
 
     build: Build = Build(compile=(rv == 0), output=(output[0].decode('utf-8') + ";" + output[1].decode('utf-8')),
                   bugs=bugs_to_inject)

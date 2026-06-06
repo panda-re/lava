@@ -10,7 +10,8 @@ import argparse
 import json
 import tarfile
 import shlex
-from typing import Tuple, Set
+from typing import Tuple, Set, Optional, Union, List
+from contextlib import nullcontext
 from pathlib import Path
 from pyroclastic.utils.vars import LavaPaths
 
@@ -92,48 +93,70 @@ def progress(step_name: str, show_date: int | bool, message: str):
     print(f"\033[32m[{step_name}]\033[0m \033[1m{message}\033[0m")
 
 
-def run_local(command, logfile, env=None):
+def run_local(
+    command: Union[str, List[str]], logfile: Optional[str] = None, 
+    cwd: Optional[str] = None, env: Optional[dict] = None, shell: bool = False
+) -> subprocess.CompletedProcess:
     """
-    Python port of run_remote.
-    logfile is mandatory. Use os.devnull or /dev/stdout for 'no log'.
+    Unified command runner for LAVA pipeline execution.
+    Uses 'with' blocks for deterministic file handles and error tracking.
     """
-    log_path = Path(logfile)
+    cmd_str = command if isinstance(command, str) else ' '.join(command)
+    log_display = logfile if logfile else "Terminal Screen"
+    print(f"[*] Running: {cmd_str} (Log: {log_display})")
 
-    # Ensure the directory for the log exists (e.g., /tmp/lava/logs/)
-    if log_path.parent:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-
-    print(f"[*] Running: {command} (Log: {logfile})")
-
+    # Re-create and merge execution environments
     full_env = os.environ.copy()
     if env:
-        # Merge your CC, CXX, CFLAGS
         full_env.update({key: str(value) for key, value in env.items()})
 
-    # Use 'a' to preserve the '>>' append behavior from Bash
-    with open(log_path, "a") as log_fd:
-        log_fd.write(f"\n--- [PYROCLASTIC EXEC] {command} ---\n")
-        log_fd.flush()
+    # Set up our conditional context manager
+    if logfile and logfile not in ["/dev/stdout", "sys.stdout"]:
+        log_path = Path(logfile)
+        if log_path.parent:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            
+        # Context manager for writing to a file
+        log_ctx = open(log_path, "a")
+        stderr_stream = subprocess.STDOUT
+    else:
+        # Context manager that does absolutely nothing when we want standard terminal output
+        log_ctx = nullcontext(None)
+        stderr_stream = None
+
+    # Safely configure shell-specific parameters
+    extra_args = {"executable": "/bin/bash"} if shell else {}
+
+    # Use 'with' to guarantee the file handles close automatically under all conditions
+    with log_ctx as log_fd:
+        if log_fd:
+            log_fd.write(f"\n--- [PYROCLASTIC EXEC] {cmd_str} ---\n")
+            log_fd.flush()
 
         try:
-            subprocess.run(
+            return subprocess.run(
                 command,
-                shell=True,
-                stdout=log_fd,
-                stderr=subprocess.STDOUT,  # Merges stderr into the log file
+                shell=shell,
+                cwd=cwd,
+                stdout=log_fd,  # Will be None if using nullcontext, sending output to terminal
+                stderr=stderr_stream,
                 env=full_env,
                 check=True,
-                executable="/bin/bash"
+                **extra_args
             )
+
         except subprocess.CalledProcessError as e:
             print(f"\n[!] Command failed! exit code: {e.returncode}")
-            print(f"========== last 30 lines of {logfile}: ==========")
-
-            # Efficiently grab the end of the file
-            with open(logfile, "r") as f:
-                for line in deque(f, 30):
-                    print(line.strip())
-
+            
+            # If we were logging to a file, flush it and print the last 30 lines
+            if log_fd:
+                log_fd.flush()
+                if os.path.exists(logfile):
+                    print(f"========== last 30 lines of {logfile}: ==========")
+                    with open(logfile, "r") as f:
+                        for line in deque(f, 30):
+                            print(line.strip())
+                    print("==================================================")
             sys.exit(e.returncode)
 
 
@@ -214,22 +237,6 @@ def tock(start_time: float, decimal_places: int = 2) -> float:
     return round(elapsed, decimal_places)
 
 
-def run_cmd(cmd, cwd=None, env=None, shell=False):
-    """Helper to run shell commands and exit on error."""
-    cmd_str = cmd if isinstance(cmd, str) else ' '.join(cmd)
-    print(f"Executing: {cmd_str}, with env: {env}")
-    
-    full_env = os.environ.copy()
-    if env:
-        # Merge your CC, CXX, CFLAGS
-        full_env.update({key: str(value) for key, value in env.items()})
-    try:
-        subprocess.check_call(cmd, cwd=cwd, env=full_env, shell=shell)
-    except subprocess.CalledProcessError as e:
-        print(f"Error executing command: {e}")
-        sys.exit(1)
-
-
 def unpack_tar(lava_path: LavaPaths, main_directory: str = ""):
     if main_directory == "":
         main_directory = Path.cwd()
@@ -275,7 +282,7 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", coverage: 
             full_config = f"{configure_command} --prefix={install_dir}"
             
         print(f'Configuring... {full_config}')
-        run_cmd(full_config, env=envv, cwd=str(main_directory), shell=True)
+        run_local(full_config, env=envv, cwd=str(main_directory), shell=True)
     return install_dir
 
 
@@ -298,6 +305,6 @@ def preprocess(lava_path: LavaPaths, main_directory : str = ""):
             print(f"Warning: Makefile not found for preprocessing at directory: {main_directory}")
             sys.exit(1)
 
-        run_cmd(shlex.split("make lava_preprocess"), env=env, cwd=str(main_directory))
-        run_cmd(["git", "add", "."], cwd=str(main_directory))
-        run_cmd(["git", "commit", "-m", "Pre-processed source."], cwd=str(main_directory))
+        run_local(shlex.split("make lava_preprocess"), env=env, cwd=str(main_directory))
+        run_local(["git", "add", "."], cwd=str(main_directory))
+        run_local(["git", "commit", "-m", "Pre-processed source."], cwd=str(main_directory))

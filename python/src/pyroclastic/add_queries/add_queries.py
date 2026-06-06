@@ -4,7 +4,7 @@ import shlex
 import shutil
 from pathlib import Path
 # LAVA
-from ..utils.funcs import read_compile_db, configure_project, run_cmd, preprocess, unpack_tar
+from ..utils.funcs import read_compile_db, configure_project, run_local, preprocess, unpack_tar
 from ..utils.vars import LavaPaths
 from .fninstr import analysis
 
@@ -23,25 +23,25 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
     os.chdir(lava_path.source_directory)
 
     # 3. Git Initialization
-    run_cmd("rm -rf .git || true", shell=True)
-    run_cmd(["git", "init"])
-    run_cmd(["git", "config", "user.name", "LAVA"])
-    run_cmd(["git", "config", "user.email", "nobody@nowhere"])
-    run_cmd(["git", "add", "-A", "."])
-    run_cmd(["git", "commit", "-m", "Unmodified source."])
+    run_local("rm -rf .git || true", shell=True)
+    run_local(["git", "init"])
+    run_local(["git", "config", "user.name", "LAVA"])
+    run_local(["git", "config", "user.email", "nobody@nowhere"])
+    run_local(["git", "add", "-A", "."])
+    run_local(["git", "commit", "-m", "Unmodified source."])
 
     configure_project(lava_path)
     preprocess(lava_path)
 
     # 5. Make with Btrace (well compile db now)
     env = lava_path.config['env_var']
-    run_cmd(f"compiledb -- {lava_path.config['make']}", env=env, shell=True)
+    run_local(f"compiledb -- {lava_path.config['make']}", env=env, shell=True)
 
     # 6. Install
-    run_cmd(lava_path.config['install'], shell=True)
+    run_local(lava_path.config['install'], shell=True)
 
-    run_cmd(["git", "add", "compile_commands.json"])
-    run_cmd(["git", "commit", "-m", "Add compile_commands.json."])
+    run_local(["git", "add", "compile_commands.json"])
+    run_local(["git", "commit", "-m", "Add compile_commands.json."])
 
     # 8. Get C files and Insert Headers
     os.chdir(lava_path.project_dir)
@@ -63,7 +63,7 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
 
     # 9. lavaFnTool & fninstr.py
     for file in c_files:
-        run_cmd(["lavaFnTool", file])
+        run_local(["lavaFnTool", file])
 
     fn_files = [file + ".fn" for file in c_files]
     fninstr_path = lava_path.project_dir / "fninstr"
@@ -89,11 +89,11 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
         if lava_path.config.get('dataflow', False):
             lt_cmd.append("-arg_dataflow")
 
-        run_cmd(lt_cmd)
+        run_local(lt_cmd)
 
     # 11. Apply Replacements
     for directory in c_dirs:
-        run_cmd([str(lava_path.llvm_path / "bin" / "clang-apply-replacements"), "."], cwd=directory)
+        run_local([str(lava_path.llvm_path / "bin" / "clang-apply-replacements"), "."], cwd=directory)
 
     # 12. Verification
     for file in c_files:

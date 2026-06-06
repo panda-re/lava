@@ -178,10 +178,10 @@ def reset_database(lava_paths: LavaPaths, config: dict):
     log_file = lava_paths.logs_directory / "dbwipe.log"
     sql_file = lava_paths.sql_file
     progress("everything", 1, f"Resetting lava db -- logging to {log_file}")
-    run_local(f"dropdb -U {config['database_user']} -h {config['database']} {config['db']} || true", log_file)
-    run_local(f"createdb -U {config['database_user']} -h {config['database']} {config['db']} || true", log_file)
-    run_local(f"psql -U {config['database_user']} -h {config['database']} -d {config['db']} -f {sql_file} ", log_file)
-    run_local("echo 'dbwipe complete'", log_file)
+    run_local(f"dropdb -U {config['database_user']} -h {config['database']} {config['db']} || true", log_file, shell=True)
+    run_local(f"createdb -U {config['database_user']} -h {config['database']} {config['db']} || true", log_file, shell=True)
+    run_local(f"psql -U {config['database_user']} -h {config['database']} -d {config['db']} -f {sql_file} ", log_file, shell=True)
+    run_local("echo 'dbwipe complete'", log_file, shell=True)
 
 
 def make(lava_paths: LavaPaths, config: dict):
@@ -194,25 +194,17 @@ def make(lava_paths: LavaPaths, config: dict):
     Eventually, in the taint step, we will copy the input folders to go with the binary for dynamic analysis.
     """
     start_time = tick()
-    progress("everything", 1,"Make step -- making 64-bit version with queries")
+    progress("everything", 1, "Make step -- making 64-bit version with queries")
     lf = lava_paths.logs_directory / "make.log"
     truncate_file(str(lf))
     # Note, adding the static flag is important. We are running the binaries on a PANDA VM, so we have no idea if it will have any libraries we need.
     env_var = config['panda_compile']
     make_command = config['make']
-    run_local(f"cd {lava_paths.source_directory} && {make_command}", lf, env=env_var)
-    run_local(f"cd {lava_paths.source_directory} && rm -rf lava-install", lf)
+    run_local(f"{make_command}", lf, env=env_var, cwd=str(lava_paths.source_directory), shell=True)
+    run_local("rm -rf lava-install", lf, cwd=str(lava_paths.source_directory), shell=True)
 
     install_command = config.get('install', 'make install')
-    install_simple = config.get('install_simple', '')
-    if install_simple == "":
-        run_local(f"cd {lava_paths.source_directory} && {install_command}", lf)
-    else:
-        run_local(f"cd {lava_paths.source_directory} && {install_simple}", lf)
-
-    post_install_command = config.get("post_install", "")
-    if post_install_command != "":
-        run_local(f"cd {lava_paths.source_directory} && {post_install_command}", lf)
+    run_local(f"{install_command}", lf, cwd=str(lava_paths.source_directory), shell=True)
 
     duration = tock(start_time)
     progress("everything", 1, f"make complete {duration} seconds")
@@ -243,18 +235,10 @@ def main():
     if args.add_queries:
         start = tick()
         lf = str(path_manager.logs_directory / "add_queries.log")
+        progress("everything", 1, f"Adding Taint Queries to Source code -- logging to {lf}")
         with log_to_file(lf):
-            progress("everything", 1, f"Adding Taint Queries to Source code -- logging to {lf}")
             step_add_queries(path_manager, atp_type=args.atp_type)
 
-        fixup_script = path_manager.config.get('fixupscript', "")
-        if fixup_script != "":
-            lf = str(path_manager.logs_directory / "fixups.log")
-            truncate_file(lf)
-            progress("everything", 1, f"Fixups -- logging to {lf}")
-            run_local(fixup_script, lf)
-        else:
-            progress("everything", 1, "No fixups")
         time_diff = tock(start)
         progress("everything", 1, f"add queries complete {time_diff} seconds")
 
@@ -269,7 +253,7 @@ def main():
         progress("everything", 1, "Taint step -- running panda and fbi")
         if not args.clean:
             lf = path_manager.logs_directory / "dbwipe_taint.log"
-            run_local(f"psql -U {path_manager.config['database_user']} -h {path_manager.config['database']} -c \"delete from dua_viable_bytes; delete from labelset;\" {path_manager.config['db']}", lf)
+            run_local(f"psql -U {path_manager.config['database_user']} -h {path_manager.config['database']} -c \"delete from dua_viable_bytes; delete from labelset;\" {path_manager.config['db']}", lf, shell=True)
 
         lf = str(path_manager.logs_directory / "bug_mining.log")
         progress("everything", 1, f"PANDA taint analysis prospective bug mining -- logging to {lf}")
