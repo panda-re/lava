@@ -2,14 +2,13 @@ from pathlib import Path
 import argparse
 import sys
 from contextlib import contextmanager
-import subprocess
 import os
 from collections import deque
 # All LAVA steps are imported here
 from .inject import inject
 from .taint import bug_mining
 from .add_queries.add_queries import step_add_queries
-from .utils.vars import parse_vars, LavaPaths
+from .utils.vars import LavaPaths
 from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, print_tail
 
 
@@ -255,7 +254,7 @@ def main():
             lf = path_manager.logs_directory / "dbwipe_taint.log"
             run_local(f"psql -U {path_manager.config['database_user']} -h {path_manager.config['database']} -c \"delete from dua_viable_bytes; delete from labelset;\" {path_manager.config['db']}", lf, shell=True)
 
-        lf = str(path_manager.logs_directory / "bug_mining.log")
+        lf = path_manager.logs_directory / "bug_mining.log"
         progress("everything", 1, f"PANDA taint analysis prospective bug mining -- logging to {lf}")
         with log_to_file(lf):
             bug_mining.run_taint_pipeline(path_manager.config['name'])
@@ -273,7 +272,7 @@ def main():
             with log_to_file(lf):
                 inject.main(args)
             # Print the stats of number of validated bugs vs total bugs, search for string "real bugs" in log file
-            subprocess.run(f"grep 'yield' {lf} | grep 'real bugs' || true", shell=True)
+            run_local(f"grep 'yield' {lf} | grep 'real bugs' || true", shell=True)
 
     progress("everything", 1, "Everything finished.")
 

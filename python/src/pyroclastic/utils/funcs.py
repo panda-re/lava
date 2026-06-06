@@ -94,40 +94,71 @@ def progress(step_name: str, show_date: int | bool, message: str):
 
 
 def run_local(
-    command: Union[str, List[str]], logfile: Optional[str] = None, 
-    cwd: Optional[str] = None, env: Optional[dict] = None, shell: bool = False
-) -> subprocess.CompletedProcess:
+    command: Union[str, List[str]], 
+    logfile: Optional[str] = None,
+    cwd: Optional[str] = None, 
+    env: Optional[dict] = None, 
+    shell: bool = False,
+    capture_output: bool = False,
+    debug: bool = False
+) -> Union[subprocess.CompletedProcess, Tuple[int, Tuple[bytes, bytes]]]:
     """
-    Unified command runner for LAVA pipeline execution.
-    Uses 'with' blocks for deterministic file handles and error tracking.
+    Unified, industrial-grade command runner for LAVA/FuzzBench orchestration.
+    Replaces both old legacy variants, supporting stream logging and memory capture.
     """
-    cmd_str = command if isinstance(command, str) else ' '.join(command)
-    log_display = logfile if logfile else "Terminal Screen"
-    print(f"[*] Running: {cmd_str} (Log: {log_display})")
+    # 1. Sanitize string commands when shell=False (ported from old debt)
+    if isinstance(command, str) and not shell:
+        command = shlex.split(command)
 
-    # Re-create and merge execution environments
+    cmd_str = command if isinstance(command, str) else ' '.join(command)
+    
+    # 2. Debug print optimization (ported from old debt)
+    if debug:
+        env_string = " ".join([f"{k}='{v}'" for k, v in env.items()]) if env else ""
+        print(f"[DEBUG] run_local({env_string} {subprocess.list2cmdline(command) if isinstance(command, list) else command})")
+    else:
+        log_display = logfile if logfile else ("Memory Capture" if capture_output else "Terminal Screen")
+        print(f"[*] Running: {cmd_str} (Log: {log_display})")
+
+    # 3. Re-create and merge execution environments safely
     full_env = os.environ.copy()
     if env:
         full_env.update({key: str(value) for key, value in env.items()})
 
-    # Set up our conditional context manager
+    # 4. Safely configure shell-specific parameters
+    extra_args = {"executable": "/bin/bash"} if shell else {}
+
+    # 5. EXECUTION ROUTE A: Memory Capture (Drop-in replacement for the old tuple return)
+    if capture_output:
+        try:
+            # We use subprocess.run without check=True here because the old function
+            # manually returns the code instead of raising an exception.
+            result = subprocess.run(
+                command,
+                shell=shell,
+                cwd=cwd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=full_env,
+                check=False,
+                **extra_args
+            )
+            return result.returncode, (result.stdout, result.stderr)
+        except Exception as e:
+            print(f"\n[!] Critical capture failure: {e}")
+            sys.exit(1)
+
+    # 6. EXECUTION ROUTE B: Standard Logging Stream (Your master context-manager architecture)
     if logfile and logfile not in ["/dev/stdout", "sys.stdout"]:
         log_path = Path(logfile)
         if log_path.parent:
             log_path.parent.mkdir(parents=True, exist_ok=True)
-            
-        # Context manager for writing to a file
         log_ctx = open(log_path, "a")
         stderr_stream = subprocess.STDOUT
     else:
-        # Context manager that does absolutely nothing when we want standard terminal output
         log_ctx = nullcontext(None)
         stderr_stream = None
 
-    # Safely configure shell-specific parameters
-    extra_args = {"executable": "/bin/bash"} if shell else {}
-
-    # Use 'with' to guarantee the file handles close automatically under all conditions
     with log_ctx as log_fd:
         if log_fd:
             log_fd.write(f"\n--- [PYROCLASTIC EXEC] {cmd_str} ---\n")
@@ -138,7 +169,7 @@ def run_local(
                 command,
                 shell=shell,
                 cwd=cwd,
-                stdout=log_fd,  # Will be None if using nullcontext, sending output to terminal
+                stdout=log_fd,
                 stderr=stderr_stream,
                 env=full_env,
                 check=True,
@@ -147,8 +178,6 @@ def run_local(
 
         except subprocess.CalledProcessError as e:
             print(f"\n[!] Command failed! exit code: {e.returncode}")
-            
-            # If we were logging to a file, flush it and print the last 30 lines
             if log_fd:
                 log_fd.flush()
                 if os.path.exists(logfile):
@@ -261,6 +290,8 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", coverage: 
     and set install to the install path in the current working directory
     Args:
         lava_path: The class used to track all paths for the specific project and configs
+        main_directory: the working directory
+        coverage: whether to use code coverage flags or not
     """
     if main_directory == "":
         main_directory = Path.cwd()
@@ -306,5 +337,29 @@ def preprocess(lava_path: LavaPaths, main_directory : str = ""):
             sys.exit(1)
 
         run_local(shlex.split("make lava_preprocess"), env=env, cwd=str(main_directory))
-        run_local(["git", "add", "."], cwd=str(main_directory))
-        run_local(["git", "commit", "-m", "Pre-processed source."], cwd=str(main_directory))
+        if os.path.isdir(os.path.join(main_directory, '.git')):
+            run_local(["git", "add", "."], cwd=str(main_directory))
+            run_local(["git", "commit", "-m", "Pre-processed source."], cwd=str(main_directory))
+
+
+def make_and_install(lava_path: LavaPaths, main_directory: str = ""):
+    if main_directory == "":
+        main_directory = Path.cwd()
+    else:
+        main_directory = Path(main_directory)
+
+    env = lava_path.config['env_var']
+
+    # Use pre-make, sometimes you need to do a few things after configure but before `make`
+    pre_make = lava_path.config.get("pre_make", "")
+    if pre_make != "":
+        run_local(pre_make, env=env, shell=True, cwd=str(main_directory))
+
+    # Run make
+    run_local(f"compiledb -- {lava_path.config['make']}", env=env, shell=True, cwd=str(main_directory))
+
+    if os.path.isdir(os.path.join(main_directory, '.git')):
+        run_local(["git", "add", "compile_commands.json"], cwd=str(main_directory))
+        run_local(["git", "commit", "-m", "Add compile_commands.json."], cwd=str(main_directory))
+
+    run_local(lava_path.config['install'], shell=True, cwd=str(main_directory))

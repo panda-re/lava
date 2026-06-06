@@ -4,17 +4,13 @@ import sys
 import time
 import math
 import os
-import shlex
 import struct
-import subprocess
 import random
 import shutil
 from typing import List
-from subprocess import PIPE, check_call
-from pathlib import Path
 # LAVA imports
-from ..utils.vars import parse_vars, LavaPaths
-from ..utils.funcs import get_inject_parser, read_compile_db, unpack_tar, configure_project, preprocess
+from ..utils.vars import LavaPaths
+from ..utils.funcs import get_inject_parser, read_compile_db, unpack_tar, configure_project, preprocess, run_local
 from ..utils.database_types import Bug, DuaBytes, Build, Run, BugKind, LavaDatabase
 
 NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
@@ -139,27 +135,16 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
 
     print("source_root = " + lp.tar_source_root + "\n")
 
-    # Make sure directories and btrace is ready for bug injection.
-    def run(run_arguments, **kwargs):
-        """
-        Run the commands in the bugs_build directory
-        Args:
-            run_arguments: Namespace
-            **kwargs: other arguments
-        """
-        print("run(", subprocess.list2cmdline(run_arguments), ")")
-        check_call(run_arguments, cwd=lp.bugs_build, **kwargs)
-
     if not os.path.isdir(lp.bugs_build):
         unpack_tar(lp, lp.bugs_parent)
     
     if not os.path.exists(os.path.join(lp.bugs_build, '.git')):
         print("Initializing git repo...")
-        run(['git', 'init'])
-        run(['git', 'config', 'user.name', 'LAVA'])
-        run(['git', 'config', 'user.email', 'nobody@nowhere'])
-        run(['git', 'add', '-f', '-A', '.'])
-        run(['git', 'commit', '-m', 'Unmodified source.'])
+        run_local(['git', 'init'], cwd=lp.bugs_build)
+        run_local(['git', 'config', 'user.name', 'LAVA'], cwd=lp.bugs_build)
+        run_local(['git', 'config', 'user.email', 'nobody@nowhere'], cwd=lp.bugs_build)
+        run_local(['git', 'add', '-f', '-A', '.'], cwd=lp.bugs_build)
+        run_local(['git', 'commit', '-m', 'Unmodified source.'], cwd=lp.bugs_build)
 
         configure_project(lp, lp.bugs_build)
         preprocess(lp, lp.bugs_build)
@@ -173,16 +158,15 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
             envv["CFLAGS"] += " -DLAVA_LOGGING"
         print("Running compiledb -- make command: {} with env: {} in {}"
               .format(project['make'], envv, lp.bugs_build))
-        rv, output = run_cmd(f"compiledb -- {project['make']}", project, envv, 30,
-                             cwd=lp.bugs_build, shell=True)
+        rv, output = run_local(f"compiledb -- {project['make']}", env=envv,
+                               cwd=lp.bugs_build, shell=True, debug=project['debug'], capture_output=True)
         assert rv == 0, "Make with compiledb failed"
 
-        run(['git', 'add', '-f', 'compile_commands.json'])
-        run(['git', 'commit', '-m', 'Add compile_commands.json.'])
+        run_local(['git', 'add', '-f', 'compile_commands.json'], cwd=lp.bugs_build)
+        run_local(['git', 'commit', '-m', 'Add compile_commands.json.'], cwd=lp.bugs_build)
 
         # Here we run make install, but it may also run again later
-        check_call(project['install'].format(install_dir="lava-install"),
-                       cwd=lp.bugs_build, shell=True)
+        run_local(project['install'].format(install_dir="lava-install"), cwd=lp.bugs_build, shell=True)
 
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
 
@@ -198,7 +182,7 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
     # cleanup
     print("------------\n")
     print("CLEAN UP SRC")
-    run_cmd_notimeout("git checkout -f", project, cwd=lp.bugs_build)
+    run_local("git checkout -f", cwd=lp.bugs_build, debug=project['debug'])
 
     print("------------\n")
     print("INJECTING BUGS INTO SOURCE")
@@ -250,7 +234,7 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
         if project['debug']:  # Don't remove desc files
             clang_cmd = [clang_apply, '.']
         print("Apply replacements in {} with {}".format(os.path.join(lp.bugs_build, src_dir), clang_cmd))
-        rv, output = run_cmd_notimeout(clang_cmd, project, cwd=os.path.join(lp.bugs_build, src_dir))
+        rv, output = run_local(clang_cmd, cwd=os.path.join(lp.bugs_build, src_dir), debug=project['debug'], capture_output=True)
 
         if rv == 0:
             print("Success in {}".format(src_dir))
@@ -260,7 +244,7 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
 
     # paranoid clean -- some build systems need this
     if 'clean' in project.keys():
-        check_call(project['clean'], cwd=lp.bugs_build, shell=True)
+        run_local(project['clean'], cwd=lp.bugs_build, shell=True)
 
     # compile
     print("------------\n")
@@ -269,11 +253,11 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
 
     # Silence warnings related to adding integers to pointers since we already
     # know that it's unsafe.
-    make_cmd = project["make"]
+    make_cmd = project['make']
     envv = project["full_env_var"]
     if competition:
         envv["CFLAGS"] += " -DLAVA_LOGGING"
-    rv, output = run_cmd(make_cmd, project, envv, None, cwd=lp.bugs_build)
+    rv, output = run_local(make_cmd, env=envv, cwd=lp.bugs_build, debug=project['debug'], capture_output=True)
 
     if rv != 0:
         print("Lava tool returned {}! Error log below:".format(rv))
@@ -292,8 +276,7 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
 
     # build success
     print("build succeeded")
-    check_call(project['install'].format(install_dir="lava-install"),
-               cwd=lp.bugs_build, shell=True)
+    run_local(project['install'].format(install_dir="lava-install"), cwd=lp.bugs_build, shell=True)
 
     build: Build = Build(compile=(rv == 0), output=(output[0].decode('utf-8') + ";" + output[1].decode('utf-8')),
                   bugs=bugs_to_inject)
@@ -304,55 +287,15 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
         db.session.commit()
         assert build.id is not None
         try:
-            run(['git', 'commit', '-am', 'Bugs for build {}.'.format(build.id)])
+            run_local(['git', 'commit', '-am', 'Bugs for build {}.'.format(build.id)], cwd=lp.bugs_build)
         except Exception:
             print("\nFatal error: git commit failed! This may be caused by lavaTool not modifying anything")
             raise
 
-        run(['git', 'branch', 'build' + str(build.id), 'master'])
-        run(['git', 'reset', 'HEAD~', '--hard'])
+        run_local(['git', 'branch', 'build' + str(build.id), 'master'], cwd=lp.bugs_build)
+        run_local(['git', 'reset', 'HEAD~', '--hard'], cwd=lp.bugs_build)
 
     return build, input_files, bug_solutions
-
-
-def run_cmd(cmd, project: dict, envv = None, timeout: int = 30, cwd = None, shell: bool = False):
-    if type(cmd) in [str] and not shell:
-        cmd = shlex.split(cmd)
-
-    if project['debug']:
-        env_string = ""
-        if envv:
-            env_string = " ".join(["{}='{}'".format(k, v)
-                                   for k, v in envv.items()])
-        if type(cmd) == list:
-            print("run_cmd(" + env_string + " " + subprocess.list2cmdline(cmd) + ")")
-        else:
-            print("run_cmd(" + env_string + " " + cmd + ")")
-    # Merge current environ with passed envv
-    merged_env = os.environ.copy()
-    if envv:
-        for k, v in envv.items():
-            merged_env[k] = v
-
-    p = subprocess.Popen(cmd, cwd=cwd, env=merged_env, stdout=PIPE,
-                         stderr=PIPE, shell=shell)
-    try:
-        # returns tuple (stdout, stderr)
-        output = p.communicate(timeout=timeout)
-        stdout, stderr = output
-        if project['debug']:
-            print("Run_cmd stdout: {}".format(stdout.decode("utf-8")))
-            print("Run_cmd stderr: {}".format(stderr.decode("utf-8")))
-    except subprocess.TimeoutExpired:
-        print("Killing process due to timeout expiration.")
-        p.terminate()
-        return -9, ("", "timeout expired")
-
-    return p.returncode, output
-
-
-def run_cmd_notimeout(cmd, project: dict, **kwargs):
-    return run_cmd(cmd, project,None, None, **kwargs)
 
 
 # fuzz_labels_list is a list of tainted
@@ -473,7 +416,7 @@ def run_lavatool(bug_list: List[Bug], lp: LavaPaths, project: dict, filename: st
         cmd.append('-randseed={}'.format(randseed))
     print("lavaTool command: {}".format(' '.join(cmd)))
 
-    rv, output = run_cmd_notimeout(cmd, project)
+    rv, output = run_local(cmd, debug=project['debug'], capture_output=True)
     stdout, stderr = output
     stdout = stdout.decode("utf-8")
     stderr = stderr.decode("utf-8")
@@ -630,7 +573,7 @@ def run_modified_program(project: dict, install_dir: str, original_input_file: s
         print("Run modified program: {}".format(cmd))
 
     # Command might be redirecting input file in so we need shell=True
-    return run_cmd(cmd, project, envv, timeout, cwd=install_dir, shell=shell)
+    return run_local(cmd, env=envv, cwd=install_dir, shell=shell, debug=project['debug'], capture_output=True)
 
 
 # Find actual line number of attack point for this bug in source
@@ -899,7 +842,7 @@ def main(arguments: argparse.Namespace):
     get_bugs_parent(lp)
 
     # Remove all old YAML files
-    run_cmd(["rm -f {}/*.yaml".format(lp.bugs_build)], project, None, 10, cwd="/", shell=True)
+    run_local(["rm -f {}/*.yaml".format(lp.bugs_build)], cwd="/", shell=True, debug=project['debug'])
 
     # obtain list of bugs to inject based on cmd-line args and consulting db
     update_db, bug_list = get_bug_list(arguments, db, allowed_bugtypes)
