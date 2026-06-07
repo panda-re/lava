@@ -21,14 +21,6 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
     print(f"Changing to source directory to {lava_path.source_directory}")
     os.chdir(lava_path.source_directory)
 
-    # 3. Git Initialization
-    run_local("rm -rf .git || true", shell=True)
-    run_local(["git", "init"])
-    run_local(["git", "config", "user.name", "LAVA"])
-    run_local(["git", "config", "user.email", "nobody@nowhere"])
-    run_local(["git", "add", "-A", "."])
-    run_local(["git", "commit", "-m", "Unmodified source."])
-
     configure_project(lava_path)
     preprocess(lava_path)
 

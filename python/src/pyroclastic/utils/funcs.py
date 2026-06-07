@@ -1,7 +1,6 @@
 import datetime
 import sys
 from collections import deque
-from pathlib import Path
 import subprocess
 import os
 import shutil
@@ -300,6 +299,13 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", coverage: 
     install_dir = main_directory / "lava-install"
     install_dir.mkdir(exist_ok=True)
 
+    if not os.path.isdir(os.path.join(main_directory, '.git')):
+        run_local(["git", "init"], cwd=str(main_directory))
+        run_local(["git", "config", "user.name", "LAVA"], cwd=str(main_directory))
+        run_local(["git", "config", "user.email", "nobody@nowhere"], cwd=str(main_directory))
+        run_local(["git", "add", "-A", "."], cwd=str(main_directory))
+        run_local(["git", "commit", "-m", "Unmodified source."], cwd=str(main_directory))
+
     configure_command = lava_path.config.get('configure', '')
     if coverage:
         envv = lava_path.config['llvm_cov']
@@ -342,24 +348,50 @@ def preprocess(lava_path: LavaPaths, main_directory : str = ""):
             run_local(["git", "commit", "-m", "Pre-processed source."], cwd=str(main_directory))
 
 
-def make_and_install(lava_path: LavaPaths, main_directory: str = ""):
+def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment: str = "env_var",
+                     lf: Optional[str] = None, competition: bool = False,
+                     capture_build: bool = False) -> Union[subprocess.CompletedProcess, Tuple[int, Tuple[bytes, bytes]]]:
     if main_directory == "":
         main_directory = Path.cwd()
     else:
         main_directory = Path(main_directory)
 
-    env = lava_path.config['env_var']
+    env = lava_path.config[environment]
+    if competition:
+        env["CFLAGS"] += " -DLAVA_LOGGING"
 
     # Use pre-make, sometimes you need to do a few things after configure but before `make`
     pre_make = lava_path.config.get("pre_make", "")
     if pre_make != "":
-        run_local(pre_make, env=env, shell=True, cwd=str(main_directory))
+        run_local(pre_make, env=env, shell=True, cwd=str(main_directory), logfile=lf)
 
     # Run make
-    run_local(f"compiledb -- {lava_path.config['make']}", env=env, shell=True, cwd=str(main_directory))
+    build_output = run_local(f"compiledb -- {lava_path.config['make']}", env=env, shell=True, cwd=str(main_directory), logfile=lf, capture_output=capture_build)
 
+    # 3. Determine compilation success based on the return type
+    if capture_build:
+        # In capture mode, build_output is a tuple: (returncode, (stdout, stderr))
+        compile_success = (build_output[0] == 0)
+    else:
+        # In streaming mode, build_output is a subprocess.CompletedProcess
+        compile_success = (build_output.returncode == 0)
+
+    # IF COMPILATION FAILED: Bail out immediately!
+    if not compile_success:
+        print("[!] Compilation failed. Bypassing version control tracking and installation phases.")
+        return build_output
+
+    # 5. IF COMPILATION SUCCEEDED: Complete downstream asset management
+    print("[*] Compilation succeeded. Proceeding with installation and tracking.")
+    
     if os.path.isdir(os.path.join(main_directory, '.git')):
-        run_local(["git", "add", "compile_commands.json"], cwd=str(main_directory))
-        run_local(["git", "commit", "-m", "Add compile_commands.json."], cwd=str(main_directory))
+        # Only run git steps if compile_commands.json was safely generated
+        if os.path.exists(os.path.join(main_directory, "compile_commands.json")):
+            run_local(["git", "add", "compile_commands.json"], cwd=str(main_directory), logfile=lf)
+            run_local(["git", "commit", "--allow-empty", "-m", "Add compile_commands.json."], cwd=str(main_directory), logfile=lf)
+            print("Added the compile_commands.json to git tracking.")
 
-    run_local(lava_path.config['install'], shell=True, cwd=str(main_directory))
+    # Execute final installation step cleanly
+    run_local(lava_path.config['install'], shell=True, cwd=str(main_directory), logfile=lf)
+    print("Install has completed")
+    return build_output

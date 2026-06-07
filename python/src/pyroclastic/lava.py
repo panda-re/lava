@@ -9,7 +9,7 @@ from .inject import inject
 from .taint import bug_mining
 from .add_queries.add_queries import step_add_queries
 from .utils.vars import LavaPaths
-from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, print_tail
+from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, print_tail, make_and_install
 
 
 def parse_lava_args() -> argparse.Namespace:
@@ -183,7 +183,7 @@ def reset_database(lava_paths: LavaPaths, config: dict):
     run_local("echo 'dbwipe complete'", log_file, shell=True)
 
 
-def make(lava_paths: LavaPaths, config: dict):
+def make_panda(lava_paths: LavaPaths):
     """
     This compiles the target program with LAVA taint queries added.
     This requires static compiling as the generic PANDA QCows might not have all libraries for dynamic linking.
@@ -196,14 +196,10 @@ def make(lava_paths: LavaPaths, config: dict):
     progress("everything", 1, "Make step -- making 64-bit version with queries")
     lf = lava_paths.logs_directory / "make.log"
     truncate_file(str(lf))
-    # Note, adding the static flag is important. We are running the binaries on a PANDA VM, so we have no idea if it will have any libraries we need.
-    env_var = config['panda_compile']
-    make_command = config['make']
-    run_local(f"{make_command}", lf, env=env_var, cwd=str(lava_paths.source_directory), shell=True)
+    # Note, adding the static flag is important. We are running the binaries on a PANDA VM,
+    # so we have no idea if it will have any libraries we need.
     run_local("rm -rf lava-install", lf, cwd=str(lava_paths.source_directory), shell=True)
-
-    install_command = config.get('install', 'make install')
-    run_local(f"{install_command}", lf, cwd=str(lava_paths.source_directory), shell=True)
+    make_and_install(lava_paths, main_directory=str(lava_paths.source_directory), environment="panda_compile", lf=lf)
 
     duration = tock(start_time)
     progress("everything", 1, f"make complete {duration} seconds")
@@ -218,7 +214,11 @@ def main():
         print("[!] Please set the POSTGRES_USER and POSTGRES_PASSWORD environment variables to access the database.")
         sys.exit(1)
 
-    path_manager = LavaPaths(args)
+    lava_path = LavaPaths(args)
+    # Make the target_injection output directory
+    output_directory = Path(lava_path.output_dir)
+    if not output_directory.is_dir():
+        output_directory.mkdir(parents=True)
 
     # 2. Handle the "Can of Worms": Remote/Docker logic
     # Since you're sticking to local CI/CD for now, we just verify
@@ -229,35 +229,35 @@ def main():
     # This replaces the 'if [ $add_queries -eq 1 ]' blocks in lava.sh
 
     if args.reset:
-        reset(path_manager, path_manager.config, args.force)
+        reset(lava_path, lava_path.config, args.force)
 
     if args.add_queries:
         start = tick()
-        lf = str(path_manager.logs_directory / "add_queries.log")
+        lf = str(lava_path.logs_directory / "add_queries.log")
         progress("everything", 1, f"Adding Taint Queries to Source code -- logging to {lf}")
         with log_to_file(lf):
-            step_add_queries(path_manager, atp_type=args.atp_type)
+            step_add_queries(lava_path, atp_type=args.atp_type)
 
         time_diff = tock(start)
         progress("everything", 1, f"add queries complete {time_diff} seconds")
 
     if args.make:
-        make(path_manager, path_manager.config)
+        make_panda(lava_path)
 
     if args.clean:
-        reset_database(path_manager, path_manager.config)
+        reset_database(lava_path, lava_path.config)
 
     if args.taint:
         start = tick()
         progress("everything", 1, "Taint step -- running panda and fbi")
         if not args.clean:
-            lf = path_manager.logs_directory / "dbwipe_taint.log"
-            run_local(f"psql -U {path_manager.config['database_user']} -h {path_manager.config['database']} -c \"delete from dua_viable_bytes; delete from labelset;\" {path_manager.config['db']}", lf, shell=True)
+            lf = lava_path.logs_directory / "dbwipe_taint.log"
+            run_local(f"psql -U {lava_path.config['database_user']} -h {lava_path.config['database']} -c \"delete from dua_viable_bytes; delete from labelset;\" {path_manager.config['db']}", lf, shell=True)
 
-        lf = path_manager.logs_directory / "bug_mining.log"
+        lf = lava_path.logs_directory / "bug_mining.log"
         progress("everything", 1, f"PANDA taint analysis prospective bug mining -- logging to {lf}")
         with log_to_file(lf):
-            bug_mining.run_taint_pipeline(path_manager.config['name'])
+            bug_mining.run_taint_pipeline(lava_path.config['name'])
         time_diff = tock(start)
         progress("everything", 1, f"bug_mining complete {time_diff} seconds")
         # Default print last 8 lines of the log, which should have the summary of bug_injection
@@ -267,7 +267,7 @@ def main():
     if args.inject:
         progress("everything", 1, f"Injecting step -- {args.inject} trials")
         for i in range(1, args.inject + 1):
-            lf = str(path_manager.logs_directory / f"inject-{i}.log")
+            lf = lava_path.logs_directory / f"inject-{i}.log"
             progress("everything", 1, f"Trial {i} -- injecting {args.count} bugs logging to {lf}")
             with log_to_file(lf):
                 inject.main(args)
