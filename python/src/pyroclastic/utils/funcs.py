@@ -110,10 +110,10 @@ def run_local(
         command = shlex.split(command)
 
     cmd_str = command if isinstance(command, str) else ' '.join(command)
+    env_string = " ".join([f"{k}='{v}'" for k, v in env.items()]) if env else ""
     
     # 2. Debug print optimization (ported from old debt)
     if debug:
-        env_string = " ".join([f"{k}='{v}'" for k, v in env.items()]) if env else ""
         print(f"[DEBUG] run_local({env_string} {subprocess.list2cmdline(command) if isinstance(command, list) else command})")
     else:
         log_display = logfile if logfile else ("Memory Capture" if capture_output else "Terminal Screen")
@@ -160,7 +160,7 @@ def run_local(
 
     with log_ctx as log_fd:
         if log_fd:
-            log_fd.write(f"\n--- [PYROCLASTIC EXEC] {cmd_str} ---\n")
+            log_fd.write(f"\n--- [PYROCLASTIC EXEC] {cmd_str} and envv {env_string} ---\n")
             log_fd.flush()
 
         try:
@@ -283,7 +283,7 @@ def unpack_tar(lava_path: LavaPaths, main_directory: str = ""):
         tar.extractall(path=main_directory)
 
 
-def configure_project(lava_path: LavaPaths, main_directory: str = "", coverage: bool = False) -> Path:
+def configure_project(lava_path: LavaPaths, main_directory: str = "", environment: str = "env_var", lf: Optional[str] = None) -> Path:
     """
     This function first creates the install directory. If there is a configure, it will run it 
     and set install to the install path in the current working directory
@@ -300,17 +300,14 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", coverage: 
     install_dir.mkdir(exist_ok=True)
 
     if not os.path.isdir(os.path.join(main_directory, '.git')):
-        run_local(["git", "init"], cwd=str(main_directory))
-        run_local(["git", "config", "user.name", "LAVA"], cwd=str(main_directory))
-        run_local(["git", "config", "user.email", "nobody@nowhere"], cwd=str(main_directory))
-        run_local(["git", "add", "-A", "."], cwd=str(main_directory))
-        run_local(["git", "commit", "-m", "Unmodified source."], cwd=str(main_directory))
+        run_local(["git", "init"], cwd=str(main_directory), logfile=lf)
+        run_local(["git", "config", "user.name", "LAVA"], cwd=str(main_directory), logfile=lf)
+        run_local(["git", "config", "user.email", "nobody@nowhere"], cwd=str(main_directory), logfile=lf)
+        run_local(["git", "add", "-A", "."], cwd=str(main_directory), logfile=lf)
+        run_local(["git", "commit", "-m", "Unmodified source."], cwd=str(main_directory), logfile=lf)
 
     configure_command = lava_path.config.get('configure', '')
-    if coverage:
-        envv = lava_path.config['llvm_cov']
-    else:
-        envv = lava_path.config['env_var']
+    envv = lava_path.config[environment]
 
     if configure_command != '':
         if "{install_dir}" in configure_command:
@@ -319,7 +316,7 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", coverage: 
             full_config = f"{configure_command} --prefix={install_dir}"
             
         print(f'Configuring... {full_config}')
-        run_local(full_config, env=envv, cwd=str(main_directory), shell=True)
+        run_local(full_config, env=envv, cwd=str(main_directory), shell=True, logfile=lf)
     return install_dir
 
 
@@ -342,7 +339,7 @@ def preprocess(lava_path: LavaPaths, main_directory : str = ""):
             print(f"Warning: Makefile not found for preprocessing at directory: {main_directory}")
             sys.exit(1)
 
-        run_local(shlex.split("make lava_preprocess"), env=env, cwd=str(main_directory))
+        run_local("make lava_preprocess SHELL=/bin/bash", env=env, cwd=str(main_directory), shell=True)
         if os.path.isdir(os.path.join(main_directory, '.git')):
             run_local(["git", "add", "."], cwd=str(main_directory))
             run_local(["git", "commit", "-m", "Pre-processed source."], cwd=str(main_directory))
@@ -361,20 +358,32 @@ def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment
         env["CFLAGS"] += " -DLAVA_LOGGING"
 
     # Use pre-make, sometimes you need to do a few things after configure but before `make`
+    configure_str = lava_path.config.get("configure", "")
     pre_make = lava_path.config.get("pre_make", "")
+
     if pre_make != "":
-        run_local(pre_make, env=env, shell=True, cwd=str(main_directory), logfile=lf)
+        run_local(f"f{pre_make}", env=env, shell=True, cwd=str(main_directory), logfile=lf)
+
+    # Check if a 'make' operation occurs during either the configuration or pre-make steps
+    has_prior_make = "make" in configure_str or "make" in pre_make
+    # Formulate your build and shell modifiers dynamically
+    if has_prior_make:
+        # Heavy recursive GNU target: aggressively blindfold Autotools to block timestamp collisions
+        build_modifiers = "ACLOCAL=true AUTOCONF=true AUTOMAKE=true AUTOHEADER=true"
+    else:
+        # Pure standalone target (e.g., toy): compile naturally and cleanly
+        build_modifiers = ""
 
     # Run make
-    build_output = run_local(f"compiledb -- {lava_path.config['make']}", env=env, shell=True, cwd=str(main_directory), logfile=lf, capture_output=capture_build)
+    build_output = run_local(f"compiledb -- {lava_path.config['make']} {build_modifiers}", env=env, shell=True, cwd=str(main_directory), logfile=lf, capture_output=capture_build, debug=True)
 
     # 3. Determine compilation success based on the return type
     if capture_build:
         # In capture mode, build_output is a tuple: (returncode, (stdout, stderr))
-        compile_success = (build_output[0] == 0)
+        compile_success = build_output[0] == 0
     else:
         # In streaming mode, build_output is a subprocess.CompletedProcess
-        compile_success = (build_output.returncode == 0)
+        compile_success = build_output.returncode == 0
 
     # IF COMPILATION FAILED: Bail out immediately!
     if not compile_success:
@@ -391,7 +400,7 @@ def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment
             run_local(["git", "commit", "--allow-empty", "-m", "Add compile_commands.json."], cwd=str(main_directory), logfile=lf)
             print("Added the compile_commands.json to git tracking.")
 
-    # Execute final installation step cleanly
-    run_local(lava_path.config['install'], shell=True, cwd=str(main_directory), logfile=lf)
+    # Execute final installation step cleanly, have some flags, just in case we have to run make before processing, this avoids extra compiling.
+    run_local(f"{lava_path.config['install']} {build_modifiers}", env=env, shell=True, debug=True, cwd=str(main_directory), logfile=lf)
     print("Install has completed")
     return build_output

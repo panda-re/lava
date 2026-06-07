@@ -1,11 +1,11 @@
-# Universal FuzzBench pattern: Scan the project root, but aggressively prune known non-source folders.
-LAVA_C_FILES := $(shell find . -maxdepth 3 -type d \( -name '*test*' -o -name '*doc*' -o -name '*example*' -o -name 'm4' -o -name 'build-aux' \) -prune -o -name '*.c' -print 2>/dev/null)
+# Find all C files, then aggressively filter out unwanted directories using grep
+LAVA_C_FILES := $(shell find . -name '*.c' 2>/dev/null | grep -E -v '/(build-aux|doc|example|gnulib|m4|lib|libs|test|tests)')
 
 .PHONY: lava_preprocess
 lava_preprocess: $(LAVA_C_FILES)
 	for lavafile in $^; do \
 		echo "Processing: $${lavafile}"; \
-		if $(CC) -include stdio.h $(CFLAGS) -I. -Ilib -Isrc -E $${lavafile} -o $${lavafile}_pre; then \
+		if $(CC) -P -include stdio.h $(CFLAGS) -I. -Ilib -Isrc -E $${lavafile} -o $${lavafile}_pre; then \
 			cp $${lavafile} $${lavafile}.bak; \
 			mv -f $${lavafile}_pre $${lavafile}; \
 		else \

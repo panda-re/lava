@@ -9,7 +9,7 @@ from .inject import inject
 from .taint import bug_mining
 from .add_queries.add_queries import step_add_queries
 from .utils.vars import LavaPaths
-from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, print_tail, make_and_install
+from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, print_tail, make_and_install, configure_project
 
 
 def parse_lava_args() -> argparse.Namespace:
@@ -185,20 +185,26 @@ def reset_database(lava_paths: LavaPaths, config: dict):
 
 def make_panda(lava_paths: LavaPaths):
     """
-    This compiles the target program with LAVA taint queries added.
-    This requires static compiling as the generic PANDA QCows might not have all libraries for dynamic linking.
-    The binary will be in ./target_injections/<project>/<tar-directory>/
-    Then, during the "make install" step, the binary should be in
-    ./target_injections/<project>/<tar-directory>/lava-install/bin/ folder
-    Eventually, in the taint step, we will copy the input folders to go with the binary for dynamic analysis.
+    So add_queries step does create a binary in  ./target_injections/<project>/<tar-directory>/lava-install/bin/ 
+    but it is missing the compilation with the static flag to work on PANDA as generic PANDA QCows might not have all 
+    libraries for dynamic linking.
+    
+    First, you need to delete the non-statically compiled binary.
+    Then, you need to re-run make and install with the static flag enabled in the environment. 
+    This will create a new binary in the same location, but it will be statically linked and should work on PANDA.
+
+    DO NOT try squashing this step with the add_queries step.
+    I tried it with toy, and LAVA broke, I'm not fully sure why, but the add_queries.log were NOT indentical so...
     """
     start_time = tick()
-    progress("everything", 1, "Make step -- making 64-bit version with queries")
+    progress("everything", 1, "Make step -- making 64-bit version for PANDA with static compilation of code with Hypercall queries")
     lf = lava_paths.logs_directory / "make.log"
     truncate_file(str(lf))
     # Note, adding the static flag is important. We are running the binaries on a PANDA VM,
     # so we have no idea if it will have any libraries we need.
     run_local("rm -rf lava-install", lf, cwd=str(lava_paths.source_directory), shell=True)
+
+    configure_project(lava_paths, main_directory=str(lava_paths.source_directory), environment="panda_compile", lf=lf)
     make_and_install(lava_paths, main_directory=str(lava_paths.source_directory), environment="panda_compile", lf=lf)
 
     duration = tock(start_time)

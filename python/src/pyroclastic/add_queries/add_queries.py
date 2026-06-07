@@ -15,7 +15,7 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
 
     os.chdir(lava_path.project_dir)
 
-    # 2. Extract Tarball
+    # 2. Extract Tarball, configure, and preprocess
     unpack_tar(lava_path)
 
     print(f"Changing to source directory to {lava_path.source_directory}")

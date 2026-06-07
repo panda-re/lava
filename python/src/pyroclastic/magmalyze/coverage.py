@@ -34,11 +34,11 @@ def compile(lava_path: LavaPaths, coverage: bool = False):
     Args:
         coverage: if True, use coverage environment variables for compilation.
     """
-    lava_path.generate_executable_install_dir = configure_project(lava_path)
     if coverage:
-        envv = lava_path.config['llvm_cov']
+        lava_path.generate_executable_install_dir = configure_project(lava_path, environment='llvm_cov')
     else:
-        envv = lava_path.config['env_var']
+        lava_path.generate_executable_install_dir = configure_project(lava_path)
+
     run_local(lava_path.config['make'], env=envv, shell=True, cwd=lava_path.generate_project_root_unpacked_tar_directory)
     run_local(lava_path.config['install'], env=envv, shell=True, cwd=lava_path.generate_project_root_unpacked_tar_directory)
 
