@@ -156,7 +156,8 @@ def run_taint_pipeline(lava_project: str):
             capture_output=True,
             text=True
         )
-        dwarfdump.parse_dwarfdump(result.stdout, guest_executable, project_root=state.tar_directory)
+        # dwarfdump.parse_dwarfdump(result.stdout, guest_executable, project_root=state.tar_directory)
+        dwarfdump.parse_dwarfdump(result.stdout, guest_executable)
         proc_name = os.path.basename(guest_executable)
         pandalog = "{}/queries-{}.plog".format(project['output_dir'], project['name'])
 
