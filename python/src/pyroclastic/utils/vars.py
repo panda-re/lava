@@ -137,8 +137,8 @@ def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
     arch_flags = {
         "x86_64": [],
         "i386": ["-m32"],
-        "arm": ["-marm", "-march=armv7-a"],
-        "aarch64": ["-march=armv8-a"]
+        "arm": ["--target=arm-linux-gnueabi", "-marm", "-march=armv5t", "-fuse-ld=lld"],
+        "aarch64": ["--target=aarch64-linux-gnu", "-march=armv8-a", "-fuse-ld=lld"]
     }
 
     # 3. Mode-Specific Flags

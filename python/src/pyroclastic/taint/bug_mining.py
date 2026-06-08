@@ -14,6 +14,7 @@ import subprocess
 from pandare.extras import dwarfdump
 from pandare import Panda
 import argparse
+import time
 # LAVA
 from .find_bug_injection import parse_panda_log, print_bug_stats
 from ..utils.vars import parse_vars
@@ -28,6 +29,9 @@ def run_taint_pipeline(lava_project: str):
     project = parse_vars(lava_project)
 
     # Initialize PANDA
+    # TODO: remove this once PR is merged
+    #if project['qemu'] == 'aarch64':
+    #    extra = "-nographic -machine virt -cpu cortex-a57 -device virtio-scsi-pci,id=scsi0,addr=0x08 -drive if=none,id=cdrom0,media=cdrom -device scsi-cd,bus=scsi0.0,drive=cdrom0 -drive file=~/.panda/ubuntu20_04-aarch64-flash0.qcow,if=pflash,readonly=on"
     panda = Panda(generic=project['qemu'])
 
     class State:
@@ -55,6 +59,14 @@ def run_taint_pipeline(lava_project: str):
         # Technically the first two steps of record_cmd
         # but running executable ONLY works with absolute paths
         panda.revert_sync('root')
+
+        # TODO: Undo this hack once image is fixed
+        if project['qemu'] == 'aarch64':
+            print("[PyPANDA] Forcing guest kernel to rescan PCI bus...")
+            panda.run_serial_cmd("echo 1 > /sys/bus/pci/rescan")
+            # Give the kernel a second to probe the drive and udev to create /dev/sr0
+            time.sleep(2)
+
         panda.copy_to_guest(state.install_directory, absolute_paths=True)
 
         # Pass in None for snap_name since I already did the revert_sync already
@@ -156,8 +168,7 @@ def run_taint_pipeline(lava_project: str):
             capture_output=True,
             text=True
         )
-        # dwarfdump.parse_dwarfdump(result.stdout, guest_executable, project_root=state.tar_directory)
-        dwarfdump.parse_dwarfdump(result.stdout, guest_executable)
+        dwarfdump.parse_dwarfdump(result.stdout, guest_executable, project_root=state.tar_directory)
         proc_name = os.path.basename(guest_executable)
         pandalog = "{}/queries-{}.plog".format(project['output_dir'], project['name'])
 

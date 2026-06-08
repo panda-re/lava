@@ -40,7 +40,7 @@ dependencies = [
     "db",
     "ipython",
     "numpy",
-    "pandare>=1.8.81",
+    "pandare>=1.8.85",
     "PyYAML",
     "sqlalchemy",
     "tabulate",

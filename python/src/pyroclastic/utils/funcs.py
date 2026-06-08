@@ -453,7 +453,7 @@ def deep_clean_target(source_directory: Path, lf: Optional[str] = None):
     if full_env:
         full_env.update(blindfolds)
 
-    env_string = " ".join([f"{k}='{v}'" for k, v in full_env.items()]) if full_env else ""
+    env_string = " ".join([f"{k}='{v}'" for k, v in blindfolds.items()]) if blindfolds else ""
     
     for clean_cmd in [f"make distclean", f"make clean"]:
         print(f"[*] Attempting native cleanup: {clean_cmd}...env=[{env_string}]")
