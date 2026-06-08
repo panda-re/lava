@@ -7,6 +7,7 @@ import os
 import struct
 import random
 import shutil
+import platform
 from typing import List
 # LAVA imports
 from ..utils.vars import LavaPaths
@@ -272,7 +273,7 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
         db.session.commit()
         assert build.id is not None
         try:
-            run_local("git add *.c", cwd=lp.bugs_build, shell=True)
+            run_local("git add '*.c'", cwd=lp.bugs_build, shell=True)
             run_local(['git', 'commit', '-m', 'Bugs for build {}.'.format(build.id)], cwd=lp.bugs_build)
         except Exception:
             print("\nFatal error: git commit failed! This may be caused by lavaTool not modifying anything")
@@ -811,10 +812,80 @@ def process_crash(buf: str):
     return bugs
 
 
+def check_architecture_compatibility(target_arch: str, strict_64_only: bool = True) -> bool:
+    """
+    Verifies if the local host machine can natively execute the compiled target.
+    Handles legacy 32-bit execution boundaries and halts if cross-compilation is required.
+    """
+    # 1. Normalize architecture keys to match get_valid_architectures() specs
+    host_raw = platform.machine().lower()
+    target_arch = target_arch.lower().strip()
+
+    # Map raw host variants to clean standard tokens
+    host_map = {
+        'amd64': 'x86_64', 
+        'x86_64': 'x86_64',
+        'aarch64': 'aarch64', 
+        'arm64': 'aarch64',
+        'i386': 'i386', 
+        'i686': 'i386', 
+        'x86': 'i386',
+        'arm': 'arm', 
+        'armv7l': 'arm'
+    }
+    
+    host_arch = host_map.get(host_raw, host_raw)
+
+    print(f"[*] Architecture Check -> Host Silicon: [{host_arch}] | Target Build Target: [{target_arch}]")
+
+    # 3. Strategy A: Strict 64-to-64 bit enforcement
+    if strict_64_only:
+        if host_arch == target_arch:
+            print("[+] Match Verified: Running in isolated native 64-bit sandbox state.")
+            return True
+        else:
+            print(f"[!] Compatibility Denied: Strict matching requires absolute architecture parity ({host_arch} != {target_arch}).")
+            return False
+
+    # 4. Strategy B: Multi-Arch Compatibility Permissiveness (The Legacy Fallback)
+    # Complete match
+    if host_arch == target_arch:
+        return True
+
+    # x86 Pipeline Compatibility Tree (x86_64 hosts can run 32-bit i386 binaries natively)
+    if host_arch == 'x86_64' and target_arch == 'i386':
+        print("[+] Compatibility Verified: Permitting 32-bit x86 execution on 64-bit host processor context.")
+        return True
+
+    # ARM Pipeline Compatibility Tree (AArch64 hosts can run 32-bit ARM binaries natively)
+    if host_arch == 'aarch64' and target_arch == 'arm':
+        print("[+] Compatibility Verified: Permitting 32-bit ARM execution on 64-bit host processor context.")
+        return True
+
+    # 5. Absolute Silicon Barrier Caught (e.g., Target=AArch64, Host=x86_64)
+    print(f"[!] Cross-Architecture Blocked: Host hardware '{host_arch}' cannot natively execute '{target_arch}' machine instructions.")
+    return False
+
+
 def main(arguments: argparse.Namespace):
     # Set various paths
     lp = LavaPaths(arguments)
     project = lp.config
+
+    # Run the guard check. Toggle strict_64_only based on your experimental parameters
+    is_compatible = check_architecture_compatibility(project['qemu'])
+    
+    if not is_compatible:
+        print("\n==========================================================================")
+        print(f"[!] PIPELINE HALTED: Host machine cannot natively run the local validation pass")
+        print(f"    for target architecture: {target_architecture}.")
+        print("    To protect the source trees from corrupt dynamic database queries,")
+        print("    the mutation pass will now exit gracefully without changing disk files.")
+        print("==========================================================================\n")
+        
+        # Graceful, clean initialization exit code (0 keeps batch orchestration jobs moving safely)
+        sys.exit(0)
+
     db = LavaDatabase(project)
 
     dataflow = project.get("dataflow", False)

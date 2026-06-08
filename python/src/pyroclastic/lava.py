@@ -9,7 +9,7 @@ from .inject import inject
 from .taint import bug_mining
 from .add_queries.add_queries import step_add_queries
 from .utils.vars import LavaPaths
-from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, print_tail, make_and_install, configure_project
+from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, print_tail, make_and_install, configure_project, deep_clean_target
 
 
 def parse_lava_args() -> argparse.Namespace:
@@ -202,8 +202,8 @@ def make_panda(lava_paths: LavaPaths):
     truncate_file(str(lf))
     # Note, adding the static flag is important. We are running the binaries on a PANDA VM,
     # so we have no idea if it will have any libraries we need.
-    run_local("rm -rf lava-install", lf, cwd=str(lava_paths.source_directory), shell=True)
-
+    run_local("rm -rf lava-install", logfile=lf, cwd=str(lava_paths.source_directory), shell=True)
+    deep_clean_target(lava_paths.source_directory, lf=lf)
     configure_project(lava_paths, main_directory=str(lava_paths.source_directory), environment="panda_compile", lf=lf)
     make_and_install(lava_paths, main_directory=str(lava_paths.source_directory), environment="panda_compile", lf=lf)
 

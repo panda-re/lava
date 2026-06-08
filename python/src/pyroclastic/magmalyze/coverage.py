@@ -9,7 +9,7 @@ import subprocess
 
 from pyroclastic.utils.vars import parse_vars, LavaPaths
 from pyroclastic.add_queries.add_queries import run_local
-from pyroclastic.utils.funcs import unpack_tar, configure_project
+from pyroclastic.utils.funcs import unpack_tar, configure_project, make_and_install
 
 
 def setup(lava_path: LavaPaths):
@@ -35,12 +35,11 @@ def compile(lava_path: LavaPaths, coverage: bool = False):
         coverage: if True, use coverage environment variables for compilation.
     """
     if coverage:
-        lava_path.generate_executable_install_dir = configure_project(lava_path, environment='llvm_cov')
+        lava_path.generate_executable_install_dir = configure_project(lava_path, environment='llvm_cov', main_directory=str(lava_path.generate_project_root_unpacked_tar_directory))
+        make_and_install(lava_path, environment='llvm_cov', main_directory=str(lava_path.generate_project_root_unpacked_tar_directory))
     else:
-        lava_path.generate_executable_install_dir = configure_project(lava_path)
-
-    run_local(lava_path.config['make'], env=envv, shell=True, cwd=lava_path.generate_project_root_unpacked_tar_directory)
-    run_local(lava_path.config['install'], env=envv, shell=True, cwd=lava_path.generate_project_root_unpacked_tar_directory)
+        lava_path.generate_executable_install_dir = configure_project(lava_path, main_directory=str(lava_path.generate_project_root_unpacked_tar_directory))
+        make_and_install(lava_path, main_directory=str(lava_path.generate_project_root_unpacked_tar_directory))
 
     # Copy the inputs from the original project to the generation folder to make new inputs
     input_file_directory = os.path.abspath(os.path.join(lava_path.config["config_dir"], "inputs"))

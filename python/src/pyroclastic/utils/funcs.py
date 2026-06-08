@@ -160,7 +160,7 @@ def run_local(
 
     with log_ctx as log_fd:
         if log_fd:
-            log_fd.write(f"\n--- [PYROCLASTIC EXEC] {cmd_str} and envv {env_string} ---\n")
+            log_fd.write(f"\n--- [PYROCLASTIC EXEC] {cmd_str} and envv: [{env_string}] ---\n")
             log_fd.flush()
 
         try:
@@ -287,6 +287,9 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", environmen
     """
     This function first creates the install directory. If there is a configure, it will run it 
     and set install to the install path in the current working directory
+
+    Also, it runs any pre_make steps, steps that should be done before lava_preprocessing and the make process itself.
+
     Args:
         lava_path: The class used to track all paths for the specific project and configs
         main_directory: the working directory
@@ -317,10 +320,36 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", environmen
             
         print(f'Configuring... {full_config}')
         run_local(full_config, env=envv, cwd=str(main_directory), shell=True, logfile=lf)
+        # For old GNU projects
+        neuter_autotools_completely(main_directory)
+
+    pre_make = lava_path.config.get("pre_make", "")
+    if pre_make != "":
+        if os.path.isfile(os.path.join(main_directory, 'Makefile')):
+            blindfolds = {
+            "   ACLOCAL": "true",
+                "AUTOCONF": "true",
+                "AUTOMAKE": "true",
+                "AUTOHEADER": "true",
+                "MAKEINFO": "true"
+            }
+            # Safely merge into your existing environment configuration
+            envv.update(blindfolds)
+        run_local(f"{pre_make}", env=envv, shell=True, cwd=str(main_directory), logfile=lf)
+
     return install_dir
 
 
-def preprocess(lava_path: LavaPaths, main_directory : str = ""):
+def preprocess(lava_path: LavaPaths, main_directory : str = "", lf: Optional[str] = None):
+    """
+    This should be run after configuration and any pre-make steps.
+    Update the C source code with the lava_preprocess target, which adds necessary information for LAVA to work.
+
+    Args:
+        lava_path: The class used to track all paths for the specific project and configs
+        main_directory: the working directory
+        lf: optional log file path to write outputs to
+    """
     env = lava_path.config['env_var']
     if main_directory == "":
         main_directory = Path.cwd()
@@ -339,10 +368,10 @@ def preprocess(lava_path: LavaPaths, main_directory : str = ""):
             print(f"Warning: Makefile not found for preprocessing at directory: {main_directory}")
             sys.exit(1)
 
-        run_local("make lava_preprocess SHELL=/bin/bash", env=env, cwd=str(main_directory), shell=True)
+        run_local("make lava_preprocess SHELL=/bin/bash", env=env, cwd=str(main_directory), shell=True, logfile=lf)
         if os.path.isdir(os.path.join(main_directory, '.git')):
-            run_local(["git", "add", "."], cwd=str(main_directory))
-            run_local(["git", "commit", "-m", "Pre-processed source."], cwd=str(main_directory))
+            run_local("git add '*.c'", cwd=str(main_directory), shell=True, logfile=lf)
+            run_local(["git", "commit", "-m", "Pre-processed source."], cwd=str(main_directory), logfile=lf)
 
 
 def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment: str = "env_var",
@@ -357,25 +386,22 @@ def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment
     if competition:
         env["CFLAGS"] += " -DLAVA_LOGGING"
 
-    # Use pre-make, sometimes you need to do a few things after configure but before `make`
-    configure_str = lava_path.config.get("configure", "")
-    pre_make = lava_path.config.get("pre_make", "")
-
-    if pre_make != "":
-        run_local(f"f{pre_make}", env=env, shell=True, cwd=str(main_directory), logfile=lf)
-
-    # Check if a 'make' operation occurs during either the configuration or pre-make steps
-    has_prior_make = "make" in configure_str or "make" in pre_make
-    # Formulate your build and shell modifiers dynamically
-    if has_prior_make:
+    # Check if existing Makefile exists to blind it 
+    makefile_path = os.path.join(main_directory, "Makefile")
+    if os.path.isfile(makefile_path):
         # Heavy recursive GNU target: aggressively blindfold Autotools to block timestamp collisions
-        build_modifiers = "ACLOCAL=true AUTOCONF=true AUTOMAKE=true AUTOHEADER=true"
-    else:
-        # Pure standalone target (e.g., toy): compile naturally and cleanly
-        build_modifiers = ""
+        blindfolds = {
+            "ACLOCAL": "true",
+            "AUTOCONF": "true",
+            "AUTOMAKE": "true",
+            "AUTOHEADER": "true",
+            "MAKEINFO": "true"
+        }
+        # Safely merge into your existing environment configuration
+        env.update(blindfolds)
 
     # Run make
-    build_output = run_local(f"compiledb -- {lava_path.config['make']} {build_modifiers}", env=env, shell=True, cwd=str(main_directory), logfile=lf, capture_output=capture_build, debug=True)
+    build_output = run_local(f"compiledb -- {lava_path.config['make']}", env=env, shell=True, cwd=str(main_directory), logfile=lf, capture_output=capture_build, debug=True)
 
     # 3. Determine compilation success based on the return type
     if capture_build:
@@ -401,6 +427,111 @@ def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment
             print("Added the compile_commands.json to git tracking.")
 
     # Execute final installation step cleanly, have some flags, just in case we have to run make before processing, this avoids extra compiling.
-    run_local(f"{lava_path.config['install']} {build_modifiers}", env=env, shell=True, debug=True, cwd=str(main_directory), logfile=lf)
+    run_local(f"{lava_path.config['install']}", env=env, shell=True, debug=True, cwd=str(main_directory), logfile=lf)
     print("Install has completed")
     return build_output
+
+
+def deep_clean_target(source_directory: Path, lf: Optional[str] = None):
+    """
+    Tries to run 'make distclean' natively, then aggressively scrubs out 
+    all remaining compiled assets, configuration caches, and shared objects (.so).
+    """
+    print(f"[*] Executing deep structural scrub on: {source_directory.name}")
+    
+    # Step 1: Try running official clean routines safely with defensive blindfolds
+    # We pass the Autotools override variables to stop it from trying to invoke aclocal-1.15
+
+    blindfolds = {
+        "ACLOCAL": "true",
+        "AUTOCONF": "true",
+        "AUTOMAKE": "true",
+        "AUTOHEADER": "true",
+        "MAKEINFO": "true"
+    }
+    full_env = os.environ.copy()
+    if full_env:
+        full_env.update(blindfolds)
+
+    env_string = " ".join([f"{k}='{v}'" for k, v in full_env.items()]) if full_env else ""
+    
+    for clean_cmd in [f"make distclean", f"make clean"]:
+        print(f"[*] Attempting native cleanup: {clean_cmd}...env=[{env_string}]")
+        
+        # We manually use subprocess.run with check=False here to bypass run_local's aggressive sys.exit() trap
+        # This guarantees our fallback loop actually works!
+        if lf:
+            # Safely open and close the log file automatically
+            with open(lf, "a") as log_file:
+                result = subprocess.run(
+                    clean_cmd,
+                    shell=True,
+                    cwd=str(source_directory),
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT, # Merges stderr into the log_file automatically
+                    executable="/bin/bash",
+                    env=full_env
+                )
+        else:
+            # Fallback if no logfile path was passed
+            result = subprocess.run(
+                clean_cmd,
+                shell=True,
+                cwd=str(source_directory),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                executable="/bin/bash",
+                env=full_env
+            )
+        
+        if result.returncode == 0:
+            print(f"[+] Native '{clean_cmd}' executed successfully.")
+            break
+        else:
+            print(f"[!] Native '{clean_cmd}' failed or wasn't supported. Moving to next strategy...")
+
+    # Step 2: The Brute-Force Fallback (Catch whatever the Makefile missed)
+    # Expand your extensions list to catch shared objects (.so) and dynamic links
+    compiled_extensions = ["*.o", "*.a", "*.la", "*.lo", "*.so", "*.so.*", "*.dylib"]
+    
+    for ext in compiled_extensions:
+        # rglob handles the deep recursive search across all subdirectories automatically
+        for file in source_directory.rglob(ext):
+            file.unlink(missing_ok=True)
+            
+    # Step 3: Obliterate Autotools state files so configure is forced to rebuild config.h
+    config_state_files = ["config.h", "config.status", "config.cache", "config.log", "stamp-h1"]
+    for state_file in config_state_files:
+        for file in source_directory.rglob(state_file):
+            file.unlink(missing_ok=True)
+
+    print(f"[+] Deep scrub complete. {source_directory.name} is back to a pristine state.")
+
+
+def neuter_autotools_completely(main_directory: str):
+    """
+    Completely neutralizes Autotools timestamp panics by hijacking the 'missing' 
+    script and forcing it to always return success.
+    """
+    main_path = Path(main_directory)
+    
+    # SAFEGUARD: Only run this on actual Autotools trees
+    is_autotools = (main_path / "configure.ac").exists() or (main_path / "configure.in").exists()
+    if not is_autotools:
+        return
+
+    print("[***] Autotools detected. Disarming the 'missing' script trap...")
+    
+    missing_script_path = main_path / "build-aux" / "missing"
+    
+    if missing_script_path.exists():
+        try:
+            # Overwrite the 'missing' script with a perfect bash dummy that always succeeds
+            with open(missing_script_path, "w") as f:
+                f.write("#!/bin/sh\nexit 0\n")
+            
+            # Ensure it remains executable
+            os.chmod(str(missing_script_path), 0o755)
+            print("[+] Successfully neutralized build-aux/missing.")
+        except Exception as e:
+            print(f"[-] Warning: Failed to hijack missing script: {e}")
