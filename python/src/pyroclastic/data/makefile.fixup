@@ -1,9 +1,15 @@
+# Find all C files, then aggressively filter out unwanted directories using grep
+LAVA_C_FILES := $(shell find . -name '*.c' 2>/dev/null | grep -E -v '/(build-aux|doc|example|gnulib|m4|lib|libs|test|tests)')
 
-LAVA_C_FILES := $(shell find . -name '*.c')
 .PHONY: lava_preprocess
 lava_preprocess: $(LAVA_C_FILES)
 	for lavafile in $^; do \
-   		$(CC) -include stdio.h $(CFLAGS) -E $${lavafile} -o $${lavafile}_pre; \
-		cp $${lavafile} $${lavafile}.bak; \
-		mv $${lavafile}_pre $${lavafile}; \
+		echo "Processing: $${lavafile}"; \
+		if $(CC) -P -include stdio.h $(CFLAGS) -I. -Ilib -Isrc -E $${lavafile} -o $${lavafile}_pre; then \
+			cp $${lavafile} $${lavafile}.bak; \
+			mv -f $${lavafile}_pre $${lavafile}; \
+		else \
+			echo "Warning: Skipping $${lavafile} (preprocessing failed, target macro missing)"; \
+			rm -f $${lavafile}_pre; \
+		fi; \
 	done

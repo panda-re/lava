@@ -34,6 +34,7 @@ def run_taint_pipeline(lava_project: str):
         command_args = []
         install_directory = ""
         selected_filename = ""
+        tar_directory = ""
     state = State()
 
     @panda.queue_blocking
@@ -68,9 +69,8 @@ def run_taint_pipeline(lava_project: str):
 
         # When you unpack a tarfile, it usually creates a subdirectory.
         tar_files = subprocess.check_output(['tar', 'tf', project['tarfile']]).decode('utf-8')
-        tar_directory = tar_files.splitlines()[0].split(os.path.sep)[0]
-        tar_directory = os.path.abspath(tar_directory)
-        state.install_directory = os.path.join(tar_directory, 'lava-install')
+        state.tar_directory = os.path.abspath(tar_files.splitlines()[0].split(os.path.sep)[0])
+        state.install_directory = os.path.join(state.tar_directory, 'lava-install')
         guest_directory_inputs_path = os.path.join(state.install_directory, 'inputs')
 
         progress("bug_mining", 0, f"Copying directory {input_file_directory} to {guest_directory_inputs_path}")
@@ -156,6 +156,7 @@ def run_taint_pipeline(lava_project: str):
             capture_output=True,
             text=True
         )
+        # dwarfdump.parse_dwarfdump(result.stdout, guest_executable, project_root=state.tar_directory)
         dwarfdump.parse_dwarfdump(result.stdout, guest_executable)
         proc_name = os.path.basename(guest_executable)
         pandalog = "{}/queries-{}.plog".format(project['output_dir'], project['name'])

@@ -1,10 +1,9 @@
 import os
 import sys
-import shlex
 import shutil
 from pathlib import Path
 # LAVA
-from ..utils.funcs import read_compile_db, configure_project, run_cmd, preprocess, unpack_tar
+from ..utils.funcs import read_compile_db, configure_project, run_local, preprocess, unpack_tar, make_and_install
 from ..utils.vars import LavaPaths
 from .fninstr import analysis
 
@@ -16,39 +15,24 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
 
     os.chdir(lava_path.project_dir)
 
-    # 2. Extract Tarball
+    # 2. Extract Tarball, configure, and preprocess
     unpack_tar(lava_path)
 
     print(f"Changing to source directory to {lava_path.source_directory}")
     os.chdir(lava_path.source_directory)
 
-    # 3. Git Initialization
-    run_cmd("rm -rf .git || true", shell=True)
-    run_cmd(["git", "init"])
-    run_cmd(["git", "config", "user.name", "LAVA"])
-    run_cmd(["git", "config", "user.email", "nobody@nowhere"])
-    run_cmd(["git", "add", "-A", "."])
-    run_cmd(["git", "commit", "-m", "Unmodified source."])
-
     configure_project(lava_path)
     preprocess(lava_path)
 
-    # 5. Make with Btrace (well compile db now)
-    env = lava_path.config['env_var']
-    run_cmd(f"compiledb -- {lava_path.config['make']}", env=env, shell=True)
+    # 4. Make with compiledb and make install
+    make_and_install(lava_path)
 
-    # 6. Install
-    run_cmd(lava_path.config['install'], shell=True)
-
-    run_cmd(["git", "add", "compile_commands.json"])
-    run_cmd(["git", "commit", "-m", "Add compile_commands.json."])
-
-    # 8. Get C files and Insert Headers
+    # 5. Get C files and Insert Headers
     os.chdir(lava_path.project_dir)
 
     c_dirs, c_files = read_compile_db(lava_path.source_directory)
 
-    # Given the Debian package installed in /usr/include, we now copy it to LAVA project.
+    # 6. Given the Debian package installed in /usr/include, we now copy it to LAVA project.
     include_dir = Path("/usr/include")
     headers = ["pirate_mark_lava.h"]
     for directory in c_dirs:
@@ -61,17 +45,17 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
                 else:
                     print(f"Warning: {src} not found, skipping.")
 
-    # 9. lavaFnTool & fninstr.py
+    # 7. lavaFnTool & fninstr.py
     for file in c_files:
-        run_cmd(["lavaFnTool", file])
+        run_local(["lavaFnTool", file])
 
     fn_files = [file + ".fn" for file in c_files]
     fninstr_path = lava_path.project_dir / "fninstr"
 
-    # Call fninstr.py analysis
+    # 8. Call fninstr.py analysis
     analysis(lava_path.config['name'], str(fninstr_path), fn_files)
 
-    # 10. lavaTool Injection
+    # 9. lavaTool Injection
     atp_flag = f"-{atp_type}" if atp_type else ""
 
     for file in c_files:
@@ -89,13 +73,13 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
         if lava_path.config.get('dataflow', False):
             lt_cmd.append("-arg_dataflow")
 
-        run_cmd(lt_cmd)
+        run_local(lt_cmd)
 
-    # 11. Apply Replacements
+    # 10. Apply Replacements
     for directory in c_dirs:
-        run_cmd([str(lava_path.llvm_path / "bin" / "clang-apply-replacements"), "."], cwd=directory)
+        run_local([str(lava_path.llvm_path / "bin" / "clang-apply-replacements"), "."], cwd=directory)
 
-    # 12. Verification
+    # 11. Verification
     for file in c_files:
         with open(file, 'r') as content:
             if "pirate_mark_lava.h" not in content.read():

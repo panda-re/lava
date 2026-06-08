@@ -56,7 +56,6 @@ CTestTestfile.cmake
 /target_generation/*
 /target_injections/*
 !/target_bins/.gitkeep
-!/target_injections/.gitkeep
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
