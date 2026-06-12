@@ -4,7 +4,7 @@
     
     "tarfile": "toy.tar.gz",
 
-    "make": "make CFLAGS+=-gdwarf-2",
+    "make": "make",
     "clean": "make clean",
     "install": "make install",
     "command": "{install_dir}/bin/toy {input_file}",
