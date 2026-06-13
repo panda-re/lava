@@ -91,14 +91,14 @@ def get_bugs_parent(lp: LavaPaths):
     return bugs_parent
 
 
-def get_bugs(db: LavaDatabase, bug_id_list: List):
+def get_bugs(db: LavaDatabase, bug_id_list: List[Bug]) -> List[Bug]:
     bugs = []
     for bug_id in bug_id_list:
         bugs.append(db.session.query(Bug).filter(Bug.id == bug_id).all()[0])
     return bugs
 
 
-def get_allowed_bugtype_num(arguments) -> list[int]:
+def get_allowed_bugtype_num(arguments: argparse.Namespace) -> list[int]:
     allowed_bugtype_nums = []
 
     # Safety check if arg is empty
@@ -130,9 +130,9 @@ def get_allowed_bugtype_num(arguments) -> list[int]:
 
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
-def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, arguments,
+def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, arguments: argparse.Namespace,
                 update_db: bool, dataflow: bool = False, competition: bool = False,
-                validated: bool=False, lavatoolseed: int = 0):
+                validated: bool = False, lavatoolseed: int = 0):
     # TODO: don't pass args, just pass the data we need to run
     # TODO: split into multiple functions, this is huge
 
@@ -156,10 +156,10 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
 
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
 
-    # TODO: We used to have code that would reduce duplicate ATPs at this point
-    # see b6627fc05f4a78c7b14d03ade45c344c7747cd4b for the last time it was here
-    if validated:
-        pass
+    # TODO: Maybe there is a better way to filter ATPs on bug mining phase?
+    print("\nFiltering bug list to prevent ATP overloading...")
+    limited_bug_ids = limit_atp_reuse(bugs_to_inject, default_max=1)
+    bugs_to_inject = [b for b in bugs_to_inject if b.id in limited_bug_ids]
 
     # collect set of src files into which we must inject code
     src_files : set = collect_src_and_print(bugs_to_inject, db)
@@ -316,14 +316,37 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
     return build, input_files, bug_solutions
 
 
-# fuzz_labels_list is a list of tainted
-# byte offsets within file filename.
-# replace those bytes with random in a new
-# file named new_filename
 def mutate_file(unfuzzed_filename: str, fuzz_labels_list: list, new_filename: str, bug: Bug,
-            kt=False, knob=0, solution=None):
-    # Open filename, mutate it and store in new_filename such that
-    # it hopefully triggers the passed bug
+            kt: bool = False, knob: int = 0, solution: list = None):
+    """
+    Mutates a baseline input file by injecting precise byte sequences at tainted offsets
+    to satisfy execution triggers for a target LAVA bug.
+
+    For generic bugs (e.g., MALLOC_OFF_BY_ONE, RET_BUFFER), this function replaces the 4 bytes 
+    tracked by the taint engine with the bug's static or knob-derived magic number. For 
+    relational write bugs (REL_WRITE), it distributes a triad of calculated or parsed values across 
+    three separate byte-label sets to satisfy complex multi-variable constraints.
+
+    Args:
+        unfuzzed_filename (str): Path to the baseline, clean input file (e.g., 'testsmall.bin').
+        fuzz_labels_list (list): Nested list of byte offsets within the input file that map to
+            the target bug's DUA tracking labels. For generic bugs, this is a list of offsets.
+            For `BUG_REL_WRITE`, this must contain exactly 3 lists of offsets.
+        new_filename (str): Output path where the freshly fuzzed/mutated file will be saved.
+        bug (Bug): The target Bug ORM object containing details like type and its unique magic number.
+        kt (bool, optional): Stands for 'Knob Trigger'. If True, mixes a 16-bit configuration knob 
+            value with the lower 16-bits of the bug's magic number. Defaults to False.
+        knob (int, optional): A 16-bit value used to craft dynamic triggers when `kt` is enabled.
+            Must be less than 65535. Defaults to 0.
+        solution (list of bytes, optional): Pre-calculated byte strings from `lavaTool` output to 
+            satisfy a `BUG_REL_WRITE` condition. If omitted for a relational write bug, fallback 
+            heuristics generate values locally based on the mathematical type encoded in the magic number.
+
+    Raises:
+        AssertionError: If `kt` is True but the `knob` exceeds 16-bit boundaries, or if the bug 
+            type is `BUG_REL_WRITE` but `fuzz_labels_list` does not contain exactly 3 sub-lists.
+        IOError: If reading the source file or writing the mutated output file fails.
+    """
     if kt:
         assert knob < 2 ** 16 - 1
         bug_trigger = bug.magic & 0xffff
@@ -476,20 +499,66 @@ def run_lavatool(bug_list: List[Bug], lp: LavaPaths, project: dict, filename: st
     return solutions
 
 
-# Given a list of bugs, return the IDs for a subset of bugs with
-# `max_per_line` bugs on each line of source
-def limit_atp_reuse(bugs: List[Bug], max_per_line: int = 1):
+def limit_atp_reuse(bugs: List[Bug], default_max: int = 1):
+    """
+    Filters the bug list to limit ATP reuse dynamically based on BugKind.
+    Prevents multiple bugs from stacking on the same AST location if one of them
+    modifies structure geometry (like malloc modifications).
+    """
+    # Define structural/destructive bug kinds that MUST dominate a line exclusively
+    STRUCTURAL_BUGS = {
+        BugKind.BUG_MALLOC_OFF_BY_ONE,
+        BugKind.BUG_REL_WRITE
+    }
+
+    # Track which bug types have claimed a specific source line location
+    # Map: (filename, line) -> set(BugKind)
+    location_claims = {}
+    
+    # Track execution counts for restricted types on a specific line
+    # Map: ((filename, line), BugKind) -> int
+    type_counts = {}
+
     uniq_bugs = []
-    seen = {}
+
     for bug in bugs:
+        b_type = bug.type
+        # Extract location properties
         tloc = (bug.atp_relationship.loc.filename, bug.atp_relationship.loc.begin.line)
-        if tloc not in seen.keys():
-            seen[tloc] = 0
-        seen[tloc] += 1
-        if seen[tloc] <= max_per_line:
+        
+        # Initialize the set of bug types sharing this line if not present
+        if tloc not in location_claims:
+            location_claims[tloc] = set()
+            
+        existing_claims = location_claims[tloc]
+
+        # RULE 1: If a structural bug (like malloc) already claimed this line, 
+        # do not let ANY other bug type (even infinite ones) share it.
+        if any(b in STRUCTURAL_BUGS for b in existing_claims) and b_type not in STRUCTURAL_BUGS:
+            continue
+            
+        # RULE 2: If this bug is structural, but non-structural bugs already claimed the line,
+        # skip it to protect the existing AST modifications from clobbering.
+        if b_type in STRUCTURAL_BUGS and any(b not in STRUCTURAL_BUGS for b in existing_claims):
+            continue
+
+        # Handle filtering for unrestricted types if they cleanly own the line
+        if b_type == BugKind.BUG_PTR_ADD or b_type == BugKind.BUG_RET_BUFFER or b_type == BugKind.BUG_PRINTF_LEAK:
+            location_claims[tloc].add(b_type)
             uniq_bugs.append(bug.id)
-    print("Limited ATP reuse: Had {} bugs, now have {} with a "
-          "max of {} per source line".format(len(bugs), len(uniq_bugs), max_per_line))
+            continue
+
+        # Enforce strict line limit for structural bugs (e.g., max 1 malloc bug per line)
+        seen_key = (tloc, b_type)
+        if seen_key not in type_counts:
+            type_counts[seen_key] = 0
+            
+        if type_counts[seen_key] < 1:  # Enforce absolute cap of 1
+            type_counts[seen_key] += 1
+            location_claims[tloc].add(b_type)
+            uniq_bugs.append(bug.id)
+
+    print("Limited ATP reuse: Had {} bugs, now have {} after type-aware filtering".format(len(bugs), len(uniq_bugs)))
     return uniq_bugs
 
 
@@ -818,7 +887,7 @@ def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths,
     return real_bugs
 
 
-def process_crash(buf: str):
+def process_crash(buf: str) -> list[int]:
     """
     Process a buffer of output from target program
     Identify all LAVALOG lines

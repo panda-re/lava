@@ -12,6 +12,9 @@ libpq-dev
 postgresql
 socat
 
+# ldd is needed for ARM/AARCH64 cross compile
+lld
+
 # Curl must work
 ca-certificates 
 

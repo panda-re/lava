@@ -101,7 +101,7 @@ def validate_project(project_dict: dict):
 def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
     """
     Generates environment variables based on target architecture.
-    mode: 'default', 'full', 'llvm_cov' or 'panda'
+    mode: 'default', 'inject', 'llvm_cov' or 'panda'
     """
     clang = os.path.join(llvm_dir, 'bin' , 'clang')
     clang_pp = os.path.join(llvm_dir, 'bin', 'clang++')
