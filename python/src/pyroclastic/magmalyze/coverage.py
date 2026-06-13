@@ -174,9 +174,15 @@ def get_coverage(lava_path: LavaPaths) -> float:
 
 def main():
     parser = argparse.ArgumentParser(description="Calculate code coverage using LLVM-COV.")
-    parser.add_argument("--project", "-p", required=True, dest="project_name",
-                        help="Provide the LAVA project name")
+    parser.add_argument("--project", "-p", required=True, dest="project_name", help="Provide the LAVA project name")
     args = parser.parse_args()
+
+    # Check for existence of local host.json. If it doesn't exist, prompt the user to create one and exit.
+    current_workspace = Path.cwd()
+    local_config_path = current_workspace / "host.json"
+    if not local_config_path.is_file():
+        print(f"[!] No local host.json found in {current_workspace}. Run `lava-init` on this workspace.")
+        sys.exit(1)
 
     lava_paths = LavaPaths(args)
     setup(lava_paths)

@@ -48,24 +48,6 @@ def get_valid_architectures():
     return ['x86_64', 'aarch64', 'arm', 'i386']
 
 
-def get_host_config():
-    """
-    First, check the LAVA_HOST_CONFIG environment variable for an override path.
-    Next, check the standard installed location at ~/.lava/host.json.
-    """
-    # 1. Check for an environment variable override (Best for CI/CD)
-    env_path = os.environ.get("LAVA_HOST_CONFIG")
-    if env_path and os.path.exists(env_path):
-        return env_path
-
-    # 2. Check the standard installed location
-    home_path = Path.home() / ".lava" / "host.json"
-    if home_path.exists():
-        return str(home_path)
-
-    raise FileNotFoundError("Could not find host.json. Run 'lava init' first.")
-
-
 class Project:
     """
     Simple getter/setter class so we can support .get like a JSON file
@@ -145,7 +127,7 @@ def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
     mode_extras = {
         "default": [],
         # On injection step, we will mess with points, so we need this flag
-        "full": ["-Wno-int-conversion"],
+        "inject": ["-Wno-int-conversion"],
         # When compiling for PANDA, we need to ensure static linking
         "panda": ["-static"],
         # Modern LLVM coverage (uses llvm_cov/llvm-profdata)
@@ -170,7 +152,7 @@ def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
 
 
 def parse_vars(project_name: str):
-    host_json_path = get_host_config()
+    host_json_path = Path.cwd() / "host.json"
     with open(host_json_path, 'r') as f:
         host = json.load(f)
 
@@ -233,8 +215,8 @@ def parse_vars(project_name: str):
     project_data["llvm-dir"] = host.get("llvm", "/usr/lib/llvm-14")
     project_data["complete_rr"] = host.get("complete_rr", False)
     project_data["env_var"] = get_project_env(project_data["llvm-dir"], host["qemu"], "default")
-    project_data["full_env_var"] = get_project_env(project_data["llvm-dir"], host["qemu"], "full")
-    project_data["panda_compile"] = get_project_env(project_data["llvm-dir"], host["qemu"], "panda")
+    project_data["inject"] = get_project_env(project_data["llvm-dir"], host["qemu"], "inject")
+    project_data["panda"] = get_project_env(project_data["llvm-dir"], host["qemu"], "panda")
     project_data["llvm_cov"] = get_project_env(project_data["llvm-dir"], host["qemu"], "llvm_cov")
     return Project(project_data)
 

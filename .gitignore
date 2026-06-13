@@ -16,9 +16,6 @@
 
 # this existed before
 .gdb_history
-/lava.mak
-/libexec
-btrace.log
 includes.h.gch
 tags
 host.json

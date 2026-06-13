@@ -151,7 +151,7 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
     sys.stderr.flush()
 
     if not os.path.exists(os.path.join(lp.bugs_build, 'compile_commands.json')):
-        make_and_install(lp, main_directory=lp.bugs_build, environment="full_env_var")
+        make_and_install(lp, main_directory=lp.bugs_build, environment="inject")
 
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
 
@@ -240,7 +240,7 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
     build_output = make_and_install(
         lava_path=lp, 
         main_directory=lp.bugs_build, 
-        environment="full_env_var", 
+        environment="inject", 
         capture_build=True
     )
 
@@ -867,12 +867,9 @@ def check_architecture_compatibility(target_arch: str, strict_64_only: bool = Tr
     return False
 
 
-def main(arguments: argparse.Namespace):
-    # Set various paths
-    lp = LavaPaths(arguments)
-    project = lp.config
-
+def main(arguments: argparse.Namespace, lp: LavaPaths):
     # Run the guard check. Toggle strict_64_only based on your experimental parameters
+    project = lp.config
     is_compatible = check_architecture_compatibility(project['qemu'])
     
     if not is_compatible:
@@ -948,4 +945,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(parents=[parent], description='Inject and test LAVA bugs.')
     parser.add_argument('-p', '--project_name', help='Project name')
     args = parser.parse_args()
-    main(args)
+    lp = LavaPaths(args)
+    main(args, lp)

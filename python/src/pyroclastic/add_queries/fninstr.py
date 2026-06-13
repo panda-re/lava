@@ -62,12 +62,13 @@ def append_to_dict_list(dictionary: Dict[str, List[Any]], key: str, value: Any) 
     dictionary[key].append(value)
 
 
-def analysis(project_name: str, output_file: str, inputs: list[str], ignore_function_pointers=False):
+def analysis(project_name: str, output_file: str, inputs: list[str], project_config: dict, ignore_function_pointers=False):
     """
 
     :param project_name:
     :param output_file:
     :param inputs:
+    :param project_config:
     :param ignore_function_pointers:
     :return:
     """
@@ -77,7 +78,6 @@ def analysis(project_name: str, output_file: str, inputs: list[str], ignore_func
     prots = {}
     calls = {}
     fpas = {}
-    project_config = parse_vars(project_name)
     debug = project_config['debug']
     for filename in inputs:
         print(f"FILE [{filename}]")
