@@ -32,19 +32,6 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
 
     c_dirs, c_files = read_compile_db(lava_path.source_directory)
 
-    # 6. Given the Debian package installed in /usr/include, we now copy it to LAVA project.
-    include_dir = Path("/usr/include")
-    headers = ["pirate_mark_lava.h"]
-    for directory in c_dirs:
-        dir_path = Path(directory)
-        if dir_path.is_dir():
-            for name in headers:
-                src = include_dir / name
-                if src.is_file():
-                    shutil.copy2(src, dir_path)
-                else:
-                    print(f"Warning: {src} not found, skipping.")
-
     # 7. lavaFnTool & fninstr.py
     for file in c_files:
         run_local(["lavaFnTool", file])
