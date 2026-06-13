@@ -1,6 +1,9 @@
 #ifndef MALLOC_OFF_BY_ONE_H
 #define MALLOC_OFF_BY_ONE_H
 
+#include <cstdlib> // For srand() and rand()
+#include <string>  // For std::to_string()
+
 using namespace clang;
 
 /**
@@ -57,22 +60,47 @@ struct MallocOffByOneArgHandler : public LavaMatchHandler {
 
 		        for (const Bug *bug : injectable_bugs) {
                     debug(INJECT) << "[DEBUG - MALLOC] Successfully found bug " << bug->id << ". Injecting...\n";
+
+                    // 1. Create a deterministic random generator based on the bug ID
+                    // This ensures FuzzBench builds the exact same binary every time!
+                    srand(bug->id); 
+                    
+                    std::string buggy_size_expr;
+                    clang::Expr::EvalResult EvalRes;
+                    const ASTContext &Ctx = *Result.Context;
+
+                    // 2. The LLVM 14 Superpower: Try to evaluate the size statically!
+                    if (size_arg->EvaluateAsInt(EvalRes, Ctx)) {
+                        int64_t exact_size = EvalRes.Val.getInt().getExtValue();
+                        debug(INJECT) << "[DEBUG] LLVM evaluated malloc size statically as: " << exact_size << " bytes.\n";
+
+                        if (exact_size > 16) {
+                            // If it's a large struct, subtract a random amount between 16 and (size/2)
+                            // This guarantees we break glibc's 16-byte padding!
+                            int offset = 16 + (rand() % (exact_size / 2));
+                            buggy_size_expr = "(" + ExprStr(size_arg) + " - " + std::to_string(offset) + ")";
+                        } else {
+                            // If it's a tiny allocation (e.g., malloc(10)), we subtract a larger number.
+                            // WHY? Because size_t is unsigned! 10 - 24 = 18446744073709551598.
+                            // malloc will attempt to allocate 18 Exabytes, instantly fail, and return NULL.
+                            // Dereferencing the NULL pointer creates a highly realistic instant crash!
+                            int offset = exact_size + (rand() % 16) + 1;
+                            buggy_size_expr = "(" + ExprStr(size_arg) + " - " + std::to_string(offset) + ")";
+                        }
+                    } else {
+                        // 3. Fallback: LLVM couldn't evaluate it (e.g., it's a variable `malloc(n)`).
+                        // Use the "Missing Multiplier" bug realism technique. 
+                        // Dividing by 2, 4, or 8 looks exactly like a developer forgot a `sizeof()`
+                        int divisor = (rand() % 2 == 0) ? 2 : 4; 
+                        buggy_size_expr = "(" + ExprStr(size_arg) + " / " + std::to_string(divisor) + ")";
+                        debug(INJECT) << "[DEBUG] Dynamic size detected. Injecting division by " << divisor << ".\n";
+                    }
                     // =========================================================================
                     // WORKED-OUT INJECTION EXAMPLE:
-                    // 
-                    // Given original source: malloc(sizeof(file_entry))
-                    // 1. Mod.Change(size_arg) focuses our target on "sizeof(file_entry)"
-                    // 2. ExprStr(size_arg) stringifies the target node -> "sizeof(file_entry)"
-                    // 3. Test(bug).render() generates the runtime switch -> "lava_get(42) == 1"
-                    // 4. InsertBefore() prepends the ternary branch condition.
-                    // 5. Parenthesize() wraps everything in outer () to maintain C precedence.
-                    // 
-                    // Resulting source code text (We can think about throwing smaller numbers 
-                    // dynamically instead of hardcoding 4, but this should trigger memory erros
-                    // without ASAN):
+                    // Original code: malloc(sizeof(file_entry))
                     // malloc((lava_get(42) == 1 ? (4) : sizeof(file_entry)))
                     // =========================================================================
-                    Mod.Parenthesize().InsertBefore(Test(bug).render() + " ? (4) : ");
+                    Mod.Parenthesize().InsertBefore(Test(bug).render() + " ? " + buggy_size_expr + " : ");
 		        }
 		    }
 	    }
