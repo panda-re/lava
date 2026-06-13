@@ -8,6 +8,7 @@ import struct
 import random
 import shutil
 import platform
+from pathlib import Path
 from typing import List
 # LAVA imports
 from ..utils.vars import LavaPaths
@@ -226,15 +227,59 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
             one_replacement_success = True
 
     assert one_replacement_success, "clang-apply-replacements failed in all possible directories"
+    build = Build(
+        compile=False, 
+        output="",
+        bugs=bugs_to_inject
+    )
 
-    # paranoid clean -- some build systems need this
-    if 'clean' in project.keys():
-        run_local(project['clean'], cwd=lp.bugs_build, shell=True)
+    if update_db:
+        db.session.add(build)
+        db.session.flush()  # Populates build.id from the database auto-increment
 
+    # --- SECURE THE C SOURCE CODE CHANGES (ISOLATED BRANCHES) ---
+    build_label = str(build.id)
+    print(f"Saving C source changes for build {build_label}...")
+    try:
+        # Use Python's rglob to safely find all .c files in root AND subdirectories
+        build_path = Path(lp.bugs_build)
+        c_files = [str(p.relative_to(build_path)) for p in build_path.rglob("*.c")]
+        
+        if not c_files:
+            raise AssertionError(f"No .c files found in the project directory for build {build_label}!")
+
+        # Pass the exact file list to Git safely
+        run_local(["git", "add"] + c_files, cwd=lp.bugs_build)
+
+        # Confirm that LavaTool actually modified tracked files
+        rv_status, _ = run_local(["git", "diff", "--cached", "--quiet"], cwd=lp.bugs_build, capture_output=True)
+        
+        # If rv_status == 0, the staging area is empty. Trigger the assert.
+        assert rv_status != 0, f"LavaTool failed to modify any C source files for build {build_label}!"
+
+        # Commit the mutations and spawn a dedicated, isolated branch
+        run_local(["git", "commit", "-m", f"Bugs for build {build_label}."], cwd=lp.bugs_build)
+        run_local(["git", "branch", f"build{build_label}", "master"], cwd=lp.bugs_build)
+        
+        # Rewind master back to a perfectly clean state for the next injection loop
+        run_local(["git", "reset", "HEAD~", "--hard"], cwd=lp.bugs_build)
+
+    except AssertionError as e:
+        print(f"\nAssertion Failed: {e}")
+        if update_db:
+            db.session.rollback()
+        raise
+    except Exception as e:
+        print(f"\nFatal error: Git tracking failed: {e}")
+        if update_db:
+            db.session.rollback()
+        raise
+    
     # compile
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
+    run_local(["git", "checkout", f"build{build_label}"], cwd=lp.bugs_build)
 
     # Silence warnings related to adding integers to pointers since we already know that it's unsafe.
     build_output = make_and_install(
@@ -245,43 +290,29 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
     )
 
     rv, (stdout, stderr) = build_output
+    stdout_str = stdout.decode('utf-8', errors='ignore')
+    stderr_str = stderr.decode('utf-8', errors='ignore')
+
+    build.compile = (rv == 0)
+    build.output = f"{stdout_str};{stderr_str}"
+
+    if update_db:
+        db.session.commit()
+
+    # ALWAYS clean up the working directory state before exiting the function
+    run_local(["git", "checkout", "master"], cwd=lp.bugs_build)
+    run_local(["git", "checkout", "-f"], cwd=lp.bugs_build)
 
     if rv != 0:
-        print(f"Lava tool returned {rv}! Error log below:")
-        print(stderr.decode('utf-8'))
         print("\n===================================")
-        print("build of injected bug failed!!!!!!!")
-        print("LAVA TOOL FAILED")
+        print(f"[LAVA TOOL FAILED] Build {build_label} failed! Status: {rv}")
+        print(f"Broken code safely preserved in branch: build{build_label}")
+        print(stdout_str.replace("\\n", "\n"))
+        print(stderr_str.replace("\\n", "\n"))
         print("===================================\n")
-        print(stdout.decode('utf-8').replace("\\n", "\n"))
-        print(stderr.decode('utf-8').replace("\\n", "\n"))
+        return build, input_files, bug_solutions
 
-        print("Build of injected bugs failed")
-        return None, input_files, bug_solutions
-
-    # Build success handling (Notice run_local(install) was already safely completed inside the master function!)
-    build: Build = Build(
-        compile=(rv == 0), 
-        output=(stdout.decode('utf-8') + ";" + stderr.decode('utf-8')),
-        bugs=bugs_to_inject
-    )
-    print("build succeeded and binary installed cleanly")
-
-    # add a row to the build table in the db
-    if update_db:
-        db.session.add(build)
-        db.session.commit()
-        assert build.id is not None
-        try:
-            run_local("git add '*.c'", cwd=lp.bugs_build, shell=True)
-            run_local(['git', 'commit', '-m', 'Bugs for build {}.'.format(build.id)], cwd=lp.bugs_build)
-        except Exception:
-            print("\nFatal error: git commit failed! This may be caused by lavaTool not modifying anything")
-            raise
-
-        run_local(['git', 'branch', 'build' + str(build.id), 'master'], cwd=lp.bugs_build)
-        run_local(['git', 'reset', 'HEAD~', '--hard'], cwd=lp.bugs_build)
-
+    print(f"Build {build_label} succeeded and binary installed cleanly.")
     return build, input_files, bug_solutions
 
 
@@ -289,8 +320,6 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
 # byte offsets within file filename.
 # replace those bytes with random in a new
 # file named new_filename
-
-
 def mutate_file(unfuzzed_filename: str, fuzz_labels_list: list, new_filename: str, bug: Bug,
             kt=False, knob=0, solution=None):
     # Open filename, mutate it and store in new_filename such that
