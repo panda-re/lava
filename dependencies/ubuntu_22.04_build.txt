@@ -12,9 +12,6 @@ libpq-dev
 postgresql
 socat
 
-# ldd is needed for ARM/AARCH64 cross compile
-lld
-
 # Curl must work
 ca-certificates 
 
@@ -26,3 +23,32 @@ libzmq3-dev
 
 # Install dwarf dump, you need this for 64-bit bugs
 dwarfdump
+
+# ldd is needed for ARM/AARCH64 cross compile
+lld
+
+# ==========================================
+# 1. i386 (32-bit x86) Cross-Compile Deps, Disabled for now
+# ==========================================
+# libc6-dev-i386 gives you the 32-bit headers and C runtime (crti.o, etc.)
+# gcc-multilib 
+# g++-multilib
+# libc6-dev-i386
+
+# ==========================================
+# 2. ARM32 (ARMv5T / arm-linux-gnueabi) Deps
+# ==========================================
+# You need 'armel' (soft-float) for ARMv5T, NOT 'armhf' (hard-float).
+# This provides the exact sysroot Clang is looking for.
+gcc-arm-linux-gnueabi
+g++-arm-linux-gnueabi
+libc6-dev-armel-cross
+binutils-arm-linux-gnueabi
+
+# ==========================================
+# 3. AArch64 (64-bit ARM) Deps
+# ==========================================
+gcc-aarch64-linux-gnu
+g++-aarch64-linux-gnu
+libc6-dev-arm64-cross
+binutils-aarch64-linux-gnu

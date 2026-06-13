@@ -119,8 +119,8 @@ def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
     arch_flags = {
         "x86_64": [],
         "i386": ["-m32"],
-        "arm": ["--target=arm-linux-gnueabi", "-marm", "-march=armv5t", "-fuse-ld=lld"],
-        "aarch64": ["--target=aarch64-linux-gnu", "-march=armv8-a", "-fuse-ld=lld"]
+        "arm": ["--target=arm-linux-gnueabi", "-marm", "-march=armv5t", "--gcc-toolchain=/usr"],
+        "aarch64": ["--target=aarch64-linux-gnu", "-march=armv8-a", "--gcc-toolchain=/usr"]
     }
 
     # 3. Mode-Specific Flags
@@ -146,8 +146,15 @@ def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
     }
 
     # If we are doing coverage, we often need to pass the same flags to the linker
-    if mode in ["llvm_cov"]:
-        env['LDFLAGS'] = " ".join(selected_mode_flags)
+    ldflags = []
+    if mode == "llvm_cov":
+        ldflags.extend(selected_mode_flags)
+    elif mode == "panda":
+        # Force the linker to strictly build a non-PIE, static executable (Add PIE later...?)
+        ldflags.extend(["-static"])
+
+    if ldflags:
+        env['LDFLAGS'] = " ".join(ldflags)
     return env
 
 
