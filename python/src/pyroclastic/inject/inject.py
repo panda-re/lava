@@ -588,11 +588,11 @@ def collect_src_and_print(bugs_to_inject: List[Bug], db: LavaDatabase):
                     raise RuntimeError("Bug {} references DuaBytes {} which does not exist" \
                                        .format(bug.id, extra_id))
                 print("  ", extra_id, "   @   ", dua_bytes.dua)
-                print("     Src_file: ", dua_bytes.dua.lval.loc.filename)
+                print("     Src_file: ", dua_bytes.dua_relationship.lval_relationship.loc.filename)
 
                 # Add filenames for extra_duas into src_files and input_files
                 # Note this is the file _name_ not the path
-                file_name = dua_bytes.dua.lval.loc.filename
+                file_name = dua_bytes.dua_relationship.lval_relationship.loc.filename
                 if os.path.sep in file_name:
                     file_name = file_name.split(os.path.sep)[1]
                 src_files.add(file_name)

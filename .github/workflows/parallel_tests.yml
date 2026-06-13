@@ -106,8 +106,9 @@ jobs:
         python -m pyroclastic.lava -tc toy
         # Run injection step for various kinds of bugs
         python -m pyroclastic.lava -i 1 toy --bugtypes "ptr_add"
+        python -m pyroclastic.lava -i 1 toy --bugtypes "ret_buffer"
+        # Alas, for toy, we only have 1 malloc, so injection works, but verification its hard to get the right file...
         # python -m pyroclastic.lava -i 1 toy --bugtypes "malloc_off_by_one"
-        # python -m pyroclastic.lava -i 1 toy --bugtypes "ret_buffer"
       env:
         USER: ${{ github.actor }}
         POSTGRES_USER: postgres
