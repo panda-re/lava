@@ -61,7 +61,7 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Education",
-    "Natrual Language :: English"
+    "Natural Language :: English"
 ]
 [project.scripts]
 lava = "pyroclastic.lava:main"
