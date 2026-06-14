@@ -1,7 +1,5 @@
 import os
 import sys
-import shutil
-from pathlib import Path
 # LAVA
 from ..utils.funcs import read_compile_db, configure_project, run_local, preprocess, unpack_tar, make_and_install
 from ..utils.vars import LavaPaths
