@@ -1,14 +1,13 @@
 import os
-import tarfile
+import sys
 import argparse
 from pathlib import Path
 import shutil
 import shlex
 import re
 import subprocess
-
-from pyroclastic.utils.vars import parse_vars, LavaPaths
-from pyroclastic.add_queries.add_queries import run_local
+from angr.exploration_techniques import DFS
+from pyroclastic.utils.vars import LavaPaths
 from pyroclastic.utils.funcs import unpack_tar, configure_project, make_and_install
 
 
@@ -32,6 +31,7 @@ def compile(lava_path: LavaPaths, coverage: bool = False):
     """
     Compiles the project using `make` and installs it.
     Args:
+        lava_path: a Class holding all paths in the LAVA project
         coverage: if True, use coverage environment variables for compilation.
     """
     if coverage:
@@ -174,9 +174,15 @@ def get_coverage(lava_path: LavaPaths) -> float:
 
 def main():
     parser = argparse.ArgumentParser(description="Calculate code coverage using LLVM-COV.")
-    parser.add_argument("--project", "-p", required=True, dest="project_name",
-                        help="Provide the LAVA project name")
+    parser.add_argument("--project", "-p", required=True, dest="project_name", help="Provide the LAVA project name")
     args = parser.parse_args()
+
+    # Check for existence of local host.json. If it doesn't exist, prompt the user to create one and exit.
+    current_workspace = Path.cwd()
+    local_config_path = current_workspace / "host.json"
+    if not local_config_path.is_file():
+        print(f"[!] No local host.json found in {current_workspace}. Run `lava-init` on this workspace.")
+        sys.exit(1)
 
     lava_paths = LavaPaths(args)
     setup(lava_paths)

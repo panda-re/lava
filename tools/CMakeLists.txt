@@ -45,7 +45,7 @@ message(STATUS "LAVA Project version: ${PROJECT_VERSION}")
 
 # Install the headers
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/lava/
     FILES_MATCHING PATTERN "*.h")
 
 # Install the license file

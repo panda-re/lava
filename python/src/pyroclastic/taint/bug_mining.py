@@ -21,12 +21,10 @@ from ..utils.vars import parse_vars
 from ..utils.funcs import tick, tock, progress
 
 
-def run_taint_pipeline(lava_project: str):
+def run_taint_pipeline(lava_project: str, project: dict):
     """
     Initializes the project and PANDA object based on arguments.
     """
-    # Use your utility to get the merged config
-    project = parse_vars(lava_project)
 
     # Initialize PANDA
     # TODO: remove this once PR is merged
@@ -282,4 +280,5 @@ if __name__ == "__main__":
                         help="The name of the project, this contains project specific data", required=True,
                         type=str)
     args = parser.parse_args()
-    run_taint_pipeline(args.project)
+    project = parse_vars(args.project)
+    run_taint_pipeline(args.project, project)

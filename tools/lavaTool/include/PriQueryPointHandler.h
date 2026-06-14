@@ -117,27 +117,44 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
             if (bug->type == Bug::RET_BUFFER) {
                 const DuaBytes *buffer = db->load<DuaBytes>(bug->extra_duas[0]);
+
+                // 1. Build the cross-architecture inline assembly payload
+                auto asm_payload = LBlock({
+                    LIfDef("__aarch64__", {
+                        // AArch64: Pivot SP -> Load Link Register (x30) from new stack -> Return
+                        LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) + LDecimal(buffer->selected.low) },
+                             { "mov sp, %0", "ldr x30, [sp], #8", "ret" })
+                    }),
+                    LIfDef("__arm__", {
+                        // ARM32 (ARMv5T Compatible): Pivot SP -> Load Multiple Full Descending (pop) into PC
+                        LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) + LDecimal(buffer->selected.low) },
+                             { "mov sp, %0", "ldmfd sp!, {pc}" })
+                    }),
+                    LIfDef("__x86_64__", {
+                        // x86_64: Pivot RSP -> Return
+                        LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) + LDecimal(buffer->selected.low) },
+                             { "movq %0, %%rsp", "ret" })
+                    }),
+                    LIfDef("__i386__", {
+                        // x86_32: Pivot ESP -> Return
+                        LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) + LDecimal(buffer->selected.low) },
+                             { "movl %0, %%esp", "ret" })
+                    })
+                });
+
+                // 2. Inject the payload with or without the Competition Logger
                 if (ArgCompetition) {
                     result_ss << LIf(Test(bug).render(), {
-                            LBlock({
-                                //It's always safe to call lavalog here since we're in the if
-                                LFunc("LAVALOG", {LDecimal(1), LDecimal(1), LDecimal(bug->id)}),
-                                LIfDef("__x86_64__", {
-                                    LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
-                                        LDecimal(buffer->selected.low), },
-                                        { "movq %0, %%rsp", "ret" }),
-                                    LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
-                                        LDecimal(buffer->selected.low), },
-                                        { "movl %0, %%esp", "ret" })})})});
-                } else{
+                        LBlock({
+                            // It's always safe to call lavalog here since we're in the if
+                            LFunc("LAVALOG", {LDecimal(1), LDecimal(1), LDecimal(bug->id)}),
+                            asm_payload
+                        })
+                    });
+                } else {
                     result_ss << LIf(Test(bug).render(), {
-                                LIfDef("__x86_64__", {
-                                    LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
-                                        LDecimal(buffer->selected.low), },
-                                        { "movq %0, %%rsp", "ret" }),
-                                    LAsm({ UCharCast(LStr(buffer->dua->lval->ast_name)) +
-                                        LDecimal(buffer->selected.low), },
-                                        { "movl %0, %%esp", "ret" })})});
+                        asm_payload
+                    });
                 }
             }
         }

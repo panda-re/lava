@@ -370,7 +370,21 @@ def preprocess(lava_path: LavaPaths, main_directory : str = "", lf: Optional[str
 
         run_local("make lava_preprocess SHELL=/bin/bash", env=env, cwd=str(main_directory), shell=True, logfile=lf)
         if os.path.isdir(os.path.join(main_directory, '.git')):
-            run_local("git add '*.c'", cwd=str(main_directory), shell=True, logfile=lf)
+            # Use Python's rglob to safely find all .c files in root AND subdirectories
+            build_path = Path(main_directory)
+            c_files = [str(p.relative_to(build_path)) for p in build_path.rglob("*.c")]
+        
+            if not c_files:
+                raise AssertionError("No .c files found in the project directory for Pre-process!")
+
+            # Pass the exact file list to Git safely
+            run_local(["git", "add"] + c_files, cwd=str(main_directory))
+
+            # Confirm that Pre-process actually modified tracked files
+            rv_status, _ = run_local(["git", "diff", "--cached", "--quiet"], cwd=str(main_directory), capture_output=True)
+        
+            # If rv_status == 0, the staging area is empty. Trigger the assert.
+            assert rv_status != 0, "Pre-process failed to modify any C source files!"
             run_local(["git", "commit", "-m", "Pre-processed source."], cwd=str(main_directory), logfile=lf)
 
 
@@ -423,8 +437,12 @@ def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment
         # Only run git steps if compile_commands.json was safely generated
         if os.path.exists(os.path.join(main_directory, "compile_commands.json")):
             run_local(["git", "add", "compile_commands.json"], cwd=str(main_directory), logfile=lf)
-            run_local(["git", "commit", "--allow-empty", "-m", "Add compile_commands.json."], cwd=str(main_directory), logfile=lf)
-            print("Added the compile_commands.json to git tracking.")
+            rv_status, _ = run_local(["git", "diff", "--cached", "--quiet"], cwd=str(main_directory), capture_output=True)
+            if rv_status != 0:
+                run_local(["git", "commit", "-m", "Update compile_commands.json."], cwd=str(main_directory), logfile=lf)
+                print("Added/Updated the compile_commands.json in git tracking.")
+            else:
+                print("compile_commands.json has not changed. Skipping commit to keep git history clean.")
 
     # Execute final installation step cleanly, have some flags, just in case we have to run make before processing, this avoids extra compiling.
     run_local(f"{lava_path.config['install']}", env=env, shell=True, debug=True, cwd=str(main_directory), logfile=lf)

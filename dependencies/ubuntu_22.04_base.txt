@@ -9,9 +9,6 @@ clang-tools-14
 libclang-14-dev
 llvm-14-dev
 
-# btrace needs this for C-JSON
-libcjson-dev
-
 # These packages are for libodb, needed for the database backend
 odb
 libodb-dev

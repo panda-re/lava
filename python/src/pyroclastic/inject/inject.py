@@ -8,6 +8,7 @@ import struct
 import random
 import shutil
 import platform
+from pathlib import Path
 from typing import List
 # LAVA imports
 from ..utils.vars import LavaPaths
@@ -90,14 +91,14 @@ def get_bugs_parent(lp: LavaPaths):
     return bugs_parent
 
 
-def get_bugs(db: LavaDatabase, bug_id_list: List):
+def get_bugs(db: LavaDatabase, bug_id_list: List[Bug]) -> List[Bug]:
     bugs = []
     for bug_id in bug_id_list:
         bugs.append(db.session.query(Bug).filter(Bug.id == bug_id).all()[0])
     return bugs
 
 
-def get_allowed_bugtype_num(arguments) -> list[int]:
+def get_allowed_bugtype_num(arguments: argparse.Namespace) -> list[int]:
     allowed_bugtype_nums = []
 
     # Safety check if arg is empty
@@ -129,9 +130,9 @@ def get_allowed_bugtype_num(arguments) -> list[int]:
 
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
-def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, arguments,
+def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, arguments: argparse.Namespace,
                 update_db: bool, dataflow: bool = False, competition: bool = False,
-                validated: bool=False, lavatoolseed: int = 0):
+                validated: bool = False, lavatoolseed: int = 0):
     # TODO: don't pass args, just pass the data we need to run
     # TODO: split into multiple functions, this is huge
 
@@ -151,14 +152,14 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
     sys.stderr.flush()
 
     if not os.path.exists(os.path.join(lp.bugs_build, 'compile_commands.json')):
-        make_and_install(lp, main_directory=lp.bugs_build, environment="full_env_var")
+        make_and_install(lp, main_directory=lp.bugs_build, environment="inject")
 
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
 
-    # TODO: We used to have code that would reduce duplicate ATPs at this point
-    # see b6627fc05f4a78c7b14d03ade45c344c7747cd4b for the last time it was here
-    if validated:
-        pass
+    # TODO: Maybe there is a better way to filter ATPs on bug mining phase?
+    print("\nFiltering bug list to prevent ATP overloading...")
+    limited_bug_ids = limit_atp_reuse(bugs_to_inject, default_max=1)
+    bugs_to_inject = [b for b in bugs_to_inject if b.id in limited_bug_ids]
 
     # collect set of src files into which we must inject code
     src_files : set = collect_src_and_print(bugs_to_inject, db)
@@ -226,75 +227,126 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
             one_replacement_success = True
 
     assert one_replacement_success, "clang-apply-replacements failed in all possible directories"
+    build = Build(
+        compile=False, 
+        output="",
+        bugs=bugs_to_inject
+    )
 
-    # paranoid clean -- some build systems need this
-    if 'clean' in project.keys():
-        run_local(project['clean'], cwd=lp.bugs_build, shell=True)
+    if update_db:
+        db.session.add(build)
+        db.session.flush()  # Populates build.id from the database auto-increment
 
+    # --- SECURE THE C SOURCE CODE CHANGES (ISOLATED BRANCHES) ---
+    build_label = str(build.id)
+    print(f"Saving C source changes for build {build_label}...")
+    try:
+        # Use Python's rglob to safely find all .c files in root AND subdirectories
+        build_path = Path(lp.bugs_build)
+        c_files = [str(p.relative_to(build_path)) for p in build_path.rglob("*.c")]
+        
+        if not c_files:
+            raise AssertionError(f"No .c files found in the project directory for build {build_label}!")
+
+        # Pass the exact file list to Git safely
+        run_local(["git", "add"] + c_files, cwd=lp.bugs_build)
+
+        # Confirm that LavaTool actually modified tracked files
+        rv_status, _ = run_local(["git", "diff", "--cached", "--quiet"], cwd=lp.bugs_build, capture_output=True)
+        
+        # If rv_status == 0, the staging area is empty. Trigger the assert.
+        assert rv_status != 0, f"LavaTool failed to modify any C source files for build {build_label}!"
+
+        # Commit the mutations and spawn a dedicated, isolated branch
+        run_local(["git", "commit", "-m", f"Bugs for build {build_label}."], cwd=lp.bugs_build)
+        run_local(["git", "branch", f"build{build_label}", "master"], cwd=lp.bugs_build)
+        
+        # Rewind master back to a perfectly clean state for the next injection loop
+        run_local(["git", "reset", "HEAD~", "--hard"], cwd=lp.bugs_build)
+
+    except AssertionError as e:
+        print(f"\nAssertion Failed: {e}")
+        if update_db:
+            db.session.rollback()
+        raise
+    except Exception as e:
+        print(f"\nFatal error: Git tracking failed: {e}")
+        if update_db:
+            db.session.rollback()
+        raise
+    
     # compile
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
+    run_local(["git", "checkout", f"build{build_label}"], cwd=lp.bugs_build)
 
     # Silence warnings related to adding integers to pointers since we already know that it's unsafe.
     build_output = make_and_install(
         lava_path=lp, 
         main_directory=lp.bugs_build, 
-        environment="full_env_var", 
+        environment="inject", 
         capture_build=True
     )
 
     rv, (stdout, stderr) = build_output
+    stdout_str = stdout.decode('utf-8', errors='ignore')
+    stderr_str = stderr.decode('utf-8', errors='ignore')
+
+    build.compile = (rv == 0)
+    build.output = f"{stdout_str};{stderr_str}"
+
+    if update_db:
+        db.session.commit()
+
+    # ALWAYS clean up the working directory state before exiting the function
+    run_local(["git", "checkout", "master"], cwd=lp.bugs_build)
+    run_local(["git", "checkout", "-f"], cwd=lp.bugs_build)
 
     if rv != 0:
-        print(f"Lava tool returned {rv}! Error log below:")
-        print(stderr.decode('utf-8'))
         print("\n===================================")
-        print("build of injected bug failed!!!!!!!")
-        print("LAVA TOOL FAILED")
+        print(f"[LAVA TOOL FAILED] Build {build_label} failed! Status: {rv}")
+        print(f"Broken code safely preserved in branch: build{build_label}")
+        print(stdout_str.replace("\\n", "\n"))
+        print(stderr_str.replace("\\n", "\n"))
         print("===================================\n")
-        print(stdout.decode('utf-8').replace("\\n", "\n"))
-        print(stderr.decode('utf-8').replace("\\n", "\n"))
+        return build, input_files, bug_solutions
 
-        print("Build of injected bugs failed")
-        return None, input_files, bug_solutions
-
-    # Build success handling (Notice run_local(install) was already safely completed inside the master function!)
-    build: Build = Build(
-        compile=(rv == 0), 
-        output=(stdout.decode('utf-8') + ";" + stderr.decode('utf-8')),
-        bugs=bugs_to_inject
-    )
-    print("build succeeded and binary installed cleanly")
-
-    # add a row to the build table in the db
-    if update_db:
-        db.session.add(build)
-        db.session.commit()
-        assert build.id is not None
-        try:
-            run_local("git add '*.c'", cwd=lp.bugs_build, shell=True)
-            run_local(['git', 'commit', '-m', 'Bugs for build {}.'.format(build.id)], cwd=lp.bugs_build)
-        except Exception:
-            print("\nFatal error: git commit failed! This may be caused by lavaTool not modifying anything")
-            raise
-
-        run_local(['git', 'branch', 'build' + str(build.id), 'master'], cwd=lp.bugs_build)
-        run_local(['git', 'reset', 'HEAD~', '--hard'], cwd=lp.bugs_build)
-
+    print(f"Build {build_label} succeeded and binary installed cleanly.")
     return build, input_files, bug_solutions
 
 
-# fuzz_labels_list is a list of tainted
-# byte offsets within file filename.
-# replace those bytes with random in a new
-# file named new_filename
-
-
 def mutate_file(unfuzzed_filename: str, fuzz_labels_list: list, new_filename: str, bug: Bug,
-            kt=False, knob=0, solution=None):
-    # Open filename, mutate it and store in new_filename such that
-    # it hopefully triggers the passed bug
+            kt: bool = False, knob: int = 0, solution: list = None):
+    """
+    Mutates a baseline input file by injecting precise byte sequences at tainted offsets
+    to satisfy execution triggers for a target LAVA bug.
+
+    For generic bugs (e.g., MALLOC_OFF_BY_ONE, RET_BUFFER), this function replaces the 4 bytes 
+    tracked by the taint engine with the bug's static or knob-derived magic number. For 
+    relational write bugs (REL_WRITE), it distributes a triad of calculated or parsed values across 
+    three separate byte-label sets to satisfy complex multi-variable constraints.
+
+    Args:
+        unfuzzed_filename (str): Path to the baseline, clean input file (e.g., 'testsmall.bin').
+        fuzz_labels_list (list): Nested list of byte offsets within the input file that map to
+            the target bug's DUA tracking labels. For generic bugs, this is a list of offsets.
+            For `BUG_REL_WRITE`, this must contain exactly 3 lists of offsets.
+        new_filename (str): Output path where the freshly fuzzed/mutated file will be saved.
+        bug (Bug): The target Bug ORM object containing details like type and its unique magic number.
+        kt (bool, optional): Stands for 'Knob Trigger'. If True, mixes a 16-bit configuration knob 
+            value with the lower 16-bits of the bug's magic number. Defaults to False.
+        knob (int, optional): A 16-bit value used to craft dynamic triggers when `kt` is enabled.
+            Must be less than 65535. Defaults to 0.
+        solution (list of bytes, optional): Pre-calculated byte strings from `lavaTool` output to 
+            satisfy a `BUG_REL_WRITE` condition. If omitted for a relational write bug, fallback 
+            heuristics generate values locally based on the mathematical type encoded in the magic number.
+
+    Raises:
+        AssertionError: If `kt` is True but the `knob` exceeds 16-bit boundaries, or if the bug 
+            type is `BUG_REL_WRITE` but `fuzz_labels_list` does not contain exactly 3 sub-lists.
+        IOError: If reading the source file or writing the mutated output file fails.
+    """
     if kt:
         assert knob < 2 ** 16 - 1
         bug_trigger = bug.magic & 0xffff
@@ -447,20 +499,66 @@ def run_lavatool(bug_list: List[Bug], lp: LavaPaths, project: dict, filename: st
     return solutions
 
 
-# Given a list of bugs, return the IDs for a subset of bugs with
-# `max_per_line` bugs on each line of source
-def limit_atp_reuse(bugs: List[Bug], max_per_line: int = 1):
+def limit_atp_reuse(bugs: List[Bug], default_max: int = 1):
+    """
+    Filters the bug list to limit ATP reuse dynamically based on BugKind.
+    Prevents multiple bugs from stacking on the same AST location if one of them
+    modifies structure geometry (like malloc modifications).
+    """
+    # Define structural/destructive bug kinds that MUST dominate a line exclusively
+    STRUCTURAL_BUGS = {
+        BugKind.BUG_MALLOC_OFF_BY_ONE,
+        BugKind.BUG_REL_WRITE
+    }
+
+    # Track which bug types have claimed a specific source line location
+    # Map: (filename, line) -> set(BugKind)
+    location_claims = {}
+    
+    # Track execution counts for restricted types on a specific line
+    # Map: ((filename, line), BugKind) -> int
+    type_counts = {}
+
     uniq_bugs = []
-    seen = {}
+
     for bug in bugs:
+        b_type = bug.type
+        # Extract location properties
         tloc = (bug.atp_relationship.loc.filename, bug.atp_relationship.loc.begin.line)
-        if tloc not in seen.keys():
-            seen[tloc] = 0
-        seen[tloc] += 1
-        if seen[tloc] <= max_per_line:
+        
+        # Initialize the set of bug types sharing this line if not present
+        if tloc not in location_claims:
+            location_claims[tloc] = set()
+            
+        existing_claims = location_claims[tloc]
+
+        # RULE 1: If a structural bug (like malloc) already claimed this line, 
+        # do not let ANY other bug type (even infinite ones) share it.
+        if any(b in STRUCTURAL_BUGS for b in existing_claims) and b_type not in STRUCTURAL_BUGS:
+            continue
+            
+        # RULE 2: If this bug is structural, but non-structural bugs already claimed the line,
+        # skip it to protect the existing AST modifications from clobbering.
+        if b_type in STRUCTURAL_BUGS and any(b not in STRUCTURAL_BUGS for b in existing_claims):
+            continue
+
+        # Handle filtering for unrestricted types if they cleanly own the line
+        if b_type == BugKind.BUG_PTR_ADD or b_type == BugKind.BUG_RET_BUFFER or b_type == BugKind.BUG_PRINTF_LEAK:
+            location_claims[tloc].add(b_type)
             uniq_bugs.append(bug.id)
-    print("Limited ATP reuse: Had {} bugs, now have {} with a "
-          "max of {} per source line".format(len(bugs), len(uniq_bugs), max_per_line))
+            continue
+
+        # Enforce strict line limit for structural bugs (e.g., max 1 malloc bug per line)
+        seen_key = (tloc, b_type)
+        if seen_key not in type_counts:
+            type_counts[seen_key] = 0
+            
+        if type_counts[seen_key] < 1:  # Enforce absolute cap of 1
+            type_counts[seen_key] += 1
+            location_claims[tloc].add(b_type)
+            uniq_bugs.append(bug.id)
+
+    print("Limited ATP reuse: Had {} bugs, now have {} after type-aware filtering".format(len(bugs), len(uniq_bugs)))
     return uniq_bugs
 
 
@@ -490,11 +588,11 @@ def collect_src_and_print(bugs_to_inject: List[Bug], db: LavaDatabase):
                     raise RuntimeError("Bug {} references DuaBytes {} which does not exist" \
                                        .format(bug.id, extra_id))
                 print("  ", extra_id, "   @   ", dua_bytes.dua)
-                print("     Src_file: ", dua_bytes.dua.lval.loc.filename)
+                print("     Src_file: ", dua_bytes.dua_relationship.lval_relationship.loc.filename)
 
                 # Add filenames for extra_duas into src_files and input_files
                 # Note this is the file _name_ not the path
-                file_name = dua_bytes.dua.lval.loc.filename
+                file_name = dua_bytes.dua_relationship.lval_relationship.loc.filename
                 if os.path.sep in file_name:
                     file_name = file_name.split(os.path.sep)[1]
                 src_files.add(file_name)
@@ -789,7 +887,7 @@ def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths,
     return real_bugs
 
 
-def process_crash(buf: str):
+def process_crash(buf: str) -> list[int]:
     """
     Process a buffer of output from target program
     Identify all LAVALOG lines
@@ -867,12 +965,9 @@ def check_architecture_compatibility(target_arch: str, strict_64_only: bool = Tr
     return False
 
 
-def main(arguments: argparse.Namespace):
-    # Set various paths
-    lp = LavaPaths(arguments)
-    project = lp.config
-
+def main(arguments: argparse.Namespace, lp: LavaPaths):
     # Run the guard check. Toggle strict_64_only based on your experimental parameters
+    project = lp.config
     is_compatible = check_architecture_compatibility(project['qemu'])
     
     if not is_compatible:
@@ -948,4 +1043,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(parents=[parent], description='Inject and test LAVA bugs.')
     parser.add_argument('-p', '--project_name', help='Project name')
     args = parser.parse_args()
-    main(args)
+    lp = LavaPaths(args)
+    main(args, lp)

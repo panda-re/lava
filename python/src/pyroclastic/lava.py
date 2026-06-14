@@ -204,8 +204,8 @@ def make_panda(lava_paths: LavaPaths):
     # so we have no idea if it will have any libraries we need.
     run_local("rm -rf lava-install", logfile=lf, cwd=str(lava_paths.source_directory), shell=True)
     deep_clean_target(lava_paths.source_directory, lf=lf)
-    configure_project(lava_paths, main_directory=str(lava_paths.source_directory), environment="panda_compile", lf=lf)
-    make_and_install(lava_paths, main_directory=str(lava_paths.source_directory), environment="panda_compile", lf=lf)
+    configure_project(lava_paths, main_directory=str(lava_paths.source_directory), environment="panda", lf=lf)
+    make_and_install(lava_paths, main_directory=str(lava_paths.source_directory), environment="panda", lf=lf)
 
     duration = tock(start_time)
     progress("everything", 1, f"make complete {duration} seconds")
@@ -217,7 +217,14 @@ def main():
 
     # Confirm environment variables to access the DB are set
     if 'POSTGRES_USER' not in os.environ or 'POSTGRES_PASSWORD' not in os.environ:
-        print("[!] Please set the POSTGRES_USER and POSTGRES_PASSWORD environment variables to access the database.")
+        print("[!] Please set the POSTGRES_USER and POSTGRES_PASSWORD environment variables to access the database. Use the `export` function!")
+        sys.exit(1)
+
+    # Check for existence of local host.json. If it doesn't exist, prompt the user to create one and exit.
+    current_workspace = Path.cwd()
+    local_config_path = current_workspace / "host.json"
+    if not local_config_path.is_file():
+        print(f"[!] No local host.json found in {current_workspace}. Run `lava-init` on this workspace.")
         sys.exit(1)
 
     lava_path = LavaPaths(args)
@@ -258,12 +265,14 @@ def main():
         progress("everything", 1, "Taint step -- running panda and fbi")
         if not args.clean:
             lf = lava_path.logs_directory / "dbwipe_taint.log"
-            run_local(f"psql -U {lava_path.config['database_user']} -h {lava_path.config['database']} -c \"delete from dua_viable_bytes; delete from labelset;\" {path_manager.config['db']}", lf, shell=True)
-
+            cmd_dua = f"psql -U {lava_path.config['database_user']} -h {lava_path.config['database']} -c \"TRUNCATE TABLE dua_viable_bytes;\" {lava_path.config['db']} || true"
+            cmd_label = f"psql -U {lava_path.config['database_user']} -h {lava_path.config['database']} -c \"TRUNCATE TABLE labelset;\" {lava_path.config['db']} || true"        
+            run_local(f"{cmd_dua} ; {cmd_label}", lf, shell=True)
+    
         lf = lava_path.logs_directory / "bug_mining.log"
         progress("everything", 1, f"PANDA taint analysis prospective bug mining -- logging to {lf}")
         with log_to_file(lf):
-            bug_mining.run_taint_pipeline(lava_path.config['name'])
+            bug_mining.run_taint_pipeline(lava_path.config['name'], lava_path.config)
         time_diff = tock(start)
         progress("everything", 1, f"bug_mining complete {time_diff} seconds")
         # Default print last 8 lines of the log, which should have the summary of bug_injection
@@ -276,7 +285,7 @@ def main():
             lf = lava_path.logs_directory / f"inject-{i}.log"
             progress("everything", 1, f"Trial {i} -- injecting {args.count} bugs logging to {lf}")
             with log_to_file(lf):
-                inject.main(args)
+                inject.main(args, lava_path)
             # Print the stats of number of validated bugs vs total bugs, search for string "real bugs" in log file
             run_local(f"grep 'yield' {lf} | grep 'real bugs' || true", shell=True)
 

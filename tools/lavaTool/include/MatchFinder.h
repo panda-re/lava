@@ -145,12 +145,11 @@ public:
 #endif
 
         // printf read disclosures - currently disabled
-        /* addMatcher(
+        addMatcher(
                 callExpr(
                     callee(functionDecl(hasName("::printf"))),
                     unless(argumentCountIs(1))).bind("call_expression"),
-                makeHandler<ReadDisclosureHandler>()
-                ); */
+                makeHandler<ReadDisclosureHandler>());
         }
 
 	addMatcher(
@@ -191,7 +190,7 @@ public:
 
         std::string insert_at_top;
         if (LavaAction == LavaQueries) {
-            insert_at_top = "#include \"pirate_mark_lava.h\"\n";
+            insert_at_top = "#include <lava/pirate_mark_lava.h>\n";
         } else if (LavaAction == LavaInjectBugs) {
             insert_at_top.append(logging_macros.str());
             if (!ArgDataflow) {

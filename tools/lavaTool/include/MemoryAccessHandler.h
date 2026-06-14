@@ -46,7 +46,7 @@ struct MemoryAccessHandler : public LavaMatchHandler {
 
         // memwrite style attack points will have rhs bound to a node
         auto it = Result.Nodes.getMap().find("rhs");
-        if (it != Result.Nodes.getMap().end()){
+        if (it != Result.Nodes.getMap().end()) {
             atpType = AttackPoint::POINTER_WRITE;
             rhs = it->second.get<Expr>();
             assert(rhs);

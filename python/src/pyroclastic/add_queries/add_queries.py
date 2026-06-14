@@ -1,7 +1,5 @@
 import os
 import sys
-import shutil
-from pathlib import Path
 # LAVA
 from ..utils.funcs import read_compile_db, configure_project, run_local, preprocess, unpack_tar, make_and_install
 from ..utils.vars import LavaPaths
@@ -32,19 +30,6 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
 
     c_dirs, c_files = read_compile_db(lava_path.source_directory)
 
-    # 6. Given the Debian package installed in /usr/include, we now copy it to LAVA project.
-    include_dir = Path("/usr/include")
-    headers = ["pirate_mark_lava.h"]
-    for directory in c_dirs:
-        dir_path = Path(directory)
-        if dir_path.is_dir():
-            for name in headers:
-                src = include_dir / name
-                if src.is_file():
-                    shutil.copy2(src, dir_path)
-                else:
-                    print(f"Warning: {src} not found, skipping.")
-
     # 7. lavaFnTool & fninstr.py
     for file in c_files:
         run_local(["lavaFnTool", file])
@@ -53,7 +38,7 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
     fninstr_path = lava_path.project_dir / "fninstr"
 
     # 8. Call fninstr.py analysis
-    analysis(lava_path.config['name'], str(fninstr_path), fn_files)
+    analysis(lava_path.config['name'], str(fninstr_path), fn_files, lava_path.config)
 
     # 9. lavaTool Injection
     atp_flag = f"-{atp_type}" if atp_type else ""
