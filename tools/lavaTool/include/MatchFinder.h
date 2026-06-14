@@ -145,12 +145,11 @@ public:
 #endif
 
         // printf read disclosures - currently disabled
-        /* addMatcher(
+        addMatcher(
                 callExpr(
                     callee(functionDecl(hasName("::printf"))),
                     unless(argumentCountIs(1))).bind("call_expression"),
-                makeHandler<ReadDisclosureHandler>()
-                ); */
+                makeHandler<ReadDisclosureHandler>());
         }
 
 	addMatcher(
