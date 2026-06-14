@@ -49,8 +49,15 @@ dependencies = [
 ]
 license = "GPL-2.0"
 classifiers = [
-    "Topic :: Software Development :: Assemblers :: Bug Tracking",
     "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Topic :: Security",
+    "Topic :: Software Development :: Bug Tracking",
+    "Topic :: Software Development :: Compilers",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -59,8 +66,6 @@ classifiers = [
     "Programming Language :: C++",
     "Operating System :: POSIX :: Linux",
     "Environment :: Console",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Education",
     "Natural Language :: English"
 ]
 [project.scripts]
