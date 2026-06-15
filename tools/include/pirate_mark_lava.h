@@ -65,8 +65,8 @@ void vm_lava_attack_point(unsigned int ast_loc_id, unsigned long linenum, unsign
     phs.src_linenum = line_num; \
     phs.insertion_point = 1; \
     phs.info = extra_info; \
-    DECLARE_REGISTER(0, r0, LAVA_MAGIC) \
-    DECLARE_REGISTER(1, r1, (unsigned long) &phs) \
+    DECLARE_REGISTER(0, r7, LAVA_MAGIC) \
+    DECLARE_REGISTER(1, r0, (unsigned long) &phs) \
     ASM() \
 } while (0)
 #elif defined(CONFIG_ARM64) || defined(__aarch64__)
@@ -78,8 +78,8 @@ void vm_lava_attack_point(unsigned int ast_loc_id, unsigned long linenum, unsign
     phs.src_linenum = line_num; \
     phs.insertion_point = 1; \
     phs.info = extra_info; \
-    DECLARE_REGISTER(0, x0, LAVA_MAGIC) \
-    DECLARE_REGISTER(1, x1, (unsigned long) &phs) \
+    DECLARE_REGISTER(0, x8, LAVA_MAGIC) \
+    DECLARE_REGISTER(1, x0, (unsigned long) &phs) \
     ASM() \
 } while (0)
 #endif
