@@ -262,7 +262,8 @@ def main():
 
     if args.taint:
         start = tick()
-        progress("everything", 1, "Taint step -- running panda and fbi")
+        architecture = lava_path.config['qemu']
+        progress("everything", 1, f"Taint step -- running panda and fbi for {architecture} architecture")
         if not args.clean:
             lf = lava_path.logs_directory / "dbwipe_taint.log"
             cmd_dua = f"psql -U {lava_path.config['database_user']} -h {lava_path.config['database']} -c \"TRUNCATE TABLE dua_viable_bytes;\" {lava_path.config['db']} || true"
