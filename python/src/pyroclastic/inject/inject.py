@@ -274,7 +274,21 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
         if update_db:
             db.session.rollback()
         raise
-    
+
+    is_compatible = check_architecture_compatibility(project['qemu'])
+    # We saved the C code, BUT if we can't inject, we should stop now!
+    if not is_compatible:
+        print("\n==========================================================================")
+        print(f"[!] PIPELINE HALTED: Host machine cannot natively run the local validation pass")
+        print(f"    for target architecture: {project['qemu']}.")
+        print("    To protect the source trees from corrupt dynamic database queries,")
+        print("    the mutation pass will now exit gracefully without changing disk files.")
+        print("==========================================================================\n")
+        print("inject complete %.2f seconds" % (time.time() - start_time))
+        
+        # Graceful, clean initialization exit code (0 keeps batch orchestration jobs moving safely)
+        sys.exit(0)
+
     # compile
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
@@ -968,19 +982,6 @@ def check_architecture_compatibility(target_arch: str, strict_64_only: bool = Tr
 def main(arguments: argparse.Namespace, lp: LavaPaths):
     # Run the guard check. Toggle strict_64_only based on your experimental parameters
     project = lp.config
-    is_compatible = check_architecture_compatibility(project['qemu'])
-    
-    if not is_compatible:
-        print("\n==========================================================================")
-        print(f"[!] PIPELINE HALTED: Host machine cannot natively run the local validation pass")
-        print(f"    for target architecture: {target_architecture}.")
-        print("    To protect the source trees from corrupt dynamic database queries,")
-        print("    the mutation pass will now exit gracefully without changing disk files.")
-        print("==========================================================================\n")
-        
-        # Graceful, clean initialization exit code (0 keeps batch orchestration jobs moving safely)
-        sys.exit(0)
-
     db = LavaDatabase(project)
 
     dataflow = project.get("dataflow", False)
