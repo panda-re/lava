@@ -997,6 +997,15 @@ def main(arguments: argparse.Namespace, lp: LavaPaths):
     # obtain list of bugs to inject based on cmd-line args and consulting db
     update_db, bug_list = get_bug_list(arguments, db, allowed_bugtypes)
 
+    # TODO: Integrate the following lines when its time to put Chaff bugs in
+    # Write the fnwhitelist to indicate root && end of dataflow
+    # function_white_list = os.path.join(project["output_dir"], "fnwhitelist")
+    # combined_functions = os.path.join(project["output_dir"], "getfns.json")
+    # genFnTraceHelper(db, bug_list, function_white_list, combined_functions)
+
+    # Write the fnwhitelist to indicate where to probe extra variables for stack overflow
+    # genStackVarHelper(db, bug_list, function_white_list)
+
     # add all those bugs to the source code and check that it compiles
     # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
     build, input_files, bug_solutions = inject_bugs(bug_list, db, lp,

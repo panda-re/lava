@@ -31,6 +31,8 @@ target_link_libraries(fbi
     protobuf-c
     odb
     odb-pgsql
+    jsoncpp
+    pq
     protobuf
     jsoncpp
 )
