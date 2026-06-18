@@ -38,8 +38,11 @@ def main():
     parser.add_argument('--generate', '-g', dest='generate', action='store', default='target_generation',
                         help='Set the name of the directory for create LAVA to obtain code coverage and generate new inputs.'
                              '(default: target_generation)')
+    parser.add_argument('--no-download', '-nd', dest='download', action='store_false',
+                        help='If this flag is set, do not download the QEMU binary from the internet. This is useful if you have already downloaded it and want to avoid re-downloading it.')
     args = parser.parse_args()
-    Qcows.get_qcow(args.qemu)
+    if args.download:
+        Qcows.get_qcow(args.qemu)
 
     progress(f"Using LAVA config directory at {os.getcwd()}")
 
