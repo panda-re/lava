@@ -376,7 +376,7 @@ class ASTLoc:
             end=Loc(end_line, end_col)
         )
 
-@dataclass(frozen=True, order=True)
+@dataclass(order=True)
 class Range:
     low: int
     high: int
