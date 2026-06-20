@@ -73,6 +73,9 @@ lava = "pyroclastic.lava:main"
 lava-init = "pyroclastic.utils.init_host:main"
 lava-coverage = "pyroclastic.magmalyze.coverage:main"
 magmalyze = "pyroclastic.magmalyze.angr_concolic_explore:main"
+# Mostly used for Testing
+taint = "pyroclastic.taint.bug_mining:run_taint_pipeline"
+mine-plog = "pyroclastic.taint.find_bug_injection:main"
 
 [project.urls]
 Homepage = "https://github.com/panda-re/lava"

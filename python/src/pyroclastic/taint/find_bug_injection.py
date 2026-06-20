@@ -995,7 +995,7 @@ def print_bug_stats(project_data: dict):
         print("total bug:", db.session.query(Bug).count())
 
 
-if __name__ == "__main__":
+def main():
     project_name = sys.argv[1]
     panda_log = sys.argv[2]
 
@@ -1036,3 +1036,5 @@ if __name__ == "__main__":
 
     parse_panda_log(panda_log, project)
 
+if __name__ == "__main__":
+    main()

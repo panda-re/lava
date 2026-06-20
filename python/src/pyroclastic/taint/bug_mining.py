@@ -255,6 +255,13 @@ def run_taint_pipeline(lava_project: str, project: dict):
         sys.stdout.flush()
         print_bug_stats(project)
 
+    # Check if there is already a PANDA log...
+    # If there is, skip straight to parsing the replay output, otherwise do the whole pipeline
+    pandalog = "{}/queries-{}.plog".format(project['output_dir'], project['name'])
+    if os.path.exists(pandalog):
+        progress("bug_mining", 0, f"PANDA log already exists at {pandalog}, skipping straight to parsing replay output")
+        parse_replay_output()
+        return
     record()
     replay()
     parse_replay_output()
