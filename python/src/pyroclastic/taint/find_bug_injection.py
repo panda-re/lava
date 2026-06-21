@@ -108,15 +108,11 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
         ind2str: a list mapping indices to strings from lavadb. This obtains the filename from a number.
         project_data: a dict of input values
     """
-    panda_log_entry_attack_point = ple["attackPoint"]
-    ast_id = None
+    attack_point = ple["attackPoint"]
+    source_info = attack_point["srcInfo"]
+    ast_id = source_info["astLocId"]
+    dprint(project_data, f"attack point id = {ast_id}")
 
-    if "astLocId" in panda_log_entry_attack_point["srcInfo"]:
-        ast_id = int(panda_log_entry_attack_point["srcInfo"]["astLocId"])
-        dprint(project_data, f"attack point id = {ast_id}")
-    assert ast_id is not None, "AST is not found"
-
-    source_info = panda_log_entry_attack_point["srcInfo"]
     # ignore duas in header files
     # Remember, in PandaLog, AttackPoint filenames are numbers!
     if is_header_file(ind2str[ast_id]):
@@ -128,10 +124,8 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
         return
 
     dprint(project_data, f"{len(recent_dead_duas)} viable duas remain")
-    assert "astLocId" in source_info
-    ast_loc = ASTLoc.from_serialized(ind2str[ast_id])
-    assert len(ast_loc.filename) > 0
-    attack_point_type = panda_log_entry_attack_point["info"]
+    ast_loc: ASTLoc = ASTLoc.from_serialized(ind2str[ast_id])
+    attack_point_type = attack_point["info"]
 
     atp = get_or_create(
         session,
@@ -139,7 +133,6 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
         loc=ast_loc,
         type=attack_point_type
     )
-
     dprint(project_data, f"@ATP: {str(atp)}")
 
 
@@ -203,9 +196,8 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
 
     # 1. Parse Header Info
     # std::min logic: Cap the length at max_lval
-    raw_len = int(taint_query_header["len"])
-    length = min(raw_len, project_data["max_lval_size"])
-    num_tainted = int(taint_query_header["numTainted"])
+    length: int = min(taint_query_header["len"], project_data["max_lval_size"])
+    num_tainted: int = taint_query_header["numTainted"]
 
     source_info = taint_query_header["srcInfo"]
     filename = source_info["filename"]
@@ -242,12 +234,12 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
     # Optimization: Don't check if we don't have enough tainted bytes
     if num_tainted >= LAVA_MAGIC_VALUE_SIZE:
         for taint_query in taint_query_header["taintQuery"]:
-            offset = int(taint_query["offset"])
+            offset: int = taint_query["offset"]
             if offset >= length:
                 continue
             dprint(project_data,f"considering offset = {offset}")
-            ptr = int(taint_query["ptr"])
-            tcn = int(taint_query["tcn"])
+            ptr = int(taint_query["ptr"], 0)
+            tcn = taint_query["tcn"]
 
             # Retrieve the LabelSet object from our global map
             label_set = ptr_to_labelset.get(ptr)
@@ -261,20 +253,26 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             # Note: ls.labels is a list/array
             card_too_high = len(label_set.labels) > project_data["max_cardinality"]
 
-            if tcn_too_high or card_too_high:
-                dprint(project_data, f"discarding byte {offset}: tcn={tcn_too_high} card={card_too_high}")
+            current_byte_not_ok = tcn_too_high or card_too_high
+
+            # REPLICATING LAVA C++ BUG:
+            # Bytes are ONLY discarded if debug mode is ON!
+            # "if (current_byte_not_ok && debug)"
+            debug = project_data.get("debug", False)
+            if current_byte_not_ok and debug:
+                dprint(project_data, f"discarding byte {offset}...")
             else:
-                # Retain byte
+                dprint(project_data, "retaining byte")
+                # THIS IS THE C++ UNCONDITIONAL RETAIN LOGIC!
                 c_max_tcn = max(tcn, c_max_tcn)
                 c_max_card = max(len(label_set.labels), c_max_card)
-
-                # Merge labels (Python set update handles deduping)
-                all_labels.update(label_set.labels)
-                dprint(project_data, f"keeping byte @ offset {offset}")
 
                 viable_byte[offset] = label_set
                 num_viable_bytes += 1
 
+            # Merge labels (Python set update handles deduping)
+            all_labels.update(label_set.labels)
+            dprint(project_data, f"keeping byte @ offset {offset}")
         dprint(project_data, "{num_viable_bytes} viable bytes in lval")
 
         # Check DUA Viability
@@ -318,7 +316,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         for i, taint_query in enumerate(taint_query_header["taintQuery"]):
             offset = int(taint_query["offset"])
 
-            # C++: if (offset > i)
+             # C++: if (offset > i)
             # If the tainted byte is further ahead than our current index,
             # it means index 'i' is untainted and available for a fake DUA.
             if offset > i:
@@ -337,26 +335,24 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
     assert not (is_dua and is_fake_dua)
 
     if is_dua or is_fake_dua:
-        assert "astLocId" in source_info
-        ast_loc_id = int(source_info["astLocId"])
+        ast_loc_id = source_info["astLocId"]
 
         # Create ASTLoc object
-        ast_loc = ASTLoc.from_serialized(ind2str[ast_loc_id])
-        assert len(ast_loc.filename) > 0
+        ast_loc: ASTLoc = ASTLoc.from_serialized(ind2str[ast_loc_id])
 
         # Create SourceLval
-        lval = get_or_create(
+        lval: SourceLval = cast(SourceLval, get_or_create(
             session,
             SourceLval,
             loc=ast_loc,
             ast_name=str(source_info["astnodename"]),
             defaults={'len_bytes': length}
-        )
+        ))
 
         # Create Dua
         # Note: all_labels is a set, convert to sorted list for DB array
         sorted_labels = sorted(list(all_labels))
-        dua = get_or_create(
+        dua: Dua = cast(Dua, get_or_create(
             session,
             Dua,
             lval=lval.id,
@@ -372,7 +368,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
                 'max_tcn': c_max_tcn,
                 'max_cardinality': c_max_card
             }
-        )
+        ))
 
         # Track Dependencies
         if is_dua:
