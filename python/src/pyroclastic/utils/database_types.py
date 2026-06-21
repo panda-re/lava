@@ -1,4 +1,4 @@
-from typing import List, Union, Any, cast
+from typing import List, Union, Any, Optional, cast
 import random
 from dataclasses import dataclass
 from enum import IntEnum
@@ -13,16 +13,14 @@ from sqlalchemy.engine.url import URL
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.ext.orderinglist import ordering_list
-from sqlalchemy.ext.associationproxy import association_proxy
 
 Base = declarative_base()
 
 build_bugs = Table(
     'build_bugs', Base.metadata,
     Column('object_id', BigInteger, ForeignKey('build.id'), primary_key=True),
-    Column('index', Integer, default=0), # ODB often uses an index for vectors
-    Column('value', BigInteger, ForeignKey('bug.id'), primary_key=True)
+    Column('index', Integer, primary_key=True), # ODB often uses an index for vectors
+    Column('value', BigInteger, ForeignKey('bug.id'))
 )
 
 def create_range(l, h):
@@ -40,14 +38,14 @@ class DuaViableByte(Base):
     object_id: Mapped[int] = mapped_column(BigInteger, ForeignKey('dua.id'), primary_key=True)
 
     # 'value' matches ODB's name for the pointer to LabelSet
-    labelset_id: Mapped[int] = mapped_column('value', BigInteger,
+    labelset_id: Mapped[Optional[int]] = mapped_column('value', BigInteger,
                                              ForeignKey('labelset.id'),
-                                             primary_key=True)
+                                             nullable=True)
 
     # 2. The Index Column (This is what caused your crash!)
     # We make it a primary key component or just a column.
     # ODB usually relies on the order, but let's make it a column.
-    index: Mapped[int] = mapped_column(Integer, nullable=False)
+    index: Mapped[int] = mapped_column(Integer, primary_key=True)
 
     # 3. Relationships
     # We don't need a relationship back to Dua here necessarily, but we need one to LabelSet
@@ -453,26 +451,51 @@ class Dua(Base):
     __tablename__ = 'dua'
 
     # 1. Primary Key
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
 
     # 2. Foreign Key (Column name is 'lval' to match C++ ODB default)
     lval: Mapped[int] = mapped_column('lval', BigInteger, ForeignKey('sourcelval.id'), nullable=False)
 
     # 3. Vectors / Arrays
-    # 1. Internal Relationship to the Association Object
-    # This handles the 'index' column automatically via ordering_list
     _viable_bytes_assoc: Mapped[List["DuaViableByte"]] = relationship(
         "DuaViableByte",
         order_by="DuaViableByte.index",
-        collection_class=ordering_list("index"),
         cascade="all, delete-orphan"
     )
 
-    viable_bytes = association_proxy(
-        '_viable_bytes_assoc',
-        'labelset',
-        creator=lambda ls: DuaViableByte(labelset=ls)
-    )
+    # Replaces association_proxy with a clean property getter
+    @property
+    def viable_bytes(self):
+        """Getter that reconstructs the ordered list from the association table,
+        including None values to maintain correct vector positioning."""
+        if not self._viable_bytes_assoc:
+            return []
+
+        # Determine the size of the vector by finding the maximum index stored
+        max_idx = max(assoc.index for assoc in self._viable_bytes_assoc)
+        result: list[Optional[LabelSet]] = [None] * (max_idx + 1)
+
+        for assoc in self._viable_bytes_assoc:
+            result[assoc.index] = assoc.labelset
+        return result
+
+    # Replaces association_proxy with a clean property setter
+    @viable_bytes.setter
+    def viable_bytes(self, labelsets):
+        """Setter that preserves exact index locations, even for None/null elements,
+                guaranteeing a 1:1 match with C++ ODB vector indexes."""
+        # Clear out the existing tracking collection completely
+        self._viable_bytes_assoc.clear()
+
+        if not labelsets:
+            return
+
+        for i, ls in enumerate(labelsets):
+            # Pass ls regardless of whether it's a LabelSet object or None.
+            # If it's None, SQLAlchemy will insert a NULL for labelset_id,
+            # keeping the structural row index perfectly preserved!
+            assoc = DuaViableByte(index=i, labelset=ls)
+            self._viable_bytes_assoc.append(assoc)
 
     # The missing column from C++ std::vector<uint32_t> byte_tcn
     byte_tcn: Mapped[List[int]] = mapped_column(postgresql.ARRAY(Integer), nullable=False)
@@ -504,18 +527,17 @@ class Dua(Base):
     )
 
     def __str__(self):
-        # Mirrors the C++ operator<< logic fairly closely
-        return 'DUA[{}][{}, viable_len={}, labels={}, tcn_len={}, {}, {}, instr={}, {}]'.format(
-            self.inputfile,
-            self.lval,
-            len(self.viable_bytes) if self.viable_bytes else 0,
-            self.all_labels,
-            len(self.byte_tcn) if self.byte_tcn else 0,
-            self.max_tcn,
-            self.max_cardinality,
-            self.instr,
-            'fake' if self.fake_dua else 'real'
-        )
+        if self.viable_bytes:
+            inner_elements = ", ".join(
+                f"{{{0 if ls is None else ls.ptr}}}"
+                for ls in self.viable_bytes
+            )
+            viable_bytes_str = f"[{inner_elements}]"
+        else:
+            viable_bytes_str = "[{}]"
+
+        # Change {self.lval} to {self.lval_relationship} to mirror *dua.lval dereference in C++
+        return f"DUA [{self.inputfile}][{self.lval_relationship},{viable_bytes_str},{self.max_tcn},{self.max_cardinality},{self.instr},{'fake' if self.fake_dua else 'real'}]"
 
     def __lt__(self, other):
         """
@@ -534,7 +556,7 @@ class Dua(Base):
 class DuaBytes(Base):
     __tablename__ = 'duabytes'
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     dua: Mapped[int] = mapped_column('dua', BigInteger, ForeignKey('dua.id'), nullable=False)
 
     # Composite Range Columns
@@ -556,7 +578,7 @@ class DuaBytes(Base):
         UniqueConstraint('dua', 'selected_low', 'selected_high', name='DuaBytesUniq'),
     )
 
-    def __init__(self, dua: Union[Dua, int] = None, selected : Range = None, **kwargs):
+    def __init__(self, dua: Union[Dua, int], selected : Range, **kwargs):
         """
         Mirroring the C++ Constructor:
         DuaBytes(const Dua *dua, Range selected)

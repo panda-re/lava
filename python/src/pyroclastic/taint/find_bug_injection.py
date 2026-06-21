@@ -3,7 +3,7 @@ import sys
 import ijson
 import os
 from sqlalchemy.exc import IntegrityError
-from typing import Iterable, TypeVar, DefaultDict, Set, Optional, cast
+from typing import Iterable, TypeVar, DefaultDict, Set, Optional, List, cast
 from collections import defaultdict
 from sqlalchemy.orm import Session
 
@@ -23,10 +23,6 @@ dua_dependencies: DefaultDict[int, Set[Dua]] = defaultdict(set)
 # Liveness for each input byte.
 liveness: DefaultDict[int, int] = defaultdict(int)
 
-CBNO_TCN_BIT: int = 0
-CBNO_CRD_BIT: int = 1
-CBNO_LVN_BIT: int = 2
-
 # number of bytes in lava magic value used to trigger bugs
 LAVA_MAGIC_VALUE_SIZE: int = 4
 # special flag to indicate untainted byte that we want to use for fake dua
@@ -40,7 +36,6 @@ recent_dead_duas: dict[int, Dua] = {}
 
 num_real_duas : int = 0
 num_fake_duas : int = 0
-num_bugs_added_to_db : int = 0
 
 def dprint(project_data: dict, message: str):
     if project_data.get("debug", True):
@@ -81,13 +76,21 @@ def disjoint(iter1: Iterable[T], iter2: Iterable[T]) -> bool:
 
 
 def count_nonzero(arr: Iterable[LabelSet]) -> int:
-    """
-    Return number of elements in `arr` that are not zero.
-    """
-    return sum(1 for t in arr if t.labels != 0)
+    """Safely counts non-null / non-zero elements, acting like C++ pointer/int checks."""
+    count = 0
+    for t in arr:
+        if t is None:
+            continue
+        # If it's a LabelSet object, we know it's valid/non-zero
+        if hasattr(t, 'labels'):
+            count += 1
+        # If it's a raw integer (like in byte_tcn)
+        elif t != 0:
+            count += 1
+    return count
 
 
-def merge_into(source_elements: list, dest_list: list):
+def merge_into(source_elements: list | set[Dua], dest_list: list):
     """
     Performs a set union of dest_list and source_elements, ensuring the result
     is sorted and unique, updating dest_list in-place.
@@ -147,6 +150,8 @@ def get_dua_exploit_pad(dua: Dua) -> Range:
     # Iterate through all viable bytes in the DUA
     # Note: verify dua.viable_bytes is a list of LabelSets (or None)
     for i, label_set in enumerate(dua.viable_bytes):
+        if label_set is None:
+            continue
 
         # Condition Check:
         # 1. ls exists (is tainted)
@@ -223,7 +228,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
 
     # 3. Viability Analysis (Real DUA)
     # Initialize arrays of size 'length'
-    viable_byte: list[LabelSet | None] = [None] * length
+    viable_byte: List[LabelSet | None] = [None] * length
     byte_tcn = [0] * length
 
     dprint(project_data,f"considering taint queries on {num_tainted} bytes\n")
@@ -298,25 +303,25 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         dprint(project_data, f"len={length} num_tainted={num_tainted}")
 
         # Reset viable_byte to clean slate for fake generation
-        viable_byte = [None] * length
+        viable_byte: List[LabelSet | None] = [None] * length
 
         # Get the Singleton Fake LabelSet (Get or Create)
         # 0xFA4E is a magic number often used for fake flags
-        fake_ls = get_or_create(
+        fake_ls: LabelSet = cast(LabelSet, get_or_create(
             session,
             LabelSet,
             ptr=FAKE_DUA_BYTE_FLAG,
             inputfile="fakedua",
             default={"labels" : []}
-        )
+        ))
 
         count = 0
         # 'i' starts at 0 and increments every time we look at a taint query
         # This matches the C++ loop where ++i happens at the bottom of every iteration
         for i, taint_query in enumerate(taint_query_header["taintQuery"]):
-            offset = int(taint_query["offset"])
+            offset: int = taint_query["offset"]
 
-             # C++: if (offset > i)
+            # C++: if (offset > i)
             # If the tainted byte is further ahead than our current index,
             # it means index 'i' is untainted and available for a fake DUA.
             if offset > i:
@@ -362,7 +367,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
 
             # --- DATA PAYLOAD (Only used if creating a NEW entry) ---
             defaults={
-                'viable_bytes': [vb for vb in viable_byte if vb is not None],
+                'viable_bytes': viable_byte,
                 'byte_tcn': byte_tcn,
                 'all_labels': sorted_labels,
                 'max_tcn': c_max_tcn,
@@ -533,13 +538,13 @@ def update_liveness(panda_log_entry: dict, session: Session, project_data: dict)
 
     Args:
         panda_log_entry (dict): The parsed JSON entry containing a "taintedBranch" object.
+        session (Session): Database session to store on Database
         project_data (dict): Configuration data for viability checks.
 
     Side Effects:
         - Modifies global `liveness` (increments counts).
         - Modifies global `recent_dead_duas` and `recent_duas_by_instr` (removes items).
         - Modifies global `dua_dependencies` (removes items).
-        - Updates the database (via `update_unique_taint_sets`).
     """
     tainted_branch = panda_log_entry["taintedBranch"]
     dprint(project_data, "TAINTED BRANCH")
@@ -599,14 +604,14 @@ def get_dua_dead_range(dua: Dua, to_avoid: list[int], project_data: dict) -> Ran
 
 # get first 4-or-larger dead range. to_avoid is a sorted vector of labels that
 # can't be used
-def get_dead_range(viable_bytes: list[LabelSet], to_avoid: list[int], project_data: dict) -> Range:
+def get_dead_range(viable_bytes: list[LabelSet | None], to_avoid: list[int], project_data: dict) -> Range:
     current_run = Range(0, 0)
     # NB: we have already checked dua for viability wrt tcn & card at induction
     # these do not need re-checking as they are to be captured at dua siphon point
     for i in range(len(viable_bytes)):
         byte_viable = True
         label_set = viable_bytes[i]
-        if label_set:
+        if label_set is not None:
             if not disjoint(label_set.labels, to_avoid):
                 byte_viable = False
             else:
@@ -718,7 +723,7 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                 num_entries_read += 1
                 if num_entries_read % 10000 == 0:
                     print(f"processed {num_entries_read} pandalog entries")
-                    print(f"{num_bugs_added_to_db} added to db {len(recent_dead_duas)} current duas {num_real_duas} real duas {num_fake_duas} fake duas")
+                    print(f"{len(recent_dead_duas)} current duas {num_real_duas} real duas {num_fake_duas} fake duas")
 
                 if "taintQueryPri" in ple:
                     taint_query_pri(ple, db.session, lava_db, project_data)
