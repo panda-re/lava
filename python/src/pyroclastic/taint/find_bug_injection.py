@@ -142,7 +142,7 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
         session,
         AtpExecution,
         atp_id=atp.id,
-        inputfile=project_data["input_file"],
+        inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
         instr=int(ple["instr"], 0)
     ))
     dprint(project_data, f"@ATP: {atp} {atp_exec}")
@@ -342,11 +342,19 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
 
         # Handle Buffer Overflow Injection (RET_BUFFER)
         # Create AttackPoint (QUERY_POINT)
-        get_or_create(
+        atp = cast(AttackPoint, get_or_create(
             session,
             AttackPoint,
             loc=ast_loc,
             type=AtpKind.QUERY_POINT
+        ))
+
+        get_or_create(
+            session,
+            AtpExecution,
+            atp_id=atp.id,
+            inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
+            instr=instr_addr
         )
 
         dprint(project_data, "OK DUA.")

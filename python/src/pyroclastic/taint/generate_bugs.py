@@ -181,21 +181,28 @@ def record_injectable_bugs_offline(project_data: dict, allow_cross_file: bool = 
                     p_selected: Optional[Range] = None
 
                     if bug_kind == BugKind.BUG_RET_BUFFER:
-                        # --- RET_BUFFER SPECIAL C++ LOGIC ---
-                        # 1. Pad must be the specific buffer queried by the ATP, matched by ASTLoc
-                        target_lval = db.session.query(SourceLval).filter_by(
-                            loc_filename=atp.loc_filename,
-                            loc_begin_line=atp.loc_begin_line,
-                            loc_begin_column=atp.loc_begin_column,
-                            loc_end_line=atp.loc_end_line,
-                            loc_end_column=atp.loc_end_column
-                        ).first()
+                        # --- RETROACTIVE TRAIT GRABBER ---
+                        # 1. Get ALL lvals that share this physical location in the code
+                        target_lvals = db.session.query(SourceLval).filter(
+                            SourceLval.loc == atp.loc
+                        ).all()
 
-                        if target_lval:
-                            pad_dua = db.session.query(Dua).filter_by(lval=target_lval.id, inputfile=inputfile).first()
+                        for target_lval in target_lvals:
+                            # 2. Lock the DUA to this EXACT execution time!
+                            # (lval, inputfile, instr, fake_dua) is a Unique Constraint,
+                            # so .first() is now mathematically perfect.
+                            pad_dua = db.session.query(Dua).filter_by(
+                                lval=target_lval.id,
+                                inputfile=inputfile,
+                                instr=exec_event.instr,
+                                fake_dua=False
+                            ).first()
+
                             if pad_dua:
-                                # 2. Bypass Liveness!
+                                # 3. Bypass Liveness (Buffer is smashed LIVE on return!)
                                 p_selected = get_ret_buffer_pad_range(pad_dua, required_pad_size)
+                                if p_selected:
+                                    break  # We successfully found our pad, stop checking lvals!
 
                         if not p_selected:
                             stats["no_pad"] += 1
