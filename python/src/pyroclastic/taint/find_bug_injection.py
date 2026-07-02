@@ -737,7 +737,7 @@ def dump_table(title, rows: list, attributes: list[str]):
                 print(f"    - {attr:<16}: [NOT FOUND ON OBJECT VALUE]")
 
 
-def print_bug_stats(project_data: dict):
+def print_bug_stats(project_data: dict, debug: bool = False):
     """
     Examines and prints the complete structural contents of all mined elements
     in a deterministic order, safely handling any nested database sequences.
@@ -750,7 +750,7 @@ def print_bug_stats(project_data: dict):
             source_lvals = session.query(SourceLval).order_by(SourceLval.id).all()
         except Exception:
             source_lvals = session.query(SourceLval).all()
-        if project_data.get("debug", False):
+        if debug:
             dump_table("SOURCE LVALS", source_lvals, ['id', 'ast_name', 'len_bytes', 'loc'])
         else:
             print("source_lvals:", len(source_lvals))
@@ -770,12 +770,12 @@ def print_bug_stats(project_data: dict):
             attack_points = session.query(AttackPoint).order_by(AttackPoint.id).all()
         except Exception:
             attack_points = session.query(AttackPoint).all()
-        if project_data.get("debug", False):
+        if debug:
             dump_table("ATTACK POINTS", attack_points, ['id', 'type', 'loc'])
         else:
             print("attack_points:", len(attack_points))
 
-        # 4. Count Attack Point Execution
+        # 4. Count DUAs sort by primary key id
         try:
             duas = session.query(Dua).order_by(Dua.instr, Dua.id).all()
         except Exception:
@@ -789,7 +789,7 @@ def print_bug_stats(project_data: dict):
             attack_point_executions = session.query(AtpExecution).order_by(AtpExecution.id).all()
         except Exception:
             attack_point_executions = session.query(AtpExecution).all()
-        if project_data.get("debug", False):
+        if debug and not project_data.get("use_c_fbi", False):
             dump_table("ATTACK POINT EXECUTIONS", attack_point_executions, ['id', 'atp', 'inputfile', 'instr'])
         else:
             print("attack_point execution:", len(attack_point_executions))
@@ -799,7 +799,7 @@ def print_bug_stats(project_data: dict):
             liveness_by_file_iter = session.query(LivenessSnapshot).order_by(LivenessSnapshot.id).all()
         except Exception:
             liveness_by_file_iter = session.query(LivenessSnapshot).all()
-        if project_data.get("debug", False):
+        if debug and not project_data.get("use_c_fbi", False):
             dump_table("LIVENESS SNAPSHOTS", liveness_by_file_iter, ['id', 'inputfile', 'death_instr'])
         else:
             print("liveness:", len(liveness_by_file_iter))

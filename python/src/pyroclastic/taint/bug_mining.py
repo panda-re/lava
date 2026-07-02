@@ -19,7 +19,7 @@ import argparse
 from pyroclastic.taint.find_bug_injection import parse_panda_log, print_bug_stats
 from pyroclastic.utils.vars import parse_vars
 from pyroclastic.utils.funcs import tick, tock, progress
-from pyroclastic.taint.generate_bugs import record_injectable_bugs_offline
+from pyroclastic.taint.generate_bugs import record_injectable_bugs_offline, print_phase2_stats
 
 
 def run_taint_pipeline(lava_project: str, project_data: dict):
@@ -234,7 +234,7 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
         # TODO: Python FBI is still funky... don't swap out Python just yet...We will only swap once chaff is checked
         sys.stdout.flush()
 
-        if project_data.get("use_c_fbi", False):
+        if project_data.get("use_c_fbi", True):
             fbi_args = ['fbi',
                         project_data["host_path"],
                         lava_project,
@@ -261,8 +261,11 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
             project_data["max_lval_size"] = 100
 
             parse_panda_log(pandalog_json, project_data)
-            print_bug_stats(project_data)
             record_injectable_bugs_offline(project_data)
+        # Print all states from both Mining and Bug Creation
+        print_bug_stats(project_data, debug=True)
+        print_phase2_stats(project_data, debug=True)
+
         fib_time = tock(start)
         progress("bug_mining", 1, f"FBI complete {fib_time} seconds")
         sys.stdout.flush()
