@@ -1,7 +1,7 @@
 import random
 from typing import Optional
 from pyroclastic.utils.database_types import AttackPoint, Bug, \
-    DuaBytes, Dua, Range, LavaDatabase, BugKind, LivenessSnapshot, AtpExecution, AtpKind
+    DuaBytes, Dua, Range, LavaDatabase, BugKind, LivenessSnapshot, AtpExecution, AtpKind, SourceLval
 from pyroclastic.taint.find_bug_injection import dump_table
 
 LAVA_MAGIC_VALUE_SIZE = 4
@@ -15,6 +15,28 @@ PAD_REQUIREMENTS = {
     BugKind.BUG_MALLOC_OFF_BY_ONE: 0
 }
 
+
+def get_ret_buffer_pad_range(dua: Dua, required_size: int) -> Optional[Range]:
+    """
+    C++ Match: get_dua_exploit_pad logic.
+    Bypasses liveness checking for RET_BUFFER pads because stack buffers
+    are meant to be overwritten live at the exact moment of function return!
+    """
+    start_idx = -1
+    valid_length = 0
+    for i, ls in enumerate(dua.viable_bytes):
+        if ls is not None:
+            if start_idx == -1:
+                start_idx = i
+            valid_length += 1
+            if valid_length >= required_size:
+                return Range(low=start_idx, high=start_idx + required_size)
+        else:
+            start_idx = -1
+            valid_length = 0
+    return None
+
+
 def get_bug_kinds_for_atp(atp_kind: AtpKind) -> list[BugKind]:
     """[C++ Alignment: Simulates case fallthrough for POINTER_WRITE]"""
     mapping = {
@@ -26,6 +48,7 @@ def get_bug_kinds_for_atp(atp_kind: AtpKind) -> list[BugKind]:
         AtpKind.QUERY_POINT: [BugKind.BUG_RET_BUFFER]
     }
     return mapping.get(atp_kind, [])
+
 
 def disjoint(labels_a: list[int], labels_b: list[int]) -> bool:
     return set(labels_a).isdisjoint(set(labels_b))
@@ -157,7 +180,28 @@ def record_injectable_bugs_offline(project_data: dict, allow_cross_file: bool = 
                     pad_dua: Optional[Dua] = None
                     p_selected: Optional[Range] = None
 
-                    if required_pad_size > 0:
+                    if bug_kind == BugKind.BUG_RET_BUFFER:
+                        # --- RET_BUFFER SPECIAL C++ LOGIC ---
+                        # 1. Pad must be the specific buffer queried by the ATP, matched by ASTLoc
+                        target_lval = db.session.query(SourceLval).filter_by(
+                            loc_filename=atp.loc_filename,
+                            loc_begin_line=atp.loc_begin_line,
+                            loc_begin_column=atp.loc_begin_column,
+                            loc_end_line=atp.loc_end_line,
+                            loc_end_column=atp.loc_end_column
+                        ).first()
+
+                        if target_lval:
+                            pad_dua = db.session.query(Dua).filter_by(lval=target_lval.id, inputfile=inputfile).first()
+                            if pad_dua:
+                                # 2. Bypass Liveness!
+                                p_selected = get_ret_buffer_pad_range(pad_dua, required_pad_size)
+
+                        if not p_selected:
+                            stats["no_pad"] += 1
+                            continue
+
+                    elif required_pad_size > 0:
                         for p_dua in valid_duas:
                             native_pad_map = all_liveness_maps.get(p_dua.inputfile, {})
                             p_range, _ = get_offline_dead_range(p_dua, native_pad_map, exec_event.instr)
