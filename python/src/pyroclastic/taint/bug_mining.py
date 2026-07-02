@@ -261,11 +261,11 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
             project_data["max_lval_size"] = 100
 
             parse_panda_log(pandalog_json, project_data)
+            print_bug_stats(project_data)
             record_injectable_bugs_offline(project_data)
         fib_time = tock(start)
         progress("bug_mining", 1, f"FBI complete {fib_time} seconds")
         sys.stdout.flush()
-        print_bug_stats(project_data)
 
     # Check if there is already a PANDA log...
     # If there is, skip straight to parsing the replay output, otherwise do the whole pipeline

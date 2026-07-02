@@ -7,7 +7,7 @@ from typing import Iterable, TypeVar, DefaultDict, Set, Optional, List, cast
 from collections import defaultdict
 from sqlalchemy.orm import Session
 
-from pyroclastic.utils.database_types import AttackPoint, ASTLoc, DuaBytes, SourceLval, LabelSet, Dua, Range, LavaDatabase
+from pyroclastic.utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, Range, LavaDatabase, Dua
 from pyroclastic.utils.database_types import AtpKind, AtpExecution, LivenessSnapshot
 from pyroclastic.utils.vars import parse_vars
 
@@ -39,8 +39,9 @@ num_real_duas : int = 0
 num_fake_duas : int = 0
 
 def dprint(project_data: dict, message: str):
-    if project_data.get("debug", True):
-        print(message)
+    pass
+    #if project_data.get("debug", False):
+    #    print(message)
 
 
 def disjoint(iter1: Iterable[T], iter2: Iterable[T]) -> bool:
@@ -320,7 +321,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             session,
             Dua,
             lval=lval.id,
-            inputfile=project_data.get("input", "unknown"),
+            inputfile=project_data.get("input_file", "unknown"),
             instr=instr_addr,
             fake_dua=is_fake_dua,
 
@@ -459,7 +460,7 @@ def update_unique_taint_sets(unique_label_set: dict, session: Session, project_d
             LabelSet,
             ptr=pointer,
             defaults={
-                "inputfile": project_data.get("input", "unknown"),
+                "inputfile": project_data.get("input_file", "UNKNOWN_FILE"),
                 "labels": labels
             }
         ))
@@ -494,7 +495,7 @@ def update_liveness(panda_log_entry: dict, session: Session, project_data: dict)
         - Modifies global `recent_dead_duas` and `recent_duas_by_instr` (removes items).
         - Modifies global `dua_dependencies` (removes items).
     """
-    current_file = project_data.get('input', 'UNKNOWN_FILE')
+    current_file = project_data.get("input_file", "UNKNOWN_FILE")
     liveness = liveness_by_file[current_file]
     tainted_branch = panda_log_entry["taintedBranch"]
     dprint(project_data, "TAINTED BRANCH")
@@ -555,7 +556,7 @@ def get_dua_dead_range(dua: Dua, to_avoid: list[int], project_data: dict) -> Ran
 # get first 4-or-larger dead range. to_avoid is a sorted vector of labels that
 # can't be used
 def get_dead_range(viable_bytes: list[LabelSet | None], to_avoid: list[int], project_data: dict) -> Range:
-    current_file = project_data.get('input', 'UNKNOWN_FILE')
+    current_file = project_data.get("input_file", "UNKNOWN_FILE")
     liveness = liveness_by_file[current_file]
     current_run = Range(0, 0)
     # NB: we have already checked dua for viability wrt tcn & card at induction
@@ -641,7 +642,7 @@ def load_db(db_file: str) -> dict[int, str]:
     return string_ids
 
 
-def save_liveness_to_db(db_session: Session, project_data: dict):
+def save_liveness_to_db(db_session: Session):
     for input_file, liveness in liveness_by_file.items():
         for label, death_instr in liveness.items():
             snapshot = LivenessSnapshot(
@@ -710,37 +711,37 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
             db.session.commit()
 
 
+def dump_table(title, rows: list, attributes: list[str]):
+    print(f"\n==================================================")
+    print(f"=== {title} (Row Count: {len(rows)}) ===")
+    print(f"==================================================")
+    for idx, row in enumerate(rows):
+        print(f"  [{idx}] Row Instance Entry:")
+        for attr in attributes:
+            if hasattr(row, attr):
+                val = getattr(row, attr)
+
+                # Track list inner types cleanly for your surgical debugging verification
+                if isinstance(val, list):
+                    inner_type = f"list of {type(val[0]).__name__}" if val else "empty list"
+                    # Limit output size to prevent terminal buffer spam on giant label lists
+                    display_val = val if len(val) <= 12 else f"{val[:10]}... (+{len(val) - 10} more)"
+                    # FIX: Coerce the array token to a string BEFORE passing alignment modifiers
+                    str_val = str(display_val)
+                else:
+                    inner_type = type(val).__name__
+                    str_val = str(val)
+
+                print(f"    - {attr:<16}: {str_val:<55} | Type: {inner_type}")
+            else:
+                print(f"    - {attr:<16}: [NOT FOUND ON OBJECT VALUE]")
+
+
 def print_bug_stats(project_data: dict):
     """
     Examines and prints the complete structural contents of all mined elements
     in a deterministic order, safely handling any nested database sequences.
     """
-
-    def dump_table(title, rows, attributes):
-        print(f"\n==================================================")
-        print(f"=== {title} (Row Count: {len(rows)}) ===")
-        print(f"==================================================")
-        for idx, row in enumerate(rows):
-            print(f"  [{idx}] Row Instance Entry:")
-            for attr in attributes:
-                if hasattr(row, attr):
-                    val = getattr(row, attr)
-
-                    # Track list inner types cleanly for your surgical debugging verification
-                    if isinstance(val, list):
-                        inner_type = f"list of {type(val[0]).__name__}" if val else "empty list"
-                        # Limit output size to prevent terminal buffer spam on giant label lists
-                        display_val = val if len(val) <= 12 else f"{val[:10]}... (+{len(val) - 10} more)"
-                        # FIX: Coerce the array token to a string BEFORE passing alignment modifiers
-                        str_val = str(display_val)
-                    else:
-                        inner_type = type(val).__name__
-                        str_val = str(val)
-
-                    print(f"    - {attr:<16}: {str_val:<55} | Type: {inner_type}")
-                else:
-                    print(f"    - {attr:<16}: [NOT FOUND ON OBJECT VALUE]")
-
     with LavaDatabase(project_data) as db:
         session = db.session
 
@@ -749,38 +750,59 @@ def print_bug_stats(project_data: dict):
             source_lvals = session.query(SourceLval).order_by(SourceLval.id).all()
         except Exception:
             source_lvals = session.query(SourceLval).all()
-        dump_table("SOURCE LVALS", source_lvals, ['id', 'ast_name', 'len_bytes', 'loc'])
+        if project_data.get("debug", False):
+            dump_table("SOURCE LVALS", source_lvals, ['id', 'ast_name', 'len_bytes', 'loc'])
+        else:
+            print("source_lvals:", len(source_lvals))
 
         # 2. LabelSets (Deterministic sort by PANDA memory pointer address)
         try:
             label_sets = session.query(LabelSet).order_by(LabelSet.ptr).all()
         except Exception:
             label_sets = session.query(LabelSet).all()
-        dump_table("LABEL SETS", label_sets, ['id', 'ptr', 'inputfile', 'labels'])
+        if project_data.get("debug", False):
+            dump_table("LABEL SETS", label_sets, ['id', 'ptr', 'inputfile', 'labels'])
+        else:
+            print("label_sets:", len(label_sets))
 
         # 3. AttackPoints (Deterministic sort by database primary key id)
         try:
             attack_points = session.query(AttackPoint).order_by(AttackPoint.id).all()
         except Exception:
             attack_points = session.query(AttackPoint).all()
-        dump_table("ATTACK POINTS", attack_points, ['id', 'type', 'loc'])
+        if project_data.get("debug", False):
+            dump_table("ATTACK POINTS", attack_points, ['id', 'type', 'loc'])
+        else:
+            print("attack_points:", len(attack_points))
 
-        # 4. DUAs (Deterministic sort by absolute trace execution instruction address)
+        # 4. Count Attack Point Execution
         try:
             duas = session.query(Dua).order_by(Dua.instr, Dua.id).all()
         except Exception:
             duas = session.query(Dua).all()
-        dump_table("DUAs (Def-Use Associations)", duas, [
-            'id', 'lval', 'instr', 'fake_dua', 'inputfile',
-            'max_tcn', 'max_cardinality', 'all_labels', 'byte_tcn', 'viable_bytes'
-        ])
+        dump_table("DUAs (Dead Unused Variable)", duas, [
+                'id', 'lval', 'instr', 'fake_dua', 'inputfile',
+                'max_tcn', 'max_cardinality', 'all_labels', 'byte_tcn', 'viable_bytes'])
 
-        # 5. DuaBytes (Deterministic sort by parent DUA reference ID)
+        # 5. Count Attack Point Execution
         try:
-            dua_bytes = session.query(DuaBytes).order_by(DuaBytes.dua).all()
+            attack_point_executions = session.query(AtpExecution).order_by(AtpExecution.id).all()
         except Exception:
-            dua_bytes = session.query(DuaBytes).all()
-        dump_table("DUA BYTES (Exploit Ranges)", dua_bytes, ['id', 'dua', 'selected'])
+            attack_point_executions = session.query(AtpExecution).all()
+        if project_data.get("debug", False):
+            dump_table("ATTACK POINT EXECUTIONS", attack_point_executions, ['id', 'atp', 'inputfile', 'instr'])
+        else:
+            print("attack_point execution:", len(attack_point_executions))
+
+        # 6. Count Liveness
+        try:
+            liveness_by_file_iter = session.query(LivenessSnapshot).order_by(LivenessSnapshot.id).all()
+        except Exception:
+            liveness_by_file_iter = session.query(LivenessSnapshot).all()
+        if project_data.get("debug", False):
+            dump_table("LIVENESS SNAPSHOTS", liveness_by_file_iter, ['id', 'inputfile', 'death_instr'])
+        else:
+            print("liveness:", len(liveness_by_file_iter))
 
 
 def main():

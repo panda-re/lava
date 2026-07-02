@@ -1,7 +1,9 @@
 import random
 from typing import Optional
-from ..utils.database_types import AttackPoint, Bug, \
+from sqlalchemy.orm import Session
+from pyroclastic.utils.database_types import AttackPoint, Bug, \
     DuaBytes, Dua, Range, LavaDatabase, BugKind, LivenessSnapshot, AtpExecution, AtpKind
+from pyroclastic.taint.find_bug_injection import dump_table
 
 LAVA_MAGIC_VALUE_SIZE = 4
 
@@ -38,13 +40,14 @@ def get_offline_dead_range(dua: Dua, liveness_map: dict, atp_instr: int) -> tupl
     
     for i, ls in enumerate(dua.viable_bytes):
         if ls is None:
-            if start_idx == -1: start_idx = i
+            if start_idx == -1:
+                start_idx = i
             valid_length += 1
         else:
             is_dead = True
             for label in ls.labels:
                 death_instr = liveness_map.get(label, 0)
-                if death_instr > atp_instr:
+                if death_instr >= atp_instr:
                     is_dead = False
                     break
                 max_liveness = max(max_liveness, death_instr)
@@ -69,58 +72,76 @@ def extract_labels_from_range(dua: Dua, selected: Range) -> list[int]:
     return list(labels)
 
 def generate_magic() -> int:
-    magic = 0
+    c_magic = 0
     for _ in range(4):
-        magic <<= 8
-        magic |= random.randint(0x60, 0x79)
-        magic ^= (random.randint(0, 1) * 0x20)
-    return magic
+        c_magic <<= 8
+        # rand() % 26 + 0x60 generates '`' through 'z' (ish)
+        val = (random.randint(0, 32767) % 26) + 0x60
+        c_magic |= val
+        # rand() & 0x20 checks a specific bit to maybe flip case
+        if random.randint(0, 32767) & 0x20:
+            c_magic ^= 0x20  # Flip bit
+    return c_magic
+
 
 def record_injectable_bugs_offline(project_data: dict, allow_cross_file: bool = False):
-    """
-    Core Phase II Engine.
-    Set allow_cross_file=True to pair a DUA from multiple files
-    """
     with LavaDatabase(project_data) as db:
         distinct_files = db.session.query(AtpExecution.inputfile).distinct().all()
         file_list = [f[0] for f in distinct_files]
-        
+
         if not file_list:
             print("[-] No Attack Points were executed. Skipping bug generation.")
             return
 
-        # Pre-cache all liveness timelines map per input file context
-        all_liveness_maps = {}
-        for file_name in file_list:
-            snapshots = db.session.query(LivenessSnapshot).filter_by(inputfile=file_name).all()
-            all_liveness_maps[file_name] = {s.label: s.death_instr for s in snapshots}
+        # --- 1. HOIST CACHE TO THE ABSOLUTE TOP ---
+        # This guarantees it persists across ALL files, ALL executions, and ALL bug kinds!
+        dua_bytes_cache = {}
 
-        # Loop through each input file execution context containing an ATP
+        # Pre-populate from DB just in case we are doing incremental runs
+        existing_dua_bytes = db.session.query(DuaBytes).all()
+        for db_obj in existing_dua_bytes:
+            # Safely extract the ID depending on how your ORM relationship is named
+            d_id = db_obj.dua_id if hasattr(db_obj, 'dua_id') else db_obj.dua
+            cache_key = (d_id, db_obj.selected.low, db_obj.selected.high)
+            dua_bytes_cache[cache_key] = db_obj
+
+        # 2. Pre-cache liveness timelines
+        all_liveness_maps = {}
+        for fname in file_list:
+            snapshots = db.session.query(LivenessSnapshot).filter_by(inputfile=fname).all()
+            all_liveness_maps[fname] = {s.label: s.death_instr for s in snapshots}
+
         for inputfile in file_list:
             print(f"[*] Processing bug combinatorics target file: {inputfile}...")
-            
-            executions = db.session.query(AtpExecution).filter_by(inputfile=inputfile).order_by(AtpExecution.instr).all()
-            seen_bug_combos = set() 
-            
+            executions = db.session.query(AtpExecution).filter_by(inputfile=inputfile).order_by(
+                AtpExecution.instr).all()
+            print(f"  [-] Found {len(executions)} ATP Executions in {inputfile}")
+
+            seen_bug_combos = set()
+
             for exec_event in executions:
                 atp = db.session.query(AttackPoint).get(exec_event.atp_id)
                 target_bug_kinds = get_bug_kinds_for_atp(AtpKind(atp.type))
-                
-                # Time travel validation: DUAs must be older than the current ATP event execution
+
                 dua_query = db.session.query(Dua).filter(Dua.instr < exec_event.instr)
-                
-                # ENFORCING STRATEGY SWITCH:
                 if not allow_cross_file:
                     dua_query = dua_query.filter(Dua.inputfile == inputfile)
-                    
                 valid_duas = dua_query.order_by(Dua.instr.desc()).all()
+
+                stats = {
+                    "no_pad": 0,
+                    "duplicate": 0,
+                    "liveness_too_small": 0,
+                    "not_disjoint": 0,
+                    "success": 0
+                }
 
                 for bug_kind in target_bug_kinds:
                     required_pad_size = PAD_REQUIREMENTS.get(bug_kind, 0)
-                    
-                    # --- STEP 1: Select Exploit Payload Pad ---
+
                     pad_dua: Optional[Dua] = None
                     p_selected: Optional[Range] = None
+
                     if required_pad_size > 0:
                         for p_dua in valid_duas:
                             native_pad_map = all_liveness_maps.get(p_dua.inputfile, {})
@@ -130,51 +151,59 @@ def record_injectable_bugs_offline(project_data: dict, allow_cross_file: bool = 
                                 p_selected = Range(low=p_range.low, high=p_range.low + required_pad_size)
                                 break
                         if not pad_dua:
+                            stats["no_pad"] += 1
                             continue
 
-                    # --- STEP 2: Find a valid Trigger Condition DUA ---
                     for trigger_dua in valid_duas:
                         combo_key = (atp.id, bug_kind.value, trigger_dua.lval)
                         if combo_key in seen_bug_combos:
+                            stats["duplicate"] += 1
                             continue
-                        
+
                         if pad_dua and trigger_dua.id == pad_dua.id:
                             continue
 
-                        # Query liveness map tied directly to the source file that birthed this specific DUA
                         native_trigger_map = all_liveness_maps.get(trigger_dua.inputfile, {})
-                        t_range, max_liveness = get_offline_dead_range(trigger_dua, native_trigger_map, exec_event.instr)
+                        t_range, max_liveness = get_offline_dead_range(trigger_dua, native_trigger_map,
+                                                                       exec_event.instr)
+
                         if t_range.size() < LAVA_MAGIC_VALUE_SIZE:
+                            stats["liveness_too_small"] += 1
                             continue
 
                         t_selected = Range(low=t_range.low, high=t_range.low + LAVA_MAGIC_VALUE_SIZE)
                         trigger_labels = extract_labels_from_range(trigger_dua, t_selected)
 
-                        # --- STEP 3: Ensure disjoint taints ---
                         extra_duas = []
                         if pad_dua is not None and p_selected is not None:
                             pad_labels = extract_labels_from_range(pad_dua, p_selected)
                             if not disjoint(trigger_labels, pad_labels):
+                                stats["not_disjoint"] += 1
                                 continue
-                            
-                            pad_bytes = DuaBytes(
-                                dua=pad_dua.id,
-                                selected=p_selected,
-                                all_labels=pad_labels
-                            )
-                            db.session.add(pad_bytes)
-                            db.session.flush()
+
+                            # --- PAD CACHE CHECK ---
+                            p_cache_key = (pad_dua.id, p_selected.low, p_selected.high)
+                            if p_cache_key in dua_bytes_cache:
+                                pad_bytes = dua_bytes_cache[p_cache_key]
+                            else:
+                                pad_bytes = DuaBytes(dua=pad_dua.id, selected=p_selected, all_labels=pad_labels)
+                                db.session.add(pad_bytes)
+                                db.session.flush()
+                                dua_bytes_cache[p_cache_key] = pad_bytes
+
                             extra_duas.append(pad_bytes.id)
 
-                        trigger_bytes = DuaBytes(
-                            dua=trigger_dua.id,
-                            selected=t_selected,
-                            all_labels=trigger_labels
-                        )
-                        db.session.add(trigger_bytes)
-                        db.session.flush()
+                        # --- TRIGGER CACHE CHECK ---
+                        t_cache_key = (trigger_dua.id, t_selected.low, t_selected.high)
+                        if t_cache_key in dua_bytes_cache:
+                            trigger_bytes = dua_bytes_cache[t_cache_key]
+                        else:
+                            trigger_bytes = DuaBytes(dua=trigger_dua.id, selected=t_selected, all_labels=trigger_labels)
+                            db.session.add(trigger_bytes)
+                            db.session.flush()
+                            dua_bytes_cache[t_cache_key] = trigger_bytes
 
-                        # --- STEP 4: Persist modern LAVA bug tuple ---
+                        # --- PERSIST BUG ---
                         bug = Bug(
                             bug_type=bug_kind.value,
                             trigger=trigger_bytes.id,
@@ -186,18 +215,49 @@ def record_injectable_bugs_offline(project_data: dict, allow_cross_file: bool = 
                         )
                         db.session.add(bug)
                         seen_bug_combos.add(combo_key)
+                        stats["success"] += 1
+
+                if valid_duas:
+                    print(
+                        f"    [>] ATP {atp.id} @ instr {exec_event.instr} | Targets: {[k.name for k in target_bug_kinds]} | Valid DUAs: {len(valid_duas)}")
+                    print(
+                        f"        Success: {stats['success']} | No Pad: {stats['no_pad']} | Taint Dead Too Soon: {stats['liveness_too_small']} | Overlapping Taints: {stats['not_disjoint']} | Deduped: {stats['duplicate']}")
+                else:
+                    print("No Valid DUAs found!")
 
         db.session.commit()
         print("[+] Offline bug generation successfully synchronized!")
-        count_bugs(project_data)
+        print_phase2_stats(project_data, db.session)
 
 
-def count_bugs(project_data):
-    with LavaDatabase(project_data) as db:
-        print("Count\tBug Num\tName")
-        for kind in BugKind:
-            n = db.session.query(Bug).filter(Bug.type == kind).count()
-            print("%d\t%d\t%s" % (n, kind.value, kind.name))
+def print_phase2_stats(project_data: dict, session: Session):
+    """Dumps the entities specifically created/managed around Phase II."""
 
-        print("total bug:", db.session.query(Bug).count())
-        print("total DuaBytes:", db.session.query(DuaBytes).count())
+    # 1. DUAs (Mined in Phase I, consumed in Phase II)
+    try:
+        duas = session.query(Dua).order_by(Dua.id).all()
+    except Exception:
+        duas = session.query(Dua).all()
+
+    # 1. DuaBytes (Created exclusively during Phase II)
+    try:
+        dua_bytes = session.query(DuaBytes).order_by(DuaBytes.id).all()
+    except Exception:
+        dua_bytes = session.query(DuaBytes).all()
+
+    if project_data.get("debug", False):
+        # dump the selected range bounds and labels
+        dump_table("DUA BYTES", dua_bytes, ['id', 'dua', 'selected'])
+    else:
+        print("dua_bytes:", len(dua_bytes))
+
+    # 2. Bugs (Created exclusively during Phase II)
+    try:
+        bugs = session.query(Bug).order_by(Bug.id).all()
+    except Exception:
+        bugs = session.query(Bug).all()
+
+    if project_data.get("debug", False):
+        dump_table("BUGS", bugs, ['id', 'type', 'trigger', 'trigger_lval', 'atp', 'max_liveness', 'magic'])
+    else:
+        print("bugs:", len(bugs))

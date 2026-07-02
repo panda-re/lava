@@ -79,7 +79,7 @@ class LavaDatabase(object):
         self.project = project
         db_url = URL.create(
             drivername="postgresql+psycopg2",
-            username=project['database_user'],
+            username=os.getenv("POSTGRES_USER", ""),
             password=os.getenv("POSTGRES_PASSWORD", ""),  # Assuming you have a password
             host=project['database'],  # Assuming this maps to host
             port=project['database_port'],
@@ -224,7 +224,8 @@ class Bug(Base):
                  trigger: Union[int, "DuaBytes"],
                  atp: Union[int, "AttackPoint"],
                  extra_duas: Union[List[int], List["DuaBytes"]],
-                 max_liveness: int = 0, **kwargs):
+                 max_liveness: int = 0,
+                 magic: int = 0, **kwargs):
         """
         Mirroring C++ Constructor logic:
         Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
@@ -239,17 +240,16 @@ class Bug(Base):
 
         # 2. Logic to resolve 'trigger_lval' for ODB consistency
         # We need to reach trigger -> dua -> lval
-        resolved_lval_id : int = -1
-
-        # Use 'dua_relationship' (the ORM object) instead of 'dua' (the integer ID)
-        if hasattr(trigger, 'dua_relationship') and trigger.dua_relationship:
-            # reach: DuaBytes -> Dua -> SourceLval ID
-            dua_object: Dua = cast(Dua, cast(object, trigger.dua_relationship))
-            resolved_lval_id = dua_object.lval
-        elif hasattr(trigger, 'dua') and not isinstance(trigger.dua, int):
-            # Fallback if 'dua' is still behaving like an object in some contexts
-            dua_object: Dua = cast(Dua, cast(object, trigger.dua))
-            resolved_lval_id = dua_object.lval
+        if 'trigger_lval' in kwargs:
+            resolved_lval_id = kwargs.pop('trigger_lval')
+        else:
+            resolved_lval_id = -1
+            if hasattr(trigger, 'dua_relationship') and trigger.dua_relationship:
+                dua_object = cast("Dua", cast(object, trigger.dua_relationship))
+                resolved_lval_id = dua_object.lval
+            elif hasattr(trigger, 'dua') and not isinstance(trigger.dua, int):
+                dua_object = cast("Dua", cast(object, trigger.dua))
+                resolved_lval_id = dua_object.lval
 
         # 2. Handle Extra Duas Logic
         # C++ accepts both IDs (uint64) or Pointers (DuaBytes*).
@@ -264,19 +264,6 @@ class Bug(Base):
                 else:
                     raise ValueError(f"Invalid item in extra_duas: {item}")
 
-        # 3. Handle Magic Number Logic
-        # C++: Loop 4 times, shift, OR random, XOR random
-        # magic <<= 8; magic |= rand() % 26 + 0x60; ...
-        c_magic = 0
-        for _ in range(4):
-            c_magic <<= 8
-            # rand() % 26 + 0x60 generates '`' through 'z' (ish)
-            val = (random.randint(0, 32767) % 26) + 0x60
-            c_magic |= val
-            # rand() & 0x20 checks a specific bit to maybe flip case
-            if random.randint(0, 32767) & 0x20:
-                c_magic ^= 0x20  # Flip bit
-
         # Pass everything to SQLAlchemy's internal init
         super().__init__(
             type=resolved_bug_type,
@@ -285,7 +272,7 @@ class Bug(Base):
             atp=a_id,
             extra_duas=final_extras,  # Auto-converted!
             max_liveness=max_liveness,
-            magic=c_magic,  # Auto-generated!
+            magic=magic,
             **kwargs
         )
 
@@ -708,18 +695,20 @@ class Call(Base):
 
 class AtpExecution(Base):
     """Tracks WHEN an attack point was actually hit during the trace."""
-    __tablename__ = 'atp_execution'
+    __tablename__ = 'atp_execution'  # Nicer snake_case table name
+
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    atp_id: Mapped[int] = mapped_column(BigInteger, ForeignKey('attackpoint.id'), nullable=False)
+
+    # Force the Postgres column name to be 'atp' to perfectly match C++ ODB
+    atp_id: Mapped[int] = mapped_column("atp", BigInteger, ForeignKey('attackpoint.id'), nullable=False)
+
     inputfile: Mapped[str] = mapped_column(Text, nullable=False)
     instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
-    # Match C++: #pragma db index("AtpExecutionUniq") unique members(atp, inputfile, instr)
     __table_args__ = (
-        UniqueConstraint('atp_id', 'inputfile', 'instr', name='AtpExecutionUniq'),
+        UniqueConstraint('atp', 'inputfile', 'instr', name='AtpExecutionUniq'),
     )
 
-    # Relationships (Optional, but highly recommended for Phase II queries)
     atp = relationship("AttackPoint", backref="executions")
 
     def __str__(self):

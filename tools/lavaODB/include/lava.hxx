@@ -691,7 +691,7 @@ struct Call {
     }
 };
 
-#pragma db object
+#pragma db object table("atp_execution")
 struct AtpExecution {
 #pragma db id auto
     uint64_t id;
@@ -731,7 +731,7 @@ struct AtpExecution {
     }
 };
 
-#pragma db object
+#pragma db object table("liveness_snapshot")
 struct LivenessSnapshot {
 #pragma db id auto
     uint64_t id;
