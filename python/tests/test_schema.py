@@ -25,13 +25,24 @@ class TestSchema(unittest.TestCase):
         """
         if cls_name in self.sql_mappers:
             mapper = self.sql_mappers[cls_name]
-            # Columns + Relationships + Association Proxies
-            return (set(mapper.all_orm_descriptors.keys()) |
-                    set(mapper.columns.keys()) |
-                    set(mapper.synonyms.keys()))
+
+            # 1. Grab all SQLAlchemy ORM-aware fields
+            fields = (set(mapper.all_orm_descriptors.keys()) |
+                      set(mapper.columns.keys()) |
+                      set(mapper.synonyms.keys()))
+
+            # 2. Inspect the raw class to grab pure Python @properties
+            # (This catches 'viable_bytes'!)
+            target_cls = mapper.class_
+            python_props = {name for name, obj in inspect.getmembers(target_cls)
+                            if isinstance(obj, property)}
+
+            return fields | python_props
+
         elif cls_name in self.all_classes:
             target_cls = self.all_classes[cls_name]
             return set(getattr(target_cls, '__annotations__', {}).keys()) | set(target_cls.__dict__.keys())
+
         return set()
 
     def test_protobuf_coverage(self):
