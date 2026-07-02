@@ -14,10 +14,12 @@ import subprocess
 from pandare.extras import dwarfdump
 from pandare import Panda
 import argparse
+
 # LAVA
-from .find_bug_injection import parse_panda_log, print_bug_stats
-from ..utils.vars import parse_vars
-from ..utils.funcs import tick, tock, progress
+from pyroclastic.taint.find_bug_injection import parse_panda_log, print_bug_stats
+from pyroclastic.utils.vars import parse_vars
+from pyroclastic.utils.funcs import tick, tock, progress
+from pyroclastic.taint.generate_bugs import record_injectable_bugs_offline
 
 
 def run_taint_pipeline(lava_project: str, project_data: dict):
@@ -202,11 +204,11 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
         # https://github.com/protocolbuffers/protobuf/releases/tag/v21.0
         # https://stackoverflow.com/questions/52040428/how-to-update-protobuf-runtime-library
         start = tick()
-        pandalog = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
+        panda_log = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
         pandalog_json = "{}/queries-{}.json".format(project_data['output_dir'], project_data['name'])
         os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
         progress("bug_mining", 0, "Calling the FBI on queries.plog...")
-        convert_json_args = ['python3', '-m', 'pandare.plog_reader', pandalog]
+        convert_json_args = ['python3', '-m', 'pandare.plog_reader', panda_log]
         # TODO: Once Panda PR is in, using -c should avoid the warning
         #convert_json_args = [
         #    'python3',
@@ -232,7 +234,7 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
         # TODO: Python FBI is still funky... don't swap out Python just yet...We will only swap once chaff is checked
         sys.stdout.flush()
 
-        if project_data.get("use_c_fbi", True):
+        if project_data.get("use_c_fbi", False):
             fbi_args = ['fbi',
                         project_data["host_path"],
                         lava_project,
@@ -257,9 +259,9 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
             project_data["max_cardinality"] = 100
             project_data["max_tcn"] = 100
             project_data["max_lval_size"] = 100
-            project_data["input"] = input_file_base
 
             parse_panda_log(pandalog_json, project_data)
+            record_injectable_bugs_offline(project_data)
         fib_time = tock(start)
         progress("bug_mining", 1, f"FBI complete {fib_time} seconds")
         sys.stdout.flush()

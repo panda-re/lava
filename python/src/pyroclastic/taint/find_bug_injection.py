@@ -7,9 +7,9 @@ from typing import Iterable, TypeVar, DefaultDict, Set, Optional, List, cast
 from collections import defaultdict
 from sqlalchemy.orm import Session
 
-from ..utils.database_types import AttackPoint, \
-    ASTLoc, DuaBytes, SourceLval, LabelSet, Dua, Range, LavaDatabase, AtpKind
-from ..utils.vars import parse_vars
+from pyroclastic.utils.database_types import AttackPoint, ASTLoc, DuaBytes, SourceLval, LabelSet, Dua, Range, LavaDatabase
+from pyroclastic.utils.database_types import AtpKind, AtpExecution, LivenessSnapshot
+from pyroclastic.utils.vars import parse_vars
 
 T = TypeVar("T")
 
@@ -21,7 +21,8 @@ ptr_to_labelset: dict[int, LabelSet] = {}
 dua_dependencies: DefaultDict[int, Set[Dua]] = defaultdict(set)
 
 # Liveness for each input byte.
-liveness: DefaultDict[int, int] = defaultdict(int)
+# liveness: DefaultDict[int, int] = defaultdict(int)
+liveness_by_file = defaultdict(lambda: defaultdict(int))
 
 # number of bytes in lava magic value used to trigger bugs
 LAVA_MAGIC_VALUE_SIZE: int = 4
@@ -130,62 +131,20 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
     ast_loc: ASTLoc = ASTLoc.from_serialized(ind2str[ast_id])
     attack_point_type = attack_point["info"]
 
-    atp = get_or_create(
+    atp = cast(AttackPoint, get_or_create(
         session,
         AttackPoint,
         loc=ast_loc,
         type=attack_point_type
-    )
-    dprint(project_data, f"@ATP: {str(atp)}")
-
-
-def get_dua_exploit_pad(dua: Dua) -> Range:
-    """
-    Scans the DUA's viable bytes to find the largest contiguous run of
-    'clean' bytes (tainted, uncomplicated, dead) suitable for exploitation.
-    """
-    current_run = Range(0, 0)
-    largest_run = Range(0, 0)
-
-    # Iterate through all viable bytes in the DUA
-    # Note: verify dua.viable_bytes is a list of LabelSets (or None)
-    for i, label_set in enumerate(dua.viable_bytes):
-        if label_set is None:
-            continue
-
-        # Condition Check:
-        # 1. ls exists (is tainted)
-        # 2. ls has exactly 1 label (uncomplicated taint)
-        # 3. Taint Compute Number is 0 (direct copy, not arithmetic result)
-        # 4. Liveness is low (label is not used much downstream)
-        is_candidate = False
-        if label_set is not None and len(label_set.labels) == 1:
-            # Get the single label
-            label = label_set.labels[0]
-            if dua.byte_tcn[i] == 0 and liveness[label] <= 10:
-                is_candidate = True
-
-        if is_candidate:
-            if current_run.empty():
-                current_run = Range(i, i + 1)
-            else:
-                current_run.high += 1
-        else:
-            # End of a run, check if it's the new record
-            if current_run.size() > largest_run.size():
-                largest_run = current_run
-            # Reset
-            current_run = Range(0, 0)
-
-    # Final check in case the run goes to the very end of the byte array
-    if current_run.size() > largest_run.size():
-        largest_run = current_run
-
-    # Reserve 4 bytes for trigger at start if the run is substantial
-    if largest_run.size() >= 20:
-        largest_run.low += 4
-
-    return largest_run
+    ))
+    atp_exec = cast(AtpExecution, get_or_create(
+        session,
+        AtpExecution,
+        atp_id=atp.id,
+        inputfile=project_data["input_file"],
+        instr=int(ple["instr"], 0)
+    ))
+    dprint(project_data, f"@ATP: {atp} {atp_exec}")
 
 
 # Assuming globals/constants are available:
@@ -389,17 +348,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             type=AtpKind.QUERY_POINT
         )
 
-        if length >= 20:
-            exploit_range = get_dua_exploit_pad(dua)
-
-            # create(DuaBytes...)
-            get_or_create(
-                session,
-                DuaBytes,
-                dua=dua.id,
-                selected=exploit_range
-            )
-
         dprint(project_data, "OK DUA.")
 
         # 6. Global State Maintenance (recent_dead_duas)
@@ -546,6 +494,8 @@ def update_liveness(panda_log_entry: dict, session: Session, project_data: dict)
         - Modifies global `recent_dead_duas` and `recent_duas_by_instr` (removes items).
         - Modifies global `dua_dependencies` (removes items).
     """
+    current_file = project_data.get('input', 'UNKNOWN_FILE')
+    liveness = liveness_by_file[current_file]
     tainted_branch = panda_log_entry["taintedBranch"]
     dprint(project_data, "TAINTED BRANCH")
 
@@ -605,6 +555,8 @@ def get_dua_dead_range(dua: Dua, to_avoid: list[int], project_data: dict) -> Ran
 # get first 4-or-larger dead range. to_avoid is a sorted vector of labels that
 # can't be used
 def get_dead_range(viable_bytes: list[LabelSet | None], to_avoid: list[int], project_data: dict) -> Range:
+    current_file = project_data.get('input', 'UNKNOWN_FILE')
+    liveness = liveness_by_file[current_file]
     current_run = Range(0, 0)
     # NB: we have already checked dua for viability wrt tcn & card at induction
     # these do not need re-checking as they are to be captured at dua siphon point
@@ -689,6 +641,17 @@ def load_db(db_file: str) -> dict[int, str]:
     return string_ids
 
 
+def save_liveness_to_db(db_session: Session, project_data: dict):
+    for input_file, liveness in liveness_by_file.items():
+        for label, death_instr in liveness.items():
+            snapshot = LivenessSnapshot(
+                inputfile=input_file,
+                label=label,
+                death_instr=death_instr
+            )
+            db_session.add(snapshot)
+
+
 def parse_panda_log(panda_log_file: str, project_data: dict):
     """
     Main function for Find Bug Inject (FBI) tool.
@@ -736,13 +699,14 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                 elif "dwarfRet" in ple:
                     record_ret(ple)
                 elif "fileTaintMatch" in ple:
-                    project_data['input'] = os.path.basename(ple['fileTaintMatch']['filename'])
+                    project_data["input_file"] = os.path.basename(ple['fileTaintMatch']['filename'])
 
                 if 0 < project_data.get("curtail", 0) < num_real_duas:
                     print(f"*** Curtailing output of fbi at {num_real_duas}")
                     break
 
             # Once you are done, and no error on the entire log, update the database
+            save_liveness_to_db(db.session)
             db.session.commit()
 
 

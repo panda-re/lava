@@ -54,7 +54,6 @@ class DuaViableByte(Base):
     def __repr__(self):
         return f"<DuaViableByte index={self.index} ls={self.labelset_id}>"
 
-
 class SortedIntArray(TypeDecorator):
     """
     Automatically sorts a list of integers before sending it to the database.
@@ -74,7 +73,6 @@ class SortedIntArray(TypeDecorator):
         if value is not None:
             return sorted(value)
         return value
-
 
 class LavaDatabase(object):
     def __init__(self, project: dict[str, Any]):
@@ -165,7 +163,6 @@ class BugKind(IntEnum):
     def __str__(self):
         return self.name
 
-
 class Bug(Base):
     __tablename__ = 'bug'
 
@@ -223,7 +220,7 @@ class Bug(Base):
     }
 
     def __init__(self,
-                 bug_type: BugKind,
+                 bug_type: Union[int, BugKind],
                  trigger: Union[int, "DuaBytes"],
                  atp: Union[int, "AttackPoint"],
                  extra_duas: Union[List[int], List["DuaBytes"]],
@@ -233,6 +230,7 @@ class Bug(Base):
         Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
             const AttackPoint *atp, std::vector<uint64_t> extra_duas)
         """
+        resolved_bug_type = bug_type.value if isinstance(bug_type, BugKind) else bug_type
         # 1. Handle the raw IDs for ODB/Database (The 'Contract')
         # Use the trigger object to get IDs, but fall back to the objects themselves
         # if SQLAlchemy is handling the conversion.
@@ -281,7 +279,7 @@ class Bug(Base):
 
         # Pass everything to SQLAlchemy's internal init
         super().__init__(
-            type=bug_type,
+            type=resolved_bug_type,
             trigger=t_id,
             trigger_lval=resolved_lval_id,  # Auto-filled!
             atp=a_id,
@@ -294,7 +292,6 @@ class Bug(Base):
     def __str__(self):
         return 'Bug[{}](type={}, trigger={}, atp={})'.format(
             self.id, BugKind(self.type).name, self.trigger, self.atp)
-
 
 class Build(Base):
     __tablename__ = 'build'
@@ -463,37 +460,28 @@ class Dua(Base):
         cascade="all, delete-orphan"
     )
 
-    # Replaces association_proxy with a clean property getter
+    # 1. Pure Python property: Bulletproof for your bug injection scripts
     @property
     def viable_bytes(self):
-        """Getter that reconstructs the ordered list from the association table,
-        including None values to maintain correct vector positioning."""
+        """Reconstructs the ordered list from the association table,
+        matching C++ ODB vector indexes exactly at runtime."""
         if not self._viable_bytes_assoc:
             return []
 
-        # Determine the size of the vector by finding the maximum index stored
         max_idx = max(assoc.index for assoc in self._viable_bytes_assoc)
-        result: list[Optional[LabelSet]] = [None] * (max_idx + 1)
+        result = [None] * (max_idx + 1)
 
         for assoc in self._viable_bytes_assoc:
             result[assoc.index] = assoc.labelset
         return result
 
-    # Replaces association_proxy with a clean property setter
     @viable_bytes.setter
     def viable_bytes(self, labelsets):
-        """Setter that preserves exact index locations, even for None/null elements,
-                guaranteeing a 1:1 match with C++ ODB vector indexes."""
-        # Clear out the existing tracking collection completely
         self._viable_bytes_assoc.clear()
-
         if not labelsets:
             return
 
         for i, ls in enumerate(labelsets):
-            # Pass ls regardless of whether it's a LabelSet object or None.
-            # If it's None, SQLAlchemy will insert a NULL for labelset_id,
-            # keeping the structural row index perfectly preserved!
             assoc = DuaViableByte(index=i, labelset=ls)
             self._viable_bytes_assoc.append(assoc)
 
@@ -551,7 +539,6 @@ class Dua(Base):
         # than triggering a lazy load for the full SourceLval object.
         return (self.lval, self.inputfile, self.instr, self.fake_dua) < \
             (other.lval, other.inputfile, other.instr, other.fake_dua)
-
 
 class DuaBytes(Base):
     __tablename__ = 'duabytes'
@@ -620,7 +607,7 @@ class DuaBytes(Base):
         )
 
 class AtpKind(IntEnum):
-    FUNCTION_CALL = 0
+    FUNCTION_ARG = 0
     POINTER_READ = 1
     POINTER_WRITE = 2
     QUERY_POINT = 3
@@ -688,7 +675,6 @@ class SourceFunction(Base):
     def __repr__(self):
         return f"<SourceFunction(name='{self.name}', loc={self.loc})>"
 
-
 class Call(Base):
     __tablename__ = 'call'
 
@@ -719,3 +705,44 @@ class Call(Base):
 
     def __repr__(self):
         return f"<Call(id={self.id}, file='{self.callsite_file}', line={self.callsite_line})>"
+
+class AtpExecution(Base):
+    """Tracks WHEN an attack point was actually hit during the trace."""
+    __tablename__ = 'atp_execution'
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    atp_id: Mapped[int] = mapped_column(BigInteger, ForeignKey('attackpoint.id'), nullable=False)
+    inputfile: Mapped[str] = mapped_column(Text, nullable=False)
+    instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    # Match C++: #pragma db index("AtpExecutionUniq") unique members(atp, inputfile, instr)
+    __table_args__ = (
+        UniqueConstraint('atp_id', 'inputfile', 'instr', name='AtpExecutionUniq'),
+    )
+
+    # Relationships (Optional, but highly recommended for Phase II queries)
+    atp = relationship("AttackPoint", backref="executions")
+
+    def __str__(self):
+        return f"AtpExecution[{self.inputfile} @ instr={self.instr}] -> ATP ID: {self.atp_id}"
+
+    def __repr__(self):
+        return self.__str__()
+
+class LivenessSnapshot(Base):
+    """Saves the liveness (death instruction) of bytes so Phase II can check overlaps offline."""
+    __tablename__ = 'liveness_snapshot'
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    inputfile: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[int] = mapped_column(Integer, nullable=False) # The taint label
+    death_instr: Mapped[int] = mapped_column(BigInteger, nullable=False) # When it was read/used
+
+    # Match C++: #pragma db index("LivenessSnapshotUniq") unique members(inputfile, label)
+    __table_args__ = (
+        UniqueConstraint('inputfile', 'label', name='LivenessSnapshotUniq'),
+    )
+
+    def __str__(self):
+        return f"Liveness[{self.inputfile}]: Label {self.label} dies at instr {self.death_instr}"
+
+    def __repr__(self):
+        return self.__str__()
