@@ -31,29 +31,30 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
                 call->getBeginLoc(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
 
         //// No need to check for ArgDataflow, since matcher only called then
-        //auto fnname = get_containing_function_name(Result, *call);
-        //// only instrument call if its in the body of a function that is on our whitelist
-        //if (fninstr(fnname)) {
-        //    debug(FNARG) << "containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
-        //}
-        //else {
-        //    debug(FNARG) << "containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
-        //    return;
-        //}
+        auto fnname = get_containing_function_name(Result, *call);
+        // only instrument call if its in the body of a function that is on our whitelist
+        if (fninstr(fnname)) {
+            debug(FNARG) << "containing function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
+        }
+        else {
+            debug(FNARG) << "containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
+            return;
+        }
 
         // and if this is a call that is in the body of a function on our whitelist,
         // only instrument calls to functions that are themselves on our whitelist.
         const FunctionDecl *func = call->getDirectCallee();
         if (func) {
-            auto fnname = fundecl_fun_name(Result, func);
+            fnname = fundecl_fun_name(Result, func);
             if (fninstr(fnname)) {
                 debug(FNARG) << "called function is in whitelist " << fnname.second << " : " << fnname.first << "\n";
             } else {
                 debug(FNARG) << "called function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
                 return;
             }
-        } else debug(FNARG) << "We have a func pointer?\n";
-
+        } else {
+            debug(FNARG) << "We have a func pointer?\n";
+        }
         // If we get here, we are instrumenting a call to a function on our whitelist that is in
         // the body of a function also on our whitelist.
 
@@ -64,7 +65,6 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
             debug(FNARG) << "\n";
             //debug(FNARG) << " argcount=" << call->getNumArgs() << "\n";
             //loc = call->getArg(0)->getLocStart();
-            return;
         } else if (Mod.sm->isInSystemHeader(func->getLocation())) {
             debug(FNARG) << "in system header\n";
             return;

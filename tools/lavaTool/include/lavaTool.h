@@ -62,7 +62,7 @@ using clang::tooling::getAbsolutePath;
 //#define DEBUG_FLAGS 0 // (MATCHER | INJECT | FNARG | PRI)
 #define DEBUG_FLAGS (INJECT | FNARG | PRI)
 
-#define ARG_NAME "lava_data_flow"
+#define ARG_NAME "data_flow"
 
 #define MAX_STRNLEN 64
 
@@ -350,11 +350,7 @@ uint32_t alphanum(int len) {
 }
 
 LExpr Get(LvalBytes x) {
-#ifdef LEGACY_CHAFF_BUGS
     return ArgDataflow ? DataFlowGet(Slot(x)) : LavaGet(Slot(x));
-#else
-    return LavaGet(Slot(x));
-#endif
 }
 
 LExpr Get(const Bug *bug) {
@@ -362,11 +358,7 @@ LExpr Get(const Bug *bug) {
 }
 
 LExpr Set(LvalBytes x) {
-#ifdef LEGACY_CHAFF_BUGS
     return (ArgDataflow ? DataFlowSet : LavaSet)(x.lval, x.selected, Slot(x));
-#else
-    return LavaSet(x.lval, x.selected, Slot(x));
-#endif
 }
 
 LExpr Set(const Bug *bug) {
@@ -454,7 +446,7 @@ LExpr twoDuaTest(const Bug *bug, LvalBytes x) {
 bool fninstr(std::pair<std::string, std::string> fnname) {
     std::string filename = fnname.first;
     std::string function_name = fnname.second;
-    if (whitelist.size()>0) {
+    if (whitelist.size() > 0) {
         if (whitelist.count(function_name) == 0)
             return false;  // dont instrument
         else

@@ -11,14 +11,24 @@ struct ChaffFuncDeclArgAdditionHandler : public LavaMatchHandler {
         auto fnname = fundecl_fun_name(Result, func);
 
         // Avoid FunctionDecl matched under CallExpr
-        if (func->getSourceRange().isInvalid())     return;
-
-        if (fnname.second.find("__builtin") != std::string::npos)   return;
-        if (func->getLocation().isInvalid()) return;
-        if (func->getNameAsString().find("lava") == 0) return;
-        if (Mod.sm->isInSystemHeader(func->getLocation())) return;
-        if (Mod.sm->getFilename(func->getLocation()).empty()) return;
-
+        if (func->getSourceRange().isInvalid()) {
+            return;
+        }
+        if (fnname.second.find("__builtin") != std::string::npos) {
+            return;
+        }
+        if (func->getLocation().isInvalid()) {
+            return;
+        }
+        if (func->getNameAsString().find("lava") == 0) {
+            return;
+        }
+        if (Mod.sm->isInSystemHeader(func->getLocation())) {
+            return;
+        }
+        if (Mod.sm->getFilename(func->getLocation()).empty()) {
+            return;
+        }
         // Insert Stack Probing Variable on Query Stage
         if (LavaAction == LavaQueries) {
             if (func->hasBody()) {
@@ -78,7 +88,6 @@ struct ChaffFuncDeclArgAdditionHandler : public LavaMatchHandler {
                 Mod.InsertAt(first->getBeginLoc(), data.str());
             }
         }
-
         return;
     }
 };

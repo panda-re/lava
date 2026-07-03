@@ -61,11 +61,12 @@ int main(int argc, const char **argv) {
     srand(RANDOM_SEED);
 
 
-    if (LavaWL != "XXX")
+    if (LavaWL != "XXX") {
         parse_whitelist(LavaWL);
-    else
+    }
+    else {
         debug(FNARG) << "No whitelist\n";
-
+    }
     if (ArgDebug) {
         errs() << "DEBUG MODE: Only adding data_flow\n";
 
@@ -74,7 +75,9 @@ int main(int argc, const char **argv) {
         return 0;
     }
 
-    if (LavaDB != "XXX") StringIDs = LoadDB(LavaDB);
+    if (LavaDB != "XXX") {
+        StringIDs = LoadDB(LavaDB);
+    }
 
     odb::transaction *t = nullptr;
 
@@ -151,7 +154,9 @@ int main(int argc, const char **argv) {
         std::cout << "num taint queries added " << num_taint_queries << "\n";
         std::cout << "num atp queries added " << num_atp_queries << "\n";
 
-        if (LavaDB != "XXX") SaveDB(StringIDs, LavaDB);
+        if (LavaDB != "XXX") {
+            SaveDB(StringIDs, LavaDB);
+        }
     } else if (LavaAction == LavaInjectBugs) {
         // TODO this logic is flawed, bugs can be injected across files/directories
         // and this is specific to one single run of lavaTool
@@ -184,9 +189,9 @@ int main(int argc, const char **argv) {
         }
     }
 
-    if (real_bug)
+    if (real_bug) {
         std::cout << "Final Real Bug : " << real_bug->id << "\n";
-
+    }
     if (t) {
         t->commit();
         delete t;

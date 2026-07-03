@@ -261,7 +261,6 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         const Stmt *toSiphon = Result.Nodes.getNodeAs<Stmt>("stmt");
         const SourceManager &sm = *Result.SourceManager;
 
-#ifdef LEGACY_CHAFF_BUGS
         if (ArgDataflow) {
             auto fnname = get_containing_function_name(Result, *toSiphon);
 
@@ -277,7 +276,6 @@ struct PriQueryPointHandler : public LavaMatchHandler {
 
             debug(PRI) << "PriQueryPointHandler handle: ok to instrument " << fnname.second << "\n";
         }
-#endif
 
         ASTLoc ast_loc = GetASTLoc(sm, toSiphon);
         debug(PRI) << "Have a query point @ " << ast_loc << "!\n";

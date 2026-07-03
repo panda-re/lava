@@ -95,9 +95,8 @@ public:
                 // make sure we aren't in static local variable initializer which must be constant
                 unless(hasAncestor(varDecl(isStaticLocalDeclMatcher()))));
 
-#ifdef LEGACY_CHAFF_BUGS
+        // Used to find and plant memory Bugs
         addMatcher(memoryAccessMatcher, makeHandler<MemoryAccessHandler>());
-#endif
 
         // This matches every stmt in a compound statement
         // So "stmt" in
@@ -113,25 +112,20 @@ public:
                 functionDecl().bind("funcDecl"),
                 makeHandler<ChaffFuncDeclArgAdditionHandler>());
 
-#ifdef LEGACY_CHAFF_BUGS
         addMatcher(
                 callExpr(
                     forEachArgMatcher(expr(isAttackableMatcher()).bind("arg"))).bind("call"),
                 makeHandler<FunctionArgHandler>()
                 );
-#endif
 
 
 
         // fortenforge's matchers (for data_flow argument addition)
         if (ArgDataflow && LavaAction == LavaInjectBugs) {
-// Skip Handling Function Pointers In Chaff Bugs
-#ifndef LEGACY_CHAFF_BUGS
             addMatcher(
                     callExpr().bind("callExpr"),
                     makeHandler<CallExprArgAdditionHandler>());
 
-#else
             // function declarations & definition.  Decl without body is prototype
             addMatcher(
                     functionDecl().bind("funcDecl"),
@@ -157,7 +151,6 @@ public:
             addMatcher(
                 typedefDecl().bind("typedefdecl"),
                 makeHandler<FunctionPointerTypedefHandler>());
-#endif
 #endif
 
         // printf read disclosures - currently disabled
@@ -209,10 +202,7 @@ public:
             insert_at_top = "#include <lava/pirate_mark_lava.h>\n";
         } else if (LavaAction == LavaInjectBugs) {
             insert_at_top.append(logging_macros.str());
-#ifdef LEGACY_CHAFF_BUGS
-            if (!ArgDataflow)
-#endif
-            {
+            if (!ArgDataflow) {
                 std::stringstream top;
                 if (main_files.count(getAbsolutePath(Filename)) > 0) {
                     top << "unsigned __attribute__ ((visibility (\"default\"))) int lava_val[" << data_slots.size() << "] = {0};\n"
