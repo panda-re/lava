@@ -19,7 +19,7 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
     steps:  
       - name: Checkout LAVA at current commit
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       
       - name: Install compile dependencies
         run: |
@@ -54,8 +54,8 @@ jobs:
 
       - name: Quick Python Test
         run: |
-          cd python
-          pytest
+          lava-init --no-download
+          pytest python
         env:
           PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION : 'python'
 

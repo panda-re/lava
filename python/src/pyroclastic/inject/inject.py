@@ -61,7 +61,7 @@ def get_bug_list(arguments: argparse.Namespace, db: LavaDatabase, allowed_bugtyp
     return update_db, bug_list
 
 
-def get_bugs_parent(lp: LavaPaths):
+def get_bugs_parent(lava_paths: LavaPaths):
     """
     Choose directory into which we are going to put buggy source. locking etc.
     is so that two instances of inject.py can run at same time, and they use
@@ -69,29 +69,29 @@ def get_bugs_parent(lp: LavaPaths):
     Given the whole context manager above, this function just uses index 0.
     We assume that there shouldn't be other instances of inject running at the same time.
     Args:
-        lp (LavaPaths): The paths used in this step
+        lava_paths (LavaPaths): The paths used in this step
     """
     candidate = 0
     print("Getting a bugs directory...")
     sys.stdout.flush()
     # If you already found and set it once, keep it all in one directory
-    if lp.bugs_parent != "":
-        print("Using recently made bug build directory", lp.bugs_parent)
-        return lp.bugs_parent
+    if lava_paths.bugs_parent != "":
+        print("Using recently made bug build directory", lava_paths.bugs_parent)
+        return lava_paths.bugs_parent
 
     while True:
-        candidate_path = os.path.join(lp.bugs_top_dir, str(candidate))
+        candidate_path = os.path.join(lava_paths.bugs_top_dir, str(candidate))
         bugs_parent = os.path.join(candidate_path)
         if not os.path.exists(bugs_parent):
             break
         candidate += 1
 
     print("Using bug build directory", bugs_parent)
-    lp.set_bugs_parent(bugs_parent)
+    lava_paths.set_bugs_parent(bugs_parent)
     return bugs_parent
 
 
-def get_bugs(db: LavaDatabase, bug_id_list: List[Bug]) -> List[Bug]:
+def get_bugs(db: LavaDatabase, bug_id_list: List[int]) -> List[Bug]:
     bugs = []
     for bug_id in bug_id_list:
         bugs.append(db.session.query(Bug).filter(Bug.id == bug_id).all()[0])
@@ -130,29 +130,29 @@ def get_allowed_bugtype_num(arguments: argparse.Namespace) -> list[int]:
 
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
-def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, arguments: argparse.Namespace,
+def inject_bugs(bug_list, db: LavaDatabase, lava_p : LavaPaths, project: dict, arguments: argparse.Namespace,
                 update_db: bool, dataflow: bool = False, competition: bool = False,
-                validated: bool = False, lavatoolseed: int = 0):
+                lavatoolseed: int = 0):
     # TODO: don't pass args, just pass the data we need to run
     # TODO: split into multiple functions, this is huge
 
-    if not os.path.exists(lp.bugs_parent):
-        os.makedirs(lp.bugs_parent)
+    if not os.path.exists(lava_p.bugs_parent):
+        os.makedirs(lava_p.bugs_parent)
 
-    print("source_root = " + lp.tar_source_root + "\n")
+    print("source_root = " + lava_p.tar_source_root + "\n")
 
-    if not os.path.isdir(lp.bugs_build):
-        unpack_tar(lp, lp.bugs_parent)
+    if not os.path.isdir(lava_p.bugs_build):
+        unpack_tar(lava_p, lava_p.bugs_parent)
     
-    if not os.path.exists(os.path.join(lp.bugs_build, '.git')):
-        configure_project(lp, main_directory=lp.bugs_build)
-        preprocess(lp, main_directory=lp.bugs_build)
+    if not os.path.exists(os.path.join(lava_p.bugs_build, '.git')):
+        configure_project(lava_p, main_directory=lava_p.bugs_build)
+        preprocess(lava_p, main_directory=lava_p.bugs_build)
 
     sys.stdout.flush()
     sys.stderr.flush()
 
-    if not os.path.exists(os.path.join(lp.bugs_build, 'compile_commands.json')):
-        make_and_install(lp, main_directory=lp.bugs_build, environment="inject")
+    if not os.path.exists(os.path.join(lava_p.bugs_build, 'compile_commands.json')):
+        make_and_install(lava_p, main_directory=lava_p.bugs_build, environment="inject")
 
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
 
@@ -168,7 +168,7 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
     # cleanup
     print("------------\n")
     print("CLEAN UP SRC")
-    run_local("git checkout -f", cwd=lp.bugs_build, debug=project['debug'])
+    run_local("git checkout -f", cwd=lava_p.bugs_build, debug=project['debug'])
 
     print("------------\n")
     print("INJECTING BUGS INTO SOURCE")
@@ -177,9 +177,9 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
 
     all_files = src_files | set(project['main_file'])
 
-    compile_commands = os.path.join(lp.bugs_build, 'compile_commands.json')
+    compile_commands = os.path.join(lava_p.bugs_build, 'compile_commands.json')
     print('compile commands is here: {}'.format(compile_commands))
-    src_dirs, all_c_files = read_compile_db(lp.bugs_build)
+    src_dirs, all_c_files = read_compile_db(lava_p.bugs_build)
 
     # Debug printing for inspection
     print("DEBUG: src_dirs (count={}):".format(len(src_dirs)))
@@ -200,7 +200,7 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
         print("  - {}".format(f))
 
     def modify_source(file_name: str):
-        return run_lavatool(bugs_to_inject, lp, project, file_name, knob_trigger=arguments.knobTrigger,
+        return run_lavatool(bugs_to_inject, lava_p, project, file_name, knob_trigger=arguments.knobTrigger,
                             dataflow=dataflow, competition=competition, randseed=lavatoolseed)
 
     bug_solutions = {}  # Returned by lavaTool
@@ -219,8 +219,8 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
         clang_cmd = [clang_apply, '.', '-remove-change-desc-files']
         if project['debug']:  # Don't remove desc files
             clang_cmd = [clang_apply, '.']
-        print("Apply replacements in {} with {}".format(os.path.join(lp.bugs_build, src_dir), clang_cmd))
-        rv, output = run_local(clang_cmd, cwd=os.path.join(lp.bugs_build, src_dir), debug=project['debug'], capture_output=True)
+        print("Apply replacements in {} with {}".format(os.path.join(lava_p.bugs_build, src_dir), clang_cmd))
+        rv, output = run_local(clang_cmd, cwd=os.path.join(lava_p.bugs_build, src_dir), debug=project['debug'], capture_output=True)
 
         if rv == 0:
             print("Success in {}".format(src_dir))
@@ -230,7 +230,6 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
     build = Build(
         compile=False, 
         output="",
-        bugs=bugs_to_inject
     )
 
     if update_db:
@@ -242,27 +241,27 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
     print(f"Saving C source changes for build {build_label}...")
     try:
         # Use Python's rglob to safely find all .c files in root AND subdirectories
-        build_path = Path(lp.bugs_build)
+        build_path = Path(lava_p.bugs_build)
         c_files = [str(p.relative_to(build_path)) for p in build_path.rglob("*.c")]
         
         if not c_files:
             raise AssertionError(f"No .c files found in the project directory for build {build_label}!")
 
         # Pass the exact file list to Git safely
-        run_local(["git", "add"] + c_files, cwd=lp.bugs_build)
+        run_local(["git", "add"] + c_files, cwd=lava_p.bugs_build)
 
         # Confirm that LavaTool actually modified tracked files
-        rv_status, _ = run_local(["git", "diff", "--cached", "--quiet"], cwd=lp.bugs_build, capture_output=True)
+        rv_status, _ = run_local(["git", "diff", "--cached", "--quiet"], cwd=lava_p.bugs_build, capture_output=True)
         
-        # If rv_status == 0, the staging area is empty. Trigger the assert.
+        # If rv_status == 0, the staging area is empty. Trigger to assert.
         assert rv_status != 0, f"LavaTool failed to modify any C source files for build {build_label}!"
 
         # Commit the mutations and spawn a dedicated, isolated branch
-        run_local(["git", "commit", "-m", f"Bugs for build {build_label}."], cwd=lp.bugs_build)
-        run_local(["git", "branch", f"build{build_label}", "master"], cwd=lp.bugs_build)
+        run_local(["git", "commit", "-m", f"Bugs for build {build_label}."], cwd=lava_p.bugs_build)
+        run_local(["git", "branch", f"build{build_label}", "master"], cwd=lava_p.bugs_build)
         
         # Rewind master back to a perfectly clean state for the next injection loop
-        run_local(["git", "reset", "HEAD~", "--hard"], cwd=lp.bugs_build)
+        run_local(["git", "reset", "HEAD~", "--hard"], cwd=lava_p.bugs_build)
 
     except AssertionError as e:
         print(f"\nAssertion Failed: {e}")
@@ -274,32 +273,25 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
         if update_db:
             db.session.rollback()
         raise
+    return build, input_files, bug_solutions
 
-    is_compatible = check_architecture_compatibility(project['qemu'])
-    # We saved the C code, BUT if we can't inject, we should stop now!
-    if not is_compatible:
-        print("\n==========================================================================")
-        print(f"[!] PIPELINE HALTED: Host machine cannot natively run the local validation pass")
-        print(f"    for target architecture: {project['qemu']}.")
-        print("    To protect the source trees from corrupt dynamic database queries,")
-        print("    the mutation pass will now exit gracefully without changing disk files.")
-        print("==========================================================================\n")
-        print("inject complete %.2f seconds" % (time.time() - start_time))
-        
-        # Graceful, clean initialization exit code (0 keeps batch orchestration jobs moving safely)
-        sys.exit(0)
 
-    # compile
+def build_and_package(build: Build, lp: LavaPaths, update_db: bool, db: LavaDatabase):
+    """Compiles the mutated source code branch and generates distribution tarballs."""
+    build_label = str(build.id)
+
     print("------------\n")
     print("ATTEMPTING BUILD OF INJECTED BUG(S)")
     print("build_dir = " + lp.bugs_build)
+
+    # Check out the mutated branch
     run_local(["git", "checkout", f"build{build_label}"], cwd=lp.bugs_build)
 
     # Silence warnings related to adding integers to pointers since we already know that it's unsafe.
     build_output = make_and_install(
-        lava_path=lp, 
-        main_directory=lp.bugs_build, 
-        environment="inject", 
+        lava_path=lp,
+        main_directory=lp.bugs_build,
+        environment="inject",
         capture_build=True
     )
 
@@ -313,6 +305,40 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
     if update_db:
         db.session.commit()
 
+    if rv == 0:
+        print(f"Packaging source and compiled binaries into a tarball for build {build_label}...")
+        tar_filename = f"build_{build_label}_injection.tar.gz"
+
+        try:
+            # Get the actual name of the build directory folder (e.g., "toy")
+            build_dir_path = Path(lp.bugs_build).resolve()
+            build_dir_name = build_dir_path.name
+            parent_dir = build_dir_path.parent
+
+            # Temporary path in the parent directory where tar won't see it
+            temp_tar_path = parent_dir / tar_filename
+
+            # Run tar from the parent directory, writing the file into the parent directory
+            run_local([
+                "tar",
+                f"--exclude={build_dir_name}/.git",
+                "-czf",
+                str(temp_tar_path),
+                build_dir_name
+            ], cwd=str(parent_dir))
+
+            # Now that tar is safely finished, move the tarball into the build directory
+            final_tar_path = build_dir_path / tar_filename
+            shutil.move(str(temp_tar_path), str(final_tar_path))
+
+            # Add and commit the tarball to the currently checked-out branch (build{build_label})
+            run_local(["git", "add", tar_filename], cwd=lp.bugs_build)
+            run_local(["git", "commit", "-m", f"Add packaged source and binary tarball for build{build_label}."],
+                      cwd=lp.bugs_build)
+            print(f"Tarball {tar_filename} successfully committed to branch build{build_label}.")
+        except Exception as e:
+            print(f"\nWarning: Failed to create or commit tarball for build {build_label}: {e}")
+
     # ALWAYS clean up the working directory state before exiting the function
     run_local(["git", "checkout", "master"], cwd=lp.bugs_build)
     run_local(["git", "checkout", "-f"], cwd=lp.bugs_build)
@@ -324,10 +350,10 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
         print(stdout_str.replace("\\n", "\n"))
         print(stderr_str.replace("\\n", "\n"))
         print("===================================\n")
-        return build, input_files, bug_solutions
+        return False
 
     print(f"Build {build_label} succeeded and binary installed cleanly.")
-    return build, input_files, bug_solutions
+    return True
 
 
 def mutate_file(unfuzzed_filename: str, fuzz_labels_list: list, new_filename: str, bug: Bug,
@@ -1003,6 +1029,21 @@ def main(arguments: argparse.Namespace, lp: LavaPaths):
                                                     project, arguments, update_db, dataflow=dataflow,
                                                     competition=arguments.competition)
     if build is None:
+        raise RuntimeError("LavaTool failed to build target binary")
+
+    is_compatible = check_architecture_compatibility(project['qemu'])
+    if not is_compatible:
+        print("\n==========================================================================")
+        print(f"[!] COMPATIBILITY HALT: Host machine cannot natively compile/validate")
+        print(f"    for target architecture: {project['qemu']}.")
+        print("    Skipping dynamic compilation and validation phase for this build.")
+        print("==========================================================================\n")
+        print("inject complete %.2f seconds" % (time.time() - start_time))
+        # Graceful exit (or 'continue' if you place this inside a loop!)
+        return
+
+    build_success = build_and_package(build, lp, update_db, db)
+    if not build_success:
         raise RuntimeError("LavaTool failed to build target binary")
 
     try:

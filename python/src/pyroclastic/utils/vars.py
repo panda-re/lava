@@ -221,7 +221,7 @@ def parse_vars(project_name: str):
     project_data["install"] = project_data["install"].format(config_dir=project_data["config_dir"])
     project_data["llvm-dir"] = host.get("llvm", "/usr/lib/llvm-14")
     project_data["complete_rr"] = host.get("complete_rr", False)
-    project_data["use_c_fbi"] = host.get("use_c_fbi", False)
+    project_data["use_c_fbi"] = host.get("use_c_fbi", True)
     project_data["env_var"] = get_project_env(project_data["llvm-dir"], host["qemu"], "default")
     project_data["inject"] = get_project_env(project_data["llvm-dir"], host["qemu"], "inject")
     project_data["panda"] = get_project_env(project_data["llvm-dir"], host["qemu"], "panda")

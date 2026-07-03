@@ -918,7 +918,7 @@ void record_call(Json::Value ple) { }
 void record_ret(Json::Value ple) { }
 
 int main (int argc, char **argv) {
-    if (argc != 5 && argc !=6 ) {
+    if (argc != 4 && argc != 5) {
         printf("Find Bug Inject (FBI)");
         printf("usage: fbi host.json ProjectName pandalog inputfile [curtail count]\n");
         printf("    Project JSON file may specify properties:\n");
@@ -927,7 +927,6 @@ int main (int argc, char **argv) {
         printf("        max_tcn: Maximum taint compute number for DUAs\n");
         printf("        max_lval_size: Maximum bytewise size for \n");
         printf("    pandalog: Pandalog. Should be like queries-file-5.22-bash.iso.plog\n");
-        printf("    inputfile: Input file basename, like malware.pcap\n");
         exit (1);
     }
 
@@ -1012,8 +1011,6 @@ int main (int argc, char **argv) {
     }
     printf("Curtail is %d\n", curtail);
 
-    inputfile = std::string(argv[4]);
-
     std::string db_name = project["db"].asString() + host.get("db_suffix", "").asString();
     std::string DBHost = host.get("host", "database").asString();
     int DBPort = host.get("port", 5432).asInt();
@@ -1086,6 +1083,19 @@ int main (int argc, char **argv) {
             record_call(ple);
         } else if (ple.isMember("dwarfRet")) {
             record_ret(ple);
+        } else if (ple.isMember("fileTaintMatch")) {
+            // 1. Extract the filename path string from the JsonCpp object
+            std::string full_path = ple["fileTaintMatch"]["filename"].asString();
+
+            // 2. Isolate the base filename (equivalent to os.path.basename)
+            size_t last_slash = full_path.find_last_of("/\\");
+            std::string base_filename = (last_slash == std::string::npos)
+                                ? full_path
+                                : full_path.substr(last_slash + 1);
+
+            // 3. Update your live tracker state variable
+            // (Ensure inputfilename or a similar string tracker is accessible)
+            inputfile = base_filename;
         }
         // pandalog_free_entry(ple);
 
