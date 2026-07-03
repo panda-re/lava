@@ -38,10 +38,10 @@ recent_dead_duas: dict[int, Dua] = {}
 num_real_duas : int = 0
 num_fake_duas : int = 0
 
+
 def dprint(project_data: dict, message: str):
-    pass
-    #if project_data.get("debug", False):
-    #    print(message)
+    if project_data.get("debug", False):
+        print(message)
 
 
 def disjoint(iter1: Iterable[T], iter2: Iterable[T]) -> bool:

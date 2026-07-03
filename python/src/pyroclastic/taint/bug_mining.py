@@ -263,8 +263,8 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
             parse_panda_log(pandalog_json, project_data)
             record_injectable_bugs_offline(project_data)
         # Print all states from both Mining and Bug Creation
-        print_bug_stats(project_data, debug=True)
-        print_phase2_stats(project_data, debug=True)
+        print_bug_stats(project_data, debug=False)
+        print_phase2_stats(project_data, debug=False)
 
         fib_time = tock(start)
         progress("bug_mining", 1, f"FBI complete {fib_time} seconds")

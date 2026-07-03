@@ -3,9 +3,11 @@ import random
 from dataclasses import dataclass
 from enum import IntEnum
 import os
-from sqlalchemy import Column, ForeignKey, Table, create_engine
+from sqlalchemy.ext.associationproxy import association_proxy
+from sqlalchemy import ForeignKey, create_engine
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.orderinglist import ordering_list
 from sqlalchemy.orm import load_only, relationship, sessionmaker, composite, Mapped, mapped_column
 from sqlalchemy.sql.expression import func
 from sqlalchemy.types import BigInteger, Boolean, Integer, Text
@@ -16,12 +18,16 @@ from sqlalchemy.dialects.postgresql import ARRAY
 
 Base = declarative_base()
 
-build_bugs = Table(
-    'build_bugs', Base.metadata,
-    Column('object_id', BigInteger, ForeignKey('build.id'), primary_key=True),
-    Column('index', Integer, primary_key=True), # ODB often uses an index for vectors
-    Column('value', BigInteger, ForeignKey('bug.id'))
-)
+class BuildBug(Base):
+    __tablename__ = 'build_bugs'
+
+    object_id: Mapped[int] = mapped_column(BigInteger, ForeignKey('build.id'), primary_key=True)
+    index: Mapped[int] = mapped_column(Integer, primary_key=True)
+    value: Mapped[int] = mapped_column("value", BigInteger, ForeignKey('bug.id'))
+
+    # Both sides explicitly back-populate the real relationships!
+    build = relationship("Build", back_populates="bug_associations")
+    bug = relationship("Bug", back_populates="build_associations")
 
 def create_range(l, h):
     return Range(l, h)
@@ -197,11 +203,18 @@ class Bug(Base):
     # C++: std::vector<uint64_t> extra_duas;
     extra_duas: Mapped[List[int]] = mapped_column(postgresql.ARRAY(BigInteger), nullable=False)
 
-    # 7. Reverse Relationships
-    builds: Mapped[List["Build"]] = relationship(
-        "Build",
-        secondary=build_bugs,
-        back_populates="bugs"
+    # The Real Relationship to the intermediate table
+    build_associations = relationship(
+        "BuildBug",
+        back_populates="bug",
+        cascade="all, delete-orphan"
+    )
+
+    # The Proxy so your Python code can still do `bug.builds` effortlessly
+    builds = association_proxy(
+        'build_associations',
+        'build',
+        creator=lambda _build: BuildBug(build=_build)
     )
 
     # 8. Constraints
@@ -286,10 +299,19 @@ class Build(Base):
     id : Mapped[int] = mapped_column('id', BigInteger, primary_key=True)
     compile : Mapped[bool] = mapped_column('compile', Boolean, nullable=False)
     output : Mapped[str] = mapped_column('output', Text, nullable=False)
-    bugs: Mapped[List["Bug"]] = relationship(
-        "Bug",
-        secondary=build_bugs,
-        back_populates="builds"
+    # Handshake 2: Map to BuildBug and explicitly name back_populates="build"
+    bug_associations = relationship(
+        "BuildBug",
+        collection_class=ordering_list('index'),
+        back_populates="build",
+        cascade="all, delete-orphan"
+    )
+
+    # The proxy remains exactly as it was, safely handling append statements seamlessly
+    bugs = association_proxy(
+        'bug_associations',
+        'bug',
+        creator=lambda _bug: BuildBug(bug=_bug)
     )
 
 class Run(Base):
