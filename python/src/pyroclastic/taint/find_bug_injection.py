@@ -3,10 +3,11 @@ import sys
 import ijson
 import os
 from sqlalchemy.exc import IntegrityError
-from typing import Iterable, TypeVar, DefaultDict, Set, Optional, List, cast
+from typing import Iterable, TypeVar, DefaultDict, Set, Optional, List, Tuple, cast
 from collections import defaultdict
 from sqlalchemy.orm import Session
 
+from pyroclastic.utils.database_types import SourceTrace, CallTrace
 from pyroclastic.utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, Range, LavaDatabase, Dua
 from pyroclastic.utils.database_types import AtpKind, AtpExecution, LivenessSnapshot
 from pyroclastic.utils.vars import parse_vars
@@ -38,6 +39,7 @@ recent_dead_duas: dict[int, Dua] = {}
 num_real_duas : int = 0
 num_fake_duas : int = 0
 
+current_call_stack: List[Tuple[str, str]] = []
 
 def dprint(project_data: dict, message: str):
     if project_data.get("debug", False):
@@ -299,11 +301,40 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
     dprint(project_data, f"is_dua={is_dua} is_fake_dua={is_fake_dua}")
     assert not (is_dua and is_fake_dua)
 
-    if is_dua or is_fake_dua:
-        ast_loc_id = source_info["astLocId"]
+    ast_loc_id: int = source_info["astLocId"]
 
-        # Create ASTLoc object
-        ast_loc: ASTLoc = ASTLoc.from_serialized(ind2str[ast_loc_id])
+    # Create ASTLoc object
+    ast_loc: ASTLoc = ASTLoc.from_serialized(ind2str[ast_loc_id])
+
+    calltrace_ids : list[int] = []
+    for file_callee, function_callee in current_call_stack:
+        ct = cast(CallTrace, get_or_create(
+            session,
+            CallTrace,
+            caller=function_callee,
+            filename=file_callee,
+        ))
+        calltrace_ids.append(ct.id)
+
+    # Handle Buffer Overflow Injection (RET_BUFFER)
+    # Create AttackPoint (QUERY_POINT)
+    atp = cast(AttackPoint, get_or_create(
+        session,
+        AttackPoint,
+        loc=ast_loc,
+        type=AtpKind.QUERY_POINT,
+        calltrace_ids=calltrace_ids,
+    ))
+
+    get_or_create(
+        session,
+        AtpExecution,
+        atp_id=atp.id,
+        inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
+        instr=instr_addr
+    )
+
+    if is_dua or is_fake_dua:
 
         # Create SourceLval
         lval: SourceLval = cast(SourceLval, get_or_create(
@@ -339,23 +370,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         if is_dua:
             for l in sorted_labels:
                 dua_dependencies[l].add(dua)
-
-        # Handle Buffer Overflow Injection (RET_BUFFER)
-        # Create AttackPoint (QUERY_POINT)
-        atp = cast(AttackPoint, get_or_create(
-            session,
-            AttackPoint,
-            loc=ast_loc,
-            type=AtpKind.QUERY_POINT
-        ))
-
-        get_or_create(
-            session,
-            AtpExecution,
-            atp_id=atp.id,
-            inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
-            instr=instr_addr
-        )
 
         dprint(project_data, "OK DUA.")
 
@@ -599,18 +613,52 @@ def record_call(ple: dict):
     """
     Record a Dwarf2 call from Panda Log
     Args:
-        ple: Pandalog entry
+        :param ple: Pandalog entry
+        :param session: Database Session
     """
-    pass
+    call = ple["dwarf2Call"]
+    file_callee = call["fileCaller"]
+    function_callee = call["functionNameCaller"]
+
+    # Skip library calls
+    if function_callee.beginswith("libc") and function_callee.endswith(".so"):
+        return
+
+    if len(current_call_stack) == 0:
+        return
+
+    current_call_stack.append((file_callee, function_callee))
+
 
 
 def record_ret(ple: dict):
     """
     Record a Dwarf2 call from Panda Log
     Args:
-        ple: Pandalog entry
+        :param ple:
     """
-    pass
+    ret = ple["dwarf2Ret"]
+    function_callee = ret["functionNameCallee"]
+
+    # Skip library calls
+    if function_callee.beginswith("libc") and function_callee.endswith(".so"):
+        return
+
+    if len(current_call_stack) == 0:
+        return
+
+    current_call_stack.pop()
+
+
+def record_trace(ple: dict, lava_db: dict, session: Session):
+    source_trace_id : int = ple["sourceTraceId"]
+    ast_loc: ASTLoc = lava_db[source_trace_id]
+    get_or_create(
+        session,
+        SourceTrace,
+        loc=ast_loc,
+        index=source_trace_id
+    )
 
 
 def is_header_file(filename: str) -> bool:
@@ -704,9 +752,11 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                 elif "attackPoint" in ple:
                     attack_point_lval_usage(ple, db.session, lava_db, project_data)
                 elif "dwarfCall" in ple:
-                    record_call(ple)
+                    record_call(ple, db.session)
                 elif "dwarfRet" in ple:
                     record_ret(ple)
+                elif "sourceTraceId" in ple:
+                    record_trace(ple, lava_db, db.session)
                 elif "fileTaintMatch" in ple:
                     project_data["input_file"] = os.path.basename(ple['fileTaintMatch']['filename'])
 

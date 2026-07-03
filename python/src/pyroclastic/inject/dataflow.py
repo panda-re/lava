@@ -60,7 +60,7 @@ def genStackVarHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist:
     function_list = []
 
     # append addvar to the functions of stack overflow
-    bug_list = db.session.query(Bug).filter(Bug.id.in_(bug_list)).filter(Bug.type == Bug.CHAFF_STACK_CONST).all()
+    bug_list = db.session.query(Bug).filter(Bug.id.in_(bug_list)).filter(Bug.type == BugKind.BUG_CHAFF_STACK_CONST).all()
     for bug in bug_list:
         atp = bug.atp
         if atp.ctrace:

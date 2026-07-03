@@ -188,7 +188,7 @@ def run_local(
             sys.exit(e.returncode)
 
 
-def delete_directory(target_dir: str, force=False):
+def delete_directory(target_dir: str, force: bool = False):
     """
     Python port of the delete_directory Bash function.
 
@@ -321,7 +321,7 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", environmen
         print(f'Configuring... {full_config}')
         run_local(full_config, env=envv, cwd=str(main_directory), shell=True, logfile=lf)
         # For old GNU projects
-        neuter_autotools_completely(main_directory)
+        neuter_autotools_completely(str(main_directory))
 
     pre_make = lava_path.config.get("pre_make", "")
     if pre_make != "":

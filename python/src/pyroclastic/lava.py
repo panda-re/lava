@@ -4,12 +4,14 @@ import sys
 from contextlib import contextmanager
 import os
 from collections import deque
+import subprocess
 # All LAVA steps are imported here
 from .inject import inject
 from .taint import bug_mining
 from .add_queries.add_queries import step_add_queries
 from .utils.vars import LavaPaths
-from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, print_tail, make_and_install, configure_project, deep_clean_target
+from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, \
+    print_tail, make_and_install, configure_project, deep_clean_target, read_compile_db
 
 
 def parse_lava_args() -> argparse.Namespace:
@@ -286,14 +288,14 @@ def main():
     if args.sanitize:
         # This will assume a compile_commands.json exists to sanitize. If none exists, skip!
         progress("everything", 1, "Sanitize step -- ")
-        lf = path_manager.logs_directory / "sanitize.log"
-        source_path = path_manager.source_directory
+        lf = lava_path.logs_directory / "sanitize.log"
+        source_path = lava_path.source_directory
         _, c_files = read_compile_db(source_path)
         duasan_commands = [
             "duasan",
             f"-p={source_path}/compile_commands.json",
             f"-src-prefix={source_path.resolve()}",
-            f"-db={path_manager.config['db']}",
+            f"-db={lava_path.config['db']}",
         ]
         duasan_commands.extend(c_files)
         progress("everything", 1, f"Running {subprocess.list2cmdline(duasan_commands)}")

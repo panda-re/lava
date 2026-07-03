@@ -199,18 +199,6 @@ class Bug(Base):
     lval_relationship: Mapped["SourceLval"] = relationship("SourceLval", foreign_keys=[trigger_lval],
                                                            viewonly=True, overlaps="trigger_lval")
 
-    # 5. Data Columns
-    # Note: C++ uses uint64_t for max_liveness, but Python often treats liveness as float.
-    # If C++ says uint64, Integer is safer unless you know it's fractional.
-    max_liveness: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-
-    # C++ initializes magic to 0 in list, then calculates it. Database says NOT NULL.
-    magic: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    # 6. Arrays
-    # C++: std::vector<uint64_t> extra_duas;
-    extra_duas: Mapped[List[int]] = mapped_column(postgresql.ARRAY(BigInteger), nullable=False)
-
     # The Real Relationship to the intermediate table
     build_associations = relationship(
         "BuildBug",
