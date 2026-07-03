@@ -135,7 +135,8 @@ def get_or_create_dua_bytes(db: LavaDatabase, cache: dict, dua_id: int, selected
     return d_bytes
 
 
-def record_injectable_bugs_offline(project_data: dict, allow_cross_file: bool = False):
+def record_injectable_bugs_offline(project_data: dict, allow_cross_file: bool = False,
+                                   random_sampling_threshold: int = 2):
     with LavaDatabase(project_data) as db:
         distinct_files = db.session.query(AtpExecution.inputfile).distinct().all()
         file_list = [f[0] for f in distinct_files]
@@ -177,7 +178,61 @@ def record_injectable_bugs_offline(project_data: dict, allow_cross_file: bool = 
 
                 stats = {"no_pad": 0, "duplicate": 0, "liveness_too_small": 0, "not_disjoint": 0, "success": 0}
 
-                for bug_kind in target_bug_kinds:
+                # =====================================================================
+                # CHAFF BUG GENERATION BLOCK
+                # =====================================================================
+                if atp.insertion_point is not None:
+                    # A. CHAFF_STACK_UNUSED requires NO DuaBytes
+                    bug_unused = Bug(
+                        bug_type=BugKind.BUG_CHAFF_STACK_UNUSED.value,
+                        atp=atp.id,
+                        trigger_lval=0,
+                        magic=0
+                    )
+                    db.session.add(bug_unused)
+
+                    # B. Find viable DEAD duas for the random sampling loop
+                    viable_dead_duas = []
+                    for dua in valid_duas:
+                        native_map = all_liveness_maps.get(dua.inputfile, {})
+                        r, _ = get_offline_dead_range(dua, native_map, exec_event.instr)
+                        if r.size() > 0:
+                            viable_dead_duas.append((dua, r))
+
+                    # C. Random Sampling Threshold (Match C++)
+                    if len(viable_dead_duas) <= random_sampling_threshold:
+                        selected_duas = viable_dead_duas
+                    else:
+                        selected_duas = random.sample(viable_dead_duas, random_sampling_threshold)
+
+                    # D. Generate the 3 variant bugs for each selected DUA
+                    for dua, r in selected_duas:
+                        labels = extract_labels_from_range(dua, r)
+                        dua_bytes = get_or_create_dua_bytes(db, dua_bytes_cache, dua.id, r, labels)
+
+                        chaff_kinds = [
+                            BugKind.BUG_CHAFF_STACK_CONST,
+                            BugKind.BUG_CHAFF_HEAP_CONST,
+                            BugKind.BUG_CHAFF_DIVZERO
+                        ]
+
+                        for c_kind in chaff_kinds:
+                            c_bug = Bug(
+                                bug_type=c_kind.value,
+                                trigger=dua_bytes.id,
+                                trigger_lval=dua.lval,
+                                atp=atp.id,
+                                max_liveness=0,
+                                magic=generate_magic()
+                            )
+                            db.session.add(c_bug)
+                            stats["success"] += 1
+
+                # =====================================================================
+                # STANDARD LAVA BUG GENERATION BLOCK
+                # =====================================================================
+                standard_bug_kinds = [k for k in target_bug_kinds if "CHAFF" not in k.name]
+                for bug_kind in standard_bug_kinds:
                     required_pad_size = PAD_REQUIREMENTS.get(bug_kind, 0)
                     pad_dua: Optional[Dua] = None
                     p_selected: Optional[Range] = None
