@@ -460,7 +460,7 @@ struct AttackPoint {
     } type;
 
     std::vector<uint64_t> calltrace;
-
+    uint64_t stack_offset;  // Used for Chaff Bugs
     uint64_t trace_index;   // Index into the SourceTrace
 
 #pragma db index("AttackPointUniq") unique members(loc, type, trace_index)

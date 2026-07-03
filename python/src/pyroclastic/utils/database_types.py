@@ -238,7 +238,7 @@ class Bug(Base):
                  atp: Union[int, "AttackPoint"],
                  extra_duas: Union[List[int], List["DuaBytes"]],
                  max_liveness: int = 0,
-                 magic: int = 0, **kwargs):
+                 magic: int = 0, stackoff: int = 0, **kwargs):
         """
         Mirroring C++ Constructor logic:
         Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
@@ -504,6 +504,10 @@ class Dua(Base):
     instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
     fake_dua: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
+    lval_relationship: Mapped["SourceLval"] = relationship("SourceLval",
+                                                           viewonly=True,
+                                                           overlaps="lval")
+
     # --- Added for Chaff Bugs ---
     # uint64_t trace_index;
     trace_index: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
@@ -713,6 +717,8 @@ class AttackPoint(Base):
 
     # uint64_t trace_index; (Tracks context relationship to SourceTrace.index)
     trace_index: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    # stack offset, used for Chaff Bug Injection, will be used in Phase II for Bugs
+    stack_offset: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
     def __str__(self):
         return 'ATP[{}](loc={}:{}, type={}, trace_idx={})'.format(

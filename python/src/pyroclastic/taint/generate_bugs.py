@@ -45,7 +45,9 @@ def get_bug_kinds_for_atp(atp_kind: AtpKind) -> list[BugKind]:
         AtpKind.FUNCTION_ARG: [BugKind.BUG_PTR_ADD],
         AtpKind.PRINTF_LEAK: [BugKind.BUG_PRINTF_LEAK],
         AtpKind.MALLOC_OFF_BY_ONE: [BugKind.BUG_MALLOC_OFF_BY_ONE],
-        AtpKind.QUERY_POINT: [BugKind.BUG_RET_BUFFER]
+        AtpKind.QUERY_POINT: [BugKind.BUG_RET_BUFFER,
+                              BugKind.BUG_CHAFF_STACK_CONST, BugKind.BUG_CHAFF_HEAP_CONST,
+                              BugKind.BUG_CHAFF_DIVZERO, BugKind.BUG_CHAFF_DIVZERO]
     }
     return mapping.get(atp_kind, [])
 
