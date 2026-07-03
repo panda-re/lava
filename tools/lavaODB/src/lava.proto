@@ -115,3 +115,17 @@ message Call {
     string callsite_file = 5;
     uint32 callsite_line = 6;
 }
+
+message AtpExecution {
+    uint64 id = 1;
+    AttackPoint atp = 2;
+    string inputfile = 3;
+    uint64 instr = 4;
+}
+
+message LivenessSnapshot {
+    uint64 id = 1;
+    string inputfile = 2;
+    uint32 label = 3;
+    uint64 death_instr = 4;
+}

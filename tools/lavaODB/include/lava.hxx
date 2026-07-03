@@ -690,4 +690,80 @@ struct Call {
         p.set_callsite_line(this->callsite_line);
     }
 };
+
+#pragma db object table("atp_execution")
+struct AtpExecution {
+#pragma db id auto
+    uint64_t id;
+
+#pragma db not_null
+    const AttackPoint* atp; // This generates the atp_id Foreign Key!
+
+    std::string inputfile;
+    uint64_t instr;
+
+#pragma db index("AtpExecutionUniq") unique members(atp, inputfile, instr)
+
+    AtpExecution() {}
+    AtpExecution(const AttackPoint* atp, std::string inputfile, uint64_t instr)
+        : id(0), atp(atp), inputfile(inputfile), instr(instr) {}
+
+    bool operator<(const AtpExecution &other) const {
+        return std::tie(atp->id, inputfile, instr) <
+            std::tie(other.atp->id, other.inputfile, other.instr);
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const AtpExecution &exec) {
+        os << "AtpExecution[" << exec.inputfile << " @ instr=" << exec.instr << "] -> ATP ID: " << exec.atp->id;
+        return os;
+    }
+
+    // SCHEMA ENFORCEMENT
+    void __enforce_proto() const {
+        enforce_name_match<AtpExecution, lava::AtpExecution>("AtpExecution");
+        lava::AtpExecution p;
+        p.set_id(this->id);
+        if (this->atp) {
+            this->atp->__enforce_proto();
+        }
+        p.set_inputfile(this->inputfile);
+        p.set_instr(this->instr);
+    }
+};
+
+#pragma db object table("liveness_snapshot")
+struct LivenessSnapshot {
+#pragma db id auto
+    uint64_t id;
+
+    std::string inputfile;
+    uint32_t label;
+    uint64_t death_instr;
+
+#pragma db index("LivenessSnapshotUniq") unique members(inputfile, label)
+
+    LivenessSnapshot() {}
+    LivenessSnapshot(std::string inputfile, uint32_t label, uint64_t death_instr)
+        : id(0), inputfile(inputfile), label(label), death_instr(death_instr) {}
+
+    bool operator<(const LivenessSnapshot &other) const {
+        return std::tie(inputfile, label, death_instr) <
+            std::tie(other.inputfile, other.label, other.death_instr);
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const LivenessSnapshot &snap) {
+        os << "Liveness[" << snap.inputfile << "]: Label " << snap.label << " dies at instr " << snap.death_instr;
+        return os;
+    }
+
+    // SCHEMA ENFORCEMENT
+    void __enforce_proto() const {
+        enforce_name_match<LivenessSnapshot, lava::LivenessSnapshot>("LivenessSnapshot");
+        lava::LivenessSnapshot p;
+        p.set_id(this->id);
+        p.set_inputfile(this->inputfile);
+        p.set_label(this->label);
+        p.set_death_instr(this->death_instr);
+    }
+};
 #endif
