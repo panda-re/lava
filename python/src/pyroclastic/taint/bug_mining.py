@@ -31,7 +31,6 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
     class State:
         command_args = []
         install_directory = ""
-        selected_filename = ""
         tar_directory = ""
     state = State()
 
@@ -82,38 +81,20 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
         # 2. EXTRACT THE TARGET BINARY PATH
         # We need to know what binary to run. Your JSON has "{install_dir}/bin/toy {input_file}"
         # We format it with an empty input_file to isolate the binary path.
-        # TODO: We will use this eventually...
-        # guest_executable = project['command'].format(
-        #    install_dir=shlex.quote(state.install_directory),
-        #    input_file=""
-        # ).strip()
+        guest_executable = project_data['command'].format(
+            install_dir=shlex.quote(state.install_directory),
+            input_file=""
+        ).strip()
 
         # 3. CONSTRUCT THE BATCH COMMAND
         # We use bash -c so we can use pipes (|) inside the guest command safely.
         # Note: {{}} is how we escape curly braces in Python f-strings so xargs gets "{}".
         # We use -print0 and -0 to handle filenames with spaces correctly.
-        # TODO: We will use this eventually...
-        # batch_shell_command = (
-        #    f"find {shlex.quote(guest_directory_inputs_path)} -type f -print0 | "
-        #    f"xargs -0 -I {{}} {guest_executable} {{}}"
-        # )
+        batch_shell_command = (
+            f"find {shlex.quote(guest_directory_inputs_path)} -type f -print0 | "
+            f"xargs -0 -I {{}} {guest_executable} {{}}"
+        )
 
-        # pick a file from `guest_directory_inputs_path`, remember, you now have a folder in panda...
-        files = [f for f in os.listdir(guest_directory_inputs_path)
-                 if os.path.isfile(os.path.join(guest_directory_inputs_path, f))]
-        if not files:
-            raise RuntimeError(f"No input files found in {guest_directory_inputs_path}")
-
-        state.selected_filename = files[0]
-        selected_path = os.path.join(guest_directory_inputs_path, state.selected_filename)
-
-        # build the guest command using the selected file (quote to handle spaces)
-        batch_shell_command = project_data['command'].format(
-            install_dir=shlex.quote(state.install_directory),
-            input_file=shlex.quote(selected_path)
-        ).strip()
-
-        print("Selected input:", selected_path)
         progress("bug_mining", 0, f"Generated Guest Command: {batch_shell_command}")
 
         # PANDA expects a list. We pass bash as the exe, and the whole string as the arg.
@@ -181,7 +162,7 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
         panda.load_plugin('tainted_branch')
         panda.load_plugin("file_taint",
                           args={
-                              'filename': os.path.join(state.install_directory, 'inputs', state.selected_filename),
+                              'filename': os.path.join(state.install_directory, 'inputs', '*'),
                               'pos': True,
                               'verbose': debug
                           })
@@ -224,22 +205,17 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
             print("The script to convert the panda log into JSON has failed")
             raise e
 
-        if state.selected_filename == "":
-            state.selected_filename = "testsmall.bin"
-
-        input_file_base = state.selected_filename
         project_data["curtail"] = project_data.get("curtail", 0)
 
         print("Calling fbi - Mining PANDA log and populating database...")
         # TODO: Python FBI is still funky... don't swap out Python just yet...We will only swap once chaff is checked
         sys.stdout.flush()
 
-        if project_data.get("use_c_fbi", True):
+        if project_data["use_c_fbi"]:
             fbi_args = ['fbi',
                         project_data["host_path"],
                         lava_project,
-                        pandalog_json,
-                        input_file_base]
+                        pandalog_json]
 
             print(f"C++ fbi invocation: [{subprocess.list2cmdline(fbi_args)}]")
             sys.stdout.flush()

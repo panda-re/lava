@@ -768,7 +768,7 @@ def print_bug_stats(project_data: dict, debug: bool = False):
             label_sets = session.query(LabelSet).order_by(LabelSet.ptr).all()
         except Exception:
             label_sets = session.query(LabelSet).all()
-        if project_data.get("debug", False):
+        if debug:
             dump_table("LABEL SETS", label_sets, ['id', 'ptr', 'inputfile', 'labels'])
         else:
             print("label_sets:", len(label_sets))
@@ -788,16 +788,20 @@ def print_bug_stats(project_data: dict, debug: bool = False):
             duas = session.query(Dua).order_by(Dua.instr, Dua.id).all()
         except Exception:
             duas = session.query(Dua).all()
-        dump_table("DUAs (Dead Unused Variable)", duas, [
+
+        if debug:
+            dump_table("DUAs (Dead Unused Variable)", duas, [
                 'id', 'lval', 'instr', 'fake_dua', 'inputfile',
                 'max_tcn', 'max_cardinality', 'all_labels', 'byte_tcn', 'viable_bytes'])
+        else:
+            print("duas:", len(duas))
 
         # 5. Count Attack Point Execution
         try:
             attack_point_executions = session.query(AtpExecution).order_by(AtpExecution.id).all()
         except Exception:
             attack_point_executions = session.query(AtpExecution).all()
-        if debug and not project_data.get("use_c_fbi", False):
+        if debug and not project_data["use_c_fbi"]:
             dump_table("ATTACK POINT EXECUTIONS", attack_point_executions, ['id', 'atp', 'inputfile', 'instr'])
         else:
             print("attack_point execution:", len(attack_point_executions))
@@ -807,7 +811,7 @@ def print_bug_stats(project_data: dict, debug: bool = False):
             liveness_by_file_iter = session.query(LivenessSnapshot).order_by(LivenessSnapshot.id).all()
         except Exception:
             liveness_by_file_iter = session.query(LivenessSnapshot).all()
-        if debug and not project_data.get("use_c_fbi", False):
+        if debug and not project_data["use_c_fbi"]:
             dump_table("LIVENESS SNAPSHOTS", liveness_by_file_iter, ['id', 'inputfile', 'death_instr'])
         else:
             print("liveness:", len(liveness_by_file_iter))
