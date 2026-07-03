@@ -313,6 +313,23 @@ def inject_bugs(bug_list, db: LavaDatabase, lp : LavaPaths, project: dict, argum
     if update_db:
         db.session.commit()
 
+    if rv == 0:
+        print(f"Packaging source and compiled binaries into a tarball for build {build_label}...")
+        tar_filename = f"build_{build_label}_injection.tar.gz"
+
+        try:
+            # Tar everything in the build directory, explicitly excluding the .git folder to prevent bloat
+            run_local(["tar", "--exclude=./.git", "-czf", tar_filename, "."], cwd=lp.bugs_build)
+
+            # Add and commit the tarball to the currently checked-out branch (build{build_label})
+            run_local(["git", "add", tar_filename], cwd=lp.bugs_build)
+            run_local(["git", "commit", "-m", f"Add packaged source and binary tarball for build{build_label}."],
+                      cwd=lp.bugs_build)
+            print(f"Tarball {tar_filename} successfully committed to branch build{build_label}.")
+        except Exception as e:
+            print(f"\nWarning: Failed to create or commit tarball for build {build_label}: {e}")
+            # We don't raise here because the bug injection and compilation still succeeded.
+
     # ALWAYS clean up the working directory state before exiting the function
     run_local(["git", "checkout", "master"], cwd=lp.bugs_build)
     run_local(["git", "checkout", "-f"], cwd=lp.bugs_build)
