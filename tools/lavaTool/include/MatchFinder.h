@@ -122,10 +122,6 @@ public:
 
         // fortenforge's matchers (for data_flow argument addition)
         if (ArgDataflow && LavaAction == LavaInjectBugs) {
-            addMatcher(
-                    callExpr().bind("callExpr"),
-                    makeHandler<CallExprArgAdditionHandler>());
-
             // function declarations & definition.  Decl without body is prototype
             addMatcher(
                     functionDecl().bind("funcDecl"),

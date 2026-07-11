@@ -273,7 +273,7 @@ def analysis(project_name: str, output_file: str, inputs: list[str], project_con
         for name in sorted(instr_judgement.keys()):
             if instr_judgement[name] == OKI:
                 if name not in banned_functions:
-                    f.write(f"NOFILENAME {name}\n")
+                    f.write(f"NOFILENAME df {name}\n")
 
 
 if __name__ == "__main__":
@@ -289,4 +289,4 @@ if __name__ == "__main__":
                         help="Set ignore function pointers or not, it is off by default")
 
     args, input_list = parser.parse_known_args()
-    analysis(args.project, args.output, input_list)
+    analysis(args.project, args.output, input_list, args.config)

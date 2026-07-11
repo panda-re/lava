@@ -15,7 +15,7 @@ static const int LAVA_ATTACK_POINT = 12;
 static const int LAVA_PRI_QUERY_POINT = 13;
 
 // see tools/lavaTool/include/LavaMatchHandler.h
-static inline 
+static inline
 void vm_lava_attack_point(unsigned int ast_loc_id, unsigned long linenum, unsigned int info) {
   volatile PandaHypercallStruct phs = {0};
   phs.magic = LAVA_MAGIC;
@@ -28,59 +28,37 @@ void vm_lava_attack_point(unsigned int ast_loc_id, unsigned long linenum, unsign
 }
 
 // see /tools/lavaTool/include/PriQueryPointHandler.h
-// NOTE: You can NOT use the hypercall directly, it will not work because then srcInfo on 
-// TaintQueryPri will point to the hypercall function NOT the source code!
+// NOTE: We use always_inline to ensure the hypercall executes inline,
+// and nodebug to hide it from PANDA's dwarfdump.py which crashes on inlined subprograms.
+// We avoid using igloo_hypercall directly as this ensures srcInfo is on TaintQueryPri
+// and points to the correct source code line rather than the hypercall function wrapper.
+static inline __attribute__((always_inline, nodebug))
+void vm_lava_pri_query_point(unsigned int ast_loc_id, unsigned long line_num, unsigned long extra_info) {
+    volatile PandaHypercallStruct phs = {0};
+    phs.magic = LAVA_MAGIC;
+    phs.action = LAVA_PRI_QUERY_POINT;
+    phs.src_filename = ast_loc_id;
+    phs.src_linenum = line_num;
+    phs.insertion_point = 1;
+    phs.info = extra_info;
+
 #if defined(CONFIG_X86_64) || defined(__x86_64__)
-#define vm_lava_pri_query_point(ast_loc_id, line_num, extra_info) do { \
-    volatile PandaHypercallStruct phs = {0}; \
-    phs.magic = LAVA_MAGIC; \
-    phs.action = LAVA_PRI_QUERY_POINT; \
-    phs.src_filename = ast_loc_id; \
-    phs.src_linenum = line_num; \
-    phs.insertion_point = 1; \
-    phs.info = extra_info; \
-    DECLARE_REGISTER(0, rax, LAVA_MAGIC) \
-    DECLARE_REGISTER(1, rdi, (unsigned long) &phs) \
-    ASM() \
-} while (0)
+    DECLARE_REGISTER(0, rax, LAVA_MAGIC)
+    DECLARE_REGISTER(1, rdi, (unsigned long) &phs)
+    ASM()
 #elif defined(CONFIG_I386) || (defined(__i386__) && !defined(__x86_64__))
-#define vm_lava_pri_query_point(ast_loc_id, line_num, extra_info) do { \
-    volatile PandaHypercallStruct phs = {0}; \
-    phs.magic = LAVA_MAGIC; \
-    phs.action = LAVA_PRI_QUERY_POINT; \
-    phs.src_filename = ast_loc_id; \
-    phs.src_linenum = line_num; \
-    phs.insertion_point = 1; \
-    phs.info = extra_info; \
-    DECLARE_REGISTER(0, eax, LAVA_MAGIC) \
-    DECLARE_REGISTER(1, ebx, (unsigned long) &phs) \
-    ASM() \
-} while (0)
+    DECLARE_REGISTER(0, eax, LAVA_MAGIC)
+    DECLARE_REGISTER(1, ebx, (unsigned long) &phs)
+    ASM()
 #elif defined(CONFIG_ARM) || defined(__arm__)
-#define vm_lava_pri_query_point(ast_loc_id, line_num, extra_info) do { \
-    volatile PandaHypercallStruct phs = {0}; \
-    phs.magic = LAVA_MAGIC; \
-    phs.action = LAVA_PRI_QUERY_POINT; \
-    phs.src_filename = ast_loc_id; \
-    phs.src_linenum = line_num; \
-    phs.insertion_point = 1; \
-    phs.info = extra_info; \
-    DECLARE_REGISTER(0, r7, LAVA_MAGIC) \
-    DECLARE_REGISTER(1, r0, (unsigned long) &phs) \
-    ASM() \
-} while (0)
+    DECLARE_REGISTER(0, r7, LAVA_MAGIC)
+    DECLARE_REGISTER(1, r0, (unsigned long) &phs)
+    ASM()
 #elif defined(CONFIG_ARM64) || defined(__aarch64__)
-#define vm_lava_pri_query_point(ast_loc_id, line_num, extra_info) do { \
-    volatile PandaHypercallStruct phs = {0}; \
-    phs.magic = LAVA_MAGIC; \
-    phs.action = LAVA_PRI_QUERY_POINT; \
-    phs.src_filename = ast_loc_id; \
-    phs.src_linenum = line_num; \
-    phs.insertion_point = 1; \
-    phs.info = extra_info; \
-    DECLARE_REGISTER(0, x8, LAVA_MAGIC) \
-    DECLARE_REGISTER(1, x0, (unsigned long) &phs) \
-    ASM() \
-} while (0)
+    DECLARE_REGISTER(0, x8, LAVA_MAGIC)
+    DECLARE_REGISTER(1, x0, (unsigned long) &phs)
+    ASM()
 #endif
+}
+
 #endif

@@ -88,7 +88,7 @@ struct LExpr {
             os << expr.str;
             expr.infix(os, "(", ", ", ")");
         } else if (expr.t == LExpr::BLOCK) {
-            expr.infix(os, "{", "; ", ";}");
+            expr.infix(os, "({", "; ", ";})");
         } else if (expr.t == LExpr::IF) {
             os << "if (" << expr.str << ") ";
             expr.infix(os, "{\n", ";\n", ";\n}\n");
