@@ -35,34 +35,15 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
 
-        const FunctionDecl *func =
-            Result.Nodes.getNodeAs<FunctionDecl>("funcDecl");
-
-
+        const FunctionDecl *func = Result.Nodes.getNodeAs<FunctionDecl>("funcDecl");
         auto fnname = fundecl_fun_name(Result, func);
 
-        // only instrument if function being decl / def is in whitelist
-        if (fninstr(fnname)) {
-            debug(FNARG) << "FuncDeclArgAdditionHandler: Function def/decl is in whitelist     " << fnname.second << " : " << fnname.first << "\n";
-        }
-        else {
-            debug(FNARG) << "FuncDeclArgAdditionHandler: Function def/decl is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
+        // SHARED INVALIDATION CHECKS (Do these first before anything else)
+        if (func->getSourceRange().isInvalid()) {
             return;
         }
-
         if (fnname.second.find("__builtin") != std::string::npos) {
-            debug(FNARG) << "FuncDeclArgAdditionHandler: Function def/decl is builtin" << func->getNameAsString() << "\n";
             return;
-        }
-
-        debug(FNARG) << "FuncDeclArgAdditionHandler handle: ok to instrument " <<  fnname.second << "\n";
-        debug(FNARG) << "adding arg to " << func->getNameAsString() << "\n";
-
-        if (func->isThisDeclarationADefinition()) {
-            debug(FNARG) << "has body\n";
-        }
-        if (func->getBody()) {
-            debug(FNARG) << "can find body\n";
         }
         if (func->getLocation().isInvalid()) {
             return;
@@ -76,25 +57,80 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         if (Mod.sm->getFilename(func->getLocation()).empty()) {
             return;
         }
-        debug(FNARG) << "actually adding arg\n";
 
-        if (func->isMain()) {
-            if (func->isThisDeclarationADefinition()) { // no prototype for main.
+        // 2. CHAFF QUERY STAGE
+        if (LavaAction == LavaQueries) {
+            if (func->hasBody()) {
                 CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
                 assert(body);
                 Stmt *first = *body->body_begin();
                 assert(first);
-                std::stringstream data_array;
-                // Inject valid C even if we have no values
-                int data_slots_size = (data_slots.size() > 0) ? data_slots.size() : 1;
-                data_array << "int data[" << data_slots_size << "] = {0};\n";
-                data_array << "int *" ARG_NAME << "= &data;\n";
-                Mod.InsertAt(first->getBeginLoc(), data_array.str());
+                std::stringstream data;
+                data << "int lava_chaff_var_0 = 0;\n";
+                data << "int lava_chaff_var_1 = 0;\n";
+                // Use another probing var to avoid gcc local var rearrangement
+                data << "int lava_chaff_var_2 = &" << func->getNameAsString() << ";\n";
+                Mod.InsertAt(first->getBeginLoc(), data.str());
             }
-        } else {
-            const FunctionDecl *bodyDecl = nullptr;
-            func->hasBody(bodyDecl);
-            AddArg(func);
+            return;
+        }
+
+        // 3. CHAFF BUG INJECTION (addvarlist)
+        if (addvarlist.count(fnname.second) != 0) {
+            if (func->hasBody()) {
+                CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
+                assert(body);
+                Stmt *first = *body->body_begin();
+                assert(first);
+                std::stringstream data;
+                data << "int lava_chaff_var_0 = 0;\n";
+                data << "int lava_chaff_var_1 = 0;\n";
+                // To keep var_0 and var_1 of the same use count - to avoid local var rearragement
+                data << "int lava_chaff_var_2 = &lava_chaff_var_0;\n";
+                // Use InsertAfter - leave room for Arbitrary variables in Stack Overrun bugs
+                Mod.InsertAt(first->getBeginLoc(), data.str());
+            }
+        }
+
+        // only instrument if function being decl / def is in whitelist
+        // 4. LAVA + CHAFF DATA FLOW INJECTION
+        if (fninstr(fnname)) {
+            debug(FNARG) << "FuncDeclArgAdditionHandler: Function def/decl is in whitelist     " << fnname.second << " : " << fnname.first << "\n";
+            debug(FNARG) << "adding arg to " << func->getNameAsString() << "\n";
+            // You can't change arguments for main(), initialize data flow root from here
+            if (func->isMain()) {
+                if (func->isThisDeclarationADefinition()) { // no prototype for main.
+                    CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
+                    assert(body);
+                    Stmt *first = *body->body_begin();
+                    assert(first);
+                    std::stringstream data_array;
+                    // Inject valid C even if we have no values
+                    int data_slots_size = (data_slots.size() > 0) ? data_slots.size() : 1;
+                    data_array << "int data[" << data_slots_size << "] = {0};\n";
+                    data_array << "int *" ARG_NAME << "= &data;\n";
+                    Mod.InsertAt(first->getBeginLoc(), data_array.str());
+                }
+            } else {
+                AddArg(func);
+            }
+            debug(FNARG) << "FuncDeclArgAdditionHandler handle: ok to instrument " <<  fnname.second << "\n";
+        }
+        else if (dataflowroot.count(fnname.second) != 0) {
+            if (func->hasBody()) {
+                CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
+                assert(body);
+                Stmt *first = *body->body_begin();
+                assert(first);
+                std::stringstream data;
+                data << "int lava_chaff_data = 0;\n";
+                data << "int *" ARG_NAME << "= &lava_chaff_data;\n";
+                // Use InsertAfter - leave room for Abritriary variables in Stack Overrun bugs
+                Mod.InsertTo(first->getBeginLoc(), data.str());
+            }
+        }
+        else {
+            debug(FNARG) << "FuncDeclArgAdditionHandler: Function def/decl is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
         }
         return;
     }
