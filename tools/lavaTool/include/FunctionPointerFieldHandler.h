@@ -11,7 +11,6 @@ struct FunctionPointerFieldHandler : public LavaMatchHandler {
         const FieldDecl *fd = Result.Nodes.getNodeAs<FieldDecl>("fieldDecl");
         if (!fd) {
             debug(FNARG) << "fd is null in FunctionPointerFieldHandler\n";
-//        debug(FNARG) << fd->print() << "\n";
         }
         else {
 
@@ -26,8 +25,6 @@ struct FunctionPointerFieldHandler : public LavaMatchHandler {
                 debug(FNARG) << "end:   " << sl2.printToString(*Mod.sm) << "\n";
 
             }
-            //        debug(FNARG) << decl->getEndLoc().printToString(*Mod.sm) << "\n";
-            //        Mod.InsertAt(decl->getEndLoc().getLocWithOffset(-14), "int *" ARG_NAME ", ");
         }
     }
 };

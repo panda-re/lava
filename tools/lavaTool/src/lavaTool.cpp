@@ -60,7 +60,6 @@ int main(int argc, const char **argv) {
     RANDOM_SEED = ArgRandSeed;
     srand(RANDOM_SEED);
 
-
     if (LavaWL != "XXX") {
         parse_whitelist(LavaWL);
     }
@@ -120,12 +119,6 @@ int main(int argc, const char **argv) {
         std::transform(bug_ids.begin(), bug_ids.end(), std::back_inserter(bugs),
                 [&](uint32_t bug_id) { return db->load<Bug>(bug_id); });
 
-        //while (!real_bug) {
-        //    real_bug = bugs[rand()%bugs.size()];
-        //    if (real_bug->type != Bug::CHAFF_STACK_CONST)
-        //        real_bug = nullptr;
-        //}
-
         for (const Bug *bug : bugs) {
             ASTLoc atp_loc = bug->atp->loc;
             auto key = std::make_pair(atp_loc, bug->atp->type);
@@ -133,7 +126,12 @@ int main(int argc, const char **argv) {
 
             mark_for_siphon(bug->trigger);
 
-            if (bug->type != Bug::CHAFF_STACK_UNUSED) {
+            if (bug->type != Bug::RET_BUFFER) {
+                for (uint64_t dua_id : bug->extra_duas) {
+                    const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
+                    mark_for_siphon(dua_bytes);
+                }
+            } else if (bug->type != Bug::CHAFF_STACK_UNUSED) {
                 for (uint64_t dua_id : bug->extra_duas) {
                     const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
                     mark_for_siphon_extra(dua_bytes);
@@ -142,6 +140,7 @@ int main(int argc, const char **argv) {
                     mark_for_overconst_extra(bug, dua_bytes);
                 }
             }
+
         }
     }
 

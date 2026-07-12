@@ -45,34 +45,37 @@ struct ChaffFuncDeclArgAdditionHandler : public LavaMatchHandler {
             }
             return;
         }
+        // This is the Chaff Bug Injection step
 
-        // Add Arg has higher priority if there's an overlap in dataflow functions & dataflow roots
-        // - THis is to avoid variable name collision
-        if (fninstr(fnname)) {
-            SourceLocation loc = Lexer::findLocationAfterToken(
+        // Prevent mangling main's signature and redefining data_flow
+        if (!func->isMain()) {
+            // Add Arg has higher priority if there's an overlap in dataflow functions & dataflow roots
+            // - This is to avoid variable name collision
+            if (fninstr(fnname)) {
+                SourceLocation loc = Lexer::findLocationAfterToken(
                     func->getLocation(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
-            if (already_added_arg.count(loc) == 0) {
-                already_added_arg.insert(loc);
-                if (func->getNumParams() == 0) {
-                    Mod.InsertAt(loc, "int *" ARG_NAME);
-                } else {
-                    Mod.InsertAt(loc, "int *" ARG_NAME ", ");
+                if (already_added_arg.count(loc) == 0) {
+                    already_added_arg.insert(loc);
+                    if (func->getNumParams() == 0) {
+                        Mod.InsertAt(loc, "int *" ARG_NAME);
+                    } else {
+                        Mod.InsertAt(loc, "int *" ARG_NAME ", ");
+                    }
+                }
+            } else if (dataflowroot.count(fnname.second) != 0) {
+                if (func->hasBody()) {
+                    CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
+                    assert(body);
+                    Stmt *first = *body->body_begin();
+                    assert(first);
+                    std::stringstream data;
+                    data << "int lava_chaff_data = 0;\n";
+                    data << "int *" ARG_NAME << "= &lava_chaff_data;\n";
+                    // Use InsertAfter - leave room for Abritriary variables in Stack Overrun bugs
+                    Mod.InsertTo(first->getBeginLoc(), data.str());
                 }
             }
-        } else if (dataflowroot.count(fnname.second) != 0) {
-            if (func->hasBody()) {
-                CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
-                assert(body);
-                Stmt *first = *body->body_begin();
-                assert(first);
-                std::stringstream data;
-                data << "int lava_chaff_data = 0;\n";
-                data << "int *" ARG_NAME << "= &lava_chaff_data;\n";
-                // Use InsertAfter - leave room for Abritriary variables in Stack Overrun bugs
-                Mod.InsertTo(first->getBeginLoc(), data.str());
-            }
         }
-
         if (addvarlist.count(fnname.second) != 0) {
             if (func->hasBody()) {
                 CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());

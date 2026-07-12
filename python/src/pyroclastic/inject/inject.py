@@ -9,11 +9,12 @@ import random
 import shutil
 import platform
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 # LAVA imports
-from ..utils.vars import LavaPaths
-from ..utils.funcs import get_inject_parser, read_compile_db, unpack_tar, configure_project, preprocess, run_local, make_and_install
-from ..utils.database_types import Bug, DuaBytes, Build, Run, BugKind, LavaDatabase
+from pyroclastic.utils.vars import LavaPaths
+from pyroclastic.utils.funcs import get_inject_parser, read_compile_db, unpack_tar, configure_project, preprocess, run_local, make_and_install
+from pyroclastic.utils.database_types import Bug, DuaBytes, Build, Run, BugKind, LavaDatabase
+from pyroclastic.inject.dataflow import genFnTraceHelper, genStackVarHelper
 
 NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
 start_time = time.time()
@@ -357,7 +358,7 @@ def build_and_package(build: Build, lp: LavaPaths, update_db: bool, db: LavaData
 
 
 def mutate_file(unfuzzed_filename: str, fuzz_labels_list: list, new_filename: str, bug: Bug,
-            kt: bool = False, knob: int = 0, solution: list = None):
+            kt: bool = False, knob: int = 0, solution: Optional[list] = None):
     """
     Mutates a baseline input file by injecting precise byte sequences at tainted offsets
     to satisfy execution triggers for a target LAVA bug.
@@ -604,6 +605,10 @@ def limit_atp_reuse(bugs: List[Bug], default_max: int = 1):
 
 # Build a set of src/input files that we need to modify to inject these bugs
 def collect_src_and_print(bugs_to_inject: List[Bug], db: LavaDatabase):
+    """
+    Print relevant information about the bug with respect to
+    where in the source code, etc. the Bug will be injected in
+    """
     src_files = set()
 
     for bug_index, bug in enumerate(bugs_to_inject):
@@ -612,7 +617,11 @@ def collect_src_and_print(bugs_to_inject: List[Bug], db: LavaDatabase):
         if bug.trigger_relationship.dua_relationship.fake_dua:
             print("NON-BUG")
         else:
-            print("BUG {} id={}".format(bug_index, bug.id))
+            try:
+                bug_type_name = BugKind(bug.type)
+            except ValueError:
+                bug_type_name = f"UNKNOWN({bug.type})"
+            print("BUG {} id={} type={}".format(bug_index, bug.id, bug_type_name))
         print("    ATP file: ", bug.atp_relationship.loc.filename)
         print("        line: ", bug.atp_relationship.loc.begin.line)
         print("DUA:")
@@ -665,7 +674,7 @@ def get_suffix(file_name: str) -> str:
 
 
 def run_modified_program(project: dict, install_dir: str, original_input_file: str,
-                         timeout: int, shell: bool= False):
+                         shell: bool= False):
     """
     Run the command to test if the injected bug did crash the program or not.
     This is to confirm, even with modifications, the program does NOT crash with the original input.
@@ -675,7 +684,6 @@ def run_modified_program(project: dict, install_dir: str, original_input_file: s
         project: LAVA project configuration
         install_dir: directory with binary
         original_input_file: The input file passed into the modified program
-        timeout: time to wait before killing program
         shell: Run on bash shell or not
 
     Returns:
@@ -792,9 +800,8 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
         fuzz_labels_list.extend([d.all_labels for d in extra_query])
     mutate_file(str(unfuzzed_input_file), fuzz_labels_list, fuzzed_input_file_name, bug,
             solution=solution, **mutfile_kwargs)
-    timeout = project.get('timeout', 5)
     rv, output = run_modified_program(project, lp.bugs_install,
-                                      fuzzed_input_file_name, timeout, shell=True)
+                                      fuzzed_input_file_name, shell=True)
     print(f"retval = {rv}")
     validated = False
     if not bug.trigger_relationship.dua_relationship.fake_dua:
@@ -864,7 +871,7 @@ def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths,
     for input_file in input_files:
         unfuzzed_input = os.path.join(project["config_dir"], 'inputs', os.path.basename(input_file))
         rv, output = run_modified_program(project, lp.bugs_install,
-                                          str(unfuzzed_input), timeout, shell=True)
+                                          str(unfuzzed_input), shell=True)
         unfuzzed_outputs[os.path.basename(input_file)] = output
         if rv != arguments.exitCode:
             print("***** buggy program fails on original input - \
@@ -1005,10 +1012,39 @@ def check_architecture_compatibility(target_arch: str, strict_64_only: bool = Tr
     return False
 
 
+def nuke_invalid_lava_bugs(db: LavaDatabase):
+    print("Scanning database to nuke invalid real-bugs tied to chaff nodes...")
+    all_bugs = db.session.query(Bug).all()
+    nuked_count = 0
+
+    for bug in all_bugs:
+        # Cast the raw integer from the DB back to the BugKind Enum
+        bug_enum = BugKind(bug.type)
+
+        # Safer check: if "CHAFF" is not in the enum name, it is a real bug
+        is_real_bug = "CHAFF" not in bug_enum.name
+
+        # Traverse the relationships to get the AST name
+        lval = bug.trigger_relationship.dua_relationship.lval_relationship
+
+        # If it is a real bug AND it is tied to a chaff node, NUKE IT.
+        if is_real_bug and lval and "lava_chaff" in lval.ast_name:
+            print(f"NUKE: Deleting Bug ID {bug.id} (Type: {bug_enum.name} on chaff node: {lval.ast_name})")
+            db.session.delete(bug)
+            nuked_count += 1
+
+    if nuked_count > 0:
+        db.session.commit()
+        print(f"Database sanitized: Permanently nuked {nuked_count} invalid bugs.")
+    else:
+        print("Database sanitized: No invalid chaff-tied bugs found.")
+
+
 def main(arguments: argparse.Namespace, lp: LavaPaths):
     # Run the guard check. Toggle strict_64_only based on your experimental parameters
     project = lp.config
     db = LavaDatabase(project)
+    nuke_invalid_lava_bugs(db)
 
     dataflow = project.get("dataflow", False)
     allowed_bugtypes = get_allowed_bugtype_num(arguments)
@@ -1025,12 +1061,10 @@ def main(arguments: argparse.Namespace, lp: LavaPaths):
 
     # TODO: Integrate the following lines when its time to put Chaff bugs in
     # Write the fnwhitelist to indicate root && end of dataflow
-    # function_white_list = os.path.join(project["output_dir"], "fnwhitelist")
-    # combined_functions = os.path.join(project["output_dir"], "getfns.json")
-    # genFnTraceHelper(db, bug_list, function_white_list, combined_functions)
-
-    # Write the fnwhitelist to indicate where to probe extra variables for stack overflow
-    # genStackVarHelper(db, bug_list, function_white_list)
+    function_white_list = os.path.join(project["output_dir"], "fninstr")
+    combined_functions = os.path.join(project["output_dir"], "getfns.json")
+    genStackVarHelper(db, bug_list, function_white_list)
+    genFnTraceHelper(db, bug_list, function_white_list, combined_functions)
 
     # add all those bugs to the source code and check that it compiles
     # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?

@@ -18,10 +18,11 @@ def genFnTraceHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist: 
     bug_list = db.session.query(Bug).filter(Bug.id.in_(bug_list)).filter(Bug.type == BugKind.BUG_CHAFF_STACK_UNUSED).all()
     for bug in bug_list:
         atp = bug.atp
-        calltrace_list = db.session.query(CallTrace).filter(CallTrace.id.in_(atp.ctrace)).all()
         likely_root = None
         for calltrace_id in atp.ctrace[::-1]:
-            calltrace = filter(lambda x: x.id == calltrace_id, calltrace_list)[0]
+            calltrace: CallTrace = db.session.query(CallTrace).get(calltrace_id)
+            if not calltrace:
+                continue
             function = calltrace.caller.split('!')[1]
             if function in fundefs and function not in fpas:
                 if likely_root is None:
@@ -47,7 +48,7 @@ def genFnTraceHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist: 
             for containing_function in calls[function]:
                 function_root.append(containing_function)
 
-    with open(function_whitelist, 'w') as fd:
+    with open(function_whitelist, 'a') as fd:
         for fn in function_dataflow:
             fd.write("NOFILENAME df %s\n" % fn)
         for fn in function_root:

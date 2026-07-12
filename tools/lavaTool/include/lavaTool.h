@@ -500,7 +500,6 @@ void mark_for_siphon_extra(const DuaBytes *dua_bytes) {
     LvalBytes lval_bytes(dua_bytes);
     auto tridx = dua_bytes->dua->trace_index;
     const SourceTrace *tr = db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tridx);
-    //extra_siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
     extra_siphons_at[tr->loc].insert(lval_bytes);
 
     debug(INJECT) << "    Mark extra siphon at " << lval_bytes.lval->loc << "\n";

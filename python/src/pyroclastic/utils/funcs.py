@@ -47,7 +47,7 @@ def get_inject_parser():
     return parser
 
 
-def print_tail(logfile, n=17):
+def print_tail(logfile, n: int = 21):
     if os.path.exists(logfile):
         with open(logfile, "r") as f:
             for line in deque(f, n):
@@ -291,9 +291,10 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", environmen
     Also, it runs any pre_make steps, steps that should be done before lava_preprocessing and the make process itself.
 
     Args:
-        lava_path: The class used to track all paths for the specific project and configs
-        main_directory: the working directory
-        coverage: whether to use code coverage flags or not
+        :param lava_path: The class used to track all paths for the specific project and configs
+        :param main_directory: the working directory
+        :param lf:
+        :param environment:
     """
     if main_directory == "":
         main_directory = Path.cwd()

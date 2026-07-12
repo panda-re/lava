@@ -75,15 +75,6 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         debug(FNARG) << "Call addarg for dataflow\n";
         CAddArg(call);
         debug(FNARG) << "Done with addarg\n";
-
-        /*
-        loc.print(debug(FNARG), *Mod.sm);
-
-        if (call->getNumArgs() == 0) {
-            Mod.InsertAt(loc, ARG_NAME);
-        } else {
-            Mod.InsertAt(loc, ARG_NAME ", ");
-        }*/
     }
 
 };
