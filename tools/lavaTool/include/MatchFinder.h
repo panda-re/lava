@@ -199,20 +199,8 @@ public:
             insert_at_top = "#include <lava/pirate_mark_lava.h>\n";
         } else if (LavaAction == LavaInjectBugs) {
             insert_at_top.append(logging_macros.str());
-            if (!ArgDataflow) {
-                std::stringstream top;
-                if (main_files.count(getAbsolutePath(Filename)) > 0) {
-                    top << "unsigned __attribute__ ((visibility (\"default\"))) int lava_val[" << data_slots.size() << "] = {0};\n"
-                        << "unsigned __attribute__ ((visibility (\"default\"))) int lava_extra[" << extra_data_slots.size() << "] = {0};\n"
-                        << "unsigned __attribute__ ((visibility (\"default\"))) int lava_state[" << extra_data_slots.size() << "] = {0};\n"
-                        << "void * __attribute__ ((visibility (\"default\"))) lava_chaff_pointer = (void*)0;\n";
-                } else {
-                    top << "extern unsigned int lava_val[];\n"
-                        << "extern unsigned int lava_extra[];\n"
-                        << "extern unsigned int lava_state[];\n"
-                        << "extern void *lava_chaff_pointer;\n";
-                }
-                top << ""
+                    // General macros you need for both Chaff and LAVA
+                    top << ""
                     << "#define lava_set(slot, val) {"
                     << "lava_val[slot] = val&0xffffffff; }\n"
                     << "#define lava_get(slot)  lava_val[slot] \n"
@@ -243,6 +231,19 @@ public:
 
                     << "#define lava_check_state(slot) "
                     << "(lava_state[slot] == 3)\n";       // exactly 2 constraints
+            if (!ArgDataflow) {
+                std::stringstream top;
+                if (main_files.count(getAbsolutePath(Filename)) > 0) {
+                    top << "unsigned __attribute__ ((visibility (\"default\"))) int lava_val[" << data_slots.size() << "] = {0};\n"
+                        << "unsigned __attribute__ ((visibility (\"default\"))) int lava_extra[" << extra_data_slots.size() << "] = {0};\n"
+                        << "unsigned __attribute__ ((visibility (\"default\"))) int lava_state[" << extra_data_slots.size() << "] = {0};\n"
+                        << "void * __attribute__ ((visibility (\"default\"))) lava_chaff_pointer = (void*)0;\n";
+                } else {
+                    top << "extern unsigned int lava_val[];\n"
+                        << "extern unsigned int lava_extra[];\n"
+                        << "extern unsigned int lava_state[];\n"
+                        << "extern void *lava_chaff_pointer;\n";
+                }
                 insert_at_top.append(top.str());
             }
         }

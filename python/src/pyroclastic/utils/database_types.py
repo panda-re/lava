@@ -720,6 +720,11 @@ class AttackPoint(Base):
     # stack offset, used for Chaff Bug Injection, will be used in Phase II for Bugs
     stack_offset: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
+    @property
+    def ctrace(self) -> List[int]:
+        """Alias to support legacy LAVA code expecting .ctrace"""
+        return self.calltrace
+
     def __str__(self):
         return 'ATP[{}](loc={}:{}, type={}, trace_idx={})'.format(
             self.id, self.loc.filename, self.loc.begin.line, AtpKind(self.type).name, self.trace_index

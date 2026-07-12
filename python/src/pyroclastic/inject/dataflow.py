@@ -1,5 +1,5 @@
 import json
-from pyroclastic.utils.database_types import LavaDatabase, CallTrace, Bug, BugKind
+from pyroclastic.utils.database_types import LavaDatabase, CallTrace, Bug, BugKind, AttackPoint
 
 
 def genFnTraceHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist: str, combined_json: str):
@@ -17,9 +17,9 @@ def genFnTraceHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist: 
     # Fake dataflow only for Unused Chaff Bugs
     bug_list = db.session.query(Bug).filter(Bug.id.in_(bug_list)).filter(Bug.type == BugKind.BUG_CHAFF_STACK_UNUSED).all()
     for bug in bug_list:
-        atp = bug.atp
         likely_root = None
-        for calltrace_id in atp.ctrace[::-1]:
+        atp_obj = db.session.query(AttackPoint).get(bug.atp)
+        for calltrace_id in atp_obj.ctrace[::-1]:
             calltrace: CallTrace = db.session.query(CallTrace).get(calltrace_id)
             if not calltrace:
                 continue
@@ -63,9 +63,9 @@ def genStackVarHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist:
     # append addvar to the functions of stack overflow
     bug_list = db.session.query(Bug).filter(Bug.id.in_(bug_list)).filter(Bug.type == BugKind.BUG_CHAFF_STACK_CONST).all()
     for bug in bug_list:
-        atp = bug.atp
-        if atp.ctrace:
-            current_calltrace_id = atp.ctrace[-1]
+        atp_obj = db.session.query(AttackPoint).get(bug.atp)
+        if atp_obj.ctrace:
+            current_calltrace_id = atp_obj.ctrace[-1]
             calltrace = db.session.query(CallTrace).get(current_calltrace_id)
             function = calltrace.caller.split('!')[1]
             function_list.append(function)

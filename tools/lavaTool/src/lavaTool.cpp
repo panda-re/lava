@@ -126,12 +126,7 @@ int main(int argc, const char **argv) {
 
             mark_for_siphon(bug->trigger);
 
-            if (bug->type != Bug::RET_BUFFER) {
-                for (uint64_t dua_id : bug->extra_duas) {
-                    const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
-                    mark_for_siphon(dua_bytes);
-                }
-            } else if (bug->type != Bug::CHAFF_STACK_UNUSED) {
+            if (bug->type != Bug::CHAFF_STACK_UNUSED) {
                 for (uint64_t dua_id : bug->extra_duas) {
                     const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
                     mark_for_siphon_extra(dua_bytes);
@@ -188,9 +183,6 @@ int main(int argc, const char **argv) {
         }
     }
 
-    if (real_bug) {
-        std::cout << "Final Real Bug : " << real_bug->id << "\n";
-    }
     if (t) {
         t->commit();
         delete t;

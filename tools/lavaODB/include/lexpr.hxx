@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <iomanip>
+#include <sstream>
 
 template<typename InputIt>
 static void infix(InputIt first, InputIt last, std::ostream &os,
@@ -229,9 +231,20 @@ LExpr DataFlowGet(uint32_t slot) {
     return LIndex(LStr("data_flow"), slot);
 }
 
-LExpr LRandomBytes(std::string base, uint32_t len) {
-    std::string randstr = base.substr(rand() % (base.length() - len), len);
-    return LStr("\"" + randstr + "\"");
+LExpr LRandomBytes(uint32_t len) {
+    std::stringstream ss;
+    ss << "\"";
+    for (uint32_t i = 0; i < len; ++i) {
+        // Generate a random byte between 0x00 and 0xFF
+        unsigned char random_byte = rand() % 256;
+
+        // Format it securely as a \xNN hex escape sequence for C strings
+        ss << "\\x"
+           << std::hex << std::setw(2) << std::setfill('0')
+           << (int)random_byte;
+    }
+    ss << "\"";
+    return LStr(ss.str());
 }
 
 LExpr UCharCast(LExpr arg) { return LCast("const unsigned char *", arg); }

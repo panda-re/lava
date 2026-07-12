@@ -81,8 +81,6 @@ std::set<std::string> whitelist;
 std::set<std::string> dataflowroot;
 std::set<std::string> addvarlist;
 
-#define UNUSED_RANDOM_BYTES "Once upon a midnight dreary, while I pondered, weak and weary, Over many a quaint and curious volume of forgotten lore- While I nodded, nearly napping, suddenly there came a tapping, As of some one gently rapping, rapping at my chamber door. Tis some visitor, I muttered, tapping at my chamber door- Only this and nothing more."
-
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
 
@@ -239,9 +237,7 @@ void my_terminate(void) {
         std::cerr << "[bt]: (" << i << ") " << messages[i] << std::endl;
     }
     std::cerr << std::endl;
-
     free(messages);
-
     abort();
 }
 
@@ -286,7 +282,9 @@ std::string StripPrefix(std::string filename, std::string prefix) {
         printf("Not a prefix!\n");
         assert(false);
     }
-    while (filename[prefix_len] == '/') prefix_len++;
+    while (filename[prefix_len] == '/') {
+        prefix_len++;
+    }
     return filename.substr(prefix_len);
 }
 
@@ -308,8 +306,9 @@ bool QueriableType(const clang::Type *lval_type) {
 
 bool IsArgAttackable(const Expr *arg) {
     debug(MATCHER) << "IsArgAttackable \n";
-    if (DEBUG_FLAGS & MATCHER) arg->dump();
-
+    if (DEBUG_FLAGS & MATCHER) {
+        arg->dump();
+    }
     const clang::Type *t = arg->IgnoreParenImpCasts()->getType().getTypePtr();
     if (dyn_cast<OpaqueValueExpr>(arg) || t->isStructureType() || t->isEnumeralType() || t->isIncompleteType()) {
         return false;
@@ -318,7 +317,7 @@ bool IsArgAttackable(const Expr *arg) {
         if (t->isPointerType()) {
             const clang::Type *pt = t->getPointeeType().getTypePtr();
             // its a pointer to a non-void
-            if ( ! (pt->isVoidType() ) ) {
+            if (!(pt->isVoidType())) {
                 return true;
             }
         }
@@ -340,10 +339,12 @@ uint32_t alphanum(int len) {
             "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
             "abcdefghijklmnopqrstuvwxyz";
         uint32_t ret = 0;
-        for (int i=0; i < len; i++) {
+        for (int i = 0; i < len; i++) {
             char c = alphanum[rand() % (sizeof(alphanum)-1)];
-            ret +=c;
-            if (i+1 != len) ret = ret << 8;
+            ret += c;
+            if (i+1 != len) {
+                ret = ret << 8;
+            }
         }
 
         return ret;
@@ -370,12 +371,12 @@ LExpr Test(const Bug *bug) {
 }
 
 LExpr threeDuaTest(Bug *bug, LvalBytes x, LvalBytes y) {
-        //return (Get(bug->trigger)+Get(x)) == (LHex(bug->magic)*Get(y)); // GOOD
-        //return (Get(x)) == (Get(bug->trigger)*(Get(y)+LHex(bug->magic))); // GOOD
-        //return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - Get(bug->trigger)); // GOOD
+    //return (Get(bug->trigger)+Get(x)) == (LHex(bug->magic)*Get(y)); // GOOD
+    //return (Get(x)) == (Get(bug->trigger)*(Get(y)+LHex(bug->magic))); // GOOD
+    //return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - Get(bug->trigger)); // GOOD
 
-        //return (Get(bug->trigger)<<LHex(3) == (LHex(bug->magic) << LHex(5) + Get(y))); // BAD - segfault
-        //return (Get(bug->trigger)^Get(x)) == (LHex(bug->magic)*(Get(y)+LHex(7))); // Segfault
+    //return (Get(bug->trigger)<<LHex(3) == (LHex(bug->magic) << LHex(5) + Get(y))); // BAD - segfault
+    //return (Get(bug->trigger)^Get(x)) == (LHex(bug->magic)*(Get(y)+LHex(7))); // Segfault
 
     // TESTING - simple multi dua bug if ABC are all == m we pass
     //return ((Get(x) - Get(y) + Get(bug->trigger)) == LHex(bug->magic));
@@ -459,7 +460,9 @@ uint32_t rand_ascii4() {
     uint32_t ret = 0;
     for (int i=0; i < 4; i++) {
         ret += (rand() % (0x7F-0x20)) + 0x20;
-        if (i !=3) ret = ret<<8;
+        if (i !=3) {
+            ret = ret<<8;
+        }
     }
     return ret;
 }
@@ -517,11 +520,13 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
 
     // Just for fail safe
     // - probably won't even trigger the bug if things like this happens
-    if (tr_end < tr_start)  tr_start = tr_end;
+    if (tr_end < tr_start) {
+        tr_start = tr_end;
+    }
 
     // gen 4 overconstrain code - each taking care of 1 byte
     uint32_t nstep = 2;
-    uint32_t flipflag = rand()&1;
+    uint32_t flipflag = rand() & 1;
     std::string checkfunc = "";
     switch (rand()%5) {
     case 0:
@@ -543,8 +548,9 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
     }
     if (bug == real_bug)    checkfunc = "lava_check_const_low_4";
     for (uint32_t i = 0; i < nstep; i++) {
-        if (tr_end != tr_start)
+        if (tr_end != tr_start) {
             tr_start = tr_start + (rand() % (tr_end - tr_start));
+        }
         std::unique_ptr<SourceTrace> tr(
                 db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tr_start));
         ASTLoc ast_loc = tr->loc;
