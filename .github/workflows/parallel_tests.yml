@@ -46,7 +46,6 @@ jobs:
 
       - name: Create Wheel file
         run: |
-          cd python
           python3 -m pip install --upgrade build
           python3 -m pip install pytest protobuf>=4.21.0
           python3 -m build --wheel .
@@ -83,11 +82,10 @@ jobs:
           --health-retries 5
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
     - name: Update and install all requirements
       run: |
         bash install.sh
-        cd python
         python3 -m pip install --upgrade pip
         python3 -m pip install .
     - name: Setup LAVA
@@ -145,7 +143,7 @@ jobs:
               http = true
 
       - name: Check out
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 

@@ -66,7 +66,6 @@ jobs:
 
       - name: Create Wheel file
         run: |
-          cd python
           python3 -m pip install --upgrade build
           PRETEND_VERSION=${{ needs.create_release.outputs.v-version }} python3 -m build --wheel .
 
