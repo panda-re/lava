@@ -21,6 +21,7 @@ void parse_whitelist(std::string whitelist_filename) {
     while ((read = getline(&line, &len, fp)) != -1) {
         char *p = line;
         char *np = strtok(p, " ");
+        char *tag = strtok(NULL, " ");
         char *npp = strtok(NULL, "\n");
 
         if (npp == NULL) {
@@ -30,7 +31,14 @@ void parse_whitelist(std::string whitelist_filename) {
 
         debug(FNARG) << "\t np= " << np << " npp=" << npp << "\n";
         auto wlp = std::make_pair(std::string(np), std::string(npp));
-        whitelist.insert(std::string(npp));
+        // Extra tagging to indicate the root function of dataflow
+        if (!strcmp(tag, "df")) {
+            whitelist.insert(std::string(npp));
+        } else if (!strcmp(tag, "root")) {
+            dataflowroot.insert(std::string(npp));
+        } else if (!strcmp(tag, "addvar")) {    // add unused variables
+            addvarlist.insert(std::string(npp));
+        }
         debug(FNARG) << "white list entry: file = [" << np << "] func = [" << npp << "]\n";
 
     }
@@ -52,12 +60,12 @@ int main(int argc, const char **argv) {
     RANDOM_SEED = ArgRandSeed;
     srand(RANDOM_SEED);
 
-
-    if (LavaWL != "XXX")
+    if (LavaWL != "XXX") {
         parse_whitelist(LavaWL);
-    else
+    }
+    else {
         debug(FNARG) << "No whitelist\n";
-
+    }
     if (ArgDebug) {
         errs() << "DEBUG MODE: Only adding data_flow\n";
 
@@ -66,7 +74,9 @@ int main(int argc, const char **argv) {
         return 0;
     }
 
-    if (LavaDB != "XXX") StringIDs = LoadDB(LavaDB);
+    if (LavaDB != "XXX") {
+        StringIDs = LoadDB(LavaDB);
+    }
 
     odb::transaction *t = nullptr;
 
@@ -116,12 +126,16 @@ int main(int argc, const char **argv) {
 
             mark_for_siphon(bug->trigger);
 
-            if (bug->type != Bug::RET_BUFFER) {
+            if (bug->type != Bug::CHAFF_STACK_UNUSED) {
                 for (uint64_t dua_id : bug->extra_duas) {
                     const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
-                    mark_for_siphon(dua_bytes);
+                    mark_for_siphon_extra(dua_bytes);
+
+                    // Siphon Overconstrain injection point
+                    mark_for_overconst_extra(bug, dua_bytes);
                 }
             }
+
         }
     }
 
@@ -134,7 +148,9 @@ int main(int argc, const char **argv) {
         std::cout << "num taint queries added " << num_taint_queries << "\n";
         std::cout << "num atp queries added " << num_atp_queries << "\n";
 
-        if (LavaDB != "XXX") SaveDB(StringIDs, LavaDB);
+        if (LavaDB != "XXX") {
+            SaveDB(StringIDs, LavaDB);
+        }
     } else if (LavaAction == LavaInjectBugs) {
         // TODO this logic is flawed, bugs can be injected across files/directories
         // and this is specific to one single run of lavaTool

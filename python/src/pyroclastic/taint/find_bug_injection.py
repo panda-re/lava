@@ -3,10 +3,11 @@ import sys
 import ijson
 import os
 from sqlalchemy.exc import IntegrityError
-from typing import Iterable, TypeVar, DefaultDict, Set, Optional, List, cast
+from typing import Iterable, TypeVar, DefaultDict, Set, Optional, List, Tuple, cast
 from collections import defaultdict
 from sqlalchemy.orm import Session
 
+from pyroclastic.utils.database_types import SourceTrace, CallTrace
 from pyroclastic.utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, Range, LavaDatabase, Dua
 from pyroclastic.utils.database_types import AtpKind, AtpExecution, LivenessSnapshot
 from pyroclastic.utils.vars import parse_vars
@@ -37,6 +38,8 @@ recent_dead_duas: dict[int, Dua] = {}
 
 num_real_duas : int = 0
 num_fake_duas : int = 0
+
+current_call_stack: List[Tuple[str, str]] = []
 
 
 def dprint(project_data: dict, message: str):
@@ -136,7 +139,7 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
         session,
         AttackPoint,
         loc=ast_loc,
-        type=attack_point_type
+        type=attack_point_type,
     ))
     atp_exec = cast(AtpExecution, get_or_create(
         session,
@@ -153,7 +156,8 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
 # dua_dependencies, recent_dead_duas, recent_duas_by_instr
 # num_real_duas, num_fake_duas, chaff_bugs, FAKE_DUA_BYTE_FLAG
 
-def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], project_data: dict):
+def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], project_data: dict,
+                    source_trace_index: int):
     """
     Process a Taint Query Priority entry to identify potential DUAs (Dead Unused Available).
     """
@@ -166,6 +170,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
 
     source_info = taint_query_header["srcInfo"]
     filename = source_info["filename"]
+    stack_offset: int = source_info["insertionpoint"]
 
     # Ignore headers
     if is_header_file(filename):
@@ -299,11 +304,42 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
     dprint(project_data, f"is_dua={is_dua} is_fake_dua={is_fake_dua}")
     assert not (is_dua and is_fake_dua)
 
-    if is_dua or is_fake_dua:
-        ast_loc_id = source_info["astLocId"]
+    ast_loc_id: int = source_info["astLocId"]
 
-        # Create ASTLoc object
-        ast_loc: ASTLoc = ASTLoc.from_serialized(ind2str[ast_loc_id])
+    # Create ASTLoc object
+    ast_loc: ASTLoc = ASTLoc.from_serialized(ind2str[ast_loc_id])
+
+    calltrace_ids : list[int] = []
+    for file_callee, function_callee in current_call_stack:
+        ct = cast(CallTrace, get_or_create(
+            session,
+            CallTrace,
+            caller=function_callee,
+            filename=file_callee,
+        ))
+        calltrace_ids.append(ct.id)
+
+    # Handle Buffer Overflow Injection (RET_BUFFER)
+    # Create AttackPoint (QUERY_POINT)
+    atp = cast(AttackPoint, get_or_create(
+        session,
+        AttackPoint,
+        loc=ast_loc,
+        type=AtpKind.QUERY_POINT,
+        source_trace_index=source_trace_index,
+        stack_offset=stack_offset,
+        calltrace_ids=calltrace_ids,
+    ))
+
+    get_or_create(
+        session,
+        AtpExecution,
+        atp_id=atp.id,
+        inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
+        instr=instr_addr
+    )
+
+    if is_dua or is_fake_dua:
 
         # Create SourceLval
         lval: SourceLval = cast(SourceLval, get_or_create(
@@ -321,9 +357,10 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             session,
             Dua,
             lval=lval.id,
-            inputfile=project_data.get("input_file", "unknown"),
+            inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
             instr=instr_addr,
             fake_dua=is_fake_dua,
+            trace_index=source_trace_index,
 
             # --- DATA PAYLOAD (Only used if creating a NEW entry) ---
             defaults={
@@ -339,23 +376,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         if is_dua:
             for l in sorted_labels:
                 dua_dependencies[l].add(dua)
-
-        # Handle Buffer Overflow Injection (RET_BUFFER)
-        # Create AttackPoint (QUERY_POINT)
-        atp = cast(AttackPoint, get_or_create(
-            session,
-            AttackPoint,
-            loc=ast_loc,
-            type=AtpKind.QUERY_POINT
-        ))
-
-        get_or_create(
-            session,
-            AtpExecution,
-            atp_id=atp.id,
-            inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
-            instr=instr_addr
-        )
 
         dprint(project_data, "OK DUA.")
 
@@ -447,7 +467,7 @@ def update_unique_taint_sets(unique_label_set: dict, session: Session, project_d
     Update the global mapping of unique taint sets based on the provided unique_label_set from PANDA Log.
     Args:
         unique_label_set (dict): the Panda Log unique label set
-        session (Session): Database session too add the LabelSet
+        session (Session): Database session to add the LabelSet
         project_data (dict): Lava project parameters
     """
     dprint(project_data, "UNIQUE TAINT SET")
@@ -599,18 +619,51 @@ def record_call(ple: dict):
     """
     Record a Dwarf2 call from Panda Log
     Args:
-        ple: Pandalog entry
+        :param ple: Pandalog entry
     """
-    pass
+    call = ple["dwarf2Call"]
+    file_callee = call["fileCallee"]
+    function_callee = call["functionNameCallee"]
+
+    # Skip library calls
+    if function_callee.beginswith("libc") and function_callee.endswith(".so"):
+        return
+
+    current_call_stack.append((file_callee, function_callee))
 
 
 def record_ret(ple: dict):
     """
     Record a Dwarf2 call from Panda Log
     Args:
-        ple: Pandalog entry
+        :param ple: Panda Log Entry
     """
-    pass
+    ret = ple["dwarf2Ret"]
+    file_callee = ret["fileCallee"]
+    function_callee = ret["functionNameCallee"]
+
+    # Skip library calls
+    if function_callee.beginswith("libc") and function_callee.endswith(".so"):
+        return
+
+    if len(current_call_stack) == 0:
+        return
+
+    stored_file_callee, stored_function_callee = current_call_stack.pop()
+    assert stored_file_callee == file_callee, "The CallTrace file does not match"
+    assert stored_function_callee == function_callee, "The CallTrace function does not match"
+
+
+def record_trace(ple: dict, lava_db: dict, session: Session):
+    source_trace_id : int = ple["sourceTraceId"]
+    ast_loc: ASTLoc = lava_db[source_trace_id]
+    get_or_create(
+        session,
+        SourceTrace,
+        loc=ast_loc,
+        index=source_trace_id
+    )
+
 
 
 def is_header_file(filename: str) -> bool:
@@ -690,6 +743,7 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
         # 'item' iterates over elements in the root array
         parser = ijson.items(plog_file, 'item')
 
+        current_source_trace_id = 0
         with LavaDatabase(project_data) as db:
             for ple in parser:
                 num_entries_read += 1
@@ -698,7 +752,7 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     print(f"{len(recent_dead_duas)} current duas {num_real_duas} real duas {num_fake_duas} fake duas")
 
                 if "taintQueryPri" in ple:
-                    taint_query_pri(ple, db.session, lava_db, project_data)
+                    taint_query_pri(ple, db.session, lava_db, project_data, current_source_trace_id)
                 elif "taintedBranch" in ple:
                     update_liveness(ple, db.session, project_data)
                 elif "attackPoint" in ple:
@@ -707,6 +761,9 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     record_call(ple)
                 elif "dwarfRet" in ple:
                     record_ret(ple)
+                elif "sourceTraceId" in ple:
+                    record_trace(ple, lava_db, db.session)
+                    current_source_trace_id += 1
                 elif "fileTaintMatch" in ple:
                     project_data["input_file"] = os.path.basename(ple['fileTaintMatch']['filename'])
 

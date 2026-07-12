@@ -2,7 +2,7 @@ import argparse
 import yaml
 import json
 from typing import Dict, List, Any
-from ..utils.vars import parse_vars
+from ..utils.vars import LavaPaths
 
 
 def parse_fundecl(fd: dict):
@@ -62,10 +62,8 @@ def append_to_dict_list(dictionary: Dict[str, List[Any]], key: str, value: Any) 
     dictionary[key].append(value)
 
 
-def analysis(project_name: str, output_file: str, inputs: list[str], project_config: dict, ignore_function_pointers=False):
+def analysis(output_file: str, inputs: list[str], project_config: dict, ignore_function_pointers: bool = False):
     """
-
-    :param project_name:
     :param output_file:
     :param inputs:
     :param project_config:
@@ -273,7 +271,7 @@ def analysis(project_name: str, output_file: str, inputs: list[str], project_con
         for name in sorted(instr_judgement.keys()):
             if instr_judgement[name] == OKI:
                 if name not in banned_functions:
-                    f.write(f"NOFILENAME {name}\n")
+                    f.write(f"NOFILENAME df {name}\n")
 
 
 if __name__ == "__main__":
@@ -281,12 +279,13 @@ if __name__ == "__main__":
         description='Use output of LavaFnTool to figure out which parts of preproc code to instrument'
     )
 
-    parser.add_argument('-p', '--project', action="store", default=None,
+    parser.add_argument('-p', '--project', dest="project", action="store", default=None,
                         help="The project name of the LAVA project to read vars.py")
-    parser.add_argument('-o', '--output', action="store", default=None,
+    parser.add_argument('-o', '--output', dest="output", action="store", default=None,
                         help="name of output yaml file containing instrumentation decisions")
-    parser.add_argument('-f', '--function', action="store_true",
+    parser.add_argument('-f', '--function', dest="function", action="store_true",
                         help="Set ignore function pointers or not, it is off by default")
 
     args, input_list = parser.parse_known_args()
-    analysis(args.project, args.output, input_list)
+    lava_path = LavaPaths(args.project)
+    analysis(args.output, input_list, lava_path.config, ignore_function_pointers=args.function)

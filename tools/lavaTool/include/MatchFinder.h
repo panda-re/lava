@@ -94,6 +94,7 @@ public:
                 // make sure we aren't in static local variable initializer which must be constant
                 unless(hasAncestor(varDecl(isStaticLocalDeclMatcher()))));
 
+        // Used to find and plant memory Bugs
         addMatcher(memoryAccessMatcher, makeHandler<MemoryAccessHandler>());
 
         // This matches every stmt in a compound statement
@@ -106,7 +107,11 @@ public:
                 stmt(hasParent(compoundStmt())).bind("stmt"),
                 makeHandler<PriQueryPointHandler>()
                 );
-
+        // function declarations & definition.  Decl without body is prototype
+        // This has been updated to suport Chaff Bugs too
+        addMatcher(
+                    functionDecl().bind("funcDecl"),
+                    makeHandler<FuncDeclArgAdditionHandler>());
         addMatcher(
                 callExpr(
                     forEachArgMatcher(expr(isAttackableMatcher()).bind("arg"))).bind("call"),
@@ -117,11 +122,6 @@ public:
 
         // fortenforge's matchers (for data_flow argument addition)
         if (ArgDataflow && LavaAction == LavaInjectBugs) {
-            // function declarations & definition.  Decl without body is prototype
-            addMatcher(
-                    functionDecl().bind("funcDecl"),
-                    makeHandler<FuncDeclArgAdditionHandler>());
-
             // Function call
             addMatcher(
                 fieldDecl().bind("fielddecl"),
@@ -193,25 +193,59 @@ public:
             insert_at_top = "#include <lava/pirate_mark_lava.h>\n";
         } else if (LavaAction == LavaInjectBugs) {
             insert_at_top.append(logging_macros.str());
+
+            // --- SURGERY PART 1: CHAFF LOGIC (Always Emitted) ---
+            // Chaff bugs always need their macros AND their storage arrays, regardless of LAVA's dataflow settings.
+            std::stringstream chaff_logic;
+            chaff_logic << "\n// --- Chaff Bug Macros ---\n"
+                        << "#define lava_set_extra(slot, val) { lava_extra[slot] = (val&0xffffffff); lava_state[slot]=0; }\n"
+                        << "#define lava_get_extra(slot) ((unsigned long long)lava_extra[slot]) \n"
+                        << "#define lava_check_const_high(slot) (((lava_extra[slot]>>16)&0xffff)==0)\n"
+                        << "#define lava_update_const_high(slot) { lava_state[slot]|=1; }\n"
+                        << "#define lava_check_const_low_1(slot) (__builtin_popcount(lava_extra[slot]&0xffff) == 0)\n"
+                        << "#define lava_check_const_low_2(slot) (__builtin_ffs(lava_extra[slot]&0xffff) == 0)\n"
+                        << "#define lava_check_const_low_3(slot) (!(lava_extra[slot]&0xffff))\n"
+                        << "#define lava_check_const_low_4(slot) (((lava_extra[slot]&0xffff)*0xfe)==0)\n"
+                        << "#define lava_check_const_low_5(slot) (__builtin_popcount(((lava_extra[slot]&0xffff)+1)) == 1)\n"
+                        << "#define lava_check_const_low_6(slot) (__builtin_ctz((lava_extra[slot]&0xffff)|0x10000) >= 16)\n"
+                        << "#define lava_update_const_low(slot) { lava_state[slot]|=2; }\n"
+                        << "#define lava_check_state(slot) (lava_state[slot] == 3)\n\n"
+                        << "// --- Chaff Storage Arrays ---\n";
+                        
+            if (main_files.count(getAbsolutePath(Filename)) > 0) {
+                chaff_logic << "unsigned __attribute__ ((visibility (\"default\"))) int lava_extra[" << extra_data_slots.size() << "] = {0};\n"
+                            << "unsigned __attribute__ ((visibility (\"default\"))) int lava_state[" << extra_data_slots.size() << "] = {0};\n"
+                            << "void * __attribute__ ((visibility (\"default\"))) lava_chaff_pointer = (void*)0;\n";
+            } else {
+                chaff_logic << "extern unsigned int lava_extra[];\n"
+                            << "extern unsigned int lava_state[];\n"
+                            << "extern void *lava_chaff_pointer;\n";
+            }
+            insert_at_top.append(chaff_logic.str());
+
+            // --- SURGERY PART 2: ORIGINAL LAVA LOGIC (Guarded by !ArgDataflow) ---
+            // Original LAVA bugs only need this global storage if they aren't using the ArgDataflow backend.
             if (!ArgDataflow) {
                 if (main_files.count(getAbsolutePath(Filename)) > 0) {
                     std::stringstream top;
-                    top << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
+                    top << "\n// --- LAVA Storage & Functions ---\n"
+                        << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
                         << "void lava_set(unsigned int, unsigned int);\n"
                         << "__attribute__((visibility(\"default\")))\n"
                         << "void lava_set(unsigned int slot, unsigned int val) {\n"
                         << "#ifdef DUA_LOGGING\n"
-                            << "fprintf(stderr, \"\\nlava_set:%d=%d: %s:%d\\n\", slot, val, __FILE__, __LINE__);\n"
-                            << "fflush(NULL);\n"
+                        << "    fprintf(stderr, \"\\nlava_set:%d=%d: %s:%d\\n\", slot, val, __FILE__, __LINE__);\n"
+                        << "    fflush(NULL);\n"
                         << "#endif\n"
-                        << "lava_val[slot] = val; }\n"
+                        << "    lava_val[slot] = val; }\n"
                         << "unsigned int lava_get(unsigned int);\n"
                         << "__attribute__((visibility(\"default\")))\n"
                         << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
                     insert_at_top.append(top.str());
                 } else {
-                    insert_at_top.append("void lava_set(unsigned int bn, unsigned int val);\n"
-                    "extern unsigned int lava_get(unsigned int);\n");
+                    insert_at_top.append("\n// --- LAVA Externs ---\n"
+                                         "void lava_set(unsigned int bn, unsigned int val);\n"
+                                         "extern unsigned int lava_get(unsigned int);\n");
                 }
             }
         }

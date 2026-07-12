@@ -16,8 +16,9 @@ struct FunctionArgHandler : public LavaMatchHandler {
         const Expr *toAttack = Result.Nodes.getNodeAs<Expr>("arg");
         // and this is the fn call
         const CallExpr *call = Result.Nodes.getNodeAs<CallExpr>("call");
-        if (call == nullptr) return;
-
+        if (call == nullptr) {
+            return;
+        }
         const SourceManager &sm = *Result.SourceManager;
 
         auto sl1 = call->getBeginLoc();

@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <iomanip>
+#include <sstream>
 
 template<typename InputIt>
 static void infix(InputIt first, InputIt last, std::ostream &os,
@@ -110,7 +112,7 @@ struct LExpr {
             ::infix(expr.instrs.cbegin(), expr.instrs.cend(), os,
                     "\"", "\\n\\t", "\"");
             os << " : : ";
-            expr.infix(os, "\"rm\" (", "), \"rm\" (", ")");
+            expr.infix(os, "\"r\" (", "), \"r\" (", ")");
             os << ")";
         } else if (expr.t == LExpr::DEREF) {
             os << '*' << *expr.args.at(0);
@@ -221,8 +223,28 @@ LExpr LavaGet(uint32_t slot) {
     return LFunc("lava_get", { LDecimal(slot) });
 }
 
+LExpr LavaGetExtra(uint32_t slot) {
+    return LFunc("lava_get_extra", { LDecimal(slot) });
+}
+
 LExpr DataFlowGet(uint32_t slot) {
     return LIndex(LStr("data_flow"), slot);
+}
+
+LExpr LRandomBytes(uint32_t len) {
+    std::stringstream ss;
+    ss << "\"";
+    for (uint32_t i = 0; i < len; ++i) {
+        // Generate a random byte between 0x00 and 0xFF
+        unsigned char random_byte = rand() % 256;
+
+        // Format it securely as a \xNN hex escape sequence for C strings
+        ss << "\\x"
+           << std::hex << std::setw(2) << std::setfill('0')
+           << (int)random_byte;
+    }
+    ss << "\"";
+    return LStr(ss.str());
 }
 
 LExpr UCharCast(LExpr arg) { return LCast("const unsigned char *", arg); }
@@ -239,7 +261,11 @@ LExpr SelectCast(const SourceLval *lval, Range selected) {
 }
 
 LExpr LavaSet(const SourceLval *lval, Range selected, uint32_t slot) {
-    return LFunc("lava_set", { LDecimal(slot), SelectCast(lval, selected) });
+    return LBlock({LFunc("lava_set", { LDecimal(slot), SelectCast(lval, selected) })});
+}
+
+LExpr LavaSetExtra(const SourceLval *lval, Range selected, uint32_t slot) {
+    return LBlock({LFunc("lava_set_extra", { LDecimal(slot), SelectCast(lval, selected) })});
 }
 
 LExpr DataFlowSet(const SourceLval *lval, Range selected, uint32_t slot) {

@@ -38,7 +38,7 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
     fninstr_path = lava_path.project_dir / "fninstr"
 
     # 8. Call fninstr.py analysis
-    analysis(lava_path.config['name'], str(fninstr_path), fn_files, lava_path.config)
+    analysis(str(fninstr_path), fn_files, lava_path.config)
 
     # 9. lavaTool Injection
     atp_flag = f"-{atp_type}" if atp_type else ""
@@ -50,6 +50,7 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
             f"-lava-wl={fninstr_path}",
             f"-p={lava_path.source_directory}/compile_commands.json",
             f"-src-prefix={lava_path.source_directory.resolve()}",
+            f"-host={lava_path.config['database']}",
             f"-db={lava_path.config['db']}",
             file
         ]

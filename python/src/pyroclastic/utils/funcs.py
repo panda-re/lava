@@ -42,12 +42,12 @@ def get_inject_parser():
     parser.add_argument("-n", "--count", type=int, default=50,
                         help="Number of bugs to inject at once")
     parser.add_argument("-y", "--bugtypes", type=str,
-                        default="ptr_add,rel_write,malloc_off_by_one",
+                        default="ptr_add,rel_write,malloc_off_by_one,ret_buffer",
                         help="Comma separated list of bug types")
     return parser
 
 
-def print_tail(logfile, n=17):
+def print_tail(logfile, n: int = 21):
     if os.path.exists(logfile):
         with open(logfile, "r") as f:
             for line in deque(f, n):
@@ -188,7 +188,7 @@ def run_local(
             sys.exit(e.returncode)
 
 
-def delete_directory(target_dir: str, force=False):
+def delete_directory(target_dir: str, force: bool = False):
     """
     Python port of the delete_directory Bash function.
 
@@ -291,9 +291,10 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", environmen
     Also, it runs any pre_make steps, steps that should be done before lava_preprocessing and the make process itself.
 
     Args:
-        lava_path: The class used to track all paths for the specific project and configs
-        main_directory: the working directory
-        coverage: whether to use code coverage flags or not
+        :param lava_path: The class used to track all paths for the specific project and configs
+        :param main_directory: the working directory
+        :param lf:
+        :param environment:
     """
     if main_directory == "":
         main_directory = Path.cwd()
@@ -321,7 +322,7 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", environmen
         print(f'Configuring... {full_config}')
         run_local(full_config, env=envv, cwd=str(main_directory), shell=True, logfile=lf)
         # For old GNU projects
-        neuter_autotools_completely(main_directory)
+        neuter_autotools_completely(str(main_directory))
 
     pre_make = lava_path.config.get("pre_make", "")
     if pre_make != "":

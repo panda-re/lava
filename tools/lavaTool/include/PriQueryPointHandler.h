@@ -99,7 +99,13 @@ struct PriQueryPointHandler : public LavaMatchHandler {
 
             // Generate the LAVA instrumentation code:
             // If (Safe) { Siphon(Value); }
-            result_ss << LIf(nntests + ast_name, Set(lval_bytes));
+            result_ss << LIf(nntests + ast_name, Set(lval_bytes)).render() << "\n";
+        }
+
+        for (const LvalBytes &lval_bytes : map_get_default(extra_siphons_at, ast_loc)) {
+            result_ss << LavaSetExtra(
+                    lval_bytes.lval, lval_bytes.selected,
+                    extra_data_slots.at(lval_bytes)).render() << ";\n";
         }
 
         std::string result = result_ss.str();
@@ -108,7 +114,94 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             debug(PRI) << "    Text: " << result << "\n";
         }
         siphons_at.erase(ast_loc); // Only inject once.
+        extra_siphons_at.erase(ast_loc);
         return result;
+    }
+
+    std::string AttackChaffBugs(ASTLoc ast_loc) {
+        // Remember if DebugInject is True, all Chaff Bugs are Divide by Zero
+        std::stringstream result_ss;
+        auto key = std::make_pair(ast_loc, AttackPoint::QUERY_POINT);
+        for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
+            if (bug->type == Bug::CHAFF_DIVZERO || DebugInject) {
+                const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
+                LvalBytes extra_bytes(extra_dua_bytes);
+                LExpr checker = Test(bug) && LFunc("lava_check_state", {
+                    LDecimal(extra_data_slots[extra_bytes])
+                });
+                // Generate the C expression string for fetching the extra data
+                std::string get_ext = LavaGetExtra(extra_data_slots.at(extra_bytes)).render();
+
+                // Bypass LIf and write standard C code directly into the stringstream
+                result_ss << "if (" << checker.render() << ") {\n"
+                << "    #if defined(__x86_64__) || defined(__i386__)\n"
+                << "        volatile int chaff_div = 1 / (int)(" << get_ext << ");\n"
+                << "    #elif defined(__aarch64__) || defined(__arm__)\n"
+                << "        if ((" << get_ext << ") == 0) { __builtin_trap(); }\n"
+                << "    #else\n"
+                << "        volatile int chaff_div = 1 / (int)(" << get_ext << ");\n"
+                << "    #endif\n"
+                << "}\n";
+            } else if (bug->type == Bug::CHAFF_STACK_UNUSED) {
+                result_ss << LIf(Test(bug).render(), {
+                LFunc("memcpy", {
+                LStr("(void*)(lava_chaff_var_2-4)"),
+                LRandomBytes(8),
+                LDecimal(8)
+                }),
+                LAssign(LDeref(LStr(ARG_NAME)), LStr("*(int*)lava_chaff_var_2"))
+                });
+            } else if (bug->type == Bug::CHAFF_STACK_CONST) {
+                const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
+                LvalBytes extra_bytes(extra_dua_bytes);
+                LExpr checker = Test(bug) && LFunc("lava_check_state", {
+                    LDecimal(extra_data_slots[extra_bytes])
+                });
+
+                // Generate the C expression string for fetching the extra data
+                std::string get_ext = LavaGetExtra(extra_data_slots.at(extra_bytes)).render();
+
+                // Bypass LIf and write standard C code directly into the stringstream
+                result_ss << "if (" << checker.render() << ") {\n"
+                << "    #if defined(__x86_64__)\n"
+                << "        __asm__ volatile(\"movq %0, 8(%%rbp)\" : : \"r\" ((unsigned long long)(" << get_ext << ")));\n"
+                << "    #elif defined(__i386__)\n"
+                << "        __asm__ volatile(\"movl %0, 4(%%ebp)\" : : \"r\" ((unsigned int)(" << get_ext << ")));\n"
+                << "    #elif defined(__aarch64__)\n"
+                << "        __asm__ volatile(\"str %0, [x29, #8]\" : : \"r\" ((unsigned long long)(" << get_ext << ")));\n"
+                << "    #elif defined(__arm__)\n"
+                << "        __asm__ volatile(\"str %0, [fp, #4]\" : : \"r\" ((unsigned int)(" << get_ext << ")));\n"
+                << "    #endif\n"
+                << "}\n";
+                } else if (bug->type == Bug::CHAFF_HEAP_CONST) {
+                    // TODO: Likely broken because only tested on glibc 2.24
+                    const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
+                    LvalBytes extra_bytes(extra_dua_bytes);
+                    LExpr checker = Test(bug) && LFunc("lava_check_state", {
+                        LDecimal(extra_data_slots[extra_bytes])
+                    });
+
+                    result_ss << LIf(checker.render(), {
+                        LIfDef("__x86_64__", {
+                        LBlock({
+                        LAssign(LStr("void *lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
+                        LAssign(LStr("*((long long*)(((char*)lava_chaff_pointer)+0x10))"), LDecimal(32)),
+                        LAssign(LStr("*((long long*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(24)),
+                        LAssign(LStr("*((long long*)(((char*)lava_chaff_pointer)+0x28))"),
+                        LavaGetExtra(extra_data_slots.at(extra_bytes)))
+                    }),
+                    LBlock({
+                        LAssign(LStr("void *lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
+                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x18))"), LDecimal(16)),
+                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(12)),
+                        LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x24))"),
+                        LavaGetExtra(extra_data_slots.at(extra_bytes)))
+                    })
+                   })
+                });
+            }
+        }
+        return result_ss.str();
     }
 
     std::string AttackRetBuffer(ASTLoc ast_loc) {
@@ -158,7 +251,6 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                 }
             }
         }
-        bugs_with_atp_at.erase(key); // Only inject once.
         return result_ss.str();
     }
 
@@ -192,7 +284,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             before = "; " + LFunc("vm_lava_pri_query_point", {
                 LDecimal(GetStringID(StringIDs, ast_loc)),
                 LDecimal(ast_loc.begin.line),
-                LDecimal(0)}).render() + "; ";
+                LStr("&lava_chaff_var_2")}).render() + "; ";    // Pass the func addr through hypercall
 
             num_taint_queries += 1;
         } else if (LavaAction == LavaInjectBugs) {
@@ -201,8 +293,23 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             // Well, not quite.  We are also considering all such code / trace
             // locations as potential inject points for attack point that is
             // stack-pivot-then-return.  Ugh.
-            before = SiphonsForLocation(ast_loc) + AttackRetBuffer(ast_loc);
+            before = SiphonsForLocation(ast_loc) + AttackRetBuffer(ast_loc) + AttackChaffBugs(ast_loc);
+            // Safely erase the key AFTER all attacks have been processed
+            auto key = std::make_pair(ast_loc, AttackPoint::QUERY_POINT);
+            bugs_with_atp_at.erase(key);
         }
+
+        if (LavaAction == LavaInjectBugs) {
+            //std::stringstream result_ss;
+            for (const LExpr &expr : map_get_default(extra_overconst_expr, ast_loc)) {
+                //result_ss << expr;
+                //Mod.Change(toSiphon).InsertBefore(result_ss.str());
+                Mod.Change(toSiphon).InsertBefore(expr.render());
+            }
+            extra_overconst_expr.erase(ast_loc);
+        }
+
+        // Ensure lava_set/lava_set_extra always comes first
         Mod.Change(toSiphon).InsertBefore(before);
     }
 };

@@ -52,8 +52,9 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
                 debug(FNARG) << "called function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
                 return;
             }
-        } else debug(FNARG) << "We have a func pointer?\n";
-
+        } else {
+            debug(FNARG) << "We have a func pointer?\n";
+        }
         // If we get here, we are instrumenting a call to a function on our whitelist that is in
         // the body of a function also on our whitelist.
 
@@ -63,7 +64,6 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
             call->getBeginLoc().print(debug(FNARG), *Mod.sm);
             debug(FNARG) << "\n";
             //debug(FNARG) << " argcount=" << call->getNumArgs() << "\n";
-            //loc = call->getArg(0)->getBeginLoc();
         } else if (Mod.sm->isInSystemHeader(func->getLocation())) {
             debug(FNARG) << "in system header\n";
             return;
@@ -74,15 +74,6 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         debug(FNARG) << "Call addarg for dataflow\n";
         CAddArg(call);
         debug(FNARG) << "Done with addarg\n";
-
-        /*
-        loc.print(debug(FNARG), *Mod.sm);
-
-        if (call->getNumArgs() == 0) {
-            Mod.InsertAt(loc, ARG_NAME);
-        } else {
-            Mod.InsertAt(loc, ARG_NAME ", ");
-        }*/
     }
 
 };

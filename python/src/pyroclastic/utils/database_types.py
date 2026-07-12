@@ -165,6 +165,10 @@ class BugKind(IntEnum):
     BUG_REL_WRITE = 2
     BUG_PRINTF_LEAK = 3
     BUG_MALLOC_OFF_BY_ONE = 4
+    BUG_CHAFF_STACK_UNUSED = 5
+    BUG_CHAFF_STACK_CONST = 6
+    BUG_CHAFF_HEAP_CONST = 7
+    BUG_CHAFF_DIVZERO = 8
 
     def __str__(self):
         return self.name
@@ -172,36 +176,28 @@ class BugKind(IntEnum):
 class Bug(Base):
     __tablename__ = 'bug'
 
-    # 1. Primary Key
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
 
-    # 2. Foreign Keys
-    # mapped_column('db_col_name', Type, ForeignKey)
+    # Mapped directly to columns
     trigger: Mapped[int] = mapped_column('trigger', BigInteger, ForeignKey('duabytes.id'), nullable=False)
-    atp: Mapped[int] = mapped_column('atp', BigInteger, ForeignKey('attackpoint.id'), nullable=False)
     trigger_lval: Mapped[int] = mapped_column('trigger_lval', BigInteger, ForeignKey('sourcelval.id'), nullable=False)
-    # 3. Type Column
+    atp: Mapped[int] = mapped_column('atp', BigInteger, ForeignKey('attackpoint.id'), nullable=False)
     type: Mapped[BugKind] = mapped_column("type", Integer, nullable=False)
 
-    # 4. Relationships
+    max_liveness: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    magic: Mapped[int] = mapped_column(Integer, nullable=False)
+    extra_duas: Mapped[List[int]] = mapped_column(postgresql.ARRAY(BigInteger), nullable=False)
+
+    # --- Added for Chaff Bugs ---
+    # uint32_t stackoff;
+    stackoff: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     trigger_relationship: Mapped["DuaBytes"] = relationship("DuaBytes", foreign_keys=[trigger],
                                                             overlaps="trigger", viewonly=True)
     atp_relationship: Mapped["AttackPoint"] = relationship("AttackPoint", foreign_keys=[atp],
                                                            overlaps="atp", viewonly=True)
     lval_relationship: Mapped["SourceLval"] = relationship("SourceLval", foreign_keys=[trigger_lval],
                                                            viewonly=True, overlaps="trigger_lval")
-
-    # 5. Data Columns
-    # Note: C++ uses uint64_t for max_liveness, but Python often treats liveness as float.
-    # If C++ says uint64, Integer is safer unless you know it's fractional.
-    max_liveness: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-
-    # C++ initializes magic to 0 in list, then calculates it. Database says NOT NULL.
-    magic: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    # 6. Arrays
-    # C++: std::vector<uint64_t> extra_duas;
-    extra_duas: Mapped[List[int]] = mapped_column(postgresql.ARRAY(BigInteger), nullable=False)
 
     # The Real Relationship to the intermediate table
     build_associations = relationship(
@@ -217,19 +213,23 @@ class Bug(Base):
         creator=lambda _build: BuildBug(build=_build)
     )
 
-    # 8. Constraints
+    # --- Structural Constraint Updates ---
     __table_args__ = (
-        # #pragma db index("BugUniq") unique members(type, atp, trigger_lval)
-        UniqueConstraint('type', 'atp', 'trigger_lval', name='BugUniq'),
+        # #pragma db index("BugUniq") unique members(type, atp, trigger, extra_duas)
+        UniqueConstraint('type', 'atp', 'trigger', 'extra_duas', name='BugUniq'),
     )
 
-    # --- CONSTANTS ---
+    # Mirroring num_extra_duas array
     required_extra_duas_for_type = {
         BugKind.BUG_PTR_ADD: 0,
         BugKind.BUG_RET_BUFFER: 1,
         BugKind.BUG_REL_WRITE: 2,
         BugKind.BUG_PRINTF_LEAK: 0,
-        BugKind.BUG_MALLOC_OFF_BY_ONE: 0
+        BugKind.BUG_MALLOC_OFF_BY_ONE: 0,
+        BugKind.BUG_CHAFF_STACK_UNUSED: 0,
+        BugKind.BUG_CHAFF_STACK_CONST: 1,
+        BugKind.BUG_CHAFF_HEAP_CONST: 1,
+        BugKind.BUG_CHAFF_DIVZERO: 1,
     }
 
     def __init__(self,
@@ -238,7 +238,7 @@ class Bug(Base):
                  atp: Union[int, "AttackPoint"],
                  extra_duas: Union[List[int], List["DuaBytes"]],
                  max_liveness: int = 0,
-                 magic: int = 0, **kwargs):
+                 magic: int = 0, stackoff: int = 0, **kwargs):
         """
         Mirroring C++ Constructor logic:
         Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
@@ -264,9 +264,6 @@ class Bug(Base):
                 dua_object = cast("Dua", cast(object, trigger.dua))
                 resolved_lval_id = dua_object.lval
 
-        # 2. Handle Extra Duas Logic
-        # C++ accepts both IDs (uint64) or Pointers (DuaBytes*).
-        # We standardize to List[int] (IDs) for the DB column.
         final_extras = []
         if extra_duas:
             for item in extra_duas:
@@ -281,17 +278,22 @@ class Bug(Base):
         super().__init__(
             type=resolved_bug_type,
             trigger=t_id,
-            trigger_lval=resolved_lval_id,  # Auto-filled!
+            trigger_lval=resolved_lval_id,
             atp=a_id,
-            extra_duas=final_extras,  # Auto-converted!
+            extra_duas=final_extras,
+            stackoff=stackoff,  # Propagated to column mapping definition
             max_liveness=max_liveness,
             magic=magic,
             **kwargs
         )
 
+    def magic_kt(self) -> int:
+        """Mirrors inline uint16_t magic_kt() const"""
+        return self.magic & 0xffff
+
     def __str__(self):
-        return 'Bug[{}](type={}, trigger={}, atp={})'.format(
-            self.id, BugKind(self.type).name, self.trigger, self.atp)
+        return 'Bug[{}](type={}, trigger={}, atp={}, stackoff={})'.format(
+            self.id, BugKind(self.type).name, self.trigger, self.atp, self.stackoff)
 
 class Build(Base):
     __tablename__ = 'build'
@@ -452,7 +454,6 @@ class LabelSet(Base):
     def __repr__(self):
         return f"LabelSet(ptr={self.ptr}, labels={self.labels})"
 
-
 class Dua(Base):
     __tablename__ = 'dua'
 
@@ -494,25 +495,32 @@ class Dua(Base):
             assoc = DuaViableByte(index=i, labelset=ls)
             self._viable_bytes_assoc.append(assoc)
 
-    # The missing column from C++ std::vector<uint32_t> byte_tcn
     byte_tcn: Mapped[List[int]] = mapped_column(postgresql.ARRAY(Integer), nullable=False)
-
-    # C++ std::vector<uint32_t> all_labels
     all_labels: Mapped[List[int]] = mapped_column(postgresql.ARRAY(Integer), nullable=False)
 
-    # 4. Standard Metadata
     inputfile: Mapped[str] = mapped_column(Text, nullable=False)
     max_tcn: Mapped[int] = mapped_column(Integer, nullable=False)
     max_cardinality: Mapped[int] = mapped_column(Integer, nullable=False)
     instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
     fake_dua: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
-    # 5. Relationship Backref
     lval_relationship: Mapped["SourceLval"] = relationship("SourceLval",
                                                            viewonly=True,
                                                            overlaps="lval")
 
-    # 6. Unique Constraint (Matches #pragma db index("DuaUniq")...)
+    # --- Added for Chaff Bugs ---
+    # uint64_t trace_index;
+    trace_index: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    # OPTIONAL BOOTSTRAPPING FOR PYTHON:
+    # This allows you to do `my_dua.source_trace` directly in Python to grab the
+    # matched SourceTrace row, matching on `SourceTrace.index` instead of its primary key ID.
+    source_trace_relationship: Mapped["SourceTrace"] = relationship(
+        "SourceTrace",
+        primaryjoin="Dua.trace_index == SourceTrace.index",
+        foreign_keys=[trace_index],
+        viewonly=True,  # viewonly ensures Python doesn't try to alter C++ tables automatically
+    )
+
     __table_args__ = (
         UniqueConstraint(
             'lval',
@@ -537,15 +545,8 @@ class Dua(Base):
         return f"DUA [{self.inputfile}][{self.lval_relationship},{viable_bytes_str},{self.max_tcn},{self.max_cardinality},{self.instr},{'fake' if self.fake_dua else 'real'}]"
 
     def __lt__(self, other):
-        """
-        Mirrors C++ operator<:
-        return std::tie(lval->id, inputfile, instr, fake_dua) < ...
-        """
         if not isinstance(other, Dua):
             return NotImplemented
-
-        # We use lval_id directly (the Foreign Key ID) as it is much faster
-        # than triggering a lazy load for the full SourceLval object.
         return (self.lval, self.inputfile, self.instr, self.fake_dua) < \
             (other.lval, other.inputfile, other.instr, other.fake_dua)
 
@@ -626,6 +627,67 @@ class AtpKind(IntEnum):
     def __str__(self):
         return f"ATP_{self.name}"
 
+
+class CallTrace(Base):
+    __tablename__ = 'calltrace'
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    caller: Mapped[str] = mapped_column("caller", Text, nullable=False)
+    file: Mapped[str] = mapped_column("file", Text, nullable=False)
+    # Enforce Uniqueness at the Database Level
+    # This is critical once we start passing lots of files via concolic execution, expect lots of duplicates.
+    __table_args__ = (
+        UniqueConstraint(
+            'caller', 'file',
+            name='_calltrace_unique_constraint'
+        ),
+    )
+
+    def __lt__(self, other):
+        """
+        Mirrors C++ operator<:
+        """
+        if not isinstance(other, CallTrace):
+            return NotImplemented
+
+        # We use lval_id directly (the Foreign Key ID) as it is much faster
+        # than triggering a lazy load for the full SourceLval object.
+        return (self.caller, self.file ) < (other.caller, other.file)
+
+
+class SourceTrace(Base):
+    __tablename__ = 'sourcetrace'
+
+    # #pragma db id auto
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+
+    # #pragma db not_null
+    index: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    # #pragma db not_null ASTLoc loc
+    # Define the ACTUAL Database Columns for composite mapping
+    _f: Mapped[str] = mapped_column("loc_filename", Text, nullable=False)
+    _bl: Mapped[int] = mapped_column("loc_begin_line", Integer, nullable=False)
+    _bc: Mapped[int] = mapped_column("loc_begin_column", Integer, nullable=False)
+    _el: Mapped[int] = mapped_column("loc_end_line", Integer, nullable=False)
+    _ec: Mapped[int] = mapped_column("loc_end_column", Integer, nullable=False)
+
+    # Map them to the ASTLoc Object using your helper function
+    loc: Mapped[ASTLoc] = composite(create_ast_loc, _f, _bl, _bc, _el, _ec)
+
+    # #pragma db index("SourceTraceUniq") unique members(index)
+    __table_args__ = (
+        UniqueConstraint('index', name='SourceTraceUniq'),
+    )
+
+    def __lt__(self, other):
+        if not isinstance(other, SourceTrace):
+            return NotImplemented
+        return self.index < other.index
+
+    def __repr__(self):
+        return f"<SourceTrace id={self.id} index={self.index} loc={self.loc}>"
+
+
 class AttackPoint(Base):
     __tablename__ = 'attackpoint'
 
@@ -644,18 +706,37 @@ class AttackPoint(Base):
     loc: Mapped[ASTLoc] = composite(create_ast_loc, _f, _bl, _bc, _el, _ec)
     type: Mapped[AtpKind] = mapped_column("type", Integer, nullable=False)
 
+    # --- 3. Chaff Bug Extensions ---
+    # std::vector<uint64_t> calltrace;
+    calltrace: Mapped[List[int]] = mapped_column(
+        postgresql.ARRAY(BigInteger),
+        nullable=False,
+        default=list,
+        server_default='{}'
+    )
+
+    # uint64_t trace_index; (Tracks context relationship to SourceTrace.index)
+    trace_index: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    # stack offset, used for Chaff Bug Injection, will be used in Phase II for Bugs
+    stack_offset: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+
+    @property
+    def ctrace(self) -> List[int]:
+        """Alias to support legacy LAVA code expecting .ctrace"""
+        return self.calltrace
+
     def __str__(self):
-        return 'ATP[{}](loc={}:{}, type={})'.format(
-            self.id, self.loc.filename, self.loc.begin.line, AtpKind(self.type).name
+        return 'ATP[{}](loc={}:{}, type={}, trace_idx={})'.format(
+            self.id, self.loc.filename, self.loc.begin.line, AtpKind(self.type).name, self.trace_index
         )
 
-    # Enforce Uniqueness at the Database Level
-    # This is critical once we start passing lots of files via concolic execution, expect lots of duplicates.
+    # #pragma db index("AttackPointUniq") unique members(loc, type, trace_index)
+    # Updated to reflect your new uniqueness constraints
     __table_args__ = (
         UniqueConstraint(
             'loc_filename', 'loc_begin_line', 'loc_begin_column',
-            'loc_end_line', 'loc_end_column', 'type',
-            name='_atp_unique_constraint'
+            'loc_end_line', 'loc_end_column', 'type', 'trace_index',
+            name='AttackPointUniq'
         ),
     )
 

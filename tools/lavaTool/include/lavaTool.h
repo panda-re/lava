@@ -78,6 +78,8 @@ uint32_t num_taint_queries = 0;
 // that can be instrumented
 // with dua and atp queries (which will later mean bugs)
 std::set<std::string> whitelist;
+std::set<std::string> dataflowroot;
+std::set<std::string> addvarlist;
 
 using namespace odb::core;
 std::unique_ptr<odb::pgsql::database> db;
@@ -108,6 +110,11 @@ struct LvalBytes {
 // Map of bugs with siphon of a given  lval name at a given loc.
 std::map<ASTLoc, vector_set<LvalBytes>> siphons_at;
 std::map<LvalBytes, uint32_t> data_slots;
+// Same mapping for siphon of extra_duas
+std::map<ASTLoc, vector_set<LvalBytes>> extra_siphons_at;
+std::map<LvalBytes, uint32_t> extra_data_slots;
+
+std::map<ASTLoc, std::vector<LExpr>> extra_overconst_expr;
 
 std::string LavaPath;
 
@@ -117,6 +124,7 @@ Loc::Loc(const FullSourceLoc &full_loc)
 
 static std::vector<const Bug*> bugs;
 static std::set<std::string> main_files;
+const Bug *real_bug = nullptr;
 
 static std::map<std::string, uint32_t> StringIDs;
 
@@ -187,6 +195,10 @@ static cl::opt<std::string> DBHost("host",
 static cl::opt<int> DBPort("port",
     cl::desc("Remote Port"),
     cl::init(5432));
+static cl::opt<bool> DebugInject("debug-inject",
+    cl::desc("Debug Option: Replacing All bugs to Divide-by-Zero"),
+    cl::cat(LavaCategory),
+    cl::init(false));
 
 unsigned int RANDOM_SEED = 0;
 
@@ -225,9 +237,7 @@ void my_terminate(void) {
         std::cerr << "[bt]: (" << i << ") " << messages[i] << std::endl;
     }
     std::cerr << std::endl;
-
     free(messages);
-
     abort();
 }
 
@@ -272,7 +282,9 @@ std::string StripPrefix(std::string filename, std::string prefix) {
         printf("Not a prefix!\n");
         assert(false);
     }
-    while (filename[prefix_len] == '/') prefix_len++;
+    while (filename[prefix_len] == '/') {
+        prefix_len++;
+    }
     return filename.substr(prefix_len);
 }
 
@@ -294,8 +306,9 @@ bool QueriableType(const clang::Type *lval_type) {
 
 bool IsArgAttackable(const Expr *arg) {
     debug(MATCHER) << "IsArgAttackable \n";
-    if (DEBUG_FLAGS & MATCHER) arg->dump();
-
+    if (DEBUG_FLAGS & MATCHER) {
+        arg->dump();
+    }
     const clang::Type *t = arg->IgnoreParenImpCasts()->getType().getTypePtr();
     if (dyn_cast<OpaqueValueExpr>(arg) || t->isStructureType() || t->isEnumeralType() || t->isIncompleteType()) {
         return false;
@@ -304,7 +317,7 @@ bool IsArgAttackable(const Expr *arg) {
         if (t->isPointerType()) {
             const clang::Type *pt = t->getPointeeType().getTypePtr();
             // its a pointer to a non-void
-            if ( ! (pt->isVoidType() ) ) {
+            if (!(pt->isVoidType())) {
                 return true;
             }
         }
@@ -326,10 +339,12 @@ uint32_t alphanum(int len) {
             "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
             "abcdefghijklmnopqrstuvwxyz";
         uint32_t ret = 0;
-        for (int i=0; i < len; i++) {
+        for (int i = 0; i < len; i++) {
             char c = alphanum[rand() % (sizeof(alphanum)-1)];
-            ret +=c;
-            if (i+1 != len) ret = ret << 8;
+            ret += c;
+            if (i+1 != len) {
+                ret = ret << 8;
+            }
         }
 
         return ret;
@@ -356,12 +371,12 @@ LExpr Test(const Bug *bug) {
 }
 
 LExpr threeDuaTest(Bug *bug, LvalBytes x, LvalBytes y) {
-        //return (Get(bug->trigger)+Get(x)) == (LHex(bug->magic)*Get(y)); // GOOD
-        //return (Get(x)) == (Get(bug->trigger)*(Get(y)+LHex(bug->magic))); // GOOD
-        //return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - Get(bug->trigger)); // GOOD
+    //return (Get(bug->trigger)+Get(x)) == (LHex(bug->magic)*Get(y)); // GOOD
+    //return (Get(x)) == (Get(bug->trigger)*(Get(y)+LHex(bug->magic))); // GOOD
+    //return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - Get(bug->trigger)); // GOOD
 
-        //return (Get(bug->trigger)<<LHex(3) == (LHex(bug->magic) << LHex(5) + Get(y))); // BAD - segfault
-        //return (Get(bug->trigger)^Get(x)) == (LHex(bug->magic)*(Get(y)+LHex(7))); // Segfault
+    //return (Get(bug->trigger)<<LHex(3) == (LHex(bug->magic) << LHex(5) + Get(y))); // BAD - segfault
+    //return (Get(bug->trigger)^Get(x)) == (LHex(bug->magic)*(Get(y)+LHex(7))); // Segfault
 
     // TESTING - simple multi dua bug if ABC are all == m we pass
     //return ((Get(x) - Get(y) + Get(bug->trigger)) == LHex(bug->magic));
@@ -432,7 +447,7 @@ LExpr twoDuaTest(const Bug *bug, LvalBytes x) {
 bool fninstr(std::pair<std::string, std::string> fnname) {
     std::string filename = fnname.first;
     std::string function_name = fnname.second;
-    if (whitelist.size()>0) {
+    if (whitelist.size() > 0) {
         if (whitelist.count(function_name) == 0)
             return false;  // dont instrument
         else
@@ -445,7 +460,9 @@ uint32_t rand_ascii4() {
     uint32_t ret = 0;
     for (int i=0; i < 4; i++) {
         ret += (rand() % (0x7F-0x20)) + 0x20;
-        if (i !=3) ret = ret<<8;
+        if (i !=3) {
+            ret = ret<<8;
+        }
     }
     return ret;
 }
@@ -470,12 +487,108 @@ LExpr knobTriggerAttack(const Bug *bug) {
 void mark_for_siphon(const DuaBytes *dua_bytes) {
 
     LvalBytes lval_bytes(dua_bytes);
-    siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
+    auto tridx = dua_bytes->dua->trace_index;
+    const SourceTrace *tr = db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tridx);
+    //siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
+    siphons_at[tr->loc].insert(lval_bytes);
 
     debug(INJECT) << "    Mark siphon at " << lval_bytes.lval->loc << "\n";
 
     // if insert fails do nothing. we already have a slot for this one.
     data_slots.insert(std::make_pair(lval_bytes, data_slots.size()));
+}
+
+void mark_for_siphon_extra(const DuaBytes *dua_bytes) {
+
+    LvalBytes lval_bytes(dua_bytes);
+    auto tridx = dua_bytes->dua->trace_index;
+    const SourceTrace *tr = db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tridx);
+    extra_siphons_at[tr->loc].insert(lval_bytes);
+
+    debug(INJECT) << "    Mark extra siphon at " << lval_bytes.lval->loc << "\n";
+
+    // if insert fails do nothing. we already have a slot for this one.
+    extra_data_slots.insert(std::make_pair(lval_bytes, extra_data_slots.size()));
+}
+
+void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
+
+    uint64_t tr_end = bug->atp->trace_index;
+    uint64_t tr_start = dua_bytes->dua->trace_index;
+
+    LvalBytes lval_bytes(dua_bytes);
+
+    // Just for fail safe
+    // - probably won't even trigger the bug if things like this happens
+    if (tr_end < tr_start) {
+        tr_start = tr_end;
+    }
+
+    // gen 4 overconstrain code - each taking care of 1 byte
+    uint32_t nstep = 2;
+    uint32_t flipflag = rand() & 1;
+    std::string checkfunc = "";
+    switch (rand()%5) {
+    case 0:
+        checkfunc = "lava_check_const_low_1";
+        break;
+    case 1:
+        checkfunc = "lava_check_const_low_2";
+        break;
+    case 2:
+        checkfunc = "lava_check_const_low_3";
+        break;
+    case 3:
+        checkfunc = "lava_check_const_low_5";
+        break;
+    case 4:
+    default:
+        checkfunc = "lava_check_const_low_6";
+        break;
+    }
+    if (bug == real_bug)    checkfunc = "lava_check_const_low_4";
+    for (uint32_t i = 0; i < nstep; i++) {
+        if (tr_end != tr_start) {
+            tr_start = tr_start + (rand() % (tr_end - tr_start));
+        }
+        std::unique_ptr<SourceTrace> tr(
+                db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tr_start));
+        ASTLoc ast_loc = tr->loc;
+        LExpr checker  = Test(bug);
+        if (flipflag) {
+            if (i > 0) {
+                checker = /*checker &&*/ LFunc(checkfunc, {
+                        LDecimal(extra_data_slots[lval_bytes]) });
+                extra_overconst_expr[ast_loc].emplace_back(
+                        LIf(checker.render(), {
+                            LFunc("lava_update_const_low", {
+                                    LDecimal(extra_data_slots[lval_bytes]) })}));
+            } else {
+                checker = /*checker &&*/ LFunc("lava_check_const_high", {
+                        LDecimal(extra_data_slots[lval_bytes])});
+                extra_overconst_expr[ast_loc].emplace_back(
+                        LIf(checker.render(), {
+                            LFunc("lava_update_const_high", {
+                                    LDecimal(extra_data_slots[lval_bytes]) })}));
+            }
+        } else {
+            if (i == 0) {
+                checker = /*checker &&*/ LFunc(checkfunc, {
+                        LDecimal(extra_data_slots[lval_bytes]) });
+                extra_overconst_expr[ast_loc].emplace_back(
+                        LIf(checker.render(), {
+                            LFunc("lava_update_const_low", {
+                                    LDecimal(extra_data_slots[lval_bytes]) })}));
+            } else {
+                checker = /*checker &&*/ LFunc("lava_check_const_high", {
+                        LDecimal(extra_data_slots[lval_bytes])});
+                extra_overconst_expr[ast_loc].emplace_back(
+                        LIf(checker.render(), {
+                            LFunc("lava_update_const_high", {
+                                    LDecimal(extra_data_slots[lval_bytes]) })}));
+            }
+        }
+    }
 }
 
 #endif

@@ -4,12 +4,14 @@ import sys
 from contextlib import contextmanager
 import os
 from collections import deque
+import subprocess
 # All LAVA steps are imported here
 from .inject import inject
 from .taint import bug_mining
 from .add_queries.add_queries import step_add_queries
 from .utils.vars import LavaPaths
-from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, print_tail, make_and_install, configure_project, deep_clean_target
+from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, \
+    print_tail, make_and_install, configure_project, deep_clean_target, read_compile_db
 
 
 def parse_lava_args() -> argparse.Namespace:
@@ -36,6 +38,7 @@ def parse_lava_args() -> argparse.Namespace:
     steps.add_argument("-q", "--add-queries", action="store_true", help="Run add queries step")
     steps.add_argument("-m", "--make", action="store_true", help="Run make step")
     steps.add_argument("-t", "--taint", action="store_true", help="Run taint step")
+    steps.add_argument("--sanitize", action="store_true", help="Run sanitize step")
     steps.add_argument("-i", "--inject", type=int, metavar="NUM_TRIALS",
                        help="Run inject step with specified number of trials")
 
@@ -73,6 +76,7 @@ def parse_lava_args() -> argparse.Namespace:
         args.add_queries = True
         args.make = True
         args.taint = True
+        args.sanitize = True
         args.inject = 3 if args.inject is None else args.inject
         if args.ak:
             args.force = True
@@ -85,6 +89,7 @@ def parse_lava_args() -> argparse.Namespace:
         args.add_queries = True
         args.make = True
         args.taint = True
+        args.sanitize = True
         args.inject = 3
         args.project_name = sys.argv[1]
 
@@ -279,6 +284,23 @@ def main():
         # Default print last 8 lines of the log, which should have the summary of bug_injection
         # Number might increase with more bug types or debug messages
         print_tail(lf)
+
+    if args.sanitize:
+        # This will assume a compile_commands.json exists to sanitize. If none exists, skip!
+        lf = lava_path.logs_directory / "sanitize.log"
+        progress("everything", 1, f"Sanitize step -- logging to {lf}")
+        source_path = lava_path.source_directory
+        _, c_files = read_compile_db(source_path)
+        duasan_commands = [
+            "duasan",
+            f"-p={source_path}/compile_commands.json",
+            f"-src-prefix={source_path.resolve()}",
+            f"-host={lava_path.config['database']}",
+            f"-db={lava_path.config['db']}"
+        ]
+        duasan_commands.extend(c_files)
+        progress("everything", 1, f"Running {subprocess.list2cmdline(duasan_commands)}")
+        run_local(subprocess.list2cmdline(duasan_commands), lf)
 
     if args.inject:
         progress("everything", 1, f"Injecting step -- {args.inject} trials")
