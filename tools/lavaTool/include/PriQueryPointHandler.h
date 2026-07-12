@@ -201,7 +201,6 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                 });
             }
         }
-        bugs_with_atp_at.erase(key); // Only inject once.
         return result_ss.str();
     }
 
@@ -252,7 +251,6 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                 }
             }
         }
-        bugs_with_atp_at.erase(key); // Only inject once.
         return result_ss.str();
     }
 
@@ -296,6 +294,9 @@ struct PriQueryPointHandler : public LavaMatchHandler {
             // locations as potential inject points for attack point that is
             // stack-pivot-then-return.  Ugh.
             before = SiphonsForLocation(ast_loc) + AttackRetBuffer(ast_loc) + AttackChaffBugs(ast_loc);
+            // Safely erase the key AFTER all attacks have been processed
+            auto key = std::make_pair(ast_loc, AttackPoint::QUERY_POINT);
+            bugs_with_atp_at.erase(key);
         }
 
         if (LavaAction == LavaInjectBugs) {

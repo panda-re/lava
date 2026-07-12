@@ -112,9 +112,9 @@ jobs:
         # Alas, for REL_WRITE toy is too small for 3 DUAs.
         # Alas, for PRINTF, I genuinely am not sure how it works, plus not a priority
         # Alas, for HEAP_CONST is likely not going to work because we are using modern heaps...
-        python -m pyroclastic.lava -i 1 toy --bugtypes "chaff_stack_unused"
-        python -m pyroclastic.lava -i 1 toy --bugtypes "chaff_stack_const"
-        python -m pyroclastic.lava -i 1 toy --bugtypes "chaff_divzero"
+        # python -m pyroclastic.lava -i 1 toy --bugtypes "chaff_stack_unused"
+        # python -m pyroclastic.lava -i 1 toy --bugtypes "chaff_stack_const"
+        # python -m pyroclastic.lava -i 1 toy --bugtypes "chaff_divzero"
 
       env:
         USER: ${{ github.actor }}

@@ -30,7 +30,7 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
         SourceLocation loc = clang::Lexer::findLocationAfterToken(
                 call->getBeginLoc(), tok::l_paren, *Mod.sm, *Mod.LangOpts, true);
 
-        //// No need to check for ArgDataflow, since matcher only called then
+        // No need to check for ArgDataflow, since matcher only called then
         auto fnname = get_containing_function_name(Result, *call);
         // only instrument call if its in the body of a function that is on our whitelist
         if (fninstr(fnname)) {
@@ -64,7 +64,6 @@ struct CallExprArgAdditionHandler : public LavaMatchHandler {
             call->getBeginLoc().print(debug(FNARG), *Mod.sm);
             debug(FNARG) << "\n";
             //debug(FNARG) << " argcount=" << call->getNumArgs() << "\n";
-            //loc = call->getArg(0)->getLocStart();
         } else if (Mod.sm->isInSystemHeader(func->getLocation())) {
             debug(FNARG) << "in system header\n";
             return;

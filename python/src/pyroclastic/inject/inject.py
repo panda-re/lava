@@ -805,7 +805,7 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
     print(f"retval = {rv}")
     validated = False
     if not bug.trigger_relationship.dua_relationship.fake_dua:
-        print("bug type is " + Bug.type)
+        print("bug type is " + BugKind(bug.type).name)
         if bug.type == BugKind.BUG_PRINTF_LEAK:
             if output != unfuzzed_outputs[bug.trigger_relationship.dua_relationship.inputfile]:
                 print("printf bug -- outputs disagree\n")

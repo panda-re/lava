@@ -42,7 +42,7 @@ def get_inject_parser():
     parser.add_argument("-n", "--count", type=int, default=50,
                         help="Number of bugs to inject at once")
     parser.add_argument("-y", "--bugtypes", type=str,
-                        default="ptr_add,rel_write,malloc_off_by_one",
+                        default="ptr_add,rel_write,malloc_off_by_one,ret_buffer",
                         help="Comma separated list of bug types")
     return parser
 
