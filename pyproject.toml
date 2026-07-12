@@ -16,7 +16,7 @@ pythonpath = [
 addopts = "-s"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["python/src"]
 include = ["pyroclastic", "pyroclastic.*"]
 
 [tool.setuptools.package-data]
