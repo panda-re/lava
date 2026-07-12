@@ -287,19 +287,20 @@ def main():
 
     if args.sanitize:
         # This will assume a compile_commands.json exists to sanitize. If none exists, skip!
-        progress("everything", 1, "Sanitize step -- ")
         lf = lava_path.logs_directory / "sanitize.log"
+        progress("everything", 1, f"Sanitize step -- logging to {lf}")
         source_path = lava_path.source_directory
         _, c_files = read_compile_db(source_path)
         duasan_commands = [
             "duasan",
             f"-p={source_path}/compile_commands.json",
             f"-src-prefix={source_path.resolve()}",
-            f"-db={lava_path.config['db']}",
+            f"-host={lava_path.config['database']}",
+            f"-db={lava_path.config['db']}"
         ]
         duasan_commands.extend(c_files)
         progress("everything", 1, f"Running {subprocess.list2cmdline(duasan_commands)}")
-        # run_local(subprocess.list2cmdline(duasan_commands), lf)
+        run_local(subprocess.list2cmdline(duasan_commands), lf)
 
     if args.inject:
         progress("everything", 1, f"Injecting step -- {args.inject} trials")
