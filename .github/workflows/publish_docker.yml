@@ -80,7 +80,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: pyroclastic
-          path: python/dist/*.whl
+          path: dist/*.whl
           if-no-files-found: error
 
   publish-to-pypi-and-release:
