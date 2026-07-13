@@ -181,40 +181,58 @@ def record_injectable_bugs_offline(project_data: dict, allow_cross_file: bool = 
                 # =====================================================================
                 # CHAFF BUG GENERATION BLOCK
                 # =====================================================================
-                if atp.insertion_point is not None:
-                    # A. CHAFF_STACK_UNUSED requires NO DuaBytes
-                    bug_unused = Bug(
-                        bug_type=BugKind.BUG_CHAFF_STACK_UNUSED.value,
-                        atp=atp.id,
-                        trigger_lval=0,
-                        magic=0
-                    )
-                    db.session.add(bug_unused)
+                if atp.stack_offset != 0 and AtpKind(atp.type) == AtpKind.QUERY_POINT:
+                    seen_lvals = set()
+                    most_recent_duas = []
+                    for d in valid_duas:
+                        if d.lval not in seen_lvals:
+                            seen_lvals.add(d.lval)
+                            most_recent_duas.append(d)
+                    valid_duas = most_recent_duas
 
-                    # B. Find viable DEAD duas for the random sampling loop
                     viable_dead_duas = []
+                    
+                    # A. Find viable DEAD duas (Aligning with C++: Evaluate all for CHAFF_STACK_UNUSED)
                     for dua in valid_duas:
                         native_map = all_liveness_maps.get(dua.inputfile, {})
-                        r, _ = get_offline_dead_range(dua, native_map, exec_event.instr)
-                        if r.size() > 0:
-                            viable_dead_duas.append((dua, r))
+                        r, max_liveness = get_offline_dead_range(dua, native_map, exec_event.instr)
+                        
+                        # Only proceed if we have enough dead bytes for the LAVA magic value
+                        if r.size() >= LAVA_MAGIC_VALUE_SIZE:
+                            viable_dead_duas.append((dua, r, max_liveness))
 
-                    # C. Random Sampling Threshold (Match C++)
+                            # 1. CHAFF_STACK_UNUSED generated for EVERY viable DUA (Matches C++)
+                            labels = extract_labels_from_range(dua, r)
+                            dua_bytes = get_or_create_dua_bytes(db, dua_bytes_cache, dua.id, r, labels)
+
+                            bug_unused = Bug(
+                                bug_type=BugKind.BUG_CHAFF_STACK_UNUSED.value,
+                                trigger=dua_bytes.id,
+                                trigger_lval=dua.lval,
+                                atp=atp.id,
+                                max_liveness=max_liveness,
+                                magic=generate_magic(),
+                                extra_duas=[]  # Explicitly supply empty extra_duas
+                            )
+                            db.session.add(bug_unused)
+                            stats["success"] += 1
+
+                    # B. Random Sampling Threshold for the remaining chaff variants (Match C++)
                     if len(viable_dead_duas) <= random_sampling_threshold:
                         selected_duas = viable_dead_duas
                     else:
                         selected_duas = random.sample(viable_dead_duas, random_sampling_threshold)
 
-                    # D. Generate the 3 variant bugs for each selected DUA
-                    for dua, r in selected_duas:
+                    # C. Generate the 3 variant bugs for each randomly selected DUA
+                    chaff_kinds = [
+                        BugKind.BUG_CHAFF_STACK_CONST,
+                        BugKind.BUG_CHAFF_HEAP_CONST,
+                        BugKind.BUG_CHAFF_DIVZERO
+                    ]
+
+                    for dua, r, max_liveness in selected_duas:
                         labels = extract_labels_from_range(dua, r)
                         dua_bytes = get_or_create_dua_bytes(db, dua_bytes_cache, dua.id, r, labels)
-
-                        chaff_kinds = [
-                            BugKind.BUG_CHAFF_STACK_CONST,
-                            BugKind.BUG_CHAFF_HEAP_CONST,
-                            BugKind.BUG_CHAFF_DIVZERO
-                        ]
 
                         for c_kind in chaff_kinds:
                             c_bug = Bug(
@@ -222,8 +240,9 @@ def record_injectable_bugs_offline(project_data: dict, allow_cross_file: bool = 
                                 trigger=dua_bytes.id,
                                 trigger_lval=dua.lval,
                                 atp=atp.id,
-                                max_liveness=0,
-                                magic=generate_magic()
+                                max_liveness=max_liveness,
+                                magic=generate_magic(),
+                                extra_duas=[]  # Explicitly supply empty extra_duas
                             )
                             db.session.add(c_bug)
                             stats["success"] += 1

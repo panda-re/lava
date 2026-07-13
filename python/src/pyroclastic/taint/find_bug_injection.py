@@ -2,6 +2,7 @@ import json
 import sys
 import ijson
 import os
+import re
 from sqlalchemy.exc import IntegrityError
 from typing import Iterable, TypeVar, DefaultDict, Set, Optional, List, Tuple, cast
 from collections import defaultdict
@@ -11,6 +12,12 @@ from pyroclastic.utils.database_types import SourceTrace, CallTrace
 from pyroclastic.utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, Range, LavaDatabase, Dua
 from pyroclastic.utils.database_types import AtpKind, AtpExecution, LivenessSnapshot
 from pyroclastic.utils.vars import parse_vars
+
+# Matches "libc" at clean boundaries:
+# - Preceded by: start of string (^), a slash (/), or a bang (!)
+# - Followed by: a dot (.), a hyphen (-), a bang (!), or end of string ($)
+# This ignores things like "my_libc_func" or "alibc.c"
+LIBC_BOUNDARY_RE = re.compile(r'(?:^|/|!)libc(?:[-.!]|$)', re.IGNORECASE)
 
 T = TypeVar("T")
 
@@ -315,7 +322,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             session,
             CallTrace,
             caller=function_callee,
-            filename=file_callee,
+            file=file_callee,
         ))
         calltrace_ids.append(ct.id)
 
@@ -326,9 +333,11 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         AttackPoint,
         loc=ast_loc,
         type=AtpKind.QUERY_POINT,
-        source_trace_index=source_trace_index,
-        stack_offset=stack_offset,
-        calltrace_ids=calltrace_ids,
+        defaults={
+            'trace_index': source_trace_index,
+            'stack_offset': stack_offset,
+            'calltrace': calltrace_ids,
+        }
     ))
 
     get_or_create(
@@ -451,10 +460,12 @@ def get_or_create(session: Session, model, defaults: Optional[dict] = None, **kw
         instance = model(**params)
         session.add(instance)
         try:
-            session.flush()
+            # Wrap the flush in a savepoint (nested transaction)
+            with session.begin_nested():
+                session.flush()
             return instance
         except IntegrityError:
-            session.rollback()
+            # SQLAlchemy automatically rolls back the savepoint on error
             instance = session.query(model).filter_by(**kwargs).first()
             if instance:
                 return instance
@@ -625,8 +636,13 @@ def record_call(ple: dict):
     file_callee = call["fileCallee"]
     function_callee = call["functionNameCallee"]
 
-    # Skip library calls
-    if function_callee.beginswith("libc") and function_callee.endswith(".so"):
+    # 1. Instantly catch explicit Linux system library paths
+    if file_callee.startswith(("/lib/", "/usr/lib/", "/lib64/")):
+        return
+
+    # 2. Use boundary-safe regex to catch PANDA's dynamic formats 
+    # (e.g., "libc-2.13.so!malloc" or "libc.so!printf")
+    if LIBC_BOUNDARY_RE.search(file_callee) or LIBC_BOUNDARY_RE.search(function_callee):
         return
 
     current_call_stack.append((file_callee, function_callee))
@@ -642,8 +658,13 @@ def record_ret(ple: dict):
     file_callee = ret["fileCallee"]
     function_callee = ret["functionNameCallee"]
 
-    # Skip library calls
-    if function_callee.beginswith("libc") and function_callee.endswith(".so"):
+    # 1. Instantly catch explicit Linux system library paths
+    if file_callee.startswith(("/lib/", "/usr/lib/", "/lib64/")):
+        return
+
+    # 2. Use boundary-safe regex to catch PANDA's dynamic formats 
+    # (e.g., "libc-2.13.so!malloc" or "libc.so!printf")
+    if LIBC_BOUNDARY_RE.search(file_callee) or LIBC_BOUNDARY_RE.search(function_callee):
         return
 
     if len(current_call_stack) == 0:
@@ -654,14 +675,15 @@ def record_ret(ple: dict):
     assert stored_function_callee == function_callee, "The CallTrace function does not match"
 
 
-def record_trace(ple: dict, lava_db: dict, session: Session):
-    source_trace_id : int = ple["sourceTraceId"]
-    ast_loc: ASTLoc = lava_db[source_trace_id]
+def record_trace(ple: dict, lava_db: dict[int, str], session: Session, source_trace_index: int):
+    source_trace_id : int = ple["sourceTraceId"]["astLocId"]
+    ast_loc_string : str = lava_db[source_trace_id]
+    ast_loc : ASTLoc = ASTLoc.from_serialized(ast_loc_string)
     get_or_create(
         session,
         SourceTrace,
         loc=ast_loc,
-        index=source_trace_id
+        index=source_trace_index
     )
 
 
@@ -706,13 +728,13 @@ def load_db(db_file: str) -> dict[int, str]:
 def save_liveness_to_db(db_session: Session):
     for input_file, liveness in liveness_by_file.items():
         for label, death_instr in liveness.items():
-            snapshot = LivenessSnapshot(
+            get_or_create(
+                db_session,
+                LivenessSnapshot,
                 inputfile=input_file,
                 label=label,
-                death_instr=death_instr
+                defaults={'death_instr': death_instr}
             )
-            db_session.add(snapshot)
-
 
 def parse_panda_log(panda_log_file: str, project_data: dict):
     """
@@ -757,12 +779,12 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     update_liveness(ple, db.session, project_data)
                 elif "attackPoint" in ple:
                     attack_point_lval_usage(ple, db.session, lava_db, project_data)
-                elif "dwarfCall" in ple:
+                elif "dwarf2Call" in ple:
                     record_call(ple)
-                elif "dwarfRet" in ple:
+                elif "dwarf2Ret" in ple:
                     record_ret(ple)
                 elif "sourceTraceId" in ple:
-                    record_trace(ple, lava_db, db.session)
+                    record_trace(ple, lava_db, db.session, current_source_trace_id)
                     current_source_trace_id += 1
                 elif "fileTaintMatch" in ple:
                     project_data["input_file"] = os.path.basename(ple['fileTaintMatch']['filename'])
