@@ -69,7 +69,9 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
                 data << "int lava_chaff_var_0 = 0;\n";
                 data << "int lava_chaff_var_1 = 0;\n";
                 // Use another probing var to avoid gcc local var rearrangement
-                data << "int lava_chaff_var_2 = &" << func->getNameAsString() << ";\n";
+                // Point lava_chaff_var_2 to the stack address of lava_chaff_var_0 
+                // so the LAVA stack offset calculation correctly targets the return address.
+                data << "int lava_chaff_var_2 = (int)&lava_chaff_var_0;\n";
                 Mod.InsertAt(first->getBeginLoc(), data.str());
             }
             return;
