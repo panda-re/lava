@@ -17,8 +17,8 @@ on:
   #    - master
 
 jobs:
-  create_release:
-    if: github.repository == 'panda-re/lava' && github.ref == 'refs/heads/master'
+  get_version:
+    name: "Generate new release version"
     runs-on: ubuntu-latest
     outputs:
       v-version: ${{ steps.version.outputs.v-version }}
@@ -31,9 +31,10 @@ jobs:
           use_api: true
           increment: ${{ github.event.inputs.bump_type || 'patch' }}
 
-  create_release_assets:
-    needs: [create_release]
-    if: github.repository == 'panda-re/lava' && github.ref == 'refs/heads/master'
+  build_release_assets:
+    name: "Create LAVA Debian Package and Wheel file"
+    needs: [get_version]
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-22.04
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -83,52 +84,78 @@ jobs:
           path: dist/*.whl
           if-no-files-found: error
 
-  publish-to-pypi-and-release:
-    name: Publish Python 🐍 distribution 📦 to PyPI and Make Release
-    if: github.repository == 'panda-re/lava'  && github.ref == 'refs/heads/master'
-    needs: [create_release, create_release_assets]
+  publish-to-pypi:
+    name: Publish Python 🐍 distribution 📦 to PyPI
+    if: github.repository == 'panda-re/panda' && github.ref == 'refs/heads/dev'
+    needs:
+      - get_version
+      - build_release_assets
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/pyroclastic # Replace <package-name> with your PyPI project name
+      url: https://pypi.org/p/pyroclastic
     permissions:
-      id-token: write  # IMPORTANT: mandatory for trusted publishing
-      contents: write  # IMPORTANT: mandatory for creating releases
-
+      id-token: write
+      contents: write
     steps:
-    - name: Download all the artifacts
-      uses: actions/download-artifact@v7
-      with:
-        name: lava
-        path: debs/
+      - name: Download whl artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: pyroclastic
+          path: dist/
+      - name: Publish distribution 📦 to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
 
-    - name: Download all the artifacts
-      uses: actions/download-artifact@v7
-      with:
-        name: pyroclastic
-        path: dist/
-
-    - name: Publish distribution 📦 to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        verbose: true
-
-    - name: Upload wheel package to release
-      uses: softprops/action-gh-release@v3
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ needs.create_release.outputs.v-version }}
-        draft: false
-        generate_release_notes: true
-        prerelease: false
-        name: ${{ needs.create_release.outputs.v-version }}
-        files: |
-          dist/*
-          debs/**.deb
+  # Runs on forks too!
+  create_github_release:
+    name: Create GitHub Release
+    needs:
+      - get_version
+      - build_release_assets
+      - publish-to-pypi
+      # Override default skip behavior: Run if we are on dev AND the required 
+      # build steps succeeded AND PyPI either succeeded (main repo) or was skipped (forks).
+    if: |
+      always() &&
+      needs.get_version.result == 'success' &&
+      needs.build_release_assets.result == 'success' &&
+      (needs['publish-to-pypi'].result == 'success' || needs['publish-to-pypi'].result == 'skipped') &&
+      github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  
+    steps:
+      - name: Download deb artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: lava
+          path: debs/
+      - name: Download whl artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: pyroclastic
+          path: dist/
+      - name: Upload packages to release
+        uses: softprops/action-gh-release@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ needs.get_version.outputs.v-version }}
+          draft: false
+          generate_release_notes: true
+          prerelease: false
+          name: ${{ needs.get_version.outputs.v-version }}
+          files: |
+            dist/*
+            debs/**/*.deb
 
   build_container:
-    needs: [create_release, publish-to-pypi-and-release]
+    name: "Deploy new LAVA container to panda-re/lava DockerHub"
+    needs: 
+      - get_version
+      - publish-to-pypi
     if: github.repository == 'panda-re/lava' && github.ref == 'refs/heads/master'
     runs-on: panda-arc
     steps:
