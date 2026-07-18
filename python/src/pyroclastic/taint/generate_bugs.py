@@ -1,5 +1,7 @@
 import random
-from typing import Optional
+import logging
+from sqlalchemy.orm import Session
+from typing import List, Set, Dict, Optional
 from pyroclastic.utils.database_types import AttackPoint, Bug, \
     DuaBytes, Dua, Range, LavaDatabase, BugKind, LivenessSnapshot, AtpExecution, AtpKind, SourceLval
 from pyroclastic.taint.find_bug_injection import dump_table
@@ -15,6 +17,7 @@ PAD_REQUIREMENTS = {
     BugKind.BUG_MALLOC_OFF_BY_ONE: 0
 }
 
+logger = logging.getLogger(__name__)
 
 def get_ret_buffer_pad_range(dua: Dua, required_size: int) -> Optional[Range]:
     """
@@ -135,8 +138,10 @@ def get_or_create_dua_bytes(db: LavaDatabase, cache: dict, dua_id: int, selected
     return d_bytes
 
 
-def record_injectable_bugs_offline(project_data: dict, allow_cross_file: bool = False,
-                                   random_sampling_threshold: int = 2):
+def record_injectable_bugs_offline(project_data: dict, random_sampling_threshold: int = 2):
+    """
+    LAVA 1.0 implementation, identical bug mining steps to the C++ version.
+    """
     with LavaDatabase(project_data) as db:
         distinct_files = db.session.query(AtpExecution.inputfile).distinct().all()
         file_list = [f[0] for f in distinct_files]
@@ -170,10 +175,8 @@ def record_injectable_bugs_offline(project_data: dict, allow_cross_file: bool = 
                 # --- C++ FIX: Filter out fake_dua natively! ---
                 dua_query = db.session.query(Dua).filter(
                     Dua.instr < exec_event.instr,
-                    Dua.fake_dua == False
+                    Dua.inputfile == inputfile
                 )
-                if not allow_cross_file:
-                    dua_query = dua_query.filter(Dua.inputfile == inputfile)
                 valid_duas = dua_query.order_by(Dua.instr.desc()).all()
 
                 stats = {"no_pad": 0, "duplicate": 0, "liveness_too_small": 0, "not_disjoint": 0, "success": 0}
