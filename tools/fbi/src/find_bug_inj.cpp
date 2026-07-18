@@ -39,7 +39,6 @@ extern "C" {
 #include "pgarray.hxx"
 #include "lava.hxx"
 #include "lava-odb.hxx"
-#include "spit.hxx"
 #include <odb/pgsql/database.hxx>
 #include <odb/session.hxx>
 #include <cstdlib>
@@ -244,7 +243,6 @@ void update_unique_taint_sets(Json::Value& tquls) {
         printf("UNIQUE TAINT SET\n");
 	Json::StyledWriter writer;
 	std::string jsonString = writer.write(tquls);
-	// spit_tquls(tquls);
 	std::cout << jsonString;
 	printf("\n");
     }
@@ -705,7 +703,6 @@ void update_liveness(const Json::Value& ple) {
             // keep track of unique taint label sets
             update_unique_taint_sets(tq["uniqueLabelSet"]);
         }
-//        if (debug) { spit_tq(tq); printf("\n"); }
 
         // This should be O(mn) for m sets, n elems each.
         // though we should have n >> m in our worst case.
