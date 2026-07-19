@@ -762,12 +762,14 @@ struct AtpExecution {
 
     std::string inputfile;
     uint64_t instr;
+    uint64_t pid;
+    uint64_t tid;
 
 #pragma db index("AtpExecutionUniq") unique members(atp, inputfile, instr)
 
     AtpExecution() {}
-    AtpExecution(const AttackPoint* atp, std::string inputfile, uint64_t instr)
-        : id(0), atp(atp), inputfile(inputfile), instr(instr) {}
+    AtpExecution(const AttackPoint* atp, std::string inputfile, uint64_t instr, uint64_t pid, uint64_t tid)
+        : id(0), atp(atp), inputfile(inputfile), instr(instr), pid(pid), tid(tid) {}
 
     bool operator<(const AtpExecution &other) const {
         return std::tie(atp->id, inputfile, instr) <
@@ -789,6 +791,8 @@ struct AtpExecution {
         }
         p.set_inputfile(this->inputfile);
         p.set_instr(this->instr);
+        p.set_pid(this->pid);
+        p.set_tid(this->tid);
     }
 };
 
@@ -827,4 +831,45 @@ struct LivenessSnapshot {
         p.set_death_instr(this->death_instr);
     }
 };
+
+#pragma db object table("dua_injection_pad")
+struct DuaInjectionPad {
+#pragma db id auto
+    uint64_t id;
+
+#pragma db not_null
+    const Dua* dua;
+
+    Range pad_range;
+    uint32_t bug_kind; // Maps to Python's BugKind Enum underlying value
+
+#pragma db index("DuaInjectionPadUniq") unique members(dua, bug_kind)
+
+    DuaInjectionPad() {}
+    DuaInjectionPad(const Dua* dua, Range pad_range, uint32_t bug_kind)
+        : id(0), dua(dua), pad_range(pad_range), bug_kind(bug_kind) {}
+
+    bool operator<(const DuaInjectionPad &other) const {
+        return std::tie(dua->id, bug_kind, pad_range) <
+            std::tie(other.dua->id, other.bug_kind, other.pad_range);
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const DuaInjectionPad &pad) {
+        os << "DuaInjectionPad[Dua ID: " << pad.dua->id << "] Type: " << pad.bug_kind << " Range: " << pad.pad_range;
+        return os;
+    }
+
+    // SCHEMA ENFORCEMENT
+    void __enforce_proto() const {
+        enforce_name_match<DuaInjectionPad, lava::DuaInjectionPad>("DuaInjectionPad");
+        lava::DuaInjectionPad p;
+        p.set_id(this->id);
+        if (this->dua) {
+            this->dua->__enforce_proto();
+        }
+        this->pad_range.__enforce_proto();
+        p.set_bug_kind(this->bug_kind);
+    }
+};
+
 #endif
