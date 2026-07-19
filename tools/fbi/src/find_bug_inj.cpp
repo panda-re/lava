@@ -1201,6 +1201,17 @@ int main (int argc, char **argv) {
             // 3. Update your live tracker state variable
             // (Ensure inputfilename or a similar string tracker is accessible)
             inputfile = base_filename;
+
+            // --- NUKE THE GLOBAL STATE ---
+            liveness.clear();
+            dua_dependencies.clear();
+            recent_dead_duas.clear();
+            
+            // Required to prevent assertion failures and pointer collisions
+            recent_duas_by_instr.clear();
+            ptr_to_labelset.clear();
+            cur_call_stack.clear();
+
         } else if (ple.isMember("sourceTraceId")) {
             record_trace(ple);
         }
