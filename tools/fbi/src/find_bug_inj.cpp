@@ -423,6 +423,7 @@ void taint_query_pri(Json::Value& ple) {
     if (is_header_file(std::string(si["filename"].asString()))) {
 	    return;
     }
+    uint32_t stack_offset = std::strtoul(si["insertionpoint"].asString().c_str(), 0, 0);
 
     // entry 2 is callstack -- ignore
     Json::Value cs = tqh["callStack"];
@@ -566,7 +567,7 @@ void taint_query_pri(Json::Value& ple) {
     const AttackPoint *pad_atp;
     bool is_new_atp;
     std::tie(pad_atp, is_new_atp) = create_full(
-            AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT, calltrace, source_trace_index});
+            AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT, calltrace, source_trace_index, stack_offset});
 
     if (is_dua || is_fake_dua) {
         // looks like we can subvert this for either real or fake bug.
@@ -589,12 +590,15 @@ void taint_query_pri(Json::Value& ple) {
             }
         }
 
-        // TODO: What does adding 0 stackoff set do to RET_BUFFER?
-        if (len >= 20 && decimate_by_type(Bug::RET_BUFFER)) {
+        const AttackPoint * ret_buffer_pad_atp;
+        bool ret_buffer_is_new_atp;
+        std::tie(ret_buffer_pad_atp, ret_buffer_is_new_atp) = create_full(
+                AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT, {}, 0, 0});
+        if (len >= 20) {
             Range range = get_dua_exploit_pad(dua);
             const DuaBytes *dua_bytes = create(DuaBytes(dua, range));
             if (is_fake_dua || range.size() >= 20) {
-                record_injectable_bugs_at<Bug::RET_BUFFER>(0, pad_atp, is_new_atp, { dua_bytes });
+                record_injectable_bugs_at<Bug::RET_BUFFER>(0, ret_buffer_pad_atp, ret_buffer_is_new_atp, { dua_bytes });
             }
         }
         dprintf("OK DUA.\n");
@@ -639,16 +643,18 @@ void taint_query_pri(Json::Value& ple) {
         // set(recent_dead_duas.values()) == set(recent_duas_by_instr).
         assert(recent_dead_duas.size() == recent_duas_by_instr.size());
 
-        if (is_dua) num_real_duas++;
-        if (is_fake_dua) num_fake_duas++;
+        if (is_dua) {
+            num_real_duas++;
+        }
+        if (is_fake_dua) {
+            num_fake_duas++;
+        }
     } else {
         dprintf("discarded %u viable bytes %lu labels %s:%lu %s",
                 num_viable_bytes, all_labels.size(), si["filename"].asString().c_str(), 
                 std::strtoul(si["linenum"].asString().c_str(), 0, 0),
                 si["astnodename"].asString().c_str());
     }
-
-    uint32_t stack_offset = std::strtoul(si["insertionpoint"].asString().c_str(), 0, 0);
 
     record_injectable_bugs_at<Bug::CHAFF_STACK_UNUSED>(
             stack_offset, pad_atp, is_new_atp, {});
@@ -953,8 +959,9 @@ void attack_point_lval_usage(Json::Value ple) {
     transaction t(db->begin());
     const AttackPoint *atp;
     bool is_new_atp;
+    int bug_type = std::strtoul(pleatp["info"].asString().c_str(), 0, 0);
     std::tie(atp, is_new_atp) = create_full(AttackPoint{0,
-            ast_loc, (AttackPoint::Type) std::strtoul(pleatp["info"].asString().c_str(), 0, 0)});
+            ast_loc, (AttackPoint::Type) bug_type, {}, 0, 0});
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
 
     uint32_t stack_offset = std::strtoul(pleatp["insertionpoint"].asString().c_str(), 0, 0);

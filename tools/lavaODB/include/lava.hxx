@@ -460,8 +460,8 @@ struct AttackPoint {
     } type;
 
     std::vector<uint64_t> calltrace;
-    uint64_t stack_offset;  // Used for Chaff Bugs
     uint64_t trace_index;   // Index into the SourceTrace
+    uint64_t stack_offset;  // Used for Chaff Bugs
 
 #pragma db index("AttackPointUniq") unique members(loc, type, trace_index)
 
@@ -762,12 +762,14 @@ struct AtpExecution {
 
     std::string inputfile;
     uint64_t instr;
+    uint64_t pid;
+    uint64_t tid;
 
 #pragma db index("AtpExecutionUniq") unique members(atp, inputfile, instr)
 
     AtpExecution() {}
-    AtpExecution(const AttackPoint* atp, std::string inputfile, uint64_t instr)
-        : id(0), atp(atp), inputfile(inputfile), instr(instr) {}
+    AtpExecution(const AttackPoint* atp, std::string inputfile, uint64_t instr, uint64_t pid, uint64_t tid)
+        : id(0), atp(atp), inputfile(inputfile), instr(instr), pid(pid), tid(tid) {}
 
     bool operator<(const AtpExecution &other) const {
         return std::tie(atp->id, inputfile, instr) <
@@ -789,6 +791,8 @@ struct AtpExecution {
         }
         p.set_inputfile(this->inputfile);
         p.set_instr(this->instr);
+        p.set_pid(this->pid);
+        p.set_tid(this->tid);
     }
 };
 

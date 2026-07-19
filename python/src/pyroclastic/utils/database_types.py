@@ -715,7 +715,7 @@ class AttackPoint(Base):
         server_default='{}'
     )
 
-    # uint64_t trace_index; (Tracks context relationship to SourceTrace.index)
+    # uint64_t trace_index; (Tracks context relationship to SourceTrace.index, if applicable)
     trace_index: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     # stack offset, used for Chaff Bug Injection, will be used in Phase II for Bugs
     stack_offset: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
@@ -807,6 +807,8 @@ class AtpExecution(Base):
 
     inputfile: Mapped[str] = mapped_column(Text, nullable=False)
     instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    pid: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tid: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     __table_args__ = (
         UniqueConstraint('atp', 'inputfile', 'instr', name='AtpExecutionUniq'),

@@ -121,6 +121,8 @@ message AtpExecution {
     AttackPoint atp = 2;
     string inputfile = 3;
     uint64 instr = 4;
+    uint64 pid = 5;
+    uint64 tid = 6;
 }
 
 message LivenessSnapshot {

@@ -111,12 +111,12 @@ jobs:
           echo "INFO: Skipping live PANDA run. Fetching pre-computed plog directly from website..."
             
           # Clean structural URL targeting your public website root
-          PLOG_URL="https://andrewquijano.github.io/files/panda_logs/queries-${PROJECT_NAME}.plog"
+          PLOG_URL="https://andrewquijano.github.io/files/panda_logs/queries-${PROJECT_NAME}.json"
             
-          curl -L -s -o "${TARGET_DIR}/queries-${PROJECT_NAME}.plog" "${PLOG_URL}"
+          curl -L -s -o "${TARGET_DIR}/queries-${PROJECT_NAME}.json" "${PLOG_URL}"
             
-          if [ -s "${TARGET_DIR}/queries-${PROJECT_NAME}.plog" ]; then
-            echo "SUCCESS: Planted log file at ${TARGET_DIR}/queries-${PROJECT_NAME}.plog"
+          if [ -s "${TARGET_DIR}/queries-${PROJECT_NAME}.json" ]; then
+            echo "SUCCESS: Planted log file at ${TARGET_DIR}/queries-${PROJECT_NAME}.json"
           else
             echo "ERROR: File from ${PLOG_URL} is empty or unreachable! Exiting."
             exit 1
