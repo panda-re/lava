@@ -39,7 +39,6 @@ extern "C" {
 #include "pgarray.hxx"
 #include "lava.hxx"
 #include "lava-odb.hxx"
-#include "spit.hxx"
 #include <odb/pgsql/database.hxx>
 #include <odb/session.hxx>
 #include <cstdlib>
@@ -244,7 +243,6 @@ void update_unique_taint_sets(Json::Value& tquls) {
         printf("UNIQUE TAINT SET\n");
 	Json::StyledWriter writer;
 	std::string jsonString = writer.write(tquls);
-	// spit_tquls(tquls);
 	std::cout << jsonString;
 	printf("\n");
     }
@@ -592,7 +590,7 @@ void taint_query_pri(Json::Value& ple) {
         }
 
         // TODO: What does adding 0 stackoff set do to RET_BUFFER?
-        if (len >= 20 && decimate_by_type(Bug::RET_BUFFER)) {
+        if (len >= 20) {
             Range range = get_dua_exploit_pad(dua);
             const DuaBytes *dua_bytes = create(DuaBytes(dua, range));
             if (is_fake_dua || range.size() >= 20) {
@@ -673,7 +671,7 @@ void taint_query_pri(Json::Value& ple) {
         }
     } else {
         while (randcount--) {
-            const Dua *exploit_dua = recent_duas_by_instr[rand() % recent_duas_by_instr.size()];
+            const Dua *exploit_dua = recent_duas_by_instr[0];
             Range r = get_dua_dead_range(exploit_dua, {});
             if (r.empty()) {
                 continue;
@@ -705,7 +703,6 @@ void update_liveness(const Json::Value& ple) {
             // keep track of unique taint label sets
             update_unique_taint_sets(tq["uniqueLabelSet"]);
         }
-//        if (debug) { spit_tq(tq); printf("\n"); }
 
         // This should be O(mn) for m sets, n elems each.
         // though we should have n >> m in our worst case.
@@ -874,7 +871,7 @@ void record_injectable_bugs_at(const uint32_t stackoff, const AttackPoint *atp, 
                 // trigger.
                 for (tries = 0; tries < RANDOM_DUA_TRIES; tries++) {
                     auto it = begin_it;
-                    std::advance(it, rand() % distance);
+                    std::advance(it, 0);
                     const Dua *extra_dua = *it;
                     Range selected = get_dua_dead_range(extra_dua, labels_so_far);
                     if (selected.empty()) {
@@ -1204,6 +1201,17 @@ int main (int argc, char **argv) {
             // 3. Update your live tracker state variable
             // (Ensure inputfilename or a similar string tracker is accessible)
             inputfile = base_filename;
+
+            // --- NUKE THE GLOBAL STATE ---
+            liveness.clear();
+            dua_dependencies.clear();
+            recent_dead_duas.clear();
+            
+            // Required to prevent assertion failures and pointer collisions
+            recent_duas_by_instr.clear();
+            ptr_to_labelset.clear();
+            cur_call_stack.clear();
+
         } else if (ple.isMember("sourceTraceId")) {
             record_trace(ple);
         }

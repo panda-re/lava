@@ -2,6 +2,7 @@ import json
 import sys
 import ijson
 import os
+import re
 from sqlalchemy.exc import IntegrityError
 from typing import Iterable, TypeVar, DefaultDict, Set, Optional, List, Tuple, cast
 from collections import defaultdict
@@ -9,8 +10,14 @@ from sqlalchemy.orm import Session
 
 from pyroclastic.utils.database_types import SourceTrace, CallTrace
 from pyroclastic.utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, Range, LavaDatabase, Dua
-from pyroclastic.utils.database_types import AtpKind, AtpExecution, LivenessSnapshot
+from pyroclastic.utils.database_types import AtpKind, AtpExecution, BugKind, LivenessSnapshot, DuaInjectionPad
 from pyroclastic.utils.vars import parse_vars
+
+# Matches "libc" at clean boundaries:
+# - Preceded by: start of string (^), a slash (/), or a bang (!)
+# - Followed by: a dot (.), a hyphen (-), a bang (!), or end of string ($)
+# This ignores things like "my_libc_func" or "alibc.c"
+LIBC_BOUNDARY_RE = re.compile(r'(?:^|/|!)libc(?:[-.!]|$)', re.IGNORECASE)
 
 T = TypeVar("T")
 
@@ -95,6 +102,42 @@ def count_nonzero(arr: Iterable[LabelSet]) -> int:
     return count
 
 
+def get_dua_exploit_pad(dua: Dua, liveness_map: dict) -> Range:
+    """
+    1:1 C++ Match: get_dua_exploit_pad logic.
+    Finds the largest run of tainted, uncomplicated, and safely dead bytes
+    to act as a buffer overflow pad.
+    """
+    current_run = Range(low=0, high=0)
+    largest_run = Range(low=0, high=0)
+    
+    for i, ls in enumerate(dua.viable_bytes):
+        # Fetch the label safely if exactly one exists
+        label = list(ls.labels)[0] if (ls is not None and len(ls.labels) == 1) else None
+
+        # 1:1 evaluation matching the exact C++ conditional string
+        if (ls is not None and len(ls.labels) == 1 and 
+            dua.byte_tcn[i] == 0 and liveness_map.get(label, 0) <= 10):
+            if current_run.empty():
+                current_run = Range(low=i, high=i + 1)
+            else:
+                current_run.high += 1
+        else:
+            if current_run.size() > largest_run.size():
+                largest_run = current_run
+            current_run = Range(low=0, high=0)
+
+    # Final check in case the longest run reaches the end of the array
+    if current_run.size() > largest_run.size():
+        largest_run = current_run
+
+    # Reserve 4 bytes for trigger at start if the pad is large enough
+    if largest_run.size() >= 20:
+        largest_run.low += 4
+
+    return largest_run
+
+
 def merge_into(source_elements: list | set[Dua], dest_list: list):
     """
     Performs a set union of dest_list and source_elements, ensuring the result
@@ -146,7 +189,11 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
         AtpExecution,
         atp_id=atp.id,
         inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
-        instr=int(ple["instr"], 0)
+        instr=int(ple["instr"], 0),
+        defaults={
+            'pid': project_data.get("pid", 0),
+            'tid': project_data.get("tid", 0)
+        }
     ))
     dprint(project_data, f"@ATP: {atp} {atp_exec}")
 
@@ -315,7 +362,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             session,
             CallTrace,
             caller=function_callee,
-            filename=file_callee,
+            file=file_callee,
         ))
         calltrace_ids.append(ct.id)
 
@@ -326,9 +373,11 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         AttackPoint,
         loc=ast_loc,
         type=AtpKind.QUERY_POINT,
-        source_trace_index=source_trace_index,
-        stack_offset=stack_offset,
-        calltrace_ids=calltrace_ids,
+        defaults={
+            'trace_index': source_trace_index,
+            'stack_offset': stack_offset,
+            'calltrace': calltrace_ids,
+        }
     ))
 
     get_or_create(
@@ -336,7 +385,11 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         AtpExecution,
         atp_id=atp.id,
         inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
-        instr=instr_addr
+        instr=instr_addr,
+        defaults={
+            'pid': project_data.get("pid", 0),
+            'tid': project_data.get("tid", 0)
+        }
     )
 
     if is_dua or is_fake_dua:
@@ -368,7 +421,8 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
                 'byte_tcn': byte_tcn,
                 'all_labels': sorted_labels,
                 'max_tcn': c_max_tcn,
-                'max_cardinality': c_max_card
+                'max_cardinality': c_max_card,
+                'trace_index': source_trace_index
             }
         ))
 
@@ -376,6 +430,20 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         if is_dua:
             for l in sorted_labels:
                 dua_dependencies[l].add(dua)
+        
+        # Save Exploit Pads used for RET_BUFFER offline
+        if length >= 20:
+            liveness_map = liveness_by_file[project_data.get("input_file", "UNKNOWN_FILE")]
+            dua_range: Range = get_dua_exploit_pad(dua, liveness_map)
+            if is_fake_dua or dua_range.size() >= 20:
+                get_or_create(
+                    session,
+                    DuaInjectionPad,
+                    dua_id=dua.id,
+                    pad_range=dua_range,
+                    bug_kind=BugKind.BUG_RET_BUFFER
+                )
+                dprint(project_data, f"Saved DuaInjectionPad for DUA {dua.id}: [{dua_range.low}, {dua_range.high}]")
 
         dprint(project_data, "OK DUA.")
 
@@ -430,6 +498,47 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         dprint(project_data, f"discarded {num_viable_bytes} viable bytes {len(all_labels)} labels"
                              f"{filename}:{line_number} {ast_node_name}")
 
+    # Pre-compute Dua Pads for Chaff Bugs
+    random_sampling_threshold = 2
+    randcount = random_sampling_threshold
+    # Yes, I am NOT making 3 copies of the same DuaInjectionPad.
+    # This is intentional to reduce database bloat, but this makes it easier to filter
+    # for RET_BUFFER and not
+    if random_sampling_threshold > len(recent_duas_by_instr):
+        for lval_id, exploit_dua in recent_dead_duas.items():
+            r = get_dua_dead_range(exploit_dua, [], project_data)
+            if r.empty():
+                continue
+            
+            # Save the DuaInjectionPad for offline processing
+            # Emulating the storage path for CHAFF variant tracking
+            get_or_create(
+                session,
+                DuaInjectionPad,
+                dua_id=exploit_dua.id,
+                pad_range=r,
+                bug_kind=BugKind.BUG_CHAFF_STACK_CONST  # Placeholder kind to record the pad offline
+            )
+    else:
+        while randcount > 0:
+            randcount -= 1
+            if not recent_duas_by_instr:
+                break
+            
+            exploit_dua = recent_duas_by_instr[0]
+            r = get_dua_dead_range(exploit_dua, [], project_data)
+            if r.empty():
+                continue
+            
+            # Save the DuaInjectionPad for offline processing
+            get_or_create(
+                session,
+                DuaInjectionPad,
+                dua_id=exploit_dua.id,
+                pad_range=r,
+                bug_kind=BugKind.BUG_CHAFF_STACK_CONST
+            )
+
 
 def get_or_create(session: Session, model, defaults: Optional[dict] = None, **kwargs):
     """
@@ -451,10 +560,12 @@ def get_or_create(session: Session, model, defaults: Optional[dict] = None, **kw
         instance = model(**params)
         session.add(instance)
         try:
-            session.flush()
+            # Wrap the flush in a savepoint (nested transaction)
+            with session.begin_nested():
+                session.flush()
             return instance
         except IntegrityError:
-            session.rollback()
+            # SQLAlchemy automatically rolls back the savepoint on error
             instance = session.query(model).filter_by(**kwargs).first()
             if instance:
                 return instance
@@ -625,8 +736,13 @@ def record_call(ple: dict):
     file_callee = call["fileCallee"]
     function_callee = call["functionNameCallee"]
 
-    # Skip library calls
-    if function_callee.beginswith("libc") and function_callee.endswith(".so"):
+    # 1. Instantly catch explicit Linux system library paths
+    if file_callee.startswith(("/lib/", "/usr/lib/", "/lib64/")):
+        return
+
+    # 2. Use boundary-safe regex to catch PANDA's dynamic formats 
+    # (e.g., "libc-2.13.so!malloc" or "libc.so!printf")
+    if LIBC_BOUNDARY_RE.search(file_callee) or LIBC_BOUNDARY_RE.search(function_callee):
         return
 
     current_call_stack.append((file_callee, function_callee))
@@ -642,8 +758,13 @@ def record_ret(ple: dict):
     file_callee = ret["fileCallee"]
     function_callee = ret["functionNameCallee"]
 
-    # Skip library calls
-    if function_callee.beginswith("libc") and function_callee.endswith(".so"):
+    # 1. Instantly catch explicit Linux system library paths
+    if file_callee.startswith(("/lib/", "/usr/lib/", "/lib64/")):
+        return
+
+    # 2. Use boundary-safe regex to catch PANDA's dynamic formats 
+    # (e.g., "libc-2.13.so!malloc" or "libc.so!printf")
+    if LIBC_BOUNDARY_RE.search(file_callee) or LIBC_BOUNDARY_RE.search(function_callee):
         return
 
     if len(current_call_stack) == 0:
@@ -654,16 +775,16 @@ def record_ret(ple: dict):
     assert stored_function_callee == function_callee, "The CallTrace function does not match"
 
 
-def record_trace(ple: dict, lava_db: dict, session: Session):
-    source_trace_id : int = ple["sourceTraceId"]
-    ast_loc: ASTLoc = lava_db[source_trace_id]
+def record_trace(ple: dict, lava_db: dict[int, str], session: Session, source_trace_index: int):
+    source_trace_id : int = ple["sourceTraceId"]["astLocId"]
+    ast_loc_string : str = lava_db[source_trace_id]
+    ast_loc : ASTLoc = ASTLoc.from_serialized(ast_loc_string)
     get_or_create(
         session,
         SourceTrace,
         loc=ast_loc,
-        index=source_trace_id
+        index=source_trace_index
     )
-
 
 
 def is_header_file(filename: str) -> bool:
@@ -706,13 +827,13 @@ def load_db(db_file: str) -> dict[int, str]:
 def save_liveness_to_db(db_session: Session):
     for input_file, liveness in liveness_by_file.items():
         for label, death_instr in liveness.items():
-            snapshot = LivenessSnapshot(
+            get_or_create(
+                db_session,
+                LivenessSnapshot,
                 inputfile=input_file,
                 label=label,
-                death_instr=death_instr
+                defaults={'death_instr': death_instr}
             )
-            db_session.add(snapshot)
-
 
 def parse_panda_log(panda_log_file: str, project_data: dict):
     """
@@ -757,15 +878,17 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     update_liveness(ple, db.session, project_data)
                 elif "attackPoint" in ple:
                     attack_point_lval_usage(ple, db.session, lava_db, project_data)
-                elif "dwarfCall" in ple:
+                elif "dwarf2Call" in ple:
                     record_call(ple)
-                elif "dwarfRet" in ple:
+                elif "dwarf2Ret" in ple:
                     record_ret(ple)
                 elif "sourceTraceId" in ple:
-                    record_trace(ple, lava_db, db.session)
+                    record_trace(ple, lava_db, db.session, current_source_trace_id)
                     current_source_trace_id += 1
                 elif "fileTaintMatch" in ple:
                     project_data["input_file"] = os.path.basename(ple['fileTaintMatch']['filename'])
+                    project_data["pid"] = ple['fileTaintMatch'].get('pid', 0)
+                    project_data["tid"] = ple['fileTaintMatch'].get('tid', 0)
 
                 if 0 < project_data.get("curtail", 0) < num_real_duas:
                     print(f"*** Curtailing output of fbi at {num_real_duas}")

@@ -8,8 +8,8 @@ include-package-data = true
 [tool.pytest.ini_options]
 # Add both 'src' (for your code) and 'tests' (for generated lava_pb2)
 pythonpath = [
-  "src",
-  "tests",
+    "python/src",
+    "python/tests",
 ]
 
 # Optional: Add this to see your debug prints automatically without typing -s

@@ -112,7 +112,8 @@ def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
         "-fno-stack-protector", "-D_FORTIFY_SOURCE=0",
         "-I.", "-I..", "-I../include", "-I./src/",
         "-D_GNU_SOURCE",
-        "-Wno-implicit-function-declaration"
+        "-Wno-implicit-function-declaration",
+        "-fno-omit-frame-pointer"
     ]
 
     # 2. Architecture-Specific Flags

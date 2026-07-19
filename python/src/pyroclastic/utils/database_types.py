@@ -807,6 +807,8 @@ class AtpExecution(Base):
 
     inputfile: Mapped[str] = mapped_column(Text, nullable=False)
     instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    pid: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tid: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     __table_args__ = (
         UniqueConstraint('atp', 'inputfile', 'instr', name='AtpExecutionUniq'),
@@ -838,3 +840,24 @@ class LivenessSnapshot(Base):
 
     def __repr__(self):
         return self.__str__()
+
+class DuaInjectionPad(Base):
+    __tablename__ = 'dua_injection_pad'
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    
+    # Python attribute is 'dua_id', but the DB column is 'dua'
+    dua_id: Mapped[int] = mapped_column("dua", BigInteger, ForeignKey('dua.id'), nullable=False)
+    
+    # Range composite - Updated to match ODB's generated "pad_range_low" and "pad_range_high"
+    _low: Mapped[int] = mapped_column("pad_range_low", Integer, nullable=False)
+    _high: Mapped[int] = mapped_column("pad_range_high", Integer, nullable=False)
+    pad_range: Mapped[Range] = composite(create_range, _low, _high)
+    
+    bug_kind: Mapped[BugKind] = mapped_column("bug_kind", Integer, nullable=False)
+
+    dua = relationship("Dua", backref="DuaInjectionPad")
+
+    __table_args__ = (
+        UniqueConstraint('dua', 'bug_kind', name='DuaInjectionPadUniq'),
+    )

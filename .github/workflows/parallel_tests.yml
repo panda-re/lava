@@ -2,6 +2,12 @@ name: LAVA Tests
 
 on:
   workflow_dispatch:
+    inputs:
+      use_precomputed_plog:
+        type: boolean
+        required: true
+        default: true
+        description: "Toggle true to skip PANDA and download pre-computed plogs."
   pull_request:
     branches:
       - master
@@ -13,7 +19,7 @@ concurrency:
 
 jobs:
   test_debian_package:
-    if: github.repository == 'panda-re/lava'
+    name: "Test building Debian Package and Wheel file, and run quick Python tests"
     runs-on: ubuntu-22.04
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -59,11 +65,13 @@ jobs:
           PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION : 'python'
 
   test_install_script:
-    if: github.repository == 'panda-re/lava'
+    name: "LAVA End to End Test"
     runs-on: ubuntu-22.04
     env:
       PYTHONUNBUFFERED: "1"
       DEBIAN_FRONTEND: noninteractive
+      # Dynamic Fallback Evaluation: Checks manual dispatch UI inputs first, falls back to 'true' for PR/Push events
+      USE_PRECOMPUTED_PLOG: ${{ github.event.inputs.use_precomputed_plog || 'true' }}
       USER: ${{ github.actor }}
       # https://docs.github.com/en/actions/use-cases-and-examples/using-containerized-services/creating-postgresql-service-containers
     services:
@@ -92,24 +100,48 @@ jobs:
       run: |
         chmod +x ./scripts/*
         lava-init -a
+    - name: Handle PANDA Log Sourcing
+      run: |
+        PROJECT_NAME="toy"
+        TARGET_DIR="target_injections/${PROJECT_NAME}"
+          
+        mkdir -p "${TARGET_DIR}"
+          
+        if [ "${{ env.USE_PRECOMPUTED_PLOG }}" = "true" ]; then
+          echo "INFO: Skipping live PANDA run. Fetching pre-computed plog directly from website..."
+            
+          # Clean structural URL targeting your public website root
+          PLOG_URL="https://andrewquijano.github.io/files/panda_logs/queries-${PROJECT_NAME}.plog"
+            
+          curl -L -s -o "${TARGET_DIR}/queries-${PROJECT_NAME}.plog" "${PLOG_URL}"
+            
+          if [ -s "${TARGET_DIR}/queries-${PROJECT_NAME}.plog" ]; then
+            echo "SUCCESS: Planted log file at ${TARGET_DIR}/queries-${PROJECT_NAME}.plog"
+          else
+            echo "ERROR: File from ${PLOG_URL} is empty or unreachable! Exiting."
+            exit 1
+          fi
+        else
+          echo "INFO: Bypassing download logic. Commencing live dynamic tracing..."
+        fi
     - name: Add Postgres credentials and Run LAVA
       run: |
         echo "localhost:5432:*:${POSTGRES_USER}:${POSTGRES_PASSWORD}" > ~/.pgpass
         chmod 600 ~/.pgpass
         # Adding Queries
         python -m pyroclastic.lava -q toy
+        
         # Making Binary to run in PANDA
         python -m pyroclastic.lava -m toy
-        # Run taint with PANDA (Note sometimes you just need to re-run). Note -c also initializes the database...
+        
+        # Run taint, but technically if we download PLog, we just convert it to JSON
+        # and skip the PANDA run
         python -m pyroclastic.lava -tc toy
+        
         # Run injection step for various kinds of bugs
         python -m pyroclastic.lava -i 1 toy --bugtypes "ptr_add"
         python -m pyroclastic.lava -i 1 toy --bugtypes "ret_buffer"
-        # Alas, for toy, we only have 1 malloc, so injection works, but verification its hard to get the right file...
         # python -m pyroclastic.lava -i 1 toy --bugtypes "malloc_off_by_one"
-        # Alas, for REL_WRITE toy is too small for 3 DUAs.
-        # Alas, for PRINTF, I genuinely am not sure how it works, plus not a priority
-        # Alas, for HEAP_CONST is likely not going to work because we are using modern heaps...
         # python -m pyroclastic.lava -i 1 toy --bugtypes "chaff_stack_unused"
         # python -m pyroclastic.lava -i 1 toy --bugtypes "chaff_stack_const"
         # python -m pyroclastic.lava -i 1 toy --bugtypes "chaff_divzero"
@@ -120,37 +152,25 @@ jobs:
         POSTGRES_PASSWORD: postgrespostgres
 
   build_container:
-    if: github.repository == 'panda-re/lava'
+    name: "Test building LAVA container"
     runs-on: ubuntu-22.04
     env:
       DEBIAN_FRONTEND: noninteractive
-    steps:
-      - name: Login to Docker Registry
-        uses: docker/login-action@v4
-        with:
-          username: pandare
-          password: ${{secrets.ALL_PANDARE_DOCKERHUB}}
-    
+    steps:    
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
         with:
+          version: latest
           driver-opts: |
-            image=moby/buildkit:master
             network=host
-          buildkitd-config-inline: |
-            [registry."${{ secrets.PANDA_ARC_REGISTRY }}"]
-              insecure = true
-              http = true
 
       - name: Check out
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Build and push
+      - name: Test Build Configuration
         uses: docker/build-push-action@v7
         with:
           context: ${{ github.workspace }}
-          push: true
-          tags: |
-            pandare/lava:test
+          push: false

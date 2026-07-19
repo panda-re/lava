@@ -45,7 +45,6 @@ extern "C" {
 
 #include "lavaDB.h"
 #include "lava-odb.hxx"
-#include "vector_set.hxx"
 #include "Modifier.h"
 #include "Insertions.h"
 
@@ -108,10 +107,10 @@ struct LvalBytes {
 
 
 // Map of bugs with siphon of a given  lval name at a given loc.
-std::map<ASTLoc, vector_set<LvalBytes>> siphons_at;
+std::map<ASTLoc, std::set<LvalBytes>> siphons_at;
 std::map<LvalBytes, uint32_t> data_slots;
 // Same mapping for siphon of extra_duas
-std::map<ASTLoc, vector_set<LvalBytes>> extra_siphons_at;
+std::map<ASTLoc, std::set<LvalBytes>> extra_siphons_at;
 std::map<LvalBytes, uint32_t> extra_data_slots;
 
 std::map<ASTLoc, std::vector<LExpr>> extra_overconst_expr;

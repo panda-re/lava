@@ -1,7 +1,7 @@
  <!-- Filling this template is mandatory -->
 
 **Your checklist for this pull request**
-- [ ] I've documented or updated the documentation of every function and struct this PR changes.
+- [ ] I've documented or updated the documentation of every function and struct that this PR changes.
 - [ ] I've added tests that prove my fix is effective or that my feature works (if possible)
 
 **Detailed description**
@@ -12,7 +12,7 @@
 
 **Test plan**
 
-<!-- What steps should the reviewer take to test your pull request? Demonstrate the code is solid. Or what test cases you added. Ideally, have some tests and/or screenshots that can replicate results -->
+<!-- What steps should the reviewer take to test your pull request? Demonstrate that the code is solid. Or what test cases you added. Ideally, have some tests and/or screenshots that can replicate results -->
 
 ...
 
