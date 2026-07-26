@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from pyroclastic.utils.database_types import SourceTrace, CallTrace
 from pyroclastic.utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, Range, LavaDatabase, Dua, DuaBytes
-from pyroclastic.utils.database_types import AtpKind, AtpExecution, BugKind, LivenessSnapshot
+from pyroclastic.utils.database_types import AtpKind, AtpExecution, LivenessSnapshot
 from pyroclastic.utils.vars import parse_vars
 
 # Matches "libc" at clean boundaries:
@@ -48,6 +48,8 @@ num_fake_duas : int = 0
 
 current_call_stack: List[Tuple[str, str]] = []
 
+# A generalized, global in-memory cache for all database models
+_L1_CACHE = {}
 
 def dprint(project_data: dict, message: str):
     if project_data.get("debug", False):
@@ -87,19 +89,9 @@ def disjoint(iter1: Iterable[T], iter2: Iterable[T]) -> bool:
             return False
 
 
-def count_nonzero(arr: Iterable[LabelSet]) -> int:
+def count_nonzero(viable_bytes: List[LabelSet]) -> int:
     """Safely counts non-null / non-zero elements, acting like C++ pointer/int checks."""
-    count = 0
-    for t in arr:
-        if t is None:
-            continue
-        # If it's a LabelSet object, we know it's valid/non-zero
-        if hasattr(t, 'labels'):
-            count += 1
-        # If it's a raw integer (like in byte_tcn)
-        elif t != 0:
-            count += 1
-    return count
+    return sum(1 for x in viable_bytes if x is not None)
 
 
 def get_dua_exploit_pad(dua: Dua, liveness_map: dict) -> Range:
@@ -138,16 +130,9 @@ def get_dua_exploit_pad(dua: Dua, liveness_map: dict) -> Range:
     return largest_run
 
 
-def merge_into(source_elements: list | set[Dua], dest_list: list):
-    """
-    Performs a set union of dest_list and source_elements, ensuring the result
-    is sorted and unique, updating dest_list in-place.
-    """
-    # 1. set(dest_list) creates a set from the current list
-    # 2. .union(source_elements) adds the new items, handling deduping
-    # 3. sorted() turns it back into a sorted list
-    # 4. dest_list[:] = ... replaces the contents in-place (no new object created)
-    dest_list[:] = sorted(set(dest_list).union(source_elements))
+def merge_into(target_set: set, new_labels: set) -> set:
+    target_set.update(new_labels)
+    return target_set
 
 
 def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str], project_data: dict):
@@ -529,6 +514,21 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             )
 
 
+def _make_hashable(val):
+    """Safely converts arbitrary kwargs (like ASTLoc or lists) into hashable tuple keys."""
+    if isinstance(val, (int, str, float, bool, tuple, type(None))):
+        return val
+    if isinstance(val, list):
+        return tuple(_make_hashable(x) for x in val)
+    if hasattr(val, '__hash__') and val.__hash__ is not None:
+        try:
+            hash(val)
+            return val
+        except TypeError:
+            pass
+    return str(val)
+
+
 def get_or_create(session: Session, model, defaults: Optional[dict] = None, **kwargs):
     """
     Retrieves object or creates it using an EXISTING session.
@@ -541,22 +541,32 @@ def get_or_create(session: Session, model, defaults: Optional[dict] = None, **kw
     if 'default' in kwargs:
         defaults = kwargs.pop('default')
 
+    # 1. Build a unique cache key based on the model and the search parameters
+    hashable_kwargs = tuple(sorted((k, _make_hashable(v)) for k, v in kwargs.items()))
+    cache_key = (model, hashable_kwargs)
+
+    # 2. Check the memory cache BEFORE touching the database/session
+    if cache_key in _L1_CACHE:
+        return _L1_CACHE[cache_key]
+
+    # 3. Standard DB lookup
     instance = session.query(model).filter_by(**kwargs).first()
     if instance:
+        _L1_CACHE[cache_key] = instance
         return instance
     else:
         params = {**kwargs, **(defaults or {})}
         instance = model(**params)
         session.add(instance)
         try:
-            # Wrap the flush in a savepoint (nested transaction)
             with session.begin_nested():
                 session.flush()
+            _L1_CACHE[cache_key] = instance
             return instance
         except IntegrityError:
-            # SQLAlchemy automatically rolls back the savepoint on error
             instance = session.query(model).filter_by(**kwargs).first()
             if instance:
+                _L1_CACHE[cache_key] = instance
                 return instance
             else:
                 raise
@@ -580,7 +590,7 @@ def update_unique_taint_sets(unique_label_set: dict, session: Session, project_d
     # Python dicts are Hash Maps. Lookups are O(1).
     if pointer not in ptr_to_labelset:
         # Ensure labels are integers (C++ did a conversion)
-        labels = [int(str(x), 0) for x in unique_label_set["label"]]
+        labels = sorted([int(str(x), 0) for x in unique_label_set["label"]])
 
         # 3. Create LabelSet and append to global map
         label_set = cast(LabelSet, get_or_create(
@@ -628,25 +638,22 @@ def update_liveness(panda_log_entry: dict, session: Session, project_data: dict)
     tainted_branch = panda_log_entry["taintedBranch"]
     dprint(project_data, "TAINTED BRANCH")
 
-    all_labels = []
+    all_labels: set[int] = set()
     for taint_query in tainted_branch["taintQuery"]:
         if "uniqueLabelSet" in taint_query:
             # This will be updating the database with new LabelSets as needed
             update_unique_taint_sets(taint_query["uniqueLabelSet"], session, project_data)
-        pointer = int(taint_query["ptr"])
-        cur_labels = ptr_to_labelset[pointer].labels
-        merge_into(cur_labels, all_labels)
+        pointer: int = int(taint_query["ptr"])
+        cur_labels: list[int] = ptr_to_labelset[pointer].labels
+        merge_into(all_labels, set(cur_labels))
 
-    duas_to_check = []
+    duas_to_check: set[Dua] = set()
     for label in all_labels:
         liveness[label] += 1
         dprint(project_data, f"checking viability of {len(recent_dead_duas)} duas")
         depends = dua_dependencies.get(label)
         if depends:
-            if isinstance(depends, list) or isinstance(depends, set):
-                merge_into(depends, duas_to_check)
-            else:
-                merge_into([depends], duas_to_check)
+            merge_into(duas_to_check, set(depends) if isinstance(depends, list) else depends)
 
     non_viable_duas = []
     for dua in duas_to_check:
@@ -814,16 +821,22 @@ def load_db(db_file: str) -> dict[int, str]:
     return string_ids
 
 
-def save_liveness_to_db(db_session: Session):
+def save_liveness_to_db(session: Session):
+    snapshots_to_insert = []
     for input_file, liveness in liveness_by_file.items():
         for label, death_instr in liveness.items():
-            get_or_create(
-                db_session,
-                LivenessSnapshot,
-                inputfile=input_file,
-                label=label,
-                defaults={'death_instr': death_instr}
+            snapshots_to_insert.append(
+                LivenessSnapshot(
+                    inputfile=input_file,
+                    label=label,
+                    death_instr=death_instr
+                )
             )
+    
+    if snapshots_to_insert:
+        session.add_all(snapshots_to_insert)
+        session.commit()
+
 
 def parse_panda_log(panda_log_file: str, project_data: dict):
     """
@@ -850,6 +863,7 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
         sys.exit(1)
 
     num_entries_read = 0
+    batch_size = 500
     with open(panda_log_file, 'r') as plog_file:
         # 'item' iterates over elements in the root array
         parser = ijson.items(plog_file, 'item')
@@ -858,9 +872,6 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
         with LavaDatabase(project_data) as db:
             for ple in parser:
                 num_entries_read += 1
-                if num_entries_read % 10000 == 0:
-                    print(f"processed {num_entries_read} pandalog entries")
-                    print(f"{len(recent_dead_duas)} current duas {num_real_duas} real duas {num_fake_duas} fake duas")
 
                 if "taintQueryPri" in ple:
                     taint_query_pri(ple, db.session, lava_db, project_data, current_source_trace_id)
@@ -887,6 +898,19 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     recent_duas_by_instr.clear()
                     ptr_to_labelset.clear()
                     current_call_stack.clear()
+
+                if num_entries_read % batch_size == 0:
+                    try:
+                        db.session.commit()
+                    except Exception as e:
+                        db.session.rollback()
+                        print(f"Batch commit failed at entry {num_entries_read}: {e}")
+                        raise
+
+                # Console printing
+                if num_entries_read % 10000 == 0:
+                    print(f"processed {num_entries_read} pandalog entries")
+                    print(f"{len(recent_dead_duas)} current duas {num_real_duas} real duas {num_fake_duas} fake duas")
 
                 if 0 < project_data.get("curtail", 0) < num_real_duas:
                     print(f"*** Curtailing output of fbi at {num_real_duas}")
