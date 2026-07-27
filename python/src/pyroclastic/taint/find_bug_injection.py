@@ -4,13 +4,14 @@ import ijson
 import os
 import re
 from sqlalchemy.exc import IntegrityError
-from typing import Iterable, TypeVar, DefaultDict, Set, Optional, List, Tuple, cast
+from typing import DefaultDict, Set, Optional, List, Tuple, cast
 from collections import defaultdict
 from sqlalchemy.orm import Session
-
+from pyroclastic.utils.funcs import dump_table
 from pyroclastic.utils.database_types import SourceTrace, CallTrace
-from pyroclastic.utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, Range, LavaDatabase, Dua, DuaBytes
+from pyroclastic.utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, LavaDatabase, Dua
 from pyroclastic.utils.database_types import AtpKind, AtpExecution, LivenessSnapshot
+from pyroclastic.taint.taint_utils import dprint, get_dua_dead_range, get_dead_range, merge_into
 from pyroclastic.utils.vars import parse_vars
 
 # Matches "libc" at clean boundaries:
@@ -18,8 +19,6 @@ from pyroclastic.utils.vars import parse_vars
 # - Followed by: a dot (.), a hyphen (-), a bang (!), or end of string ($)
 # This ignores things like "my_libc_func" or "alibc.c"
 LIBC_BOUNDARY_RE = re.compile(r'(?:^|/|!)libc(?:[-.!]|$)', re.IGNORECASE)
-
-T = TypeVar("T")
 
 # These map pointer values in the PANDA taint run to the sets they refer to.
 ptr_to_labelset: dict[int, LabelSet] = {}
@@ -51,89 +50,8 @@ current_call_stack: List[Tuple[str, str]] = []
 # A generalized, global in-memory cache for all database models
 _L1_CACHE = {}
 
-def dprint(project_data: dict, message: str):
-    if project_data.get("debug", False):
-        print(message)
-
-
-def disjoint(iter1: Iterable[T], iter2: Iterable[T]) -> bool:
-    """
-    Return True if the two sorted iterables have no element in common.
-    Both iterables must be sorted in ascending order.
-    """
-    it1 = iter(iter1)
-    it2 = iter(iter2)
-
-    try:
-        a = next(it1)
-    except StopIteration:
-        return True
-    try:
-        b = next(it2)
-    except StopIteration:
-        return True
-
-    while True:
-        if a < b:
-            try:
-                a = next(it1)
-            except StopIteration:
-                return True
-        elif b < a:
-            try:
-                b = next(it2)
-            except StopIteration:
-                return True
-        else:
-            # a == b -> not disjoint
-            return False
-
-
-def count_nonzero(viable_bytes: List[LabelSet]) -> int:
-    """Safely counts non-null / non-zero elements, acting like C++ pointer/int checks."""
-    return sum(1 for x in viable_bytes if x is not None)
-
-
-def get_dua_exploit_pad(dua: Dua, liveness_map: dict) -> Range:
-    """
-    1:1 C++ Match: get_dua_exploit_pad logic.
-    Finds the largest run of tainted, uncomplicated, and safely dead bytes
-    to act as a buffer overflow pad.
-    """
-    current_run = Range(low=0, high=0)
-    largest_run = Range(low=0, high=0)
-    
-    for i, ls in enumerate(dua.viable_bytes):
-        # Fetch the label safely if exactly one exists
-        label = list(ls.labels)[0] if (ls is not None and len(ls.labels) == 1) else None
-
-        # 1:1 evaluation matching the exact C++ conditional string
-        if (ls is not None and len(ls.labels) == 1 and 
-            dua.byte_tcn[i] == 0 and liveness_map.get(label, 0) <= 10):
-            if current_run.empty():
-                current_run = Range(low=i, high=i + 1)
-            else:
-                current_run.high += 1
-        else:
-            if current_run.size() > largest_run.size():
-                largest_run = current_run
-            current_run = Range(low=0, high=0)
-
-    # Final check in case the longest run reaches the end of the array
-    if current_run.size() > largest_run.size():
-        largest_run = current_run
-
-    # Reserve 4 bytes for trigger at start if the pad is large enough
-    if largest_run.size() >= 20:
-        largest_run.low += 4
-
-    return largest_run
-
-
-def merge_into(target_set: set, new_labels: set) -> set:
-    target_set.update(new_labels)
-    return target_set
-
+# A global to prevent duplicate liveness snapshots for the same instruction
+last_snapshotted_instr: int = -1
 
 def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str], project_data: dict):
     """
@@ -147,6 +65,7 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
     attack_point = ple["attackPoint"]
     source_info = attack_point["srcInfo"]
     ast_id = source_info["astLocId"]
+    current_instr = int(ple["instr"], 0)
     dprint(project_data, f"attack point id = {ast_id}")
 
     # ignore duas in header files
@@ -174,12 +93,13 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
         AtpExecution,
         atp_id=atp.id,
         inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
-        instr=int(ple["instr"], 0),
+        instr=current_instr,
         defaults={
             'pid': project_data.get("pid", 0),
             'tid': project_data.get("tid", 0)
         }
     ))
+    save_liveness_to_db(session, current_instr)
     dprint(project_data, f"@ATP: {atp} {atp_exec}")
 
 
@@ -208,7 +128,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
     if is_header_file(filename):
         return
 
-    instr_addr = int(ple["instr"])
+    instr_addr = int(ple["instr"], 0)
     dprint(project_data, f"TAINT QUERY HYPERCALL len={length} num_tainted={num_tainted}")
 
     # 2. Collect Labels & Unique Sets
@@ -286,7 +206,8 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
 
             # get_dead_range expects a list of LabelSets (or None)
             # We assume get_dead_range returns a Range object with a .size property
-            dead_range = get_dead_range(viable_byte, [], project_data)
+            liveness = liveness_by_file[project_data.get("input_file", "UNKNOWN_FILE")]
+            dead_range = get_dead_range(viable_byte, [], liveness, project_data)
             if dead_range.size() >= LAVA_MAGIC_VALUE_SIZE:
                 is_dua = True
 
@@ -376,6 +297,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             'tid': project_data.get("tid", 0)
         }
     )
+    save_liveness_to_db(session, instr_addr)
 
     if is_dua or is_fake_dua:
         # Create SourceLval
@@ -397,7 +319,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
             instr=instr_addr,
             fake_dua=is_fake_dua,
-            trace_index=source_trace_index,
 
             # --- DATA PAYLOAD (Only used if creating a NEW entry) ---
             defaults={
@@ -406,7 +327,8 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
                 'all_labels': sorted_labels,
                 'max_tcn': c_max_tcn,
                 'max_cardinality': c_max_card,
-                'trace_index': source_trace_index
+                'trace_index': source_trace_index,
+                'length': length
             }
         ))
 
@@ -416,17 +338,15 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
                 dua_dependencies[l].add(dua)
 
         # Save Exploit Pads used for RET_BUFFER offline
-        if length >= 20:
-            liveness_map = liveness_by_file[project_data.get("input_file", "UNKNOWN_FILE")]
-            dua_range: Range = get_dua_exploit_pad(dua, liveness_map)
-            if is_fake_dua or dua_range.size() >= 20:
-                get_or_create(
-                    session,
-                    DuaBytes,
-                    dua=dua.id,
-                    selected=dua_range,
-                )
-                dprint(project_data, f"Saved DuaBytes for DUA {dua.id}: [{dua_range.low}, {dua_range.high}]")
+        #if length >= 20:
+        #    dua_range: Range = get_dua_exploit_pad(dua)
+        #    get_or_create(
+        #        session,
+        #        DuaBytes,
+        #        dua=dua.id,
+        #        selected=dua_range,
+        #    )
+        #    dprint(project_data, f"Saved DuaBytes for DUA {dua.id}: [{dua_range.low}, {dua_range.high}]")
 
         dprint(project_data, "OK DUA.")
 
@@ -444,6 +364,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             # we might need a better structure, but recent window is usually small-ish.
             try:
                 recent_duas_by_instr.remove(old_dua)
+                old_dua.death_instr = instr_addr
             except ValueError:
                 pass  # Should ideally not happen based on C++ logic assertions
 
@@ -465,7 +386,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         recent_duas_by_instr.append(dua)
 
         # Verify invariants
-        assert len(recent_dead_duas) == len(recent_duas_by_instr)
+        assert len(recent_dead_duas) == len(recent_duas_by_instr), "Mismatched counts between recent_dead_duas and recent_duas_by_instr"
 
         # 7. Update Stats (Global)
         global num_real_duas, num_fake_duas
@@ -482,36 +403,35 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
                              f"{filename}:{line_number} {ast_node_name}")
 
     # Pre-compute Dua Pads for Chaff Bugs
-    randcount = random_sampling_threshold
-    if random_sampling_threshold > len(recent_duas_by_instr):
-        for lval_id, exploit_dua in recent_dead_duas.items():
-            r = get_dua_dead_range(exploit_dua, [], project_data)
-            if r.empty():
-                continue
-            
-            get_or_create(
-                session,
-                DuaBytes,
-                dua=exploit_dua.id,
-                selected=r,
-            )
-    else:
-        while randcount > 0:
-            randcount -= 1
-            if not recent_duas_by_instr:
-                break
-            
-            exploit_dua = recent_duas_by_instr[0]
-            r = get_dua_dead_range(exploit_dua, [], project_data)
-            if r.empty():
-                continue
-            
-            get_or_create(
-                session,
-                DuaBytes,
-                dua=exploit_dua.id,
-                selected=r
-            )
+    # randcount = random_sampling_threshold
+    # if random_sampling_threshold > len(recent_duas_by_instr):
+    #    for lval_id, exploit_dua in recent_dead_duas.items():
+    #        r = get_dua_dead_range(exploit_dua, [], project_data)
+    #        if r.empty():
+    #            continue
+    #        
+    #        get_or_create(
+    #            session,
+    #            DuaBytes,
+    #            dua=exploit_dua.id,
+    #            selected=r,
+    #        )
+    #else:
+    #    while randcount > 0:
+    #        randcount -= 1
+    #        if not recent_duas_by_instr:
+    #            break
+    #        
+    #        exploit_dua = recent_duas_by_instr[0]
+    #        r = get_dua_dead_range(exploit_dua, [], project_data)
+    #        if r.empty():
+    #            continue        
+    #        get_or_create(
+    #            session,
+    #            DuaBytes,
+    #            dua=exploit_dua.id,
+    #            selected=r
+    #        )
 
 
 def _make_hashable(val):
@@ -635,6 +555,7 @@ def update_liveness(panda_log_entry: dict, session: Session, project_data: dict)
     """
     current_file = project_data.get("input_file", "UNKNOWN_FILE")
     liveness = liveness_by_file[current_file]
+    current_instr = int(panda_log_entry["instr"], 0)
     tainted_branch = panda_log_entry["taintedBranch"]
     dprint(project_data, "TAINTED BRANCH")
 
@@ -657,8 +578,9 @@ def update_liveness(panda_log_entry: dict, session: Session, project_data: dict)
 
     non_viable_duas = []
     for dua in duas_to_check:
-        if not is_dua_dead(dua, project_data):
+        if not is_dua_dead(dua, liveness, project_data):
             dprint(project_data, f"{str(dua)}\n ** DUA not viable\n")
+            dua.death_instr = current_instr
             recent_dead_duas.pop(dua.lval_relationship.id, None)
             if dua in recent_duas_by_instr:
                 recent_duas_by_instr.remove(dua)
@@ -670,56 +592,11 @@ def update_liveness(panda_log_entry: dict, session: Session, project_data: dict)
         for label in dua.all_labels:
             if label in dua_dependencies:
                 dua_dependencies.pop(label, None)
+    save_liveness_to_db(session, current_instr)
 
 
-def is_dua_dead(dua: Dua, project_data: dict) -> bool:
-    return get_dua_dead_range(dua, [], project_data).size() == LAVA_MAGIC_VALUE_SIZE
-
-
-def get_dua_dead_range(dua: Dua, to_avoid: list[int], project_data: dict) -> Range:
-    viable_bytes = dua.viable_bytes
-    dprint(project_data, f"checking viability of dua: currently {count_nonzero(viable_bytes)} viable bytes")
-    if "nodua" in dua.lval_relationship.ast_name:
-        dprint(project_data, f"Found nodua symbol, skipping {dua.lval_relationship.ast_name}")
-        empty = Range(0, 0)
-        return empty
-    result = get_dead_range(dua.viable_bytes, to_avoid, project_data)
-    dprint(project_data, f"{dua}\ndua has {result.size()} viable bytes")
-    return result
-
-
-# get first 4-or-larger dead range. to_avoid is a sorted vector of labels that
-# can't be used
-def get_dead_range(viable_bytes: list[LabelSet | None], to_avoid: list[int], project_data: dict) -> Range:
-    current_file = project_data.get("input_file", "UNKNOWN_FILE")
-    liveness = liveness_by_file[current_file]
-    current_run = Range(0, 0)
-    # NB: we have already checked dua for viability wrt tcn & card at induction
-    # these do not need re-checking as they are to be captured at dua siphon point
-    for i in range(len(viable_bytes)):
-        byte_viable = True
-        label_set = viable_bytes[i]
-        if label_set is not None:
-            if not disjoint(label_set.labels, to_avoid):
-                byte_viable = False
-            else:
-                for label in label_set.labels:
-                    if liveness[label] > project_data["max_liveness"]:
-                        dprint(project_data, f"byte offset is nonviable b/c label {label} has liveness {liveness[label]}")
-                        byte_viable = False
-                        break
-            if byte_viable:
-                if current_run.empty():
-                    current_run = Range(i, i + 1)
-                else:
-                    current_run.high += 1
-                    if current_run.size() >= LAVA_MAGIC_VALUE_SIZE:
-                        break
-                continue
-        current_run = Range(0, 0)
-    if current_run.size() < LAVA_MAGIC_VALUE_SIZE:
-        return Range(0, 0)
-    return current_run
+def is_dua_dead(dua: Dua, liveness, project_data: dict) -> bool:
+    return get_dua_dead_range(dua, [], liveness, project_data).size() == LAVA_MAGIC_VALUE_SIZE
 
 
 def record_call(ple: dict):
@@ -801,7 +678,7 @@ def load_db(db_file: str) -> dict[int, str]:
     Args:
         db_file: input Lava database file mapping IDs to strings (e.g., "3" -> "toy.c:...")
     """
-    string_ids = {}
+    string_ids: dict[int, str] = {}
 
     with open(db_file, 'r', encoding='utf-8', errors='replace') as f:
         for line in f:
@@ -821,21 +698,32 @@ def load_db(db_file: str) -> dict[int, str]:
     return string_ids
 
 
-def save_liveness_to_db(session: Session):
+def save_liveness_to_db(session: Session, atp_instr: int):
+    global last_snapshotted_instr
+
+    # 1. Instantly bail if we already saved snapshots for this exact instruction
+    if atp_instr == last_snapshotted_instr:
+        return
+
     snapshots_to_insert = []
     for input_file, liveness in liveness_by_file.items():
-        for label, death_instr in liveness.items():
+        for label, current_count in liveness.items():
+            # 2. Append the raw model instances directly to a list
             snapshots_to_insert.append(
                 LivenessSnapshot(
                     inputfile=input_file,
                     label=label,
-                    death_instr=death_instr
+                    atp_instr=atp_instr,
+                    liveness_count=current_count
                 )
             )
-    
+
+    # 3. Add them all to the session at once
     if snapshots_to_insert:
         session.add_all(snapshots_to_insert)
-        session.commit()
+        
+    # 4. Update the tracker
+    last_snapshotted_instr = atp_instr
 
 
 def parse_panda_log(panda_log_file: str, project_data: dict):
@@ -891,13 +779,13 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     project_data["pid"] = ple['fileTaintMatch'].get('pid', 0)
                     project_data["tid"] = ple['fileTaintMatch'].get('tid', 0)
                     # Nuke the global state
-                    save_liveness_to_db(db.session)
                     liveness_by_file.clear()
                     dua_dependencies.clear()
                     recent_dead_duas.clear()
                     recent_duas_by_instr.clear()
                     ptr_to_labelset.clear()
                     current_call_stack.clear()
+                    _L1_CACHE.clear()
 
                 if num_entries_read % batch_size == 0:
                     try:
@@ -918,32 +806,6 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
 
             # Once you are done, and no error on the entire log, update the database
             db.session.commit()
-
-
-def dump_table(title: str, rows: list, attributes: list[str]):
-    print(f"\n==================================================")
-    print(f"=== {title} (Row Count: {len(rows)}) ===")
-    print(f"==================================================")
-    for idx, row in enumerate(rows):
-        print(f"  [{idx}] Row Instance Entry:")
-        for attr in attributes:
-            if hasattr(row, attr):
-                val = getattr(row, attr)
-
-                # Track list inner types cleanly for your surgical debugging verification
-                if isinstance(val, list):
-                    inner_type = f"list of {type(val[0]).__name__}" if val else "empty list"
-                    # Limit output size to prevent terminal buffer spam on giant label lists
-                    display_val = val if len(val) <= 12 else f"{val[:10]}... (+{len(val) - 10} more)"
-                    # FIX: Coerce the array token to a string BEFORE passing alignment modifiers
-                    str_val = str(display_val)
-                else:
-                    inner_type = type(val).__name__
-                    str_val = str(val)
-
-                print(f"    - {attr:<16}: {str_val:<55} | Type: {inner_type}")
-            else:
-                print(f"    - {attr:<16}: [NOT FOUND ON OBJECT VALUE]")
 
 
 def print_bug_stats(project_data: dict, debug: bool = False):
@@ -989,9 +851,9 @@ def print_bug_stats(project_data: dict, debug: bool = False):
             duas = db.session.query(Dua).all()
 
         if debug:
-            dump_table("DUAs (Dead Unused Variable)", duas, [
+            dump_table("DUAs (Dead Uncomplicated Available)", duas, [
                 'id', 'lval', 'instr', 'fake_dua', 'inputfile',
-                'max_tcn', 'max_cardinality', 'all_labels', 'byte_tcn', 'viable_bytes', 'trace_index'])
+                'max_tcn', 'max_cardinality', 'all_labels', 'byte_tcn', 'viable_bytes', 'trace_index', 'length', 'death_instr'])
         else:
             print("duas:", len(duas))
 

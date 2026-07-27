@@ -382,7 +382,7 @@ class ASTLoc:
             end=Loc(end_line, end_col)
         )
 
-@dataclass(order=True)
+@dataclass(frozen=True, order=True)
 class Range:
     low: int
     high: int
@@ -520,6 +520,9 @@ class Dua(Base):
         foreign_keys=[trace_index],
         viewonly=True,  # viewonly ensures Python doesn't try to alter C++ tables automatically
     )
+
+    death_instr: Mapped[int] = mapped_column(BigInteger, nullable=True)
+    length: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
     __table_args__ = (
         UniqueConstraint(
@@ -828,15 +831,14 @@ class LivenessSnapshot(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     inputfile: Mapped[str] = mapped_column(Text, nullable=False)
     label: Mapped[int] = mapped_column(Integer, nullable=False) # The taint label
-    death_instr: Mapped[int] = mapped_column(BigInteger, nullable=False) # When it was read/used
 
-    # Match C++: #pragma db index("LivenessSnapshotUniq") unique members(inputfile, label)
+    # NEW: Track WHEN this snapshot was taken
+    atp_instr: Mapped[int] = mapped_column(BigInteger, nullable=False) 
+
+    # NEW: Store the actual liveness count
+    liveness_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # UPDATE: Allow multiple snapshots per label at different instruction points
     __table_args__ = (
-        UniqueConstraint('inputfile', 'label', name='LivenessSnapshotUniq'),
+        UniqueConstraint('inputfile', 'label', 'atp_instr', name='LivenessSnapshotUniq'),
     )
-
-    def __str__(self):
-        return f"Liveness[{self.inputfile}]: Label {self.label} dies at instr {self.death_instr}"
-
-    def __repr__(self):
-        return self.__str__()

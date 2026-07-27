@@ -48,8 +48,6 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
         4. Stop the recording after the command completes
         """
         # Use absolute paths for BOTH arguments!
-        print("args", state.command_args)
-        print("install directory", state.install_directory)
         guest_command = subprocess.list2cmdline(state.command_args)
         # Technically the first two steps of record_cmd
         # but running executable ONLY works with absolute paths
@@ -121,24 +119,30 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
         """
         debug = project_data["debug"]
         start = tick()
-        progress("bug_mining", 1, "Starting first and only replay, tainting on file open...")
         guest_executable = project_data['command'].format(
             install_dir=state.install_directory,
             input_file=""
         ).split()[0].strip()
 
         if not os.path.exists(guest_executable):
-            print(f"Critical Error: {guest_executable} not found")
-            sys.exit(1)
+            raise RuntimeError(f"Critical Error: {guest_executable} not found")
 
         dwarf_cmd = ["dwarfdump", "-dil", guest_executable]
+        progress("bug_mining", 1, f"Running Dwarf Dump {subprocess.list2cmdline(dwarf_cmd)}")
         result = subprocess.run(
             dwarf_cmd,
             capture_output=True,
             text=True
         )
+
+        if result.stdout is None:
+            raise RuntimeError(f"Critical Error: blank output from dwarfdump!")
+
+        progress("bug_mining", 1, "Converting Dwarf Dump into JSON")
         dwarfdump.parse_dwarfdump(result.stdout, guest_executable, project_root=state.tar_directory)
         proc_name = os.path.basename(guest_executable)
+
+        progress("bug_mining", 1, "Starting first and only replay, tainting on file open...")
 
         progress("bug_mining", 0, f"pandalog = [{panda_log}]" )
 

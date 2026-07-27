@@ -43,6 +43,9 @@ message Dua {
     uint32 max_cardinality = 8;
     uint64 instr = 9;
     bool fake_dua = 10;
+    uint64 trace_index = 11;
+    uint64 length = 12;
+    uint64 death_instr = 13;
 }
 
 message DuaBytes {
@@ -129,5 +132,6 @@ message LivenessSnapshot {
     uint64 id = 1;
     string inputfile = 2;
     uint32 label = 3;
-    uint64 death_instr = 4;
+    uint64 atp_instr = 4;
+    uint64 liveness_count = 5;
 }

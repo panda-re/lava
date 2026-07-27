@@ -581,7 +581,7 @@ void taint_query_pri(Json::Value& ple) {
 
         const Dua *dua = create(Dua(lval, std::move(viable_byte),
                 std::move(byte_tcn), std::move(all_labels), inputfile,
-                c_max_tcn, c_max_card, std::strtoull(ple["instr"].asString().c_str(), 0, 0), is_fake_dua, source_trace_index));
+                c_max_tcn, c_max_card, std::strtoull(ple["instr"].asString().c_str(), 0, 0), is_fake_dua, source_trace_index, len));
 
         if (is_dua) {
             // Only track liveness for non-fake duas.
@@ -614,7 +614,7 @@ void taint_query_pri(Json::Value& ple) {
             dprintf("new lval\n");
         } else {
             // recent_duas_by_instr should contain a dua w/ this lval.
-            const Dua *old_dua = it_lval->second;
+            Dua *old_dua = const_cast<Dua*>(it_lval->second);
             assert(old_dua->lval->id == lval_id);
             auto instr_range = std::equal_range(
                     recent_duas_by_instr.begin(),
@@ -626,6 +626,7 @@ void taint_query_pri(Json::Value& ple) {
             assert((*it_instr)->lval->id == lval_id);
             recent_duas_by_instr.erase(it_instr);
 
+            old_dua->death_instr = instr;
             // replace value in recent_dead_duas and erase old from
             // dua_dependencies.
             for (uint32_t l : old_dua->all_labels) {
@@ -700,6 +701,7 @@ void taint_query_pri(Json::Value& ple) {
 void update_liveness(const Json::Value& ple) {
     Json::Value tb = ple["taintedBranch"];
     dprintf("TAINTED BRANCH\n");
+    uint64_t current_instr = std::strtoull(ple["instr"].asString().c_str(), 0, 0);
 
     transaction t(db->begin());
     std::vector<uint32_t> all_labels;
@@ -716,7 +718,6 @@ void update_liveness(const Json::Value& ple) {
             ptr_to_labelset.at(std::strtoull(tq["ptr"].asString().c_str(), 0, 0)) -> labels;
         merge_into(cur_labels.begin(), cur_labels.end(), all_labels);
     }
-    t.commit();
 
     // For each label, look at all duas tainted by that label.
     // If they aren't viable anymore, erase them from recent_dead_duas list and
@@ -738,6 +739,10 @@ void update_liveness(const Json::Value& ple) {
         // is this dua still viable?
         if (!is_dua_dead(dua)) {
             dprintf("%s\n ** DUA not viable\n", std::string(*dua).c_str());
+
+            const_cast<Dua*>(dua)->death_instr = current_instr; 
+            db->update(dua);
+
             recent_dead_duas.erase(dua->lval->id);
             recent_duas_by_instr.erase(
                     std::remove(recent_duas_by_instr.begin(),
@@ -758,6 +763,7 @@ void update_liveness(const Json::Value& ple) {
             }
         }
     }
+    t.commit();
 }
 
 /*

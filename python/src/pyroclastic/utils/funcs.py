@@ -554,3 +554,29 @@ def neuter_autotools_completely(main_directory: str):
             print("[+] Successfully neutralized build-aux/missing.")
         except Exception as e:
             print(f"[-] Warning: Failed to hijack missing script: {e}")
+
+
+def dump_table(title: str, rows: list, attributes: list[str]):
+    print(f"\n==================================================")
+    print(f"=== {title} (Row Count: {len(rows)}) ===")
+    print(f"==================================================")
+    for idx, row in enumerate(rows):
+        print(f"  [{idx}] Row Instance Entry:")
+        for attr in attributes:
+            if hasattr(row, attr):
+                val = getattr(row, attr)
+
+                # Track list inner types cleanly for your surgical debugging verification
+                if isinstance(val, list):
+                    inner_type = f"list of {type(val[0]).__name__}" if val else "empty list"
+                    # Limit output size to prevent terminal buffer spam on giant label lists
+                    display_val = val if len(val) <= 12 else f"{val[:10]}... (+{len(val) - 10} more)"
+                    # FIX: Coerce the array token to a string BEFORE passing alignment modifiers
+                    str_val = str(display_val)
+                else:
+                    inner_type = type(val).__name__
+                    str_val = str(val)
+
+                print(f"    - {attr:<16}: {str_val:<55} | Type: {inner_type}")
+            else:
+                print(f"    - {attr:<16}: [NOT FOUND ON OBJECT VALUE]")

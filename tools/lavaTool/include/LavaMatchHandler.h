@@ -203,6 +203,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
     // A query inserted at a possible attack point. Used, dynamically, just to
     // tell us when an input gets to the attack point.
+    // The extra "0;" is to make sure the query returns a value, so it can be used in an expression.
     LExpr LavaAtpQuery(ASTLoc ast_loc, AttackPoint::Type atpType) {
         return LBlock({
                 LFunc("vm_lava_attack_point",
