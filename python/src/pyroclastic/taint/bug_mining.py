@@ -27,6 +27,8 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
     Initializes the project and PANDA object based on arguments.
     """
     panda = Panda(generic=project_data['qemu'])
+    panda_log = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
+    pandalog_json = "{}/queries-{}.json".format(project_data['output_dir'], project_data['name'])
 
     class State:
         command_args = []
@@ -46,8 +48,6 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
         4. Stop the recording after the command completes
         """
         # Use absolute paths for BOTH arguments!
-        print("args", state.command_args)
-        print("install directory", state.install_directory)
         guest_command = subprocess.list2cmdline(state.command_args)
         # Technically the first two steps of record_cmd
         # but running executable ONLY works with absolute paths
@@ -119,29 +119,34 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
         """
         debug = project_data["debug"]
         start = tick()
-        progress("bug_mining", 1, "Starting first and only replay, tainting on file open...")
         guest_executable = project_data['command'].format(
             install_dir=state.install_directory,
             input_file=""
         ).split()[0].strip()
 
         if not os.path.exists(guest_executable):
-            print(f"Critical Error: {guest_executable} not found")
-            sys.exit(1)
+            raise RuntimeError(f"Critical Error: {guest_executable} not found")
 
         dwarf_cmd = ["dwarfdump", "-dil", guest_executable]
+        progress("bug_mining", 1, f"Running Dwarf Dump {subprocess.list2cmdline(dwarf_cmd)}")
         result = subprocess.run(
             dwarf_cmd,
             capture_output=True,
             text=True
         )
+
+        if result.stdout is None:
+            raise RuntimeError(f"Critical Error: blank output from dwarfdump!")
+
+        progress("bug_mining", 1, "Converting Dwarf Dump into JSON")
         dwarfdump.parse_dwarfdump(result.stdout, guest_executable, project_root=state.tar_directory)
         proc_name = os.path.basename(guest_executable)
-        pandalog = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
 
-        progress("bug_mining", 0, f"pandalog = [{pandalog}]" )
+        progress("bug_mining", 1, "Starting first and only replay, tainting on file open...")
 
-        panda.set_pandalog(pandalog)
+        progress("bug_mining", 0, f"pandalog = [{panda_log}]" )
+
+        panda.set_pandalog(panda_log)
         panda.load_plugin("pri")
         panda.load_plugin("dwarf2",
                           args={
@@ -175,20 +180,12 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
         progress("bug_mining", 1, f"taint analysis complete {replay_time} seconds")
         sys.stdout.flush()
 
-    def parse_replay_output():
-        """
-        First convert the panda log into JSON. Then call find_bug_injection (FBI) on the JSON log to populate the
-        database with attack points, DUAs, etc.
-        """
         # I attempted to upgrade the version, but panda had trouble including <protobuf-c/protobuf.h> something
         # for now, we can use the python implementation, although it is slower
         # https://github.com/protocolbuffers/protobuf/releases/tag/v21.0
         # https://stackoverflow.com/questions/52040428/how-to-update-protobuf-runtime-library
-        start = tick()
-        panda_log = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
-        pandalog_json = "{}/queries-{}.json".format(project_data['output_dir'], project_data['name'])
         os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
-        progress("bug_mining", 0, "Calling the FBI on queries.plog...")
+        progress("bug_mining", 0, "Converting PANDA Log to JSON...")
         convert_json_args = ['python3', '-m', 'pandare.plog_reader', panda_log]
         # TODO: Once Panda PR is in, using -c should avoid the warning
         #convert_json_args = [
@@ -205,11 +202,13 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
             print("The script to convert the panda log into JSON has failed")
             raise e
 
-        project_data["curtail"] = project_data.get("curtail", 0)
-
+    def parse_replay_output():
+        """
+        Now call find_bug_injection (FBI) on the JSON log to populate the
+        database with attack points, DUAs, etc.
+        """
         print("Calling fbi - Mining PANDA log and populating database...")
-        # TODO: Python FBI is still funky... don't swap out Python just yet...We will only swap once chaff is checked
-        sys.stdout.flush()
+        start = tick()
 
         if project_data["use_c_fbi"]:
             fbi_args = ['fbi',
@@ -235,6 +234,7 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
             project_data["max_cardinality"] = 100
             project_data["max_tcn"] = 100
             project_data["max_lval_size"] = 100
+            project_data["curtail"] = project_data.get("curtail", 0)
 
             parse_panda_log(pandalog_json, project_data)
             record_injectable_bugs_offline(project_data)
@@ -248,9 +248,8 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
 
     # Check if there is already a PANDA log...
     # If there is, skip straight to parsing the replay output, otherwise do the whole pipeline
-    pandalog = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
-    if os.path.exists(pandalog):
-        progress("bug_mining", 0, f"PANDA log already exists at {pandalog}, skipping straight to parsing replay output")
+    if os.path.exists(pandalog_json):
+        progress("bug_mining", 0, f"PANDA log json already exists at {pandalog_json}, skipping straight to parsing replay output")
         parse_replay_output()
         return
     record()

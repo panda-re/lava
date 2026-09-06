@@ -61,8 +61,7 @@ RUN cmake -B"./tools/build" \
 RUN cmake --build "/tools/build" --target install --parallel "$(nproc)" --config Release
 
 # Install the pyroclast package
-RUN cd python \
-    python3 -m pip install .
+RUN python3 -m pip install .
 
 # RUN useradd volcana
 # RUN chown -R volcana:volcana /tools/

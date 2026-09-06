@@ -30,7 +30,7 @@ std::map<std::string,uint32_t> LoadDB(std::string dbfile) {
         if (delimiterPos != std::string::npos) {
             std::string istr = line.substr(0, delimiterPos); // Extract the ID part
             std::string str = line.substr(delimiterPos + 1); // Extract the string part
-            std::cout << "Loading " << str << " with ID " << istr << std::endl;
+            // std::cout << "Loading " << str << " with ID " << istr << std::endl;
             StringIDs[str] = strtoul(istr.c_str(), NULL, 0);
         }
     }

@@ -69,7 +69,9 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
                 data << "int lava_chaff_var_0 = 0;\n";
                 data << "int lava_chaff_var_1 = 0;\n";
                 // Use another probing var to avoid gcc local var rearrangement
-                data << "int lava_chaff_var_2 = &" << func->getNameAsString() << ";\n";
+                // Point lava_chaff_var_2 to the stack address of lava_chaff_var_0 
+                // so the LAVA stack offset calculation correctly targets the return address.
+                data << "unsigned long lava_chaff_var_2 = (unsigned long) &lava_chaff_var_0;\n";
                 Mod.InsertAt(first->getBeginLoc(), data.str());
             }
             return;
@@ -86,7 +88,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
                 data << "int lava_chaff_var_0 = 0;\n";
                 data << "int lava_chaff_var_1 = 0;\n";
                 // To keep var_0 and var_1 of the same use count - to avoid local var rearragement
-                data << "int lava_chaff_var_2 = &lava_chaff_var_0;\n";
+                data << "unsigned long lava_chaff_var_2 = (unsigned long) &lava_chaff_var_0;\n";
                 // Use InsertAfter - leave room for Arbitrary variables in Stack Overrun bugs
                 Mod.InsertAt(first->getBeginLoc(), data.str());
             }

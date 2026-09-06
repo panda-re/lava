@@ -39,7 +39,6 @@ extern "C" {
 #include "pgarray.hxx"
 #include "lava.hxx"
 #include "lava-odb.hxx"
-#include "spit.hxx"
 #include <odb/pgsql/database.hxx>
 #include <odb/session.hxx>
 #include <cstdlib>
@@ -244,7 +243,6 @@ void update_unique_taint_sets(Json::Value& tquls) {
         printf("UNIQUE TAINT SET\n");
 	Json::StyledWriter writer;
 	std::string jsonString = writer.write(tquls);
-	// spit_tquls(tquls);
 	std::cout << jsonString;
 	printf("\n");
     }
@@ -425,6 +423,7 @@ void taint_query_pri(Json::Value& ple) {
     if (is_header_file(std::string(si["filename"].asString()))) {
 	    return;
     }
+    uint32_t stack_offset = std::strtoul(si["insertionpoint"].asString().c_str(), 0, 0);
 
     // entry 2 is callstack -- ignore
     Json::Value cs = tqh["callStack"];
@@ -568,7 +567,7 @@ void taint_query_pri(Json::Value& ple) {
     const AttackPoint *pad_atp;
     bool is_new_atp;
     std::tie(pad_atp, is_new_atp) = create_full(
-            AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT, calltrace, source_trace_index});
+            AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT, calltrace, source_trace_index, stack_offset});
 
     if (is_dua || is_fake_dua) {
         // looks like we can subvert this for either real or fake bug.
@@ -582,7 +581,7 @@ void taint_query_pri(Json::Value& ple) {
 
         const Dua *dua = create(Dua(lval, std::move(viable_byte),
                 std::move(byte_tcn), std::move(all_labels), inputfile,
-                c_max_tcn, c_max_card, std::strtoull(ple["instr"].asString().c_str(), 0, 0), is_fake_dua, source_trace_index));
+                c_max_tcn, c_max_card, std::strtoull(ple["instr"].asString().c_str(), 0, 0), is_fake_dua, source_trace_index, len));
 
         if (is_dua) {
             // Only track liveness for non-fake duas.
@@ -591,12 +590,15 @@ void taint_query_pri(Json::Value& ple) {
             }
         }
 
-        // TODO: What does adding 0 stackoff set do to RET_BUFFER?
-        if (len >= 20 && decimate_by_type(Bug::RET_BUFFER)) {
+        const AttackPoint * ret_buffer_pad_atp;
+        bool ret_buffer_is_new_atp;
+        std::tie(ret_buffer_pad_atp, ret_buffer_is_new_atp) = create_full(
+                AttackPoint{0, ast_loc, AttackPoint::QUERY_POINT, {}, 0, 0});
+        if (len >= 20) {
             Range range = get_dua_exploit_pad(dua);
             const DuaBytes *dua_bytes = create(DuaBytes(dua, range));
             if (is_fake_dua || range.size() >= 20) {
-                record_injectable_bugs_at<Bug::RET_BUFFER>(0, pad_atp, is_new_atp, { dua_bytes });
+                record_injectable_bugs_at<Bug::RET_BUFFER>(0, ret_buffer_pad_atp, ret_buffer_is_new_atp, { dua_bytes });
             }
         }
         dprintf("OK DUA.\n");
@@ -612,7 +614,7 @@ void taint_query_pri(Json::Value& ple) {
             dprintf("new lval\n");
         } else {
             // recent_duas_by_instr should contain a dua w/ this lval.
-            const Dua *old_dua = it_lval->second;
+            Dua *old_dua = const_cast<Dua*>(it_lval->second);
             assert(old_dua->lval->id == lval_id);
             auto instr_range = std::equal_range(
                     recent_duas_by_instr.begin(),
@@ -624,6 +626,7 @@ void taint_query_pri(Json::Value& ple) {
             assert((*it_instr)->lval->id == lval_id);
             recent_duas_by_instr.erase(it_instr);
 
+            old_dua->death_instr = instr;
             // replace value in recent_dead_duas and erase old from
             // dua_dependencies.
             for (uint32_t l : old_dua->all_labels) {
@@ -641,16 +644,18 @@ void taint_query_pri(Json::Value& ple) {
         // set(recent_dead_duas.values()) == set(recent_duas_by_instr).
         assert(recent_dead_duas.size() == recent_duas_by_instr.size());
 
-        if (is_dua) num_real_duas++;
-        if (is_fake_dua) num_fake_duas++;
+        if (is_dua) {
+            num_real_duas++;
+        }
+        if (is_fake_dua) {
+            num_fake_duas++;
+        }
     } else {
         dprintf("discarded %u viable bytes %lu labels %s:%lu %s",
                 num_viable_bytes, all_labels.size(), si["filename"].asString().c_str(), 
                 std::strtoul(si["linenum"].asString().c_str(), 0, 0),
                 si["astnodename"].asString().c_str());
     }
-
-    uint32_t stack_offset = std::strtoul(si["insertionpoint"].asString().c_str(), 0, 0);
 
     record_injectable_bugs_at<Bug::CHAFF_STACK_UNUSED>(
             stack_offset, pad_atp, is_new_atp, {});
@@ -696,6 +701,7 @@ void taint_query_pri(Json::Value& ple) {
 void update_liveness(const Json::Value& ple) {
     Json::Value tb = ple["taintedBranch"];
     dprintf("TAINTED BRANCH\n");
+    uint64_t current_instr = std::strtoull(ple["instr"].asString().c_str(), 0, 0);
 
     transaction t(db->begin());
     std::vector<uint32_t> all_labels;
@@ -705,7 +711,6 @@ void update_liveness(const Json::Value& ple) {
             // keep track of unique taint label sets
             update_unique_taint_sets(tq["uniqueLabelSet"]);
         }
-//        if (debug) { spit_tq(tq); printf("\n"); }
 
         // This should be O(mn) for m sets, n elems each.
         // though we should have n >> m in our worst case.
@@ -713,7 +718,6 @@ void update_liveness(const Json::Value& ple) {
             ptr_to_labelset.at(std::strtoull(tq["ptr"].asString().c_str(), 0, 0)) -> labels;
         merge_into(cur_labels.begin(), cur_labels.end(), all_labels);
     }
-    t.commit();
 
     // For each label, look at all duas tainted by that label.
     // If they aren't viable anymore, erase them from recent_dead_duas list and
@@ -735,6 +739,10 @@ void update_liveness(const Json::Value& ple) {
         // is this dua still viable?
         if (!is_dua_dead(dua)) {
             dprintf("%s\n ** DUA not viable\n", std::string(*dua).c_str());
+
+            const_cast<Dua*>(dua)->death_instr = current_instr; 
+            db->update(dua);
+
             recent_dead_duas.erase(dua->lval->id);
             recent_duas_by_instr.erase(
                     std::remove(recent_duas_by_instr.begin(),
@@ -755,6 +763,7 @@ void update_liveness(const Json::Value& ple) {
             }
         }
     }
+    t.commit();
 }
 
 /*
@@ -956,8 +965,9 @@ void attack_point_lval_usage(Json::Value ple) {
     transaction t(db->begin());
     const AttackPoint *atp;
     bool is_new_atp;
+    int bug_type = std::strtoul(pleatp["info"].asString().c_str(), 0, 0);
     std::tie(atp, is_new_atp) = create_full(AttackPoint{0,
-            ast_loc, (AttackPoint::Type) std::strtoul(pleatp["info"].asString().c_str(), 0, 0)});
+            ast_loc, (AttackPoint::Type) bug_type, {}, 0, 0});
     dprintf("@ATP: %s\n", std::string(*atp).c_str());
 
     uint32_t stack_offset = std::strtoul(pleatp["insertionpoint"].asString().c_str(), 0, 0);
@@ -1204,6 +1214,17 @@ int main (int argc, char **argv) {
             // 3. Update your live tracker state variable
             // (Ensure inputfilename or a similar string tracker is accessible)
             inputfile = base_filename;
+
+            // --- NUKE THE GLOBAL STATE ---
+            liveness.clear();
+            dua_dependencies.clear();
+            recent_dead_duas.clear();
+            
+            // Required to prevent assertion failures and pointer collisions
+            recent_duas_by_instr.clear();
+            ptr_to_labelset.clear();
+            cur_call_stack.clear();
+
         } else if (ple.isMember("sourceTraceId")) {
             record_trace(ple);
         }

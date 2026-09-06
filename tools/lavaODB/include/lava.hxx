@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <iterator>
 #include <typeinfo>
+#include <odb/nullable.hxx>
 
 /**
  * enforce_name_match: The "Contract Lock"
@@ -286,6 +287,9 @@ struct Dua {
     uint64_t instr;     // instr count
     bool fake_dua;      // true iff this dua is fake (corresponds to untainted bytes)
     uint64_t trace_index;   // Index into the SourceTrace
+    uint64_t length;    // length of taint query header, used to make DuaBytes retroactively
+    #pragma db null
+    odb::nullable<uint64_t> death_instr;   // Works in C++14 and C++17 for ODB & GCC
 
 #pragma db index("DuaUniq") unique members(lval, inputfile, instr, fake_dua)
 
@@ -293,12 +297,12 @@ struct Dua {
     inline Dua(const SourceLval *lval, std::vector<const LabelSet*> &&viable_bytes,
             std::vector<uint32_t> &&byte_tcn, std::vector<uint32_t> &&all_labels,
             std::string inputfile, uint32_t max_tcn, uint32_t max_cardinality,
-            uint64_t instr, bool fake_dua, uint64_t src_tr)
+            uint64_t instr, bool fake_dua, uint64_t src_tr, uint64_t length, odb::nullable<uint64_t> death_instr = {})
         : id(0), lval(lval), viable_bytes(std::move(viable_bytes)),
             byte_tcn(std::move(byte_tcn)), all_labels(std::move(all_labels)),
             inputfile(inputfile), max_tcn(max_tcn),
             max_cardinality(max_cardinality), instr(instr), fake_dua(fake_dua),
-            trace_index(src_tr) {}
+            trace_index(src_tr), length(length), death_instr(death_instr) {}
 
     bool operator<(const Dua &other) const {
          return std::tie(lval->id, inputfile, instr, fake_dua) <
@@ -347,6 +351,11 @@ struct Dua {
         p.set_max_cardinality(this->max_cardinality);
         p.set_instr(this->instr);
         p.set_fake_dua(this->fake_dua);
+        p.set_trace_index(this->trace_index);
+        p.set_length(this->length);
+        if (!this->death_instr.null()) {
+            p.set_death_instr(*this->death_instr);
+        }
     }
 };
 
@@ -460,8 +469,8 @@ struct AttackPoint {
     } type;
 
     std::vector<uint64_t> calltrace;
-    uint64_t stack_offset;  // Used for Chaff Bugs
     uint64_t trace_index;   // Index into the SourceTrace
+    uint64_t stack_offset;  // Used for Chaff Bugs
 
 #pragma db index("AttackPointUniq") unique members(loc, type, trace_index)
 
@@ -762,12 +771,14 @@ struct AtpExecution {
 
     std::string inputfile;
     uint64_t instr;
+    uint64_t pid;
+    uint64_t tid;
 
 #pragma db index("AtpExecutionUniq") unique members(atp, inputfile, instr)
 
     AtpExecution() {}
-    AtpExecution(const AttackPoint* atp, std::string inputfile, uint64_t instr)
-        : id(0), atp(atp), inputfile(inputfile), instr(instr) {}
+    AtpExecution(const AttackPoint* atp, std::string inputfile, uint64_t instr, uint64_t pid, uint64_t tid)
+        : id(0), atp(atp), inputfile(inputfile), instr(instr), pid(pid), tid(tid) {}
 
     bool operator<(const AtpExecution &other) const {
         return std::tie(atp->id, inputfile, instr) <
@@ -789,6 +800,8 @@ struct AtpExecution {
         }
         p.set_inputfile(this->inputfile);
         p.set_instr(this->instr);
+        p.set_pid(this->pid);
+        p.set_tid(this->tid);
     }
 };
 
@@ -799,21 +812,22 @@ struct LivenessSnapshot {
 
     std::string inputfile;
     uint32_t label;
-    uint64_t death_instr;
+    uint64_t atp_instr;
+    uint64_t liveness_count;
 
-#pragma db index("LivenessSnapshotUniq") unique members(inputfile, label)
+#pragma db index("LivenessSnapshotUniq") unique members(inputfile, label, atp_instr)
 
     LivenessSnapshot() {}
     LivenessSnapshot(std::string inputfile, uint32_t label, uint64_t death_instr)
-        : id(0), inputfile(inputfile), label(label), death_instr(death_instr) {}
+        : id(0), inputfile(inputfile), label(label), atp_instr(atp_instr), liveness_count(liveness_count) {}
 
     bool operator<(const LivenessSnapshot &other) const {
-        return std::tie(inputfile, label, death_instr) <
-            std::tie(other.inputfile, other.label, other.death_instr);
+        return std::tie(inputfile, label, atp_instr) <
+            std::tie(other.inputfile, other.label, other.atp_instr);
     }
 
     friend std::ostream &operator<<(std::ostream &os, const LivenessSnapshot &snap) {
-        os << "Liveness[" << snap.inputfile << "]: Label " << snap.label << " dies at instr " << snap.death_instr;
+        os << "Liveness[" << snap.inputfile << "]: Label " << snap.label << " dies at instr " << snap.atp_instr;
         return os;
     }
 
@@ -824,7 +838,8 @@ struct LivenessSnapshot {
         p.set_id(this->id);
         p.set_inputfile(this->inputfile);
         p.set_label(this->label);
-        p.set_death_instr(this->death_instr);
+        p.set_atp_instr(this->atp_instr);
+        p.set_liveness_count(this->liveness_count);
     }
 };
 #endif

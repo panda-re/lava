@@ -64,8 +64,7 @@ struct ReadDisclosureHandler : public LavaMatchHandler {
                     ASTLoc ast_loc = GetASTLoc(sm, arg);
                     Mod.Change(arg);
                     if (LavaAction == LavaQueries)  {
-                        addend = LavaAtpQuery(GetASTLoc(sm, arg),
-                                AttackPoint::PRINTF_LEAK);
+                        addend = LavaAtpQuery(ast_loc, AttackPoint::PRINTF_LEAK);
                         Mod.Add(addend, nullptr);
                     } else if (LavaAction == LavaInjectBugs) {
                         const std::vector<const Bug*> &injectable_bugs =
