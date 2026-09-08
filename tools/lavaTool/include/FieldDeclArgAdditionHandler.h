@@ -30,19 +30,23 @@ struct FieldDeclArgAdditionHandler : public LavaMatchHandler {
         if (ft->isFunctionPointerType()) {
             // field is a fn pointer
             const clang::Type *pt = ft->getPointeeType().IgnoreParens().getTypePtr();
-            //assert(pt);
-            if (!pt) return;
+            if (!pt) {
+                return;
+            }
             const clang::FunctionType *fun_type = dyn_cast<clang::FunctionType>(pt);
             if (fun_type == NULL) {
                 debug(FNARG) << "... clang could not determine function type, abort\n";
                 return;
             }
 
-            //assert(fun_type);
-            if (!fun_type) return;
+            if (!fun_type) {
+                return;
+            }
             const clang::FunctionProtoType *prot = dyn_cast<clang::FunctionProtoType>(fun_type);
-            if (!prot) return;
-            // add the data_flow arg
+            if (!prot) {
+                return;
+            }
+            // add the data_flow arg to the function definition for LAVA injection
             SourceLocation l1 = fd->getBeginLoc();
             SourceLocation l2 = fd->getEndLoc();
             AddArgGen(Mod, l1, l2, false, prot->getNumParams(), 2);

@@ -115,7 +115,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
 
         debug(FNARG) << "AddArgGen: Found injection point.\n";
 
-        // Logic to insert the argument
+        // Logic to insert the "data_flow" argument into the function definition
         if (already_added_arg.count(loc_param_start) == 0) {
             already_added_arg.insert(loc_param_start);
 
