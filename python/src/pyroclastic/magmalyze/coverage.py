@@ -7,8 +7,8 @@ import shlex
 import re
 import subprocess
 from angr.exploration_techniques import DFS
-from pyroclastic.utils.vars import LavaPaths
-from pyroclastic.utils.funcs import unpack_tar, configure_project, make_and_install
+from ..utils.vars import LavaPaths
+from ..utils.funcs import unpack_tar, configure_project, make_and_install
 
 
 def setup(lava_path: LavaPaths):

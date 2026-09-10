@@ -11,10 +11,10 @@ import platform
 from pathlib import Path
 from typing import List, Optional
 # LAVA imports
-from pyroclastic.utils.vars import LavaPaths
-from pyroclastic.utils.funcs import get_inject_parser, read_compile_db, unpack_tar, configure_project, preprocess, run_local, make_and_install
-from pyroclastic.utils.database_types import Bug, DuaBytes, Build, Run, BugKind, LavaDatabase
-from pyroclastic.inject.dataflow import genFnTraceHelper, genStackVarHelper
+from ..utils.vars import LavaPaths
+from ..utils.funcs import get_inject_parser, read_compile_db, unpack_tar, configure_project, preprocess, run_local, make_and_install
+from ..utils.database_types import Bug, DuaBytes, Build, Run, BugKind, LavaDatabase
+from ..inject.dataflow import genFnTraceHelper, genStackVarHelper
 
 NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
 start_time = time.time()

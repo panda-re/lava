@@ -7,12 +7,12 @@ from sqlalchemy.exc import IntegrityError
 from typing import DefaultDict, Set, Optional, List, Tuple, cast
 from collections import defaultdict
 from sqlalchemy.orm import Session
-from pyroclastic.utils.funcs import dump_table
-from pyroclastic.utils.database_types import SourceTrace, CallTrace
-from pyroclastic.utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, LavaDatabase, Dua
-from pyroclastic.utils.database_types import AtpKind, AtpExecution, LivenessSnapshot
-from pyroclastic.taint.taint_utils import dprint, get_dua_dead_range, get_dead_range, merge_into
-from pyroclastic.utils.vars import parse_vars
+from ..utils.funcs import dump_table
+from ..utils.database_types import SourceTrace, CallTrace
+from ..utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, LavaDatabase, Dua
+from ..utils.database_types import AtpKind, AtpExecution, LivenessSnapshot
+from ..taint.taint_utils import dprint, get_dua_dead_range, get_dead_range, merge_into
+from ..utils.vars import parse_vars
 
 # Matches "libc" at clean boundaries:
 # - Preceded by: start of string (^), a slash (/), or a bang (!)
