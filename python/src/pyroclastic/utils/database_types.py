@@ -332,8 +332,8 @@ class Run(Base):
 
 @dataclass(frozen=True, order=True)
 class Loc:
-    line: int = Integer
-    column: int = Integer
+    line: int
+    column: int
 
     def __str__(self):
         return f"{self.line}:{self.column}"
@@ -341,9 +341,9 @@ class Loc:
 
 @dataclass(frozen=True, order=True)
 class ASTLoc:
-    filename: str = Text
-    begin : Loc = Loc
-    end : Loc = Loc
+    filename: str
+    begin : Loc
+    end : Loc
 
     def __composite_values__(self):
         return (

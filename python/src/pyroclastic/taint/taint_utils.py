@@ -1,4 +1,4 @@
-from pyroclastic.utils.database_types import Dua, Range, LabelSet
+from ..utils.database_types import Dua, Range, LabelSet
 
 
 def dprint(project_data: dict, message: str):
