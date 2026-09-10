@@ -13,8 +13,8 @@ from angr.exploration_techniques import ExplorationTechnique
 from angr.sim_manager import SimulationManager
 # https://github.com/angr/angr/blob/9fa64a7ce22a4ca3f43e159cb4a831ce586a3241/angr/sim_state.py#L60
 from angr.sim_state import SimState
-from pyroclastic.magmalyze.coverage import setup, compile
-from pyroclastic.utils.vars import LavaPaths
+from ..magmalyze.coverage import setup, compile
+from ..utils.vars import LavaPaths
 
 logging.getLogger('angr').setLevel(logging.ERROR)
 logging.getLogger('pyvex').setLevel(logging.ERROR)

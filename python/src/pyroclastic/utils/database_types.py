@@ -186,6 +186,7 @@ class Bug(Base):
 
     max_liveness: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     magic: Mapped[int] = mapped_column(Integer, nullable=False)
+    # CRITICAL: The extra_duas is a list of DuaByte Ids NOT DUA IDs!
     extra_duas: Mapped[List[int]] = mapped_column(postgresql.ARRAY(BigInteger), nullable=False)
 
     # --- Added for Chaff Bugs ---
@@ -332,8 +333,8 @@ class Run(Base):
 
 @dataclass(frozen=True, order=True)
 class Loc:
-    line: int = Integer
-    column: int = Integer
+    line: int
+    column: int
 
     def __str__(self):
         return f"{self.line}:{self.column}"
@@ -341,9 +342,9 @@ class Loc:
 
 @dataclass(frozen=True, order=True)
 class ASTLoc:
-    filename: str = Text
-    begin : Loc = Loc
-    end : Loc = Loc
+    filename: str
+    begin : Loc
+    end : Loc
 
     def __composite_values__(self):
         return (

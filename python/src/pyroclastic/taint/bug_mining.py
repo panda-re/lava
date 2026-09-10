@@ -16,10 +16,10 @@ from pandare import Panda
 import argparse
 
 # LAVA
-from pyroclastic.taint.find_bug_injection import parse_panda_log, print_bug_stats
-from pyroclastic.utils.vars import parse_vars
-from pyroclastic.utils.funcs import tick, tock, progress
-from pyroclastic.taint.generate_bugs import record_injectable_bugs_offline, print_phase2_stats
+from ..taint.find_bug_injection import parse_panda_log, print_bug_stats
+from ..utils.vars import parse_vars
+from ..utils.funcs import tick, tock, progress
+from ..taint.generate_bugs import record_injectable_bugs_offline, print_phase2_stats
 
 
 def run_taint_pipeline(lava_project: str, project_data: dict):

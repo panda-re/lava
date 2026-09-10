@@ -1,5 +1,5 @@
 import json
-from pyroclastic.utils.database_types import LavaDatabase, CallTrace, Bug, BugKind, AttackPoint
+from ..utils.database_types import LavaDatabase, CallTrace, Bug, BugKind, AttackPoint
 
 
 def genFnTraceHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist: str, combined_json: str):
