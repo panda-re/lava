@@ -126,7 +126,12 @@ int main(int argc, const char **argv) {
 
             mark_for_siphon(bug->trigger);
 
-            if (bug->type != Bug::CHAFF_STACK_UNUSED) {
+            // Only add extra constraints used for Chaff Bugs
+            // We skip stack unused as this can't even cause a crash
+            // So no point to overconstrain
+            if (bug->type == Bug::CHAFF_STACK_CONST 
+                || bug->type == Bug::CHAFF_HEAP_CONST 
+                || bug->type == Bug::CHAFF_DIVZERO) {
                 for (uint64_t dua_id : bug->extra_duas) {
                     const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
                     mark_for_siphon_extra(dua_bytes);
@@ -135,7 +140,6 @@ int main(int argc, const char **argv) {
                     mark_for_overconst_extra(bug, dua_bytes);
                 }
             }
-
         }
     }
 

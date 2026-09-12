@@ -77,19 +77,13 @@ std::string fundecl_fun_name(const MatchFinder::MatchResult &Result, const Funct
     if (II) {
         StringRef Name = II->getName();
         return Name.str();
-//        std::string funname = Name.str();
-//        std::string filename = Result.SourceManager->getFilename(fd->getLocation()).str();
-//        return std::make_pair(filename, funname);
     }
     assert (1==0);
     return std::string("Unknown");
 }
 
 std::string get_containing_function_name(const MatchFinder::MatchResult &Result, const Stmt &stmt) {
-
     const Stmt *pstmt = &stmt;
-
-//    std::pair<std::string,std::string> fail = std::make_pair(std::string("Notinafunction"), std::string("Notinafunction"));
     while (true) {
         const auto &parents = Result.Context->getParents(*pstmt);
         debug(LOG) << "get_containing_function_name: " << parents.size() << " parents\n";
@@ -100,19 +94,18 @@ std::string get_containing_function_name(const MatchFinder::MatchResult &Result,
             debug(LOG) << "get_containing_function_name: no parents for stmt? ";
             pstmt->dumpPretty(*Result.Context);
             debug(LOG) << "\n";
-            assert (1==0);
-//            return fail;
+            assert(1==0);
         }
         if (parents[0].get<TranslationUnitDecl>()) {
             debug(LOG) << "get_containing_function_name: parents[0].get<TranslationUnitDecl? ";
             pstmt->dumpPretty(*Result.Context);
             debug(LOG) << "\n";
             assert(1==0);
-//            return fail;
         }
         const FunctionDecl *fd = parents[0].get<FunctionDecl>();
-        if (fd)
+        if (fd) {
             return fundecl_fun_name(Result, fd);
+        }
         pstmt = parents[0].get<Stmt>();
         if (!pstmt) {
             debug(LOG) << "get_containing_function_name: !pstmt \n";
@@ -123,7 +116,6 @@ std::string get_containing_function_name(const MatchFinder::MatchResult &Result,
             }
             if (!pstmt) {
                 assert (1==0);
-//              return fail;
             }
         }
     }
@@ -246,7 +238,6 @@ class FunctionPrinter : public MatchFinder::MatchCallback {
     virtual void run(const MatchFinder::MatchResult &Result) {
         const FunctionDecl *func =
             Result.Nodes.getNodeAs<FunctionDecl>("funcDecl");
-//        if (func->isExternC()) return;
         if (func) {
             outfile << "- fun: \n";
             clang::SourceLocation sl1 = func->getBeginLoc();
@@ -259,12 +250,14 @@ class FunctionPrinter : public MatchFinder::MatchCallback {
             }
 
             outfile << "   name: " << (func->getNameInfo().getAsString()) << "\n";
-            if (func->doesThisDeclarationHaveABody())
+            if (func->doesThisDeclarationHaveABody()) {
                 outfile << "   hasbody: true\n";
-            else
+            }
+            else {
                 outfile << "   hasbody: false\n";
+            }
             spit_fun_decl(func);
-      }
+        }
     }
 };
 
@@ -282,8 +275,9 @@ int main(int argc, const char **argv) {
 
     string outfilename = string(argv[argc-1]) + ".fn";
 
-    if (outfilename == "--.fn")
+    if (outfilename == "--.fn") {
         outfilename = "foo.fn";
+    }
     cout << "outfilename = [" << outfilename << "]\n";
     outfile.open (outfilename);
 

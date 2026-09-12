@@ -142,13 +142,13 @@ public:
                 makeHandler<FunctionPointerTypedefHandler>());
 #endif
 
-        // printf read disclosures - currently disabled
-        addMatcher(
-                callExpr(
-                    callee(functionDecl(hasName("::printf"))),
-                    unless(argumentCountIs(1))).bind("call_expression"),
-                makeHandler<ReadDisclosureHandler>());
-        }
+    // printf read disclosures
+    addMatcher(
+        callExpr(
+            callee(functionDecl(hasName("::printf"))),
+            unless(argumentCountIs(1))).bind("call_expression"),
+        makeHandler<ReadDisclosureHandler>());
+    }
 
 	addMatcher(
 		callExpr(
@@ -196,6 +196,8 @@ public:
             // Chaff bugs always need their macros AND their storage arrays, regardless of LAVA's dataflow settings.
             std::stringstream chaff_logic;
             chaff_logic << "\n// --- Chaff Bug Macros ---\n"
+                        << "#define lava_set(slot, val) { lava_val[slot] = (val&0xffffffff); }\n"
+                        << "#define lava_get(slot)  lava_val[slot] \n"
                         << "#define lava_set_extra(slot, val) { lava_extra[slot] = (val&0xffffffff); lava_state[slot]=0; }\n"
                         << "#define lava_get_extra(slot) ((unsigned long long)lava_extra[slot]) \n"
                         << "#define lava_check_const_high(slot) (((lava_extra[slot]>>16)&0xffff)==0)\n"
@@ -204,18 +206,20 @@ public:
                         << "#define lava_check_const_low_2(slot) (__builtin_ffs(lava_extra[slot]&0xffff) == 0)\n"
                         << "#define lava_check_const_low_3(slot) (!(lava_extra[slot]&0xffff))\n"
                         << "#define lava_check_const_low_4(slot) (((lava_extra[slot]&0xffff)*0xfe)==0)\n"
-                        << "#define lava_check_const_low_5(slot) (__builtin_popcount(((lava_extra[slot]&0xffff)+1)) == 1)\n"
+                        << "#define lava_check_const_low_5(slot) (__builtin_popcount(((lava_extra[slot]&0xffff)|0x10000)) == 1)\n\n"
                         << "#define lava_check_const_low_6(slot) (__builtin_ctz((lava_extra[slot]&0xffff)|0x10000) >= 16)\n"
                         << "#define lava_update_const_low(slot) { lava_state[slot]|=2; }\n"
                         << "#define lava_check_state(slot) (lava_state[slot] == 3)\n\n"
                         << "// --- Chaff Storage Arrays ---\n";
                         
             if (main_files.count(getAbsolutePath(Filename)) > 0) {
-                chaff_logic << "unsigned __attribute__ ((visibility (\"default\"))) int lava_extra[" << extra_data_slots.size() << "] = {0};\n"
+                chaff_logic << "unsigned __attribute__ ((visibility (\"default\"))) int lava_val[" << data_slots.size() << "] = {0};\n"
+                            << "unsigned __attribute__ ((visibility (\"default\"))) int lava_extra[" << extra_data_slots.size() << "] = {0};\n"
                             << "unsigned __attribute__ ((visibility (\"default\"))) int lava_state[" << extra_data_slots.size() << "] = {0};\n"
                             << "void * __attribute__ ((visibility (\"default\"))) lava_chaff_pointer = (void*)0;\n";
             } else {
-                chaff_logic << "extern unsigned int lava_extra[];\n"
+                chaff_logic << "extern unsigned int lava_val[];\n"
+                            << "extern unsigned int lava_extra[];\n"
                             << "extern unsigned int lava_state[];\n"
                             << "extern void *lava_chaff_pointer;\n";
             }
@@ -251,8 +255,7 @@ public:
         debug(INJECT) << "Inserting macros and lava_set/get or dataflow at top of file\n";
         TUReplace.Replacements.emplace_back(Filename, 0, 0, insert_at_top);
 
-        for (auto it = MatchHandlers.begin();
-                it != MatchHandlers.end(); it++) {
+        for (auto it = MatchHandlers.begin(); it != MatchHandlers.end(); it++) {
             (*it)->LangOpts = &CI.getLangOpts();
         }
 

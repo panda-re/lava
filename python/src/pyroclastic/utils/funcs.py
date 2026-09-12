@@ -39,7 +39,7 @@ def get_inject_parser():
     parser.add_argument('--competition', action="store_true",
                         help='Inject in competition mode where logging will be added in #IFDEFs')
     # Was from the original common parser
-    parser.add_argument("-n", "--count", type=int, default=50,
+    parser.add_argument("-n", "--count", type=int, default=100,
                         help="Number of bugs to inject at once")
     parser.add_argument("-y", "--bugtypes", type=str,
                         default="ptr_add,rel_write,malloc_off_by_one,ret_buffer",
