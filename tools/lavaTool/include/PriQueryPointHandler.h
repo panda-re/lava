@@ -118,83 +118,99 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         return result;
     }
 
+    // Architecture-neutral AST helper for divide-by-zero / crash injection
+    LExpr InjectDivByZero(LExpr extra_val) {
+        return LBlock({
+            LIfDef("__x86_64__", {
+                LAsm({ extra_val }, { "divq %0" })
+            }),
+            LIfDef("__i386__", {
+                LAsm({ extra_val }, { "divl %0" })
+            }),
+            LIfDef("__aarch64__", {
+                // ARM / ARM64 hardware division does not trap on zero by default.
+                // Using a builtin trap ensures a deterministic signal across non-x86 target archs.
+                LStr("__builtin_trap()")
+            }),
+            LIfDef("__arm__", {
+                LStr("__builtin_trap()")
+            })
+        });
+    }
+
     std::string AttackChaffBugs(ASTLoc ast_loc) {
-        // Remember if DebugInject is True, all Chaff Bugs are Divide by Zero
         std::stringstream result_ss;
         auto key = std::make_pair(ast_loc, AttackPoint::QUERY_POINT);
+
         for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
-            if (bug->type == Bug::CHAFF_DIVZERO || DebugInject) {
+            // 1. CHAFF_DIVZERO (or DebugInject evaluation mode for CONST bugs)
+            if (bug->type == Bug::CHAFF_DIVZERO || 
+                ((bug->type == Bug::CHAFF_STACK_CONST || bug->type == Bug::CHAFF_HEAP_CONST) && DebugInject)) {
                 const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
                 LvalBytes extra_bytes(extra_dua_bytes);
-                LExpr checker = Test(bug) && LFunc("lava_check_state", {
-                    LDecimal(extra_data_slots[extra_bytes])
-                });
-                // Generate the C expression string for fetching the extra data
-                std::string get_ext = LavaGetExtra(extra_data_slots.at(extra_bytes)).render();
+                LExpr checker = Test(bug) && LFunc("lava_check_state", { LDecimal(extra_data_slots[extra_bytes]) });
 
-                // Bypass LIf and write standard C code directly into the stringstream
-                result_ss << "if (" << checker.render() << ") {\n"
-                << "    #if defined(__x86_64__)\n"
-                << "        __asm__ __volatile__(\"divq %0\" : : \"r\" ((unsigned long long)(" << get_ext << ")));\n"
-                << "    #elif defined(__i386__)\n"
-                << "        __asm__ __volatile__(\"divl %0\" : : \"r\" ((unsigned int)(" << get_ext << ")));\n"
-                << "    #elif defined(__aarch64__) || defined(__arm__)\n"
-                << "        __builtin_trap();\n"  // ARM needs explicit software traps to guarantee the crash
-                << "    #else\n"
-                << "        volatile int chaff_div = 1 / (int)(" << get_ext << ");\n"
-                << "    #endif\n"
-                << "}\n";
-            } else if (bug->type == Bug::CHAFF_STACK_UNUSED) {
-                result_ss << LIf(Test(bug).render(), {
-                LFunc("memcpy", {
-                LStr("(void*)(lava_chaff_var_2-4)"),
-                LRandomBytes(8),
-                LDecimal(8)
-                }),
-                LAssign(LDeref(LStr(ARG_NAME)), LStr("*(int*)lava_chaff_var_2"))
+                result_ss << LIf(checker.render(), {
+                    InjectDivByZero(LavaGetExtra(extra_data_slots.at(extra_bytes)))
                 });
+
+            // 2. CHAFF_STACK_UNUSED
+            } else if (bug->type == Bug::CHAFF_STACK_UNUSED) {
+                if (DebugInject) {
+                    result_ss << LIf(Test(bug).render(), { InjectDivByZero(LStr("0")) });
+                } else {
+                    // Evaluates target pointer width at target compile time via sizeof(void*)
+                    // Explicitly casts to (char*) so subtraction moves by raw bytes, not pointer elements
+                    result_ss << LIf(Test(bug).render(), {
+                        LFunc("memcpy", {
+                            LStr("(void*)((char*)&lava_chaff_var_2 - sizeof(void*))"),
+                            LRandomBytes(16),
+                            LStr("sizeof(void*) * 2")
+                        }),
+                        LAssign(LDeref(LStr(ARG_NAME)), LStr("*(int *)&lava_chaff_var_2"))
+                    });
+                }
+            // 3. CHAFF_STACK_CONST
             } else if (bug->type == Bug::CHAFF_STACK_CONST) {
                 const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
                 LvalBytes extra_bytes(extra_dua_bytes);
-                LExpr checker = Test(bug) && LFunc("lava_check_state", {
-                    LDecimal(extra_data_slots[extra_bytes])
-                });
-                
-                // Use the dynamic stack offset calculation instead of hardcoded inline ASM
+                LExpr checker = Test(bug) && LFunc("lava_check_state", { LDecimal(extra_data_slots[extra_bytes]) });
+
+                // Target byte offset calculation evaluated at compile-time
+                std::string target_offset = std::to_string(bug->stackoff) + " + sizeof(void*)";
                 result_ss << LIf(checker.render(), {
-                LAssign(
+                    LAssign(
                     LDeref(
-                        LCast("int*",
-                            LBinop("+",
-                            LStr("lava_chaff_var_2"),
-                            LHex(bug->stackoff + 4) // Add 4 to overwrite return address
-                        ))
+                    LCast("void**",
+                        LBinop("+", LStr("(char*)&lava_chaff_var_2"), LStr(target_offset))
+                        )
                     ),
-                LavaGetExtra(extra_data_slots.at(extra_bytes)))});
+                    LCast("void*", LavaGetExtra(extra_data_slots.at(extra_bytes)))
+                    )
+                });
+            // 4. CHAFF_HEAP_CONST, TODO: It is likely broken, because it only works on an old glibc
             } else if (bug->type == Bug::CHAFF_HEAP_CONST) {
-                // TODO: Likely broken because only tested on glibc 2.24
                 const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
                 LvalBytes extra_bytes(extra_dua_bytes);
-                LExpr checker = Test(bug) && LFunc("lava_check_state", {
-                    LDecimal(extra_data_slots[extra_bytes])
-                });
+                LExpr checker = Test(bug) && LFunc("lava_check_state", { LDecimal(extra_data_slots[extra_bytes]) });
 
                 result_ss << LIf(checker.render(), {
                     LIfDef("__x86_64__", {
-                    LBlock({
-                    LAssign(LStr("void *lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
-                    LAssign(LStr("*((long long*)(((char*)lava_chaff_pointer)+0x10))"), LDecimal(32)),
-                    LAssign(LStr("*((long long*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(24)),
-                    LAssign(LStr("*((long long*)(((char*)lava_chaff_pointer)+0x28))"),
-                    LavaGetExtra(extra_data_slots.at(extra_bytes)))
-                }),
-                LBlock({
-                    LAssign(LStr("void *lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
-                    LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x18))"), LDecimal(16)),
-                    LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(12)),
-                    LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x24))"),
-                    LavaGetExtra(extra_data_slots.at(extra_bytes)))
-                    })})
+                        LBlock({
+                            LAssign(LStr("void *lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
+                            LAssign(LStr("*((long long*)(((char*)lava_chaff_pointer)+0x10))"), LDecimal(32)),
+                            LAssign(LStr("*((long long*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(24)),
+                            LAssign(LStr("*((long long*)(((char*)lava_chaff_pointer)+0x28))"), LavaGetExtra(extra_data_slots.at(extra_bytes)))
+                        })
+                    }),
+                    LIfDef("__i386__", {
+                        LBlock({
+                            LAssign(LStr("void *lava_chaff_pointer"), LFunc("malloc", {LHex(0x20)})),
+                            LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x18))"), LDecimal(16)),
+                            LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x20))"), LDecimal(12)),
+                            LAssign(LStr("*((int*)(((char*)lava_chaff_pointer)+0x24))"), LavaGetExtra(extra_data_slots.at(extra_bytes)))
+                        })
+                    })
                 });
             }
         }
