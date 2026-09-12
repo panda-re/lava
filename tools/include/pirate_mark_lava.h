@@ -18,7 +18,6 @@ static const int LAVA_PRI_QUERY_POINT = 13;
 static inline
 void vm_lava_attack_point(unsigned int ast_loc_id, unsigned long linenum, unsigned int info) {
   volatile PandaHypercallStruct phs = {0};
-  phs.magic = LAVA_MAGIC;
   phs.action = LAVA_ATTACK_POINT;
   phs.src_filename = ast_loc_id;
   phs.src_linenum = linenum;
@@ -35,7 +34,6 @@ void vm_lava_attack_point(unsigned int ast_loc_id, unsigned long linenum, unsign
 static inline __attribute__((always_inline, nodebug))
 void vm_lava_pri_query_point(unsigned int ast_loc_id, unsigned long line_num, unsigned long extra_info) {
     volatile PandaHypercallStruct phs = {0};
-    phs.magic = LAVA_MAGIC;
     phs.action = LAVA_PRI_QUERY_POINT;
     phs.src_filename = ast_loc_id;
     phs.src_linenum = line_num;

@@ -142,13 +142,13 @@ public:
                 makeHandler<FunctionPointerTypedefHandler>());
 #endif
 
-        // printf read disclosures - currently disabled
-        addMatcher(
-                callExpr(
-                    callee(functionDecl(hasName("::printf"))),
-                    unless(argumentCountIs(1))).bind("call_expression"),
-                makeHandler<ReadDisclosureHandler>());
-        }
+    // printf read disclosures
+    addMatcher(
+        callExpr(
+            callee(functionDecl(hasName("::printf"))),
+            unless(argumentCountIs(1))).bind("call_expression"),
+        makeHandler<ReadDisclosureHandler>());
+    }
 
 	addMatcher(
 		callExpr(
@@ -251,8 +251,7 @@ public:
         debug(INJECT) << "Inserting macros and lava_set/get or dataflow at top of file\n";
         TUReplace.Replacements.emplace_back(Filename, 0, 0, insert_at_top);
 
-        for (auto it = MatchHandlers.begin();
-                it != MatchHandlers.end(); it++) {
+        for (auto it = MatchHandlers.begin(); it != MatchHandlers.end(); it++) {
             (*it)->LangOpts = &CI.getLangOpts();
         }
 
