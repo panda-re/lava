@@ -60,7 +60,7 @@ jobs:
           -H"./tools" \
           -DCMAKE_INSTALL_PREFIX="/usr" \
           -DCMAKE_BUILD_TYPE=Release \
-          -DLAVA_VERSION=${{ needs.create_release.outputs.v-version }}
+          -DLAVA_VERSION=${{ needs.get_version.outputs.v-version }}
           cmake --build "./tools/build" --parallel "$(nproc)" --config Release
           cd ./tools/build
           cpack -G DEB
@@ -68,7 +68,7 @@ jobs:
       - name: Create Wheel file
         run: |
           python3 -m pip install --upgrade build
-          PRETEND_VERSION=${{ needs.create_release.outputs.v-version }} python3 -m build --wheel .
+          PRETEND_VERSION=${{ needs.get_version.outputs.v-version }} python3 -m build --wheel .
 
       - name: Upload deb packages as artifacts
         uses: actions/upload-artifact@v7
@@ -189,4 +189,4 @@ jobs:
         tags: |
           pandare/lava:latest
           pandare/lava:${{ github.sha }}
-          pandare/lava:${{ needs.create_release.outputs.v-version }}
+          pandare/lava:${{ needs.get_version.outputs.v-version }}
