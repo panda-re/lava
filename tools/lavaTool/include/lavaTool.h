@@ -527,7 +527,7 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
     uint32_t nstep = 2;
     uint32_t flipflag = rand() & 1;
     std::string checkfunc = "";
-    switch (rand()%5) {
+    switch (rand() % 5) {
     case 0:
         checkfunc = "lava_check_const_low_1";
         break;
@@ -545,7 +545,9 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
         checkfunc = "lava_check_const_low_6";
         break;
     }
-    if (bug == real_bug)    checkfunc = "lava_check_const_low_4";
+    if (bug == real_bug) {
+        checkfunc = "lava_check_const_low_4";
+    }
     for (uint32_t i = 0; i < nstep; i++) {
         if (tr_end != tr_start) {
             tr_start = tr_start + (rand() % (tr_end - tr_start));

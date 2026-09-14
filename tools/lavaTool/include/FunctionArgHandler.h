@@ -26,9 +26,13 @@ struct FunctionArgHandler : public LavaMatchHandler {
         debug(FNARG) << "start: " << sl1.printToString(sm) << "\n";
         debug(FNARG) << "end:   " << sl2.printToString(sm) << "\n";
 
-
         if (ArgDataflow) {
             auto fnname = get_containing_function_name(Result, *toAttack);
+
+            if (fnname.second == "malloc") {
+                debug(FNARG) << "MallocOffByOneArgHandler already injects for this function\n";
+                return;
+            }
 
             // only instrument this function arg
             // if it's in the body of a function that is on our whitelist
@@ -38,16 +42,6 @@ struct FunctionArgHandler : public LavaMatchHandler {
                 debug(FNARG) << "FunctionArgHandler: Containing function is NOT in whitelist " << fnname.second << " : " << fnname.first << "\n";
                 return;
             }
-    /*
-            // and if this is a call to a function that is something like "__builtin_..." we dont instr
-            // only instrument calls to functions that are themselves on our whitelist.
-            assert (call != nullptr);
-            assert (func != nullptr);
-            fnname = fundecl_fun_name(Result, func);
-            std::string filename = fnname.first;
-            std::string functionname = fnname.second;
-
-    */
 
             const Decl *func1 = call->getCalleeDecl();
             if (func1 != nullptr) {
@@ -59,7 +53,7 @@ struct FunctionArgHandler : public LavaMatchHandler {
                         return;
                     }
                 }
-            }else{
+            } else {
                 debug(INJECT) << "Unknown (none) callee name\n";
             }
 

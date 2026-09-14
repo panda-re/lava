@@ -158,9 +158,9 @@ def inject_bugs(bug_list, db: LavaDatabase, lava_p : LavaPaths, project: dict, a
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
 
     # TODO: Maybe there is a better way to filter ATPs on bug mining phase?
-    print("\nFiltering bug list to prevent ATP overloading...")
-    limited_bug_ids = limit_atp_reuse(bugs_to_inject, default_max=1)
-    bugs_to_inject = [b for b in bugs_to_inject if b.id in limited_bug_ids]
+    # print("\nFiltering bug list to prevent ATP overloading...")
+    # limited_bug_ids = limit_atp_reuse(bugs_to_inject, default_max=1)
+    # bugs_to_inject = [b for b in bugs_to_inject if b.id in limited_bug_ids]
 
     # collect set of src files into which we must inject code
     src_files : set = collect_src_and_print(bugs_to_inject, db)

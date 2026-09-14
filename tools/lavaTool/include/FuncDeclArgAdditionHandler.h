@@ -58,40 +58,24 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
             return;
         }
 
-        // 2. CHAFF QUERY STAGE
-        if (LavaAction == LavaQueries) {
-            if (func->hasBody()) {
-                CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
-                assert(body);
-                Stmt *first = *body->body_begin();
-                assert(first);
-                std::stringstream data;
-                data << "int lava_chaff_var_0 = 0;\n";
-                data << "int lava_chaff_var_1 = 0;\n";
-                // Use another probing var to avoid gcc local var rearrangement
-                // Point lava_chaff_var_2 to the stack address of lava_chaff_var_0 
-                // so the LAVA stack offset calculation correctly targets the return address.
-                data << "unsigned long lava_chaff_var_2 = (unsigned long) &lava_chaff_var_0;\n";
-                Mod.InsertAt(first->getBeginLoc(), data.str());
-            }
-            return;
+        // 2 & 3. SQUASHED CHAFF INJECTION
+        // Inject chaff vars if we are querying OR if the function is in our whitelist
+        if (func->hasBody()) {
+            CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
+            assert(body);
+            Stmt *first = *body->body_begin();
+            assert(first);
+            std::stringstream data;
+            data << "int lava_chaff_var_0 = 0;\n";
+            data << "int lava_chaff_var_1 = 0;\n";
+            data << "unsigned long lava_chaff_var_2 = (unsigned long) &lava_chaff_var_0;\n";
+            Mod.InsertAt(first->getBeginLoc(), data.str());
         }
 
-        // 3. CHAFF BUG INJECTION (addvarlist)
-        if (addvarlist.count(fnname.second) != 0) {
-            if (func->hasBody()) {
-                CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
-                assert(body);
-                Stmt *first = *body->body_begin();
-                assert(first);
-                std::stringstream data;
-                data << "int lava_chaff_var_0 = 0;\n";
-                data << "int lava_chaff_var_1 = 0;\n";
-                // To keep var_0 and var_1 of the same use count - to avoid local var rearragement
-                data << "unsigned long lava_chaff_var_2 = (unsigned long) &lava_chaff_var_0;\n";
-                // Use InsertAfter - leave room for Arbitrary variables in Stack Overrun bugs
-                Mod.InsertAt(first->getBeginLoc(), data.str());
-            }
+        // CRITICAL: Preserve the early return for the query stage 
+        // so we don't accidentally modify function signatures below.
+        if (LavaAction == LavaQueries) {
+            return;
         }
 
         // only instrument if function being decl / def is in whitelist

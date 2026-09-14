@@ -3,6 +3,16 @@
 
 using namespace clang;
 
+/*
+ A standalone local or global variable declaration that is a function pointer type.
+
+ Variable declaration looks something like:
+
+   int (*my_callback)(int a, double b);
+
+ We scan the source range for the opening parenthesis of its parameter list
+ to inject the extra `int *data_flow` parameter into the variable's type signature.
+*/
 struct VarDeclArgAdditionHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
 
@@ -23,8 +33,9 @@ struct VarDeclArgAdditionHandler : public LavaMatchHandler {
             const clang::Type *pt = ft->getPointeeType().IgnoreParens().getTypePtr();
             assert(pt);
             const clang::FunctionType *fun_type = dyn_cast<clang::FunctionType>(pt);
-            //assert(fun_type);
-            if (!fun_type) return;
+            if (!fun_type) {
+                return;
+            }
             const FunctionProtoType *prot = dyn_cast<FunctionProtoType>(fun_type);
             // add the data_flow arg
             AddArgGen(Mod, l1, l2, false, prot->getNumParams(), 3);
