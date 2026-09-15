@@ -678,7 +678,7 @@ void taint_query_pri(Json::Value& ple) {
         }
     } else {
         while (randcount--) {
-            const Dua *exploit_dua = recent_duas_by_instr[rand() % recent_duas_by_instr.size()];
+            const Dua *exploit_dua = recent_duas_by_instr[0];
             Range r = get_dua_dead_range(exploit_dua, {});
             if (r.empty()) {
                 continue;
@@ -883,7 +883,7 @@ void record_injectable_bugs_at(const uint32_t stackoff, const AttackPoint *atp, 
                 // trigger.
                 for (tries = 0; tries < RANDOM_DUA_TRIES; tries++) {
                     auto it = begin_it;
-                    std::advance(it, rand() % distance);
+                    std::advance(it, 0);
                     const Dua *extra_dua = *it;
                     Range selected = get_dua_dead_range(extra_dua, labels_so_far);
                     if (selected.empty()) {
