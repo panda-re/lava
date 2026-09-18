@@ -627,6 +627,7 @@ void taint_query_pri(Json::Value& ple) {
             recent_duas_by_instr.erase(it_instr);
 
             old_dua->death_instr = instr;
+            db->update(old_dua);
             // replace value in recent_dead_duas and erase old from
             // dua_dependencies.
             for (uint32_t l : old_dua->all_labels) {
