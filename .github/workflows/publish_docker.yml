@@ -24,7 +24,7 @@ jobs:
       v-version: ${{ steps.version.outputs.v-version }}
     steps:
       - name: Get next version
-        uses: reecetech/version-increment@2024.10.1
+        uses: reecetech/version-increment@2026.8.4
         id: version
         with:
           release_branch: master
@@ -40,7 +40,7 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
     steps:
       - name: Checkout LAVA at current commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install compile dependencies
         run: |
@@ -86,9 +86,8 @@ jobs:
 
   publish-to-pypi:
     name: Publish Python 🐍 distribution 📦 to PyPI
-    if: github.repository == 'panda-re/panda' && github.ref == 'refs/heads/dev'
+    if: github.repository == 'panda-re/lava' && github.ref == 'refs/heads/master'
     needs:
-      - get_version
       - build_release_assets
     runs-on: ubuntu-latest
     environment:
@@ -177,7 +176,7 @@ jobs:
             http = true
 
     - name: Check out
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0
 

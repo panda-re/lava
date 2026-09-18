@@ -12,7 +12,7 @@ import shlex
 from typing import Tuple, Set, Optional, Union, List
 from contextlib import nullcontext
 from pathlib import Path
-from pyroclastic.utils.vars import LavaPaths
+from ..utils.vars import LavaPaths
 
 
 def get_inject_parser():
