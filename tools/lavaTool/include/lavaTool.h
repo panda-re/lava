@@ -512,8 +512,42 @@ void mark_for_siphon_extra(const DuaBytes *dua_bytes) {
 
 void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
 
-    uint64_t tr_end = bug->atp->trace_index;
     uint64_t tr_start = dua_bytes->dua->trace_index;
+
+    // Bound the placement window by the NEXT time this exact siphon location
+    // re-executes (e.g. the next loop iteration), not by bug->atp->trace_index.
+    // AttackPoint rows are deduplicated by (loc, type) -- see eq_query<AttackPoint>
+    // -- so trace_index is frozen at that source location's FIRST-EVER visit.
+    // A DUA re-siphoned on a LATER iteration can easily have a trace_index past
+    // that frozen value, which used to trip the "tr_end < tr_start" fail-safe
+    // below and collapse the whole window to a single point pinned at the ATP's
+    // first visit -- nowhere near where lava_set_extra/lava_state activity for
+    // THIS dua incarnation is actually happening. The next re-visit of the DUA's
+    // own siphon location is exactly when lava_set_extra() would fire again and
+    // reset lava_state back to 0, so it's the correct upper bound: anything
+    // placed before it can't be wiped by an intervening reset of this same slot.
+    uint64_t tr_end = bug->atp->trace_index;
+    {
+        const ASTLoc &dua_loc = dua_bytes->dua->lval->loc;
+        odb::result<SourceTrace> next_visits(db->query<SourceTrace>(
+                odb::query<SourceTrace>::loc.filename == dua_loc.filename &&
+                odb::query<SourceTrace>::loc.begin.line == dua_loc.begin.line &&
+                odb::query<SourceTrace>::loc.begin.column == dua_loc.begin.column &&
+                odb::query<SourceTrace>::loc.end.line == dua_loc.end.line &&
+                odb::query<SourceTrace>::loc.end.column == dua_loc.end.column &&
+                odb::query<SourceTrace>::index > tr_start));
+        bool found_next_visit = false;
+        uint64_t next_visit = 0;
+        for (const auto &st : next_visits) {
+            if (!found_next_visit || st.index < next_visit) {
+                next_visit = st.index;
+                found_next_visit = true;
+            }
+        }
+        if (found_next_visit) {
+            tr_end = next_visit;
+        }
+    }
 
     LvalBytes lval_bytes(dua_bytes);
 
