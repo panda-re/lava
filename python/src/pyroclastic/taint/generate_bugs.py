@@ -1,9 +1,9 @@
 import logging
 from typing import cast, Dict
 import argparse
+from sqlalchemy.orm import joinedload
 from ..utils.database_types import AttackPoint, Bug, \
     DuaBytes, Dua, LavaDatabase, BugKind, AtpExecution, AtpKind, LivenessSnapshot, Range
-from ..utils.funcs import dump_table
 from ..taint.taint_utils import get_dua_dead_range, disjoint, merge_into
 from ..utils.vars import parse_vars
 
@@ -562,6 +562,46 @@ def record_injectable_bugs_offline(project_data: dict, mode: str = "lava1"):
     raise ValueError(f"Unknown bug-generation mode '{mode}'. Expected 'lava1' or 'lava2'.")
 
 
+def _bug_atp_key(bug: Bug) -> tuple:
+    """Resolve a Bug's atp to its real-world identity (source loc + type) instead
+    of the raw auto-increment id. IDs only happen to line up between a C++ run and
+    a Python run because both populate a freshly-wiped DB in the same order --
+    that's not guaranteed on a bigger/more-branching project, where an id-based
+    diff would flag two runs' identical bugs as mismatched just because they were
+    discovered in a different order."""
+    atp = bug.atp_relationship
+    loc = atp.loc
+    return (loc.filename, loc.begin.line, loc.begin.column, loc.end.line, loc.end.column, atp.type)
+
+
+def _bug_lval_key(bug: Bug) -> tuple:
+    """Same idea as _bug_atp_key, for the trigger's source lval (loc + ast_name)."""
+    lval = bug.lval_relationship
+    loc = lval.loc
+    return (loc.filename, loc.begin.line, loc.begin.column, loc.end.line, loc.end.column, lval.ast_name)
+
+
+def _dump_bugs(bugs: list[Bug]):
+    print(f"\n==================================================")
+    print(f"=== BUGS (Row Count: {len(bugs)}) ===")
+    print(f"==================================================")
+    for idx, bug in enumerate(bugs):
+        a = _bug_atp_key(bug)
+        t = _bug_lval_key(bug)
+        atp_str = f"{a[0]}:{a[1]}:{a[2]}:{a[3]}:{a[4]} [{AtpKind(a[5]).name}]"
+        trig_str = f"{t[0]}:{t[1]}:{t[2]}:{t[3]}:{t[4]} {t[5]}"
+        print(f"  [{idx}] Row Instance Entry:")
+        print(f"    - {'type':<16}: {BugKind(bug.type).name:<55} | Type: BugKind")
+        print(f"    - {'atp':<16}: {atp_str:<55} | Type: AttackPoint")
+        print(f"    - {'trigger_lval':<16}: {trig_str:<55} | Type: SourceLval")
+        print(f"    - {'max_liveness':<16}: {str(bug.max_liveness):<55} | Type: int")
+        print(f"    - {'stackoff':<16}: {str(bug.stackoff):<55} | Type: int")
+        # Not the extra_duas ids themselves (same fickleness as DuaBytes -- those
+        # ids depend on insertion order too), just the count, which should always
+        # equal NUM_EXTRA_DUAS[bug.type] and is otherwise invisible in this dump.
+        print(f"    - {'num_extra_duas':<16}: {str(len(bug.extra_duas)):<55} | Type: int")
+
+
 def print_phase2_stats(project_data: dict, debug: bool = False):
     """
     Dumps the entities specifically created/managed around Phase II.
@@ -569,20 +609,18 @@ def print_phase2_stats(project_data: dict, debug: bool = False):
     as long as the Bugs match, the DuaBytes are not relevant to the comparison.
     """
     with LavaDatabase(project_data) as db:
-        # Sort deterministically by semantic bug identity fields.
-        bugs = db.session.query(Bug).order_by(
-            Bug.type,
-            Bug.atp,
-            Bug.trigger_lval,
-            Bug.max_liveness,
-            Bug.stackoff,
-            Bug.id
-        ).all()
-
         if debug:
-            dump_table("BUGS", bugs, ['type', 'atp', 'trigger_lval', 'max_liveness', 'stackoff'])
+            bugs = db.session.query(Bug).options(
+                joinedload(Bug.atp_relationship),
+                joinedload(Bug.lval_relationship),
+            ).all()
+            # Sort by resolved semantic identity (see _bug_atp_key/_bug_lval_key),
+            # not raw ids, so the printed order -- and any diff against it -- is
+            # stable across separately-populated databases.
+            bugs.sort(key=lambda b: (b.type, _bug_atp_key(b), _bug_lval_key(b), b.max_liveness, b.stackoff))
+            _dump_bugs(bugs)
         else:
-            print("bugs:", len(bugs))
+            print("bugs:", db.session.query(Bug).count())
 
         print("Count\tBug Num\tName")
         for kind in BugKind:
