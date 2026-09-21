@@ -1,5 +1,8 @@
-# Find all C files, then aggressively filter out unwanted directories using grep
-LAVA_C_FILES := $(shell find . -name '*.c' 2>/dev/null | grep -E -v '/(build-aux|doc|example|gnulib|m4|lib|libs|test|tests)')
+# Find all C files, then aggressively filter out unwanted directories using grep.
+# The directory list is substituted per-target by preprocess() in utils/funcs.py
+# (config key "preprocess_exclude_dirs"); this default covers the GNU-coreutils-style
+# layout and is used verbatim when a target doesn't override it.
+LAVA_C_FILES := $(shell find . -name '*.c' 2>/dev/null | grep -E -v '/(__LAVA_PREPROCESS_EXCLUDE_DIRS__)')
 
 .PHONY: lava_preprocess
 lava_preprocess: $(LAVA_C_FILES)

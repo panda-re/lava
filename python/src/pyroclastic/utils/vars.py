@@ -237,6 +237,19 @@ def parse_vars(project_name: str):
     project_data["curtail"] = project_data.get("curtail", 0)
     # For now use 'lava1' to mean original LAVA
     project_data["lava_mode"] = host.get("lava_mode", "lava1")
+
+    # Directories that must never be macro-preprocessed: host-side code
+    # generators (e.g. sqlite's tool/lemon.c) whose OUTPUT is real target
+    # source get rewritten here too if we're not careful, and since that
+    # output is regenerated at build time, a corrupted generator silently
+    # corrupts everything downstream of it. Defaults to the GNU-coreutils
+    # layout for backwards compatibility; override per-target via
+    # "preprocess_exclude_dirs" in the project's <name>.json.
+    project_data["preprocess_exclude_dirs"] = project_data.get(
+        'preprocess_exclude_dirs',
+        'build-aux|doc|example|gnulib|m4|lib|libs|test|tests'
+    )
+
     return Project(project_data)
 
 

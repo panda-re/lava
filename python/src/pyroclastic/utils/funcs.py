@@ -362,6 +362,9 @@ def preprocess(lava_path: LavaPaths, main_directory : str = "", lf: Optional[str
         with open(Path(__file__).parent.parent / "data" / "makefile.fixup", "r") as mf:
             modified_make = mf.read()
 
+        exclude_dirs = lava_path.config['preprocess_exclude_dirs']
+        modified_make = modified_make.replace('__LAVA_PREPROCESS_EXCLUDE_DIRS__', exclude_dirs)
+
         if os.path.isfile(main_directory / "Makefile"):
             with open(main_directory / "Makefile", "a+") as mf:
                 mf.write("\n" + modified_make + "\n")
@@ -415,8 +418,12 @@ def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment
         # Safely merge into your existing environment configuration
         env.update(blindfolds)
 
-    # Run make
-    build_output = run_local(f"compiledb -- {lava_path.config['make']}", env=env, shell=True, cwd=str(main_directory), logfile=lf, capture_output=capture_build, debug=True)
+    # Run make. "{install_dir}" is honored here too (e.g. a target that links its
+    # LAVA driver binary against the just-built lib with -Wl,-rpath,{install_dir}/lib
+    # as part of its make step, not its install step).
+    install_dir = os.path.join(main_directory, "lava-install")
+    make_command = lava_path.config['make'].replace("{install_dir}", str(install_dir))
+    build_output = run_local(f"compiledb -- {make_command}", env=env, shell=True, cwd=str(main_directory), logfile=lf, capture_output=capture_build, debug=True)
 
     # 3. Determine compilation success based on the return type
     if capture_build:
@@ -447,11 +454,7 @@ def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment
 
     # Execute final installation step cleanly, have some flags, just in case we have to run make before processing, this avoids extra compiling.
     # In the rare case that the 'install' commands needs an install directory, here it is
-    install_command = lava_path.config["install"]
-    install_dir = os.path.join(main_directory, "lava-install")
-
-    if "{install_dir}" in install_command:
-        install_command = install_command.format(install_dir=str(install_dir))
+    install_command = lava_path.config["install"].replace("{install_dir}", str(install_dir))
 
     run_local(f"{install_command}", env=env, shell=True, debug=True, cwd=str(main_directory), logfile=lf)
     print("Install has completed")
