@@ -307,38 +307,36 @@ def build_and_package(build: Build, lp: LavaPaths, update_db: bool, db: LavaData
         db.session.commit()
 
     if rv == 0:
-        print(f"Packaging source and compiled binaries into a tarball for build {build_label}...")
+        # Only builds that compiled get a tarball; failed ones stay inspectable on
+        # their build{N} branch and are marked build.compile = False in the DB.
+        print(f"Packaging injected source into a tarball for build {build_label}...")
         tar_filename = f"build_{build_label}_injection.tar.gz"
 
         try:
             # Get the actual name of the build directory folder (e.g., "toy")
-            build_dir_path = Path(lp.bugs_build).resolve()
-            build_dir_name = build_dir_path.name
-            parent_dir = build_dir_path.parent
+            build_dir_name = Path(lp.bugs_build).resolve().name
+            # Next to the repo (bugs/<n>/), not inside it, so tarballs aren't committed
+            # into .git, where each one would add a full compressed copy of the source.
+            final_tar_path = Path(lp.bugs_parent) / tar_filename
 
-            # Temporary path in the parent directory where tar won't see it
-            temp_tar_path = parent_dir / tar_filename
-
-            # Run tar from the parent directory, writing the file into the parent directory
-            run_local([
-                "tar",
-                f"--exclude={build_dir_name}/.git",
-                "-czf",
-                str(temp_tar_path),
-                build_dir_name
-            ], cwd=str(parent_dir))
-
-            # Now that tar is safely finished, move the tarball into the build directory
-            final_tar_path = build_dir_path / tar_filename
-            shutil.move(str(temp_tar_path), str(final_tar_path))
-
-            # Add and commit the tarball to the currently checked-out branch (build{build_label})
-            run_local(["git", "add", tar_filename], cwd=lp.bugs_build)
-            run_local(["git", "commit", "-m", f"Add packaged source and binary tarball for build{build_label}."],
-                      cwd=lp.bugs_build)
-            print(f"Tarball {tar_filename} successfully committed to branch build{build_label}.")
+            # git archive packages the build{N} commit's tree, not the working
+            # directory, so build outputs (objects, the binary, lava-install/ --
+            # including leftovers from earlier trials, which `git checkout -f`
+            # doesn't remove) and .git are never included.
+            # capture_output so a failure returns its code instead of run_local
+            # sys.exit()-ing -- a packaging failure shouldn't abort validation.
+            rv_tar, (_, tar_err) = run_local([
+                "git", "archive",
+                "--format=tar.gz",
+                f"--prefix={build_dir_name}/",
+                "-o", str(final_tar_path),
+                f"build{build_label}"
+            ], cwd=lp.bugs_build, capture_output=True)
+            if rv_tar != 0:
+                raise RuntimeError(tar_err.decode('utf-8', errors='ignore').strip())
+            print(f"Tarball for build{build_label} written to {final_tar_path}.")
         except Exception as e:
-            print(f"\nWarning: Failed to create or commit tarball for build {build_label}: {e}")
+            print(f"\nWarning: Failed to create tarball for build {build_label}: {e}")
 
     # ALWAYS clean up the working directory state before exiting the function
     run_local(["git", "checkout", "master"], cwd=lp.bugs_build)
