@@ -156,6 +156,16 @@ def inject_bugs(bug_list, db: LavaDatabase, lava_p : LavaPaths, project: dict, a
 
     bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
 
+    # A zero magic makes the trigger `0 == lava_get(slot)`, which is true on clean
+    # input (lava_val[]/data_flow[] start zeroed): PTR_ADD then never corrupts and
+    # the other types fire on the original input. Fail here rather than in validation.
+    zero_magic = [b.id for b in bugs_to_inject if not b.magic]
+    if zero_magic:
+        raise RuntimeError(
+            f"{len(zero_magic)} selected bug(s) have magic == 0 (e.g. {zero_magic[:5]}), so they can't "
+            f"be triggered correctly. They were likely mined before Bug magics were generated in Python; "
+            f"re-run bug mining (lava -tc <project>) to regenerate them.")
+
     # TODO: Maybe there is a better way to filter ATPs on bug mining phase?
     # print("\nFiltering bug list to prevent ATP overloading...")
     # limited_bug_ids = limit_atp_reuse(bugs_to_inject, default_max=1)
