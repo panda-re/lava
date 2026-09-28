@@ -328,7 +328,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
                 'max_tcn': c_max_tcn,
                 'max_cardinality': c_max_card,
                 'trace_index': source_trace_index,
-                'length': length
             }
         ))
 
@@ -853,7 +852,7 @@ def print_bug_stats(project_data: dict, debug: bool = False):
         if debug:
             dump_table("DUAs (Dead Uncomplicated Available)", duas, [
                 'id', 'lval', 'instr', 'fake_dua', 'inputfile',
-                'max_tcn', 'max_cardinality', 'all_labels', 'byte_tcn', 'viable_bytes', 'trace_index', 'length', 'death_instr'])
+                'max_tcn', 'max_cardinality', 'all_labels', 'byte_tcn', 'viable_bytes', 'trace_index', 'death_instr'])
         else:
             print("duas:", len(duas))
 

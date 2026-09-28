@@ -301,7 +301,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                 offline_liveness: dict[int, int] = {r.label: r.liveness_count for r in liveness_records}
 
                 for d in newly_observed_duas:
-                    if d.length >= 20:
+                    if d.lval_relationship.len_bytes >= 20:
                         pad = get_dua_exploit_pad(d, offline_liveness)
                         if not pad.empty() and (d.fake_dua or pad.size() >= 20):
                             trigger = get_or_create_dua_bytes(db, dua_bytes_cache, d, pad)
@@ -571,15 +571,14 @@ def _bug_atp_key(bug: Bug) -> tuple:
     discovered in a different order."""
     atp = bug.atp_relationship
     loc = atp.loc
-    return (loc.filename, loc.begin.line, loc.begin.column, loc.end.line, loc.end.column, atp.type)
+    return loc.filename, loc.begin.line, loc.begin.column, loc.end.line, loc.end.column, atp.type
 
 
 def _bug_lval_key(bug: Bug) -> tuple:
     """Same idea as _bug_atp_key, for the trigger's source lval (loc + ast_name)."""
     lval = bug.lval_relationship
     loc = lval.loc
-    return (loc.filename, loc.begin.line, loc.begin.column, loc.end.line, loc.end.column, lval.ast_name)
-
+    return loc.filename, loc.begin.line, loc.begin.column, loc.end.line, loc.end.column, lval.ast_name
 
 def _dump_bugs(bugs: list[Bug]):
     print(f"\n==================================================")
