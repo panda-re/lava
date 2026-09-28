@@ -556,15 +556,20 @@ def neuter_autotools_completely(main_directory: str):
             print(f"[-] Warning: Failed to hijack missing script: {e}")
 
 
-def dump_table(title: str, rows: list, attributes: list[str]):
+def dump_table(title: str, rows: list, attributes: list):
+    """attributes: attribute names, or (label, getter) pairs for computed columns,
+    e.g. to print a foreign key's resolved row instead of its insertion-order id."""
     print(f"\n==================================================")
     print(f"=== {title} (Row Count: {len(rows)}) ===")
     print(f"==================================================")
     for idx, row in enumerate(rows):
         print(f"  [{idx}] Row Instance Entry:")
         for attr in attributes:
-            if hasattr(row, attr):
-                val = getattr(row, attr)
+            getter = None
+            if isinstance(attr, tuple):
+                attr, getter = attr
+            if getter is not None or hasattr(row, attr):
+                val = getter(row) if getter is not None else getattr(row, attr)
 
                 # Track list inner types cleanly for your surgical debugging verification
                 if isinstance(val, list):
