@@ -227,6 +227,15 @@ def parse_vars(project_name: str):
     project_data["inject"] = get_project_env(project_data["llvm-dir"], host["qemu"], "inject")
     project_data["panda"] = get_project_env(project_data["llvm-dir"], host["qemu"], "panda")
     project_data["llvm_cov"] = get_project_env(project_data["llvm-dir"], host["qemu"], "llvm_cov")
+
+    # Set default variables for find bug injection
+    project_data["max_liveness"] = project_data.get("max_liveness", 100000)
+    project_data["max_cardinality"] = project_data.get("max_cardinality", 100)
+    project_data["max_tcn"] = project_data.get("max_tcn", 100)
+    project_data["max_lval_size"] = project_data.get("max_lval_size", 100)
+    project_data["curtail"] = project_data.get("curtail", 0)
+    # For now use 'lava1' to mean original LAVA
+    project_data["lava_mode"] = host.get("lava_mode", "lava1")
     return Project(project_data)
 
 

@@ -916,41 +916,7 @@ def main():
     project_name = sys.argv[1]
     panda_log = sys.argv[2]
 
-    # host_json reads overall config from host.json, project_name finds configs for specific project
     project = parse_vars(project_name)
-
-    if "max_liveness" not in project:
-        print("max_liveness not set, using default 100000")
-        project["max_liveness"] = 100000
-
-    # Throw exception if we can't process any required argument
-    if not isinstance(project["max_liveness"], int):
-        raise RuntimeError("Could not parse max_liveness")
-
-    if "max_cardinality" not in project:
-        print("max_cardinality not set, using default 100")
-        project["max_cardinality"] = 100
-    if not isinstance(project["max_cardinality"], int):
-        raise RuntimeError("Could not parse max_cardinality")
-
-    if "max_tcn" not in project:
-        print("max_tcn not set, using default 100")
-        project["max_tcn"] = 100
-    if not isinstance(project["max_tcn"], int):
-        raise RuntimeError("Could not parse max_tcn")
-
-    if "max_lval_size" not in project:
-        print("max_lval_size not set, using default 100")
-        project["max_lval_size"] = 100
-    if not isinstance(project["max_lval_size"], int):
-        raise RuntimeError("Could not parse max_lval_size")
-
-    if "curtail" not in project:
-        print("curtail not set, using default 0")
-        project["curtail"] = 0
-    if not isinstance(project["curtail"], int):
-        raise RuntimeError("Could not parse curtail")
-
     parse_panda_log(panda_log, project)
 
 
