@@ -5,7 +5,6 @@ import time
 import math
 import os
 import struct
-import random
 import shutil
 import platform
 from pathlib import Path
@@ -756,18 +755,41 @@ def unfuzzed_input_for_bug(project: dict) -> list[str]:
     return input_files
 
 
-def fuzzed_input_for_bug(project: dict, bug: Bug) -> str:
+def seed_input_for_bug(project: dict, bug: Bug) -> str:
     """
-    Generate a fuzzed input filename for this bug.
-    Select one file at random from the unfuzzed inputs.
+    Get the path to the unfuzzed input this bug was mined from.
+    The trigger's all_labels (and every extra DUA's) are byte offsets into the
+    input PANDA recorded when the DUA was found, stored as the trigger Dua's
+    inputfile (a basename, by both the C++ and Python fbi). Mutating any other
+    seed writes the magic value at the wrong offsets, so the bug looks like it
+    didn't validate when it's actually real.
     Args:
         project: The project dictionary
         bug: Bug object
     Returns:
+        Absolute path to the seed input under <config_dir>/inputs
+    """
+    seed_name = bug.trigger_relationship.dua_relationship.inputfile
+    seed_path = os.path.abspath(os.path.join(project["config_dir"], "inputs", seed_name))
+    if not os.path.isfile(seed_path):
+        raise FileNotFoundError(
+            f"Bug {bug.id} was mined from input '{seed_name}', but {seed_path} doesn't exist. "
+            f"Were the target's inputs changed since the taint step?")
+    return seed_path
+
+
+def fuzzed_input_for_bug(project: dict, bug: Bug, seed_input_file: str) -> str:
+    """
+    Generate a fuzzed input filename for this bug, named after the seed it is
+    mutated from.
+    Args:
+        project: The project dictionary
+        bug: Bug object
+        seed_input_file: The unfuzzed input being mutated (see seed_input_for_bug)
+    Returns:
         The filename for the fuzzed input for this bug
     """
-    unfuzzed_inputs = unfuzzed_input_for_bug(project)
-    unfuzzed_input_file_name = random.choice(unfuzzed_inputs)
+    unfuzzed_input_file_name = os.path.basename(seed_input_file)
     suffix = get_suffix(unfuzzed_input_file_name)
     prefix = unfuzzed_input_file_name[:-len(suffix)] if suffix != "" else unfuzzed_input_file_name
     new_full_file_name = "{}-fuzzed-{}{}".format(prefix, bug.id, suffix)
@@ -780,11 +802,12 @@ def fuzzed_input_for_bug(project: dict, bug: Bug) -> str:
 def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
                  build: Build, arguments: argparse.Namespace, update_db: bool,
                  unfuzzed_outputs=None, competition: bool = False, solution=None):
-    unfuzzed_input_files = unfuzzed_input_for_bug(project)
-    unfuzzed_input_file = random.choice(unfuzzed_input_files)
-    unfuzzed_input_file = os.path.join(project["config_dir"], 'inputs', unfuzzed_input_file)
-    fuzzed_input_file_name = fuzzed_input_for_bug(project, bug)
+    # Picked once, and from the input the bug was mined from -- not at random --
+    # so the filename and the mutated bytes agree and the offsets are right.
+    unfuzzed_input_file = seed_input_for_bug(project, bug)
+    fuzzed_input_file_name = fuzzed_input_for_bug(project, bug, unfuzzed_input_file)
     print(str(bug))
+    print(f"seed = [{unfuzzed_input_file}]")
     print(f"fuzzed = [{fuzzed_input_file_name}]")
     mutfile_kwargs = {}
     if arguments.knobTrigger:
