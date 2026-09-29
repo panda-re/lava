@@ -71,6 +71,7 @@ classifiers = [
 [project.scripts]
 lava = "pyroclastic.lava:main"
 lava-init = "pyroclastic.utils.init_host:main"
+lava-verify = "pyroclastic.inject.verify_build:main"
 lava-coverage = "pyroclastic.magmalyze.coverage:main"
 magmalyze = "pyroclastic.magmalyze.angr_concolic_explore:main"
 # Mostly used for Testing

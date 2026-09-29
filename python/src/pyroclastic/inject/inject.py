@@ -4,15 +4,17 @@ import sys
 import time
 import math
 import os
+import json
 import struct
 import shutil
 import platform
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 # LAVA imports
 from ..utils.vars import LavaPaths
 from ..utils.funcs import get_inject_parser, read_compile_db, unpack_tar, configure_project, preprocess, run_local, make_and_install
-from ..utils.database_types import Bug, DuaBytes, Build, Run, BugKind, LavaDatabase
+from ..utils.database_types import Bug, DuaBytes, Build, Run, BugKind, AtpKind, LavaDatabase
 from ..inject.dataflow import genFnTraceHelper, genStackVarHelper
 
 NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
@@ -21,7 +23,6 @@ start_time = time.time()
 
 # get list of bugs either from cmd line or db
 def get_bug_list(arguments: argparse.Namespace, db: LavaDatabase, allowed_bugtypes):
-    update_db = False
     print("Picking bugs to inject.")
     sys.stdout.flush()
 
@@ -34,10 +35,8 @@ def get_bug_list(arguments: argparse.Namespace, db: LavaDatabase, allowed_bugtyp
         print("Using strategy: random")
         bug = db.next_bug_random(False)
         bug_list.append(bug.id)
-        update_db = True
     elif arguments.buglist:
         bug_list = eval(arguments.buglist)  # TODO
-        update_db = False
     elif arguments.count:
         num_bugs_to_inject = int(arguments.count)
         huge = db.huge()
@@ -55,10 +54,9 @@ def get_bug_list(arguments: argparse.Namespace, db: LavaDatabase, allowed_bugtyp
 
         bug_list = [b.id for b in bugs_to_inject]
         print("%d is size of bug_list" % (len(bug_list)))
-        update_db = True
     else:
         assert False
-    return update_db, bug_list
+    return bug_list
 
 
 def get_bugs_parent(lava_paths: LavaPaths):
@@ -89,6 +87,25 @@ def get_bugs_parent(lava_paths: LavaPaths):
     print("Using bug build directory", bugs_parent)
     lava_paths.set_bugs_parent(bugs_parent)
     return bugs_parent
+
+
+def get_build_dir(lp: LavaPaths, build: Build) -> Path:
+    """
+    bugs/<n>/build<N>/: everything produced for one build (tarball, manifest.json,
+    inputs/, crashes/), so it can be handed to FuzzBench as a unit. Named like the
+    build<N> git branch. Keyed by build rather than bug id, because the same bug can
+    be injected into several builds and may crash one but not another.
+    """
+    return Path(lp.bugs_parent) / f"build{build.id}"
+
+
+def decode_output(raw: bytes) -> str:
+    """
+    Decode target program output for printing and for Run.output. Targets like
+    libxml2 or freetype can print arbitrary bytes, so never fail on bad UTF-8, and
+    drop NUL bytes, which Postgres TEXT columns reject.
+    """
+    return raw.decode('utf-8', errors='replace').replace('\x00', '')
 
 
 def get_bugs(db: LavaDatabase, bug_id_list: List[int]) -> List[Bug]:
@@ -131,7 +148,7 @@ def get_allowed_bugtype_num(arguments: argparse.Namespace) -> list[int]:
 # inject this set of bugs into the source place the resulting bugged-up
 # version of the program in bug_dir
 def inject_bugs(bug_list, db: LavaDatabase, lava_p : LavaPaths, project: dict, arguments: argparse.Namespace,
-                update_db: bool, dataflow: bool = False, competition: bool = False,
+                dataflow: bool = False, competition: bool = False,
                 lavatoolseed: int = 0):
     # TODO: don't pass args, just pass the data we need to run
     # TODO: split into multiple functions, this is huge
@@ -242,9 +259,9 @@ def inject_bugs(bug_list, db: LavaDatabase, lava_p : LavaPaths, project: dict, a
         output="",
     )
 
-    if update_db:
-        db.session.add(build)
-        db.session.flush()  # Populates build.id from the database auto-increment
+    # The id names the build<N> branch and bugs/<n>/build<N>/.
+    db.session.add(build)
+    db.session.flush()  # Populates build.id from the database auto-increment
 
     # --- SECURE THE C SOURCE CODE CHANGES (ISOLATED BRANCHES) ---
     build_label = str(build.id)
@@ -275,18 +292,16 @@ def inject_bugs(bug_list, db: LavaDatabase, lava_p : LavaPaths, project: dict, a
 
     except AssertionError as e:
         print(f"\nAssertion Failed: {e}")
-        if update_db:
-            db.session.rollback()
+        db.session.rollback()
         raise
     except Exception as e:
         print(f"\nFatal error: Git tracking failed: {e}")
-        if update_db:
-            db.session.rollback()
+        db.session.rollback()
         raise
     return build, input_files, bug_solutions
 
 
-def build_and_package(build: Build, lp: LavaPaths, update_db: bool, db: LavaDatabase):
+def build_and_package(build: Build, lp: LavaPaths, db: LavaDatabase):
     """Compiles the mutated source code branch and generates distribution tarballs."""
     build_label = str(build.id)
 
@@ -312,8 +327,7 @@ def build_and_package(build: Build, lp: LavaPaths, update_db: bool, db: LavaData
     build.compile = (rv == 0)
     build.output = f"{stdout_str};{stderr_str}"
 
-    if update_db:
-        db.session.commit()
+    db.session.commit()
 
     if rv == 0:
         # Only builds that compiled get a tarball; failed ones stay inspectable on
@@ -324,9 +338,12 @@ def build_and_package(build: Build, lp: LavaPaths, update_db: bool, db: LavaData
         try:
             # Get the actual name of the build directory folder (e.g., "toy")
             build_dir_name = Path(lp.bugs_build).resolve().name
-            # Next to the repo (bugs/<n>/), not inside it, so tarballs aren't committed
-            # into .git, where each one would add a full compressed copy of the source.
-            final_tar_path = Path(lp.bugs_parent) / tar_filename
+            # In bugs/<n>/build<N>/, next to the repo rather than inside it, so tarballs
+            # aren't committed into .git, where each one would add a full compressed
+            # copy of the source. Only compiled builds get a build<N>/ directory.
+            build_dir = get_build_dir(lp, build)
+            build_dir.mkdir(parents=True, exist_ok=True)
+            final_tar_path = build_dir / tar_filename
 
             # git archive packages the build{N} commit's tree, not the working
             # directory, so build outputs (objects, the binary, lava-install/ --
@@ -505,8 +522,8 @@ def run_lavatool(bug_list: List[Bug], lp: LavaPaths, project: dict, filename: st
 
     rv, output = run_local(cmd, debug=project['debug'], capture_output=True)
     stdout, stderr = output
-    stdout = stdout.decode("utf-8")
-    stderr = stderr.decode("utf-8")
+    stdout = decode_output(stdout)
+    stderr = decode_output(stderr)
     log_dir = os.path.join(project["output_dir"], "logs")
 
     safe_file_name = filename.replace("/", "_").replace(".", "-")
@@ -788,34 +805,42 @@ def seed_input_for_bug(project: dict, bug: Bug) -> str:
     return seed_path
 
 
-def fuzzed_input_for_bug(project: dict, bug: Bug, seed_input_file: str) -> str:
+def fuzzed_input_for_bug(build_dir: Path, bug: Bug, seed_input_file: str) -> str:
     """
     Generate a fuzzed input filename for this bug, named after the seed it is
     mutated from.
     Args:
-        project: The project dictionary
+        build_dir: bugs/<n>/build<N>/ of the build being validated (see get_build_dir)
         bug: Bug object
         seed_input_file: The unfuzzed input being mutated (see seed_input_for_bug)
     Returns:
-        The filename for the fuzzed input for this bug
+        The filename for the fuzzed input for this bug, under build<N>/inputs/
     """
     unfuzzed_input_file_name = os.path.basename(seed_input_file)
     suffix = get_suffix(unfuzzed_input_file_name)
     prefix = unfuzzed_input_file_name[:-len(suffix)] if suffix != "" else unfuzzed_input_file_name
     new_full_file_name = "{}-fuzzed-{}{}".format(prefix, bug.id, suffix)
-    generated_inputs_directory = os.path.join(project['output_dir'], 'generated-inputs')
-    os.makedirs(generated_inputs_directory, exist_ok=True)
-    new_full_file_path = os.path.join(generated_inputs_directory, new_full_file_name)
-    return new_full_file_path
+    generated_inputs_directory = build_dir / 'inputs'
+    generated_inputs_directory.mkdir(parents=True, exist_ok=True)
+    return str(generated_inputs_directory / new_full_file_name)
 
 
 def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
-                 build: Build, arguments: argparse.Namespace, update_db: bool,
-                 unfuzzed_outputs=None, competition: bool = False, solution=None):
+                 build: Build, arguments: argparse.Namespace,
+                 unfuzzed_outputs=None, competition: bool = False, solution=None) -> dict:
+    """
+    Mutate this bug's seed, run the injected build on it, and record whether the bug
+    manifested.
+    Returns:
+        The bug's manifest.json result: seed, fuzzed input and crash paths (relative
+        to build<N>/), exit code, and validated.
+    """
+    build_dir = get_build_dir(lp, build)
     # Picked once, and from the input the bug was mined from -- not at random --
     # so the filename and the mutated bytes agree and the offsets are right.
     unfuzzed_input_file = seed_input_for_bug(project, bug)
-    fuzzed_input_file_name = fuzzed_input_for_bug(project, bug, unfuzzed_input_file)
+    fuzzed_input_file_name = fuzzed_input_for_bug(build_dir, bug, unfuzzed_input_file)
+    crash_file = None
     print(str(bug))
     print(f"seed = [{unfuzzed_input_file}]")
     print(f"fuzzed = [{fuzzed_input_file_name}]")
@@ -861,14 +886,14 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
                         validated &= False
                         print("... but competition infrastructure"
                               " misidentified it ({} vs {})".format(found_bugs, bug.id))
-                # We should move this input to a separate folder for easier tracking
+                # Copy (not move) into crashes/, so inputs/ keeps every generated
+                # input and crashes/ is the subset that validated.
                 if validated:
-                    base_fuzzed_file_name = os.path.basename(fuzzed_input_file_name)
-                    crashes_dir = os.path.join(project['output_dir'], 'crashes')
-                    os.makedirs(crashes_dir, exist_ok=True)
-                    new_crash_file = os.path.join(crashes_dir, base_fuzzed_file_name)
-                    print(f"Moving crashing input file to {new_crash_file}")
-                    shutil.move(fuzzed_input_file_name, new_crash_file)
+                    crashes_dir = build_dir / 'crashes'
+                    crashes_dir.mkdir(parents=True, exist_ok=True)
+                    crash_file = crashes_dir / os.path.basename(fuzzed_input_file_name)
+                    print(f"Copying crashing input file to {crash_file}")
+                    shutil.copy2(fuzzed_input_file_name, crash_file)
             else:
                 print("RV does not indicate memory corruption")
                 validated = False
@@ -879,18 +904,31 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
         assert rv == 0
         validated = False
 
-    if update_db:
-        db.session.add(Run(build_relationship=build, fuzzed_relationship=bug, exitcode=rv,
-                           output=(output[0].decode('ascii', 'ignore') + '\n' + output[1].decode('ascii', 'ignore')),
-                           success=True, validated=validated))
+    db.session.add(Run(build_relationship=build, fuzzed_relationship=bug, exitcode=rv,
+                       output=(decode_output(output[0]) + '\n' + decode_output(output[1])),
+                       success=True, validated=validated))
 
-    return validated
+    return {
+        "seed": os.path.basename(unfuzzed_input_file),
+        "input": os.path.relpath(fuzzed_input_file_name, build_dir),
+        "exit_code": rv,
+        "validated": validated,
+        "crash": os.path.relpath(crash_file, build_dir) if crash_file else None,
+    }
 
 
 # validate this set of bugs
 def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths,
                   project: dict, input_files: list[str], build : Build,
-                  arguments: argparse.Namespace, update_db: bool, competition: bool = False, bug_solutions=None):
+                  arguments: argparse.Namespace, competition: bool = False, bug_solutions=None,
+                  bug_results: Optional[dict] = None):
+    """
+    bug_results, if given, is filled with bug id -> validate_bug() result as each bug
+    is tested. It's owned by the caller so results survive an assert partway through,
+    and main() can still write a (partial) manifest.json.
+    """
+    if bug_results is None:
+        bug_results = {}
     timeout = project.get('timeout', 5)
 
     print("------------\n")
@@ -908,19 +946,18 @@ def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths,
             print("***** buggy program fails on original input - \
                   Exit code {} does not match expected {}"
                   .format(rv, arguments.exitCode))
-            print(output[0].decode('utf-8'))
+            print(decode_output(output[0]))
             print()
-            print(output[1].decode('utf-8'))
+            print(decode_output(output[1]))
             assert False  # Fails on original input
         else:
             print("buggy program succeeds on original input {}"
                   "with exit code {}".format(input_file, rv))
         print("output:")
-        lines = output[0].decode('ascii') + " ; " + output[1].decode('ascii')
-        if update_db:
-            db.session.add(Run(build_relationship=build, fuzzed=None, exitcode=rv,
-                               output=lines,
-                               success=True, validated=False))
+        lines = decode_output(output[0]) + " ; " + decode_output(output[1])
+        db.session.add(Run(build_relationship=build, fuzzed=None, exitcode=rv,
+                           output=lines,
+                           success=True, validated=False))
     print("ORIG INPUT STILL WORKS\n")
 
     # second, try each of the fuzzed inputs and validate
@@ -934,17 +971,17 @@ def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths,
 
         # We should always have solutions for multi-dua bugs
         if bug_solutions and bug.id in bug_solutions.keys():
-            validated = validate_bug(db, lp, project, bug, build,
-                                     arguments, update_db, unfuzzed_outputs,
-                                     competition=competition,
-                                     solution=bug_solutions[bug.id])
+            result = validate_bug(db, lp, project, bug, build,
+                                  arguments, unfuzzed_outputs,
+                                  competition=competition,
+                                  solution=bug_solutions[bug.id])
         else:
             print("No known solution for bug with id={}".format(bug.id))
-            validated = validate_bug(db, lp, project, bug, build,
-                                     arguments, update_db, unfuzzed_outputs,
-                                     competition=competition)
-        # We should move the files that crash to a different folder for easier identification
-        if validated:
+            result = validate_bug(db, lp, project, bug, build,
+                                  arguments, unfuzzed_outputs,
+                                  competition=competition)
+        bug_results[bug.id] = result
+        if result["validated"]:
             real_bugs.append(bug.id)
         print()
     # This is assert is needed in case injection fails to plant a bug, especially 50 times, should be flagged.
@@ -959,8 +996,7 @@ def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths,
         print("yield to me")
     print("TESTING COMPLETE")
 
-    if update_db:
-        db.session.commit()
+    db.session.commit()
 
     return real_bugs
 
@@ -1071,6 +1107,105 @@ def nuke_invalid_lava_bugs(db: LavaDatabase):
         print("Database sanitized: No invalid chaff-tied bugs found.")
 
 
+MANIFEST_FORMAT = 1
+
+
+def bug_manifest_entry(bug: Bug, result: Optional[dict]) -> dict:
+    """
+    One bug's ground truth for manifest.json. Every injected bug gets an entry, not
+    just validated ones: "validated": false says the bug is in the source but our
+    input didn't trigger it, and "tested": false means validation stopped before it.
+    """
+    atp = bug.atp_relationship
+    trigger = bug.trigger_relationship
+    dua = trigger.dua_relationship
+    lval = bug.lval_relationship
+    seed = result["seed"] if result else dua.inputfile
+    return {
+        "id": bug.id,
+        # DB ids restart after `lava -r`; this survives resets as long as mining
+        # does (bug type, attack point, trigger lval, seed, trigger bytes).
+        "key": "{}|{}:{}:{}|{}:{}:{}|{}|{}|{}:{}".format(
+            BugKind(bug.type).name,
+            atp.loc.filename, atp.loc.begin.line, atp.loc.begin.column,
+            lval.loc.filename, lval.loc.begin.line, lval.loc.begin.column, lval.ast_name,
+            seed, trigger.selected.low, trigger.selected.high),
+        "type": BugKind(bug.type).name,
+        "atp": {
+            "file": atp.loc.filename,
+            "line": atp.loc.begin.line,
+            "column": atp.loc.begin.column,
+            "kind": AtpKind(atp.type).name,
+        },
+        "trigger_lval": {
+            "file": lval.loc.filename,
+            "line": lval.loc.begin.line,
+            "name": lval.ast_name,
+        },
+        "magic": "0x{:x}".format(bug.magic),
+        "fake_dua": dua.fake_dua,
+        "seed": seed,
+        "tested": result is not None,
+        "input": result["input"] if result else None,
+        "exit_code": result["exit_code"] if result else None,
+        "validated": result["validated"] if result else False,
+        "crash": result["crash"] if result else None,
+    }
+
+
+def write_build_manifest(db: LavaDatabase, lp: LavaPaths, build: Build, bug_list: List[int],
+                         bug_results: dict, arguments: argparse.Namespace, dataflow: bool,
+                         error: Optional[str] = None):
+    """
+    Write build<N>/manifest.json: which injected bugs are real and the input that
+    triggers each, so build<N>/ is usable without the LAVA database. Written after
+    validation (only then do we know which bugs manifest), atomically, and with
+    "complete": false plus the error if validation stopped early.
+    """
+    build_dir = get_build_dir(lp, build)
+    build_dir.mkdir(parents=True, exist_ok=True)
+    tar_filename = f"build_{build.id}_injection.tar.gz"
+    bugs_parent = Path(lp.bugs_parent)
+
+    manifest = {
+        "format": MANIFEST_FORMAT,
+        "project": lp.name,
+        "run_dir": f"{bugs_parent.parent.name}/{bugs_parent.name}",
+        "build": build.id,
+        "branch": f"build{build.id}",
+        "compiled": bool(build.compile),
+        "tarball": tar_filename if (build_dir / tar_filename).exists() else None,
+        "source_root": Path(lp.bugs_build).resolve().name,
+        "command": lp.config['command'],
+        # How validation built it (configure: env_var, make: inject). "validated" means
+        # it crashed under THIS build; FuzzBench's own flags/sanitizers may differ.
+        "build_env": {k: lp.config['inject'].get(k)
+                      for k in ('CC', 'CXX', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS')
+                      if lp.config['inject'].get(k)},
+        "created": datetime.now().isoformat(timespec='seconds'),
+        "complete": error is None,
+        "error": error,
+        # anything that changes how bugs trigger
+        "options": {
+            "knob_trigger": arguments.knobTrigger,
+            "competition": bool(arguments.competition),
+            "dataflow": bool(dataflow),
+            "bugtypes": [b.strip() for b in arguments.bugtypes.split(",") if b.strip()]
+            if arguments.bugtypes else [],
+            "expected_exit_code": arguments.exitCode,
+        },
+        "bugs": [bug_manifest_entry(bug, bug_results.get(bug.id))
+                 for bug in sorted(get_bugs(db, bug_list), key=lambda b: b.id)],
+    }
+
+    manifest_path = build_dir / "manifest.json"
+    tmp_path = build_dir / "manifest.json.tmp"
+    with open(tmp_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+    os.replace(tmp_path, manifest_path)
+    print(f"Manifest for build{build.id} written to {manifest_path}")
+
+
 def main(arguments: argparse.Namespace, lp: LavaPaths):
     # Run the guard check. Toggle strict_64_only based on your experimental parameters
     project = lp.config
@@ -1088,7 +1223,7 @@ def main(arguments: argparse.Namespace, lp: LavaPaths):
     get_bugs_parent(lp)
 
     # obtain list of bugs to inject based on cmd-line args and consulting db
-    update_db, bug_list = get_bug_list(arguments, db, allowed_bugtypes)
+    bug_list = get_bug_list(arguments, db, allowed_bugtypes)
 
     # TODO: Integrate the following lines when its time to put Chaff bugs in
     # Write the fnwhitelist to indicate root && end of dataflow
@@ -1100,7 +1235,7 @@ def main(arguments: argparse.Namespace, lp: LavaPaths):
     # add all those bugs to the source code and check that it compiles
     # TODO use bug_solutions and make inject_bugs return solutions for single-dua bugs?
     build, input_files, bug_solutions = inject_bugs(bug_list, db, lp,
-                                                    project, arguments, update_db, dataflow=dataflow,
+                                                    project, arguments, dataflow=dataflow,
                                                     competition=arguments.competition)
     if build is None:
         raise RuntimeError("LavaTool failed to build target binary")
@@ -1116,13 +1251,16 @@ def main(arguments: argparse.Namespace, lp: LavaPaths):
         # Graceful exit (or 'continue' if you place this inside a loop!)
         return
 
-    build_success = build_and_package(build, lp, update_db, db)
+    build_success = build_and_package(build, lp, db)
     if not build_success:
         raise RuntimeError("LavaTool failed to build target binary")
 
+    bug_results = {}
+    validation_error = None
     try:
         # determine which of those bugs actually cause a seg fault
-        real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, arguments, update_db)
+        real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, arguments,
+                                      bug_results=bug_results)
 
         def count_bug_types(id_list: list[int]):
             type_count = {}
@@ -1145,11 +1283,19 @@ def main(arguments: argparse.Namespace, lp: LavaPaths):
 
     except Exception as e:
         print("TESTING FAIL")
-        if update_db:
-            db.session.add(Run(build_relationship=build, fuzzed=None, exitcode=-22,
-                               output=str(e), success=False, validated=False))
-            db.session.commit()
+        validation_error = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+        db.session.add(Run(build_relationship=build, fuzzed=None, exitcode=-22,
+                           output=str(e), success=False, validated=False))
+        db.session.commit()
         raise
+    finally:
+        # Even when validation stops early, leave a manifest saying so (and with
+        # whatever was tested), rather than none. Never mask the original error.
+        try:
+            write_build_manifest(db, lp, build, bug_list, bug_results, arguments, dataflow,
+                                 error=validation_error)
+        except Exception as manifest_error:
+            print(f"\nWarning: Failed to write manifest for build {build.id}: {manifest_error}")
 
     print("inject complete %.2f seconds" % (time.time() - start_time))
 
