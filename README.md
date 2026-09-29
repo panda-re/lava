@@ -39,7 +39,7 @@ On a system running Ubuntu 22.04, you should be able to just run `bash install.s
 Note that this [install script](https://github.com/panda-re/lava/blob/master/install.sh) will install packages and make changes to your system. 
 You can remove the binaries using `sudo apt-get remove lava`.
 
-Once you finish installing the binary, then you can install locally running `pip install python/`. 
+Once you finish installing the binary, then you can install locally running `pip install .`. 
 
 **NOTE** that the Python package requires a SQL file generated from compiling the binaries that is placed into `python/src/pyroclastic/data/lava.sql`. 
 Without this file, the Python package will not work correctly.

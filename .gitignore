@@ -1,3 +1,6 @@
+# Don't save files
+*.pdf
+
 # Don't save protobuf files
 *.pb.h
 *.pb.cc
