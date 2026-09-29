@@ -273,3 +273,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Figures from python/tests/test_explore.py and explore_demo.py
+test_reports/

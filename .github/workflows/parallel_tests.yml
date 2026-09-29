@@ -53,7 +53,7 @@ jobs:
       - name: Create Wheel file
         run: |
           python3 -m pip install --upgrade build
-          python3 -m pip install pytest protobuf>=4.21.0
+          python3 -m pip install pytest protobuf>=4.21.0 matplotlib
           python3 -m build --wheel .
           python3 -m pip install dist/*.whl
 
@@ -63,6 +63,16 @@ jobs:
           pytest python
         env:
           PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION : 'python'
+          LAVA_TEST_REPORTS: test_reports
+
+      # The KLEE-vs-DFS exploration figures drawn by python/tests/test_explore.py
+      - name: Upload exploration figures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: explore-figures
+          path: test_reports/
+          if-no-files-found: warn
 
   test_install_script:
     name: "LAVA End to End Test"

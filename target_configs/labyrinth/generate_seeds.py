@@ -14,22 +14,12 @@ def create_seed(filename, byte_values):
 
 
 def main():
-    # Path matches the LAVA structure you've been using
-    base_path = "inputs"
+    # Next to this script, so it works from any working directory
+    base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "inputs")
     
-    # 1. All Lefts (0 < 128)
+    # All Lefts (every byte < 128). One seed is enough: concolic exploration flips each
+    # branch from it, reaching all 256 paths.
     create_seed(f"{base_path}/all_left.bin", [0] * 8)
-    
-    # 2. All Rights (255 >= 128)
-    create_seed(f"{base_path}/all_right.bin", [255] * 8)
-    
-    # 3. Alternating (LRLRLRLR)
-    create_seed(f"{base_path}/zigzag.bin", [0, 255, 0, 255, 0, 255, 0, 255])
-    
-    # 4. The 'Midpoint' seed (Threshold testing)
-    create_seed(f"{base_path}/threshold.bin", [127, 128, 127, 128, 127, 128, 127, 128])
-
-    print("\n[!] Total of 4 seeds generated. Use 'all_left.bin' for initial testing.")
 
 
 if __name__ == "__main__":
