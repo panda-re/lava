@@ -818,12 +818,12 @@ struct LivenessSnapshot {
 #pragma db index("LivenessSnapshotUniq") unique members(inputfile, label, atp_instr)
 
     LivenessSnapshot() {}
-    LivenessSnapshot(std::string inputfile, uint32_t label, uint64_t death_instr)
+    LivenessSnapshot(std::string inputfile, uint32_t label, uint64_t atp_instr, uint64_t liveness_count)
         : id(0), inputfile(inputfile), label(label), atp_instr(atp_instr), liveness_count(liveness_count) {}
 
     bool operator<(const LivenessSnapshot &other) const {
-        return std::tie(inputfile, label, atp_instr) <
-            std::tie(other.inputfile, other.label, other.atp_instr);
+        return std::tie(inputfile, label, atp_instr, liveness_count) <
+            std::tie(other.inputfile, other.label, other.atp_instr, liveness_count);
     }
 
     friend std::ostream &operator<<(std::ostream &os, const LivenessSnapshot &snap) {
