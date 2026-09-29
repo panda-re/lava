@@ -74,6 +74,7 @@ lava-init = "pyroclastic.utils.init_host:main"
 lava-verify = "pyroclastic.inject.verify_build:main"
 lava-coverage = "pyroclastic.magmalyze.coverage:main"
 magmalyze = "pyroclastic.magmalyze.angr_concolic_explore:main"
+magmalyze-demo = "pyroclastic.magmalyze.explore_demo:main"
 # Mostly used for Testing
 taint = "pyroclastic.taint.bug_mining:run_taint_pipeline"
 mine-plog = "pyroclastic.taint.find_bug_injection:main"

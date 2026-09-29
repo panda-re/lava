@@ -515,6 +515,24 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
     uint64_t tr_end = bug->atp->trace_index;
     uint64_t tr_start = dua_bytes->dua->trace_index;
 
+    // End the window at the DUA siphon's next visit, where lava_set_extra() resets
+    // lava_state. ATPs are deduplicated by loc, so atp->trace_index is only its first
+    // visit and can precede a later-iteration DUA.
+    const ASTLoc &dua_loc = dua_bytes->dua->lval->loc;
+    uint64_t next_visit = UINT64_MAX;
+    for (const SourceTrace &st : db->query<SourceTrace>(
+            odb::query<SourceTrace>::loc.filename == dua_loc.filename &&
+            odb::query<SourceTrace>::loc.begin.line == dua_loc.begin.line &&
+            odb::query<SourceTrace>::loc.begin.column == dua_loc.begin.column &&
+            odb::query<SourceTrace>::loc.end.line == dua_loc.end.line &&
+            odb::query<SourceTrace>::loc.end.column == dua_loc.end.column &&
+            odb::query<SourceTrace>::index > tr_start)) {
+        next_visit = std::min(next_visit, st.index);
+    }
+    if (next_visit != UINT64_MAX) {
+        tr_end = next_visit;
+    }
+
     LvalBytes lval_bytes(dua_bytes);
 
     // Just for fail safe

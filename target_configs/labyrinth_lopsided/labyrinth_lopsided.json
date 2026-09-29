@@ -1,0 +1,15 @@
+{
+    "name": "labyrinth_lopsided",
+    "db": "labyrinth_lopsided",
+
+    "tarfile": "labyrinth_lopsided.tar.gz",
+
+    "make": "make",
+    "clean": "make clean",
+    "install": "make install",
+    "command": "{install_dir}/bin/labyrinth_lopsided {input_file}",
+
+    "main_file": [ "labyrinth_lopsided.c" ],
+
+    "dataflow": false
+}
