@@ -57,6 +57,9 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         if (Mod.sm->getFilename(func->getLocation()).empty()) {
             return;
         }
+        if (!Mod.sm->isInMainFile(func->getLocation())) {
+            return;
+        }
 
         // 2 & 3. SQUASHED CHAFF INJECTION
         // Inject chaff vars if we are querying OR if the function is in our whitelist
