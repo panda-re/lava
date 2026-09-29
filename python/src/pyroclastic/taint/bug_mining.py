@@ -229,15 +229,9 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
                 raise e
         else:
             print(f"Python fbi invocation")
-            # Set a few variables before you call fbi
-            project_data["max_liveness"] = 100000
-            project_data["max_cardinality"] = 100
-            project_data["max_tcn"] = 100
-            project_data["max_lval_size"] = 100
-            project_data["curtail"] = project_data.get("curtail", 0)
-
+            lava_mode = project_data["lava_mode"]
             parse_panda_log(pandalog_json, project_data)
-            record_injectable_bugs_offline(project_data)
+            record_injectable_bugs_offline(project_data, lava_mode)
         # Print all states from both Mining and Bug Creation
         print_bug_stats(project_data, debug=False)
         print_phase2_stats(project_data, debug=False)

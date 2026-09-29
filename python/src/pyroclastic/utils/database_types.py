@@ -159,6 +159,30 @@ class LavaDatabase(object):
         count = self.uninjected2(fake).count()
         return self.uninjected2(fake)[random.randrange(0, count)]
 
+# Mirrors find_bug_inj.cpp's srand(0x6c617661) ("lava"): one deterministic stream
+# per process, drawn from in Bug construction order, so reruns get the same magics.
+# Not bit-identical to C++ (that's glibc rand()), just the same shape and determinism.
+_MAGIC_RNG = random.Random(0x6c617661)
+
+
+def generate_bug_magic(rng: random.Random = _MAGIC_RNG) -> int:
+    """
+    Mirrors the C++ Bug constructor (lava.hxx): 4 bytes, each a letter-ish value
+    (rand() % 26 + 0x60, then maybe flip case with ^ 0x20), so every byte is in
+    0x40-0x79. That means it is never 0, nor any byte 0 -- which matters: the injected
+    trigger is `magic == lava_get(slot)` (or data_flow[slot]), and both lava_val[] and
+    data_flow[] start zeroed and clean inputs are full of zero bytes. With magic 0 a
+    PTR_ADD adds v * (v == 0) == 0 (never corrupts), while REL_WRITE/RET_BUFFER/
+    MALLOC_OFF_BY_ONE fire on the unmodified input.
+    """
+    magic = 0
+    for _ in range(4):
+        magic <<= 8
+        magic |= rng.randrange(26) + 0x60
+        magic ^= rng.getrandbits(1) << 5  # rand() & 0x20: maybe flip case
+    return magic
+
+
 class BugKind(IntEnum):
     BUG_PTR_ADD = 0
     BUG_RET_BUFFER = 1
@@ -239,12 +263,15 @@ class Bug(Base):
                  atp: Union[int, "AttackPoint"],
                  extra_duas: Union[List[int], List["DuaBytes"]],
                  max_liveness: int = 0,
-                 magic: int = 0, stackoff: int = 0, **kwargs):
+                 magic: Optional[int] = None, stackoff: int = 0, **kwargs):
         """
         Mirroring C++ Constructor logic:
         Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
             const AttackPoint *atp, std::vector<uint64_t> extra_duas)
+        Like C++, the magic is generated here unless given (see generate_bug_magic).
         """
+        if magic is None:
+            magic = generate_bug_magic()
         resolved_bug_type = bug_type.value if isinstance(bug_type, BugKind) else bug_type
         # 1. Handle the raw IDs for ODB/Database (The 'Contract')
         # Use the trigger object to get IDs, but fall back to the objects themselves

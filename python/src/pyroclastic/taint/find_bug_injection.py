@@ -6,7 +6,7 @@ import re
 from sqlalchemy.exc import IntegrityError
 from typing import DefaultDict, Set, Optional, List, Tuple, cast
 from collections import defaultdict
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from ..utils.funcs import dump_table
 from ..utils.database_types import SourceTrace, CallTrace
 from ..utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, LavaDatabase, Dua
@@ -328,7 +328,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
                 'max_tcn': c_max_tcn,
                 'max_cardinality': c_max_card,
                 'trace_index': source_trace_index,
-                'length': length
             }
         ))
 
@@ -808,63 +807,87 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
             db.session.commit()
 
 
+def _fmt_loc(loc) -> str:
+    return f"{loc.filename}:{loc.begin.line}:{loc.begin.column}:{loc.end.line}:{loc.end.column}"
+
+
 def print_bug_stats(project_data: dict, debug: bool = False):
     """
     Examines and prints the complete structural contents of all mined elements
     in a deterministic order, safely handling any nested database sequences.
+
+    Rows are sorted by their unique-index members (lava.hxx) and foreign keys are
+    printed as the row they point to, never as raw ids: ids depend on insertion
+    order, so they only line up between a C++ and a Python run by luck, which
+    stops holding on bigger, more-branching targets.
     """
     with LavaDatabase(project_data) as db:
-        # 1. SourceLvals (Deterministic sort by primary key id)
+        # 1. SourceLvals (SourceLvalUniq: loc, ast_name)
         try:
-            source_lvals = db.session.query(SourceLval).order_by(SourceLval.id).all()
+            source_lvals = db.session.query(SourceLval).order_by(
+                SourceLval._f, SourceLval._bl, SourceLval._bc, SourceLval._el, SourceLval._ec,
+                SourceLval.ast_name).all()
         except Exception:
             source_lvals = db.session.query(SourceLval).all()
         if debug:
-            dump_table("SOURCE LVALS", source_lvals, ['id', 'ast_name', 'len_bytes', 'loc'])
+            dump_table("SOURCE LVALS", source_lvals, ['ast_name', 'len_bytes', 'loc'])
         else:
             print("source_lvals:", len(source_lvals))
 
-        # 2. LabelSets (Deterministic sort by PANDA memory pointer address)
+        # 2. LabelSets (LabelSetUniq: ptr, inputfile -- ptr alone ties across inputs)
         try:
-            label_sets = db.session.query(LabelSet).order_by(LabelSet.ptr).all()
+            label_sets = db.session.query(LabelSet).order_by(LabelSet.inputfile, LabelSet.ptr).all()
         except Exception:
             label_sets = db.session.query(LabelSet).all()
         if debug:
-            dump_table("LABEL SETS", label_sets, ['id', 'ptr', 'inputfile', 'labels'])
+            dump_table("LABEL SETS", label_sets, ['ptr', 'inputfile', 'labels'])
         else:
             print("label_sets:", len(label_sets))
 
-        # 3. AttackPoints (Deterministic sort by database primary key id)
+        # 3. AttackPoints (AttackPointUniq: loc, type, trace_index)
         try:
-            attack_points = db.session.query(AttackPoint).order_by(AttackPoint.id).all()
+            attack_points = db.session.query(AttackPoint).order_by(
+                AttackPoint._f, AttackPoint._bl, AttackPoint._bc, AttackPoint._el, AttackPoint._ec,
+                AttackPoint.type, AttackPoint.trace_index).all()
         except Exception:
             attack_points = db.session.query(AttackPoint).all()
         if debug:
-            dump_table("ATTACK POINTS", attack_points, ['id', 'type', 'loc', 'calltrace', 'stack_offset', 'trace_index'])
+            # calltrace holds CallTrace ids; print the (caller, file) each points to, in order.
+            ct_by_id = {ct.id: (ct.caller, ct.file) for ct in db.session.query(CallTrace)}
+            dump_table("ATTACK POINTS", attack_points, [
+                'type', 'loc',
+                ('calltrace', lambda a: [ct_by_id.get(i, f"<missing {i}>") for i in a.calltrace]),
+                'stack_offset', 'trace_index'])
         else:
             print("attack_points:", len(attack_points))
 
-        # 4. Count DUAs sort by primary key id
+        # 4. DUAs (DuaUniq: lval, inputfile, instr, fake_dua), instr first so the
+        # dump still reads in trace order
         try:
-            duas = db.session.query(Dua).order_by(Dua.instr, Dua.id).all()
+            duas = db.session.query(Dua).join(SourceLval, Dua.lval == SourceLval.id).options(
+                joinedload(Dua.lval_relationship)).order_by(
+                Dua.instr, Dua.inputfile,
+                SourceLval._f, SourceLval._bl, SourceLval._bc, SourceLval._el, SourceLval._ec,
+                SourceLval.ast_name, Dua.fake_dua).all()
         except Exception:
             duas = db.session.query(Dua).all()
 
         if debug:
             dump_table("DUAs (Dead Uncomplicated Available)", duas, [
-                'id', 'lval', 'instr', 'fake_dua', 'inputfile',
-                'max_tcn', 'max_cardinality', 'all_labels', 'byte_tcn', 'viable_bytes', 'trace_index', 'length', 'death_instr'])
+                ('lval', lambda d: f"{_fmt_loc(d.lval_relationship.loc)} {d.lval_relationship.ast_name}"),
+                'instr', 'fake_dua', 'inputfile',
+                'max_tcn', 'max_cardinality', 'all_labels', 'byte_tcn', 'viable_bytes', 'trace_index', 'death_instr'])
         else:
             print("duas:", len(duas))
 
-        # 5. Count CallTrace sort by primary key id
+        # 5. CallTrace (unique: caller, file)
         try:
-            call_traces = db.session.query(CallTrace).order_by(CallTrace.id).all()
+            call_traces = db.session.query(CallTrace).order_by(CallTrace.caller, CallTrace.file).all()
         except Exception:
             call_traces = db.session.query(CallTrace).all()
 
         if debug:
-            dump_table("CallTrace", call_traces, ['id', 'caller', 'file'])
+            dump_table("CallTrace", call_traces, ['caller', 'file'])
         else:
             print("call traces:", len(call_traces))
 
@@ -893,41 +916,7 @@ def main():
     project_name = sys.argv[1]
     panda_log = sys.argv[2]
 
-    # host_json reads overall config from host.json, project_name finds configs for specific project
     project = parse_vars(project_name)
-
-    if "max_liveness" not in project:
-        print("max_liveness not set, using default 100000")
-        project["max_liveness"] = 100000
-
-    # Throw exception if we can't process any required argument
-    if not isinstance(project["max_liveness"], int):
-        raise RuntimeError("Could not parse max_liveness")
-
-    if "max_cardinality" not in project:
-        print("max_cardinality not set, using default 100")
-        project["max_cardinality"] = 100
-    if not isinstance(project["max_cardinality"], int):
-        raise RuntimeError("Could not parse max_cardinality")
-
-    if "max_tcn" not in project:
-        print("max_tcn not set, using default 100")
-        project["max_tcn"] = 100
-    if not isinstance(project["max_tcn"], int):
-        raise RuntimeError("Could not parse max_tcn")
-
-    if "max_lval_size" not in project:
-        print("max_lval_size not set, using default 100")
-        project["max_lval_size"] = 100
-    if not isinstance(project["max_lval_size"], int):
-        raise RuntimeError("Could not parse max_lval_size")
-
-    if "curtail" not in project:
-        print("curtail not set, using default 0")
-        project["curtail"] = 0
-    if not isinstance(project["curtail"], int):
-        raise RuntimeError("Could not parse curtail")
-
     parse_panda_log(panda_log, project)
 
 
