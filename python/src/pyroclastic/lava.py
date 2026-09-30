@@ -209,8 +209,25 @@ def make_panda(lava_paths: LavaPaths):
     # Note, adding the static flag is important. We are running the binaries on a PANDA VM,
     # so we have no idea if it will have any libraries we need.
     run_local("rm -rf lava-install", logfile=lf, cwd=str(lava_paths.source_directory), shell=True)
+    # A project's own "make clean/distclean" may delete GENERATED sources, which
+    # are exactly what add_queries instrumented (sqlite's clean removes the
+    # sqlite3.c/shell.c amalgamation; a bison parser.c is the same story). The
+    # rebuild would then regenerate them uninstrumented, silently. Snapshot the
+    # instrumented files and put back any the clean deleted or changed.
+    _, instrumented = read_compile_db(lava_paths.source_directory)
+    snapshot = {f: Path(f).read_bytes() for f in instrumented if os.path.isfile(f)}
     deep_clean_target(lava_paths.source_directory, lf=lf)
+    for f, data in snapshot.items():
+        if not os.path.isfile(f) or Path(f).read_bytes() != data:
+            print(f"[*] Restoring instrumented source removed by clean: {f}")
+            Path(f).write_bytes(data)
     configure_project(lava_paths, main_directory=str(lava_paths.source_directory), environment="panda", lf=lf)
+    # Re-configuring rewrites files that generated sources depend on (openssl's
+    # configdata.pm -> apps/progs.c, providers/common/der/*_gen.c), so make would
+    # regenerate them uninstrumented. Make the instrumented files newer.
+    for f in snapshot:
+        if os.path.isfile(f):
+            os.utime(f)
     make_and_install(lava_paths, main_directory=str(lava_paths.source_directory), environment="panda", lf=lf)
 
     duration = tock(start_time)
