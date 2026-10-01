@@ -1,0 +1,15 @@
+{
+    "name": "libpng",
+    "db": "libpng",
+    "tarfile": "libpng-v1.6.53.tar.gz",
+    "configure": "./configure --prefix={install_dir}",
+    "instrument_exclude_dirs": "pnglibconf\\.c|scripts/vers\\.c",
+    "make": "make",
+    "clean": "make clean",
+    "install": "make install && install -m 755 pngtest {install_dir}/bin/pngtest",
+    "command": "{install_dir}/bin/pngtest {input_file}",
+    "main_file": [
+        "pngtest.c"
+    ],
+    "dataflow": true
+}
