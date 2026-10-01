@@ -11,7 +11,7 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         // We need the range covering the function signature (return type + name + args).
         // The previous code scanned strings for '{' to find the end.
         // In LLVM/Clang, we can just check if the function has a body.
-        if (func->hasBody()) {
+        if (func->doesThisDeclarationHaveABody()) {
             // If it has a body: void foo() { ... }
             // The signature ends right before the body starts.
             // getBody()->getBeginLoc() points exactly to the '{'.
@@ -31,6 +31,17 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         // We don't need to manually check bounds because 'AddArgGen' (which we fixed earlier)
         // now uses the Lexer to safely find the opening parenthesis within this range.
         AddArgGen(Mod, StartLoc, EndLoc, false, func->getNumParams(), 1);
+    }
+
+    // Where to insert declarations at the top of a function body. For an empty
+    // body "{}" body_begin() == body_end(), so *body_begin() reads past the end
+    // (the asserts are compiled out in Release) and handing that garbage Stmt's
+    // location to the rewriter smashed the stack (FreeType's Ins_POP(void) {}).
+    static SourceLocation bodyTopLoc(const CompoundStmt *body) {
+        if (body->body_empty()) {
+            return body->getLBracLoc().getLocWithOffset(1);
+        }
+        return (*body->body_begin())->getBeginLoc();
     }
 
     virtual void handle(const MatchFinder::MatchResult &Result) {
@@ -62,17 +73,14 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         }
 
         // 2 & 3. SQUASHED CHAFF INJECTION
-        // Inject chaff vars if we are querying OR if the function is in our whitelist
-        if (func->hasBody()) {
+        if (func->doesThisDeclarationHaveABody()) {
             CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
             assert(body);
-            Stmt *first = *body->body_begin();
-            assert(first);
             std::stringstream data;
             data << "int lava_chaff_var_0 = 0;\n";
             data << "int lava_chaff_var_1 = 0;\n";
             data << "unsigned long lava_chaff_var_2 = (unsigned long) &lava_chaff_var_0;\n";
-            Mod.InsertAt(first->getBeginLoc(), data.str());
+            Mod.InsertAt(bodyTopLoc(body), data.str());
         }
 
         // CRITICAL: Preserve the early return for the query stage 
@@ -91,14 +99,12 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
                 if (func->isThisDeclarationADefinition()) { // no prototype for main.
                     CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
                     assert(body);
-                    Stmt *first = *body->body_begin();
-                    assert(first);
                     std::stringstream data_array;
                     // Inject valid C even if we have no values
                     int data_slots_size = (data_slots.size() > 0) ? data_slots.size() : 1;
                     data_array << "int data[" << data_slots_size << "] = {0};\n";
                     data_array << "int *" ARG_NAME << "= &data;\n";
-                    Mod.InsertAt(first->getBeginLoc(), data_array.str());
+                    Mod.InsertAt(bodyTopLoc(body), data_array.str());
                 }
             } else {
                 AddArg(func);
@@ -106,16 +112,14 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
             debug(FNARG) << "FuncDeclArgAdditionHandler handle: ok to instrument " <<  fnname.second << "\n";
         }
         else if (dataflowroot.count(fnname.second) != 0) {
-            if (func->hasBody()) {
+            if (func->doesThisDeclarationHaveABody()) {
                 CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
                 assert(body);
-                Stmt *first = *body->body_begin();
-                assert(first);
                 std::stringstream data;
                 data << "int lava_chaff_data = 0;\n";
                 data << "int *" ARG_NAME << "= &lava_chaff_data;\n";
                 // Use InsertAfter - leave room for Abritriary variables in Stack Overrun bugs
-                Mod.InsertTo(first->getBeginLoc(), data.str());
+                Mod.InsertTo(bodyTopLoc(body), data.str());
             }
         }
         else {

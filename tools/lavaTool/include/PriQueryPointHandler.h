@@ -279,6 +279,12 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         ASTLoc ast_loc = GetASTLoc(sm, toSiphon);
         debug(PRI) << "Have a query point @ " << ast_loc << "!\n";
 
+        // For a "case X:"/"default:" label, insert AFTER the label(s)
+        const Stmt *insertAt = toSiphon;
+        while (const SwitchCase *sc = dyn_cast<SwitchCase>(insertAt)) {
+            insertAt = sc->getSubStmt();
+        }
+
         std::string before;
         if (LavaAction == LavaQueries) {
             // this is used in first pass clang tool, adding queries
@@ -302,17 +308,14 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         }
 
         if (LavaAction == LavaInjectBugs) {
-            //std::stringstream result_ss;
             for (const LExpr &expr : map_get_default(extra_overconst_expr, ast_loc)) {
-                //result_ss << expr;
-                //Mod.Change(toSiphon).InsertBefore(result_ss.str());
-                Mod.Change(toSiphon).InsertBefore(expr.render());
+                Mod.Change(insertAt).InsertBefore(expr.render());
             }
             extra_overconst_expr.erase(ast_loc);
         }
 
         // Ensure lava_set/lava_set_extra always comes first
-        Mod.Change(toSiphon).InsertBefore(before);
+        Mod.Change(insertAt).InsertBefore(before);
     }
 };
 
