@@ -71,7 +71,8 @@ fi
 progress "Installed build dependencies"
 
 progress "Configure lavaTool"
-rm -rf "./tools/build"
+# Start clean: a stale build tree or ODB/protobuf output can get repackaged as-is
+rm -rf "./tools/build" "./tools/lavaODB/generated"
 cmake -B"./tools/build" \
       -H"./tools" \
       -DCMAKE_INSTALL_PREFIX="/usr" \
@@ -81,7 +82,8 @@ progress "Compiling lavaTool"
 cmake --build "./tools/build" --parallel "$(nproc)" --config Release
 pushd ./tools/build
 cpack -G DEB
-$SUDO sudo apt-get install ./lava*.deb
+# --reinstall: the package version is always 0.0.0, so apt may otherwise skip it
+$SUDO sudo apt-get install --reinstall ./lava*.deb
 popd
 
 progress "Installed LAVA"

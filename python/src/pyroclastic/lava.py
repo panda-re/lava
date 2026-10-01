@@ -179,12 +179,13 @@ def reset_database(lava_paths: LavaPaths, config: dict):
     This function resets the LAVA database to a clean state.
     This is only trigger upon a --clean flag, or other flags that force a --clean.
     """
+    database_user = os.getenv("POSTGRES_USER", "")
     log_file = lava_paths.logs_directory / "dbwipe.log"
     sql_file = lava_paths.sql_file
     progress("everything", 1, f"Resetting lava db -- logging to {log_file}")
-    run_local(f"dropdb -U {config['database_user']} -h {config['database']} {config['db']} || true", log_file, shell=True)
-    run_local(f"createdb -U {config['database_user']} -h {config['database']} {config['db']} || true", log_file, shell=True)
-    run_local(f"psql -U {config['database_user']} -h {config['database']} -d {config['db']} -f {sql_file} ", log_file, shell=True)
+    run_local(f"dropdb -U {database_user} -h {config['database']} {config['db']} || true", log_file, shell=True)
+    run_local(f"createdb -U {database_user} -h {config['database']} {config['db']} || true", log_file, shell=True)
+    run_local(f"psql -U {database_user} -h {config['database']} -d {config['db']} -f {sql_file} ", log_file, shell=True)
     run_local("echo 'dbwipe complete'", log_file, shell=True)
 
 
@@ -208,8 +209,25 @@ def make_panda(lava_paths: LavaPaths):
     # Note, adding the static flag is important. We are running the binaries on a PANDA VM,
     # so we have no idea if it will have any libraries we need.
     run_local("rm -rf lava-install", logfile=lf, cwd=str(lava_paths.source_directory), shell=True)
+    # A project's own "make clean/distclean" may delete GENERATED sources, which
+    # are exactly what add_queries instrumented (sqlite's clean removes the
+    # sqlite3.c/shell.c amalgamation; a bison parser.c is the same story). The
+    # rebuild would then regenerate them uninstrumented, silently. Snapshot the
+    # instrumented files and put back any the clean deleted or changed.
+    _, instrumented = read_compile_db(lava_paths.source_directory)
+    snapshot = {f: Path(f).read_bytes() for f in instrumented if os.path.isfile(f)}
     deep_clean_target(lava_paths.source_directory, lf=lf)
+    for f, data in snapshot.items():
+        if not os.path.isfile(f) or Path(f).read_bytes() != data:
+            print(f"[*] Restoring instrumented source removed by clean: {f}")
+            Path(f).write_bytes(data)
     configure_project(lava_paths, main_directory=str(lava_paths.source_directory), environment="panda", lf=lf)
+    # Re-configuring rewrites files that generated sources depend on (openssl's
+    # configdata.pm -> apps/progs.c, providers/common/der/*_gen.c), so make would
+    # regenerate them uninstrumented. Make the instrumented files newer.
+    for f in snapshot:
+        if os.path.isfile(f):
+            os.utime(f)
     make_and_install(lava_paths, main_directory=str(lava_paths.source_directory), environment="panda", lf=lf)
 
     duration = tock(start_time)
@@ -270,9 +288,10 @@ def main():
         architecture = lava_path.config['qemu']
         progress("everything", 1, f"Taint step -- running panda and fbi for {architecture} architecture")
         if not args.clean:
+            database_user = os.getenv("POSTGRES_USER", "")
             lf = lava_path.logs_directory / "dbwipe_taint.log"
-            cmd_dua = f"psql -U {lava_path.config['database_user']} -h {lava_path.config['database']} -c \"TRUNCATE TABLE dua_viable_bytes;\" {lava_path.config['db']} || true"
-            cmd_label = f"psql -U {lava_path.config['database_user']} -h {lava_path.config['database']} -c \"TRUNCATE TABLE labelset;\" {lava_path.config['db']} || true"        
+            cmd_dua = f"psql -U {database_user} -h {lava_path.config['database']} -c \"TRUNCATE TABLE dua_viable_bytes;\" {lava_path.config['db']} || true"
+            cmd_label = f"psql -U {database_user} -h {lava_path.config['database']} -c \"TRUNCATE TABLE labelset;\" {lava_path.config['db']} || true"
             run_local(f"{cmd_dua} ; {cmd_label}", lf, shell=True)
     
         lf = lava_path.logs_directory / "bug_mining.log"

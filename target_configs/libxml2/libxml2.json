@@ -1,0 +1,15 @@
+{
+    "name": "libxml2",
+    "db": "libxml2",
+    "tarfile": "libxml2-v2.15.3.tar.gz",
+    "configure": "sh autogen.sh --prefix={install_dir} --disable-shared --without-debug --without-http --without-python --without-docs --without-readline --without-history --without-zlib",
+    "instrument_exclude_dirs": "example",
+    "make": "make",
+    "clean": "make clean",
+    "install": "make install",
+    "command": "{install_dir}/bin/xmllint --noout {input_file}",
+    "main_file": [
+        "lintmain.c"
+    ],
+    "dataflow": true
+}

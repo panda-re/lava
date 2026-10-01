@@ -11,27 +11,38 @@ import sys
 import shlex
 import shutil
 import subprocess
-from pandare.extras import dwarfdump
 from pandare import Panda
 import argparse
+from typing import Optional
 
 # LAVA
+from . import dwarfdump
 from ..taint.find_bug_injection import parse_panda_log, print_bug_stats
 from ..utils.vars import parse_vars
 from ..utils.funcs import tick, tock, progress
 from ..taint.generate_bugs import record_injectable_bugs_offline, print_phase2_stats
 
 
-def run_taint_pipeline(lava_project: str, project_data: dict):
+def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optional[str] = None):
     """
     Initializes the project and PANDA object based on arguments.
+
+    raw_command: smoke-test mode. When set, skip the normal per-file batch
+    command entirely and record this exact string once instead, with
+    pypanda's own verbose logging turned on so you see the real guest
+    output (record_cmd() doesn't return its result normally -- only prints
+    it if pandare.panda.debug is True, which this sets). Stops after
+    recording; does not replay or run FBI. Useful for sanity-checking
+    pypanda/record_cmd/copy_to_guest against a project's actual install
+    directory without wading through the full taint pipeline, e.g. to
+    confirm a binary even launches before debugging why no taint appeared.
     """
     panda = Panda(generic=project_data['qemu'])
     panda_log = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
     pandalog_json = "{}/queries-{}.json".format(project_data['output_dir'], project_data['name'])
 
     class State:
-        command_args = []
+        guest_command = ""
         install_directory = ""
         tar_directory = ""
     state = State()
@@ -44,11 +55,10 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
         to the guest, and starts recording the specified command.
         1. Revert to 'root' snapshot
         2. Copy install_directory to guest
-        3. Start recording the command specified in command_args, this runs the program on a folder of inputs
+        3. Start recording the command in state.guest_command, this runs the program on a folder of inputs
         4. Stop the recording after the command completes
         """
-        # Use absolute paths for BOTH arguments!
-        guest_command = subprocess.list2cmdline(state.command_args)
+        guest_command = state.guest_command
         # Technically the first two steps of record_cmd
         # but running executable ONLY works with absolute paths
         panda.revert_sync('root')
@@ -78,27 +88,40 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
 
         shutil.copytree(input_file_directory, guest_directory_inputs_path)
 
-        # 2. EXTRACT THE TARGET BINARY PATH
-        # We need to know what binary to run. Your JSON has "{install_dir}/bin/toy {input_file}"
-        # We format it with an empty input_file to isolate the binary path.
-        guest_executable = project_data['command'].format(
-            install_dir=shlex.quote(state.install_directory),
-            input_file=""
-        ).strip()
+        # 2. BUILD THE PER-FILE COMMAND, WITH A REAL SHELL VARIABLE DROPPED IN
+        if raw_command is not None:
+            # Smoke-test mode: skip the whole per-file batch construction and
+            # record exactly what was passed on the command line.
+            progress("bug_mining", 0, f"SMOKE TEST: recording raw command as-is: {raw_command}")
+            state.guest_command = raw_command
+        else:
+            guest_executable_template = project_data['command'].format(
+                install_dir=shlex.quote(state.install_directory),
+                input_file='"$f"'
+            ).strip()
 
-        # 3. CONSTRUCT THE BATCH COMMAND
-        # We use bash -c so we can use pipes (|) inside the guest command safely.
-        # Note: {{}} is how we escape curly braces in Python f-strings so xargs gets "{}".
-        # We use -print0 and -0 to handle filenames with spaces correctly.
-        batch_shell_command = (
-            f"find {shlex.quote(guest_directory_inputs_path)} -type f -print0 | "
-            f"xargs -0 -I {{}} {guest_executable} {{}}"
-        )
+            # 3. CONSTRUCT THE BATCH COMMAND AS A PLAIN BASH for LOOP.
+            # Deliberately not "find | xargs -I {}": that adds a layer of
+            # placeholder-substitution indirection on top of the one above, is
+            # harder to reproduce by hand when something goes wrong (which it has,
+            # twice), and buys nothing a for loop doesn't already give us --
+            # "for f in dir/*" is safe for filenames with spaces as long as "$f"
+            # stays quoted (glob expansion isn't subject to IFS word-splitting the
+            # way command substitution is). Same semantics either way: one
+            # continuous PANDA recording, one target process per file, run
+            # strictly sequentially.
+            batch_shell_command = (
+                f"for f in {shlex.quote(guest_directory_inputs_path)}/*; do "
+                f"{guest_executable_template}; done"
+            )
 
-        progress("bug_mining", 0, f"Generated Guest Command: {batch_shell_command}")
+            progress("bug_mining", 0, f"Generated Guest Command: {batch_shell_command}")
 
-        # PANDA expects a list. We pass bash as the exe, and the whole string as the arg.
-        state.command_args = batch_shell_command.split()
+            # Keep the fully-formed shell string as-is -- see the comment in
+            # create_recording_wrapper() for why round-tripping this through
+            # .split() + subprocess.list2cmdline() (the previous approach) is
+            # actively wrong here, not just unnecessary.
+            state.guest_command = batch_shell_command
 
         # In CI/CD, we should try to use complete record and replay
         # Also, please avoid using debug prints in CI/CD, it can cause issues.
@@ -240,6 +263,20 @@ def run_taint_pipeline(lava_project: str, project_data: dict):
         progress("bug_mining", 1, f"FBI complete {fib_time} seconds")
         sys.stdout.flush()
 
+    if raw_command is not None:
+        # pandare.panda's own "debug" name is a plain module-level bool that
+        # record_cmd() checks to decide whether to print the guest's raw
+        # output -- it's a separate copy from pandare.utils.debug (panda.py
+        # does "from .utils import debug", which copies the value at import
+        # time, so setting pandare.utils.debug here would silently do
+        # nothing). This is the one record_cmd() actually reads.
+        import pandare.panda
+        pandare.panda.debug = True
+        record()
+        progress("bug_mining", 0, "SMOKE TEST complete -- stopping before replay/FBI. "
+                                   "Check the '[PYPANDA] Result of ...' output above for what the guest actually printed.")
+        return
+
     # Check if there is already a PANDA log...
     # If there is, skip straight to parsing the replay output, otherwise do the whole pipeline
     if os.path.exists(pandalog_json):
@@ -257,6 +294,12 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--project', dest='project', action='store',
                         help="The name of the project, this contains project specific data", required=True,
                         type=str)
+    parser.add_argument('--smoke-test', dest='smoke_test',
+                        action='store', default=None, type=str,
+                        help="Skip the normal per-file batch command; revert/copy-to-guest as usual but "
+                             "record exactly this raw shell command once instead, with Pypanda's verbose "
+                             "logging on so you see the real guest output. Stops after recording -- no "
+                             "replay, no FBI. E.g.: --smoke-test 'echo hello_from_guest'")
     args = parser.parse_args()
     project = parse_vars(args.project)
-    run_taint_pipeline(args.project, project)
+    run_taint_pipeline(args.project, project, raw_command=args.smoke_test)

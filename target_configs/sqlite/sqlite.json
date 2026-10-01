@@ -1,0 +1,17 @@
+{
+    "name": "sqlite",
+    "db": "sqlite",
+    "tarfile": "sqlite-fuzzbench-c78cbf2e86850cc6.tar.gz",
+    "configure": "./configure --prefix={install_dir} --disable-readline",
+    "makefile_append": "# sqlite3.c/shell.c are generated, and LAVA instruments the generated copies.\n# sqlite's own rules would regenerate them (clean removes .target_source), so\n# once they exist their recipes become no-ops.\nifneq ($(wildcard sqlite3.c),)\nsqlite3.c: ; @:\nendif\nifneq ($(wildcard shell.c),)\nshell.c: ; @:\nendif\n\n.PHONY: lava_sqlite3\nshell.lo:\tshell.c\n\t$(LTCOMPILE) $(READLINE_FLAGS) $(SHELL_OPT) -c shell.c\n\nsqlite3.lo:\tsqlite3.c\n\t$(LTCOMPILE) $(TEMP_STORE) $(SHELL_OPT) -c sqlite3.c\n\nlava_sqlite3:\tshell.lo sqlite3.lo\n\t$(LTLINK) -o sqlite3 shell.lo sqlite3.lo $(LIBREADLINE) $(TLIBS)\n",
+    "pre_make": "make sqlite3.h sqlite3.c shell.c",
+    "instrument_exclude_dirs": "tool",
+    "make": "make lava_sqlite3",
+    "clean": "make clean",
+    "install": "mkdir -p {install_dir}/bin && cp sqlite3 {install_dir}/bin/sqlite3",
+    "command": "{install_dir}/bin/sqlite3 {input_file} .dump",
+    "main_file": [
+        "shell.c"
+    ],
+    "dataflow": true
+}

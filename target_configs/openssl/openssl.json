@@ -1,0 +1,15 @@
+{
+    "name": "openssl",
+    "db": "openssl",
+    "tarfile": "openssl-3.0.7.tar.gz",
+    "configure": "./Configure linux-x86_64 --prefix={install_dir} --libdir=lib no-shared no-module no-dso no-asm no-tests no-afalgeng -latomic",
+    "makefile_append": "# compiledb's dry run (make -Bnwk) treats Makefile and configdata.pm as out of\n# date; their recipes re-run Configure and then '@false', aborting the dry run\n# before any compile command is printed (empty compile_commands.json).\n# LAVA never changes Configure inputs after configuring, so make them no-ops.\nMakefile: ; @:\nconfigdata.pm: ; @:\n",
+    "make": "make -j4",
+    "clean": "make clean",
+    "install": "make install_sw",
+    "command": "{install_dir}/bin/openssl x509 -in {input_file} -noout -text",
+    "main_file": [
+        "apps/openssl.c"
+    ],
+    "dataflow": true
+}
