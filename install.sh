@@ -27,7 +27,7 @@ if [ -e "${dep_base}"_build.txt ] || [ -e "${dep_base}"_base.txt ]; then
   echo "Found dependency file(s) at ${dep_base}*.txt"
   # shellcheck disable=SC2046
   # shellcheck disable=SC2086
-  DEBIAN_FRONTEND=noninteractive $SUDO apt-get -y install --no-install-recommends $(cat ${dep_base}*.txt | grep -o '^[^#]*')
+  DEBIAN_FRONTEND=noninteractive $SUDO apt-get -y install --no-install-recommends curl jq $(cat ${dep_base}*.txt | grep -o '^[^#]*')
 else
   echo "Unsupported Ubuntu version: $version. Create a list of build dependencies in ${dep_base}_{base,build}.txt and try again."
   exit 1
@@ -71,7 +71,8 @@ fi
 progress "Installed build dependencies"
 
 progress "Configure lavaTool"
-rm -rf "./tools/build"
+# Start clean: a stale build tree or ODB/protobuf output can get repackaged as-is
+rm -rf "./tools/build" "./tools/lavaODB/generated"
 cmake -B"./tools/build" \
       -H"./tools" \
       -DCMAKE_INSTALL_PREFIX="/usr" \
@@ -81,7 +82,8 @@ progress "Compiling lavaTool"
 cmake --build "./tools/build" --parallel "$(nproc)" --config Release
 pushd ./tools/build
 cpack -G DEB
-$SUDO sudo apt-get install ./lava*.deb
+# --reinstall: the package version is always 0.0.0, so apt may otherwise skip it
+$SUDO sudo apt-get install --reinstall ./lava*.deb
 popd
 
 progress "Installed LAVA"
