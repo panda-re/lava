@@ -25,12 +25,12 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
     steps:  
       - name: Checkout LAVA at current commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       
       - name: Install compile dependencies
         run: |
           version=$(lsb_release -rs)
-          dep_base=./dependencies/ubuntu_${version}_base.txt
+          dep_base=./dependencies/ubuntu_${version}_build.txt
           sudo apt-get -qq update
           if [ -f "${dep_base}" ]; then
             sudo apt-get -y install --no-install-recommends $(cat ${dep_base} | grep -o '^[^#]*')
@@ -100,7 +100,7 @@ jobs:
           --health-retries 5
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
     - name: Update and install all requirements
       run: |
         bash install.sh
