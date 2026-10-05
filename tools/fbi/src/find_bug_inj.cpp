@@ -1121,11 +1121,11 @@ int main (int argc, char **argv) {
     printf("max lval size = %d\n", max_lval);
 
     if (curtail == 0) { // Will be 0 unless specified on command line
-        if (!project["curtail_fbi"].isUInt()) {
+        if (!project["curtail"].isUInt()) {
             curtail = 0;
         } else{
             // null should never happen, if it does we'll violate an assert in the asUInt
-            curtail = std::strtoul(project.get("curtail_fbi", Json::Value::null).asString().c_str(), 0, 0);
+            curtail = std::strtoul(project.get("curtail", Json::Value::null).asString().c_str(), 0, 0);
         }
     }
     printf("Curtail is %d\n", curtail);

@@ -22,3 +22,6 @@ libjsoncpp-dev
 protobuf-compiler
 libprotobuf-dev
 libprotobuf-c-dev
+
+# Required for HTTPS download of capstone during build
+ca-certificates

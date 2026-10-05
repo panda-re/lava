@@ -208,7 +208,6 @@ def parse_vars(project_name: str):
     # Database config
     project_data["database"] = host.get("host", "database")
     project_data["database_port"] = host.get("port", 5432)
-    project_data["database_user"] = host.get("pguser", "postgres")
 
     # Other config
     project_data["qemu"] = host["qemu"]
@@ -219,7 +218,9 @@ def parse_vars(project_name: str):
     project_data["debug"] = host.get("debug", False)
 
     # Replace format strings in project configs
-    project_data["install"] = project_data["install"].format(config_dir=project_data["config_dir"])
+    # the "install", if it needs an 'install_dir', gets set at run-time with configure step
+    project_data["make"] = project_data.get("make", "make -j$(nproc)")
+    project_data["install"] = project_data.get("install", "make install")
     project_data["llvm-dir"] = host.get("llvm", "/usr/lib/llvm-14")
     project_data["complete_rr"] = host.get("complete_rr", False)
     project_data["use_c_fbi"] = host.get("use_c_fbi", True)
