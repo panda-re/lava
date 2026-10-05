@@ -1,0 +1,14 @@
+{
+    "name": "lcms2",
+    "db": "lcms2",
+    "tarfile": "lcms2-2.19.1.tar.gz",
+    "configure": "./configure --prefix={install_dir}",
+    "make": "make",
+    "clean": "make clean",
+    "install": "make install",
+    "command": "{install_dir}/bin/transicc -i {input_file} -o '*sRGB' < /dev/null",
+    "main_file": [
+        "utils/transicc/transicc.c"
+    ],
+    "dataflow": false
+}
