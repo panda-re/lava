@@ -78,7 +78,6 @@ std::string fundecl_fun_name(const MatchFinder::MatchResult &Result, const Funct
         StringRef Name = II->getName();
         return Name.str();
     }
-    assert (1==0);
     return std::string("Unknown");
 }
 
@@ -94,13 +93,13 @@ std::string get_containing_function_name(const MatchFinder::MatchResult &Result,
             debug(LOG) << "get_containing_function_name: no parents for stmt? ";
             pstmt->dumpPretty(*Result.Context);
             debug(LOG) << "\n";
-            assert(1==0);
+            return std::string("None");
         }
         if (parents[0].get<TranslationUnitDecl>()) {
             debug(LOG) << "get_containing_function_name: parents[0].get<TranslationUnitDecl? ";
             pstmt->dumpPretty(*Result.Context);
             debug(LOG) << "\n";
-            assert(1==0);
+            return std::string("None");
         }
         const FunctionDecl *fd = parents[0].get<FunctionDecl>();
         if (fd) {
@@ -111,11 +110,13 @@ std::string get_containing_function_name(const MatchFinder::MatchResult &Result,
             debug(LOG) << "get_containing_function_name: !pstmt \n";
             const VarDecl *pvd = parents[0].get<VarDecl>();
             if (pvd) {
-                const auto &parents = Result.Context->getParents(*pvd);
-                pstmt = parents[0].get<Stmt>();
+                const auto &vd_parents = Result.Context->getParents(*pvd);
+                if (!vd_parents.empty()) {
+                    pstmt = vd_parents[0].get<Stmt>();
+                }
             }
             if (!pstmt) {
-                assert (1==0);
+                return std::string("None");
             }
         }
     }
@@ -189,15 +190,16 @@ class FnPtrAssignmentPrinter : public MatchFinder::MatchCallback {
     public :
     virtual void run(const MatchFinder::MatchResult &Result) {
         const BinaryOperator *bo = Result.Nodes.getNodeAs<BinaryOperator>("bo");
-        Expr *rhs = bo->getRHS()->IgnoreImpCasts();
+        // IgnoreParenImpCasts: macro-expanded code (e.g. FreeType) often
+        // writes "p = (fn)", a ParenExpr, which is not a DeclRefExpr.
+        Expr *rhs = bo->getRHS()->IgnoreParenImpCasts();
         const clang::Type *rhst = rhs->getType().getTypePtr();
-        if (rhst->isFunctionType()) {
+        const DeclRefExpr *dre = llvm::dyn_cast<DeclRefExpr>(rhs);
+        const FunctionDecl *fndecl = dre ? llvm::dyn_cast<FunctionDecl>(dre->getDecl()) : nullptr;
+        if (rhst->isFunctionType() && fndecl) {
             outfile << "- fnPtrAssign: \n";
             spit_source_locs("   ", bo, *Result.SourceManager);
-            const DeclRefExpr *dre = llvm::dyn_cast<DeclRefExpr>(rhs);
             outfile << "   name: " << dre->getNameInfo().getAsString() << "\n";
-            const ValueDecl *vd = dre->getDecl();
-            const FunctionDecl *fndecl = llvm::dyn_cast<FunctionDecl>(vd);
             spit_fun_decl(fndecl);
         }
     }
@@ -210,9 +212,11 @@ class VarDeclPrinter : public MatchFinder::MatchCallback {
         const VarDecl *vd = Result.Nodes.getNodeAs<VarDecl>("vd");
         const clang::Type *et = vd->getType().getTypePtr();
         if (vd->hasInit() && et->isPointerType()) {
-            const Expr *init = vd->getInit()->IgnoreImpCasts();
+            const Expr *init = vd->getInit()->IgnoreParenImpCasts();
             const clang::Type *it = init->getType().getTypePtr();
-            if (it->isFunctionType()) {
+            const DeclRefExpr *dre = llvm::dyn_cast<DeclRefExpr>(init);
+            const FunctionDecl *fndecl = dre ? llvm::dyn_cast<FunctionDecl>(dre->getDecl()) : nullptr;
+            if (it->isFunctionType() && fndecl) {
                 outfile << "- fnPtrAssign:\n";
                 clang::SourceLocation sl1 = vd->getBeginLoc();
                 clang::SourceLocation sl2 = vd->getEndLoc();
@@ -222,9 +226,7 @@ class VarDeclPrinter : public MatchFinder::MatchCallback {
                 if (sl2.isValid()) {
                     outfile << "   end: " << sl2.printToString(*Result.SourceManager) << "\n";
                 }
-                const DeclRefExpr *dre = llvm::dyn_cast<DeclRefExpr>(init);
                 outfile << "   name: " << dre->getNameInfo().getAsString() << "\n";
-                const FunctionDecl *fndecl = llvm::dyn_cast<FunctionDecl>(dre->getDecl());
                 spit_fun_decl(fndecl);
             }
         }

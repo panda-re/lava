@@ -219,6 +219,21 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
     */
     void AttackExpression(const SourceManager &sm, const Expr *toAttack,
             const Expr *parent, const Expr *rhs, AttackPoint::Type atpType) {
+        if (const PointerType *pt = toAttack->IgnoreParenImpCasts()->getType()->getAs<PointerType>()) {
+            QualType pointee = pt->getPointeeType();
+            bool incompleteHere = false;
+            if (const TagDecl *td = pointee->getAsTagDecl()) {
+                const TagDecl *def = td->getDefinition();
+                incompleteHere = !def || !sm.isBeforeInTranslationUnit(
+                        def->getLocation(), toAttack->getBeginLoc());
+            } else {
+                incompleteHere = pointee->isIncompleteType() && !pointee->isVoidType();
+            }
+            if (incompleteHere) {
+                debug(INJECT) << "Skipping attack on pointer to incomplete type\n";
+                return;
+            }
+        }
         ASTLoc ast_loc = GetASTLoc(sm, toAttack);
         std::vector<LExpr> pointerAddends;
         std::vector<LExpr> valueAddends;

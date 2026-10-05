@@ -102,6 +102,26 @@ def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
     """
     Generates environment variables based on target architecture.
     mode: 'default', 'inject', 'llvm_cov' or 'panda'
+
+    "panda" mode's LDFLAGS carry both "-static" and "-all-static". Confirmed
+    live: libtool's --mode=link silently swallows a bare "-static" -- it uses
+    it internally to prefer a dependency's .a over its .la/.so (which DOES
+    work), but never forwards "-static" itself to the real compiler/linker
+    invocation, so system libraries (libc, libm, libpthread, ...) stay
+    dynamically linked regardless. libtool's actual "statically link
+    everything, including system libs" flag is "-all-static". For a
+    non-libtool build "-all-static" is meaningless -- but confirmed live,
+    clang treats it as a harmless unused-argument warning, not an error
+    ("clang: warning: argument unused during compilation: '-all-static'",
+    exit 0), so adding it unconditionally is safe for every target, libtool
+    or not, without needing to track which is which. The point of any of
+    this: the "panda" build step needs a genuinely static binary (PANDA guest
+    VMs can't be assumed to have the target's shared libraries, and in
+    practice usually run an older glibc than the host toolchain -- a
+    dynamically-linked binary fails at the dynamic linker with "version
+    'GLIBC_2.34' not found" before main() ever runs, silently: neither
+    pandare's record_cmd() nor this project's own error checks recognize
+    that message as a failure).
     """
     clang = os.path.join(llvm_dir, 'bin' , 'clang')
     clang_pp = os.path.join(llvm_dir, 'bin', 'clang++')
@@ -152,7 +172,10 @@ def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
         ldflags.extend(selected_mode_flags)
     elif mode == "panda":
         # Force the linker to strictly build a non-PIE, static executable (Add PIE later...?)
-        ldflags.extend(["-static"])
+        # "-all-static" is what actually makes libtool-based builds static
+        # (see the docstring above); unconditional because it's a no-op
+        # warning, not an error, for non-libtool builds.
+        ldflags.extend(["-static", "-all-static"])
 
     if ldflags:
         env['LDFLAGS'] = " ".join(ldflags)
@@ -237,6 +260,31 @@ def parse_vars(project_name: str):
     project_data["curtail"] = project_data.get("curtail", 0)
     # For now use 'lava1' to mean original LAVA
     project_data["lava_mode"] = host.get("lava_mode", "lava1")
+
+    # Raw Makefile text appended (by configure_project(), before pre_make runs)
+    # right after "./configure" produces a real Makefile. For targets whose own
+    # build links multiple sources directly in one command with no per-file -c
+    # (e.g. sqlite3: shell.c sqlite3.c -> one clang invocation, no object files)
+    # -- compiledb can only record that as a single, multi-source
+    # compile_commands.json entry, which clang tooling then refuses to process
+    # ("expected exactly one compiler job"). Use this to add a target-specific
+    # rule that compiles each leaf file to its own object first, then point
+    # "make"/"pre_make" at that new target instead of the project's own.
+    project_data["makefile_append"] = project_data.get("makefile_append", "")
+
+    # Alternation-regex filter applied to the files read_compile_db() returns,
+    # AFTER the real build -- matches either a directory component
+    # (.../tool/...) or an exact trailing filename (.../pnglibconf.c), so one
+    # setting covers both shapes of "this isn't real target source." compiledb
+    # traces the *entire* dependency chain of whatever "make" target you give
+    # it, including host-side build tools (sqlite's tool/lemon.c) and codegen
+    # templates that were never meant to be parsed as standalone C (libpng's
+    # pnglibconf.c, consumed by an awk script after -E, not compilable on its
+    # own) -- neither is part of the compiled target program and neither
+    # should get LAVA query/inject instrumentation. Empty by default (no
+    # filtering).
+    project_data["instrument_exclude_dirs"] = project_data.get("instrument_exclude_dirs", "")
+
     return Project(project_data)
 
 

@@ -1,7 +1,8 @@
 import os
+import re
 import sys
 # LAVA
-from ..utils.funcs import read_compile_db, configure_project, run_local, preprocess, unpack_tar, make_and_install
+from ..utils.funcs import read_compile_db, configure_project, run_local, preprocess, unpack_tar, make_and_install, apply_replacements
 from ..utils.vars import LavaPaths
 from .fninstr import analysis
 
@@ -20,6 +21,10 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
     os.chdir(lava_path.source_directory)
 
     configure_project(lava_path)
+    # preprocess() does its own throwaway build internally (to learn each
+    # file's real compile flags from compile_commands.json) before macro-
+    # flattening anything -- this is the SECOND, real build, whose
+    # compile_commands.json is what everything below actually instruments.
     preprocess(lava_path)
 
     # 4. Make with compiledb and make install
@@ -29,6 +34,21 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
     os.chdir(lava_path.project_dir)
 
     c_dirs, c_files = read_compile_db(lava_path.source_directory)
+
+    # compiledb traces the whole dependency chain of the "make" target, which
+    # can include host-side build tools (parser generators, etc.) or codegen
+    # templates that happen to have their own single-file compile_commands.json
+    # entry but were never meant to be parsed as standalone, real C (e.g.
+    # libpng's pnglibconf.c is a template consumed by an awk script after -E,
+    # not compilable source -- lavaFnTool trying to parse it directly hits
+    # "unknown type name 'PNG_DFN'", a marker token dfn.awk expects, not a
+    # real macro). Matches either a directory component (.../tool/...) or an
+    # exact trailing filename (.../pnglibconf.c) so one setting covers both.
+    exclude_dirs = lava_path.config['instrument_exclude_dirs']
+    if exclude_dirs:
+        junk = re.compile(r'/(' + exclude_dirs + r')(/|$)')
+        c_files = {f for f in c_files if not junk.search(f)}
+        c_dirs = {os.path.dirname(f) for f in c_files}
 
     # 7. lavaFnTool & fninstr.py
     for file in c_files:
@@ -62,8 +82,7 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
         run_local(lt_cmd)
 
     # 10. Apply Replacements
-    for directory in c_dirs:
-        run_local([str(lava_path.llvm_path / "bin" / "clang-apply-replacements"), "."], cwd=directory)
+    apply_replacements(lava_path.source_directory, c_files, str(lava_path.llvm_path / "bin" / "clang-apply-replacements"))
 
     # 11. Verification
     for file in c_files:

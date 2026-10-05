@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List, Optional
 # LAVA imports
 from ..utils.vars import LavaPaths
-from ..utils.funcs import get_inject_parser, read_compile_db, unpack_tar, configure_project, preprocess, run_local, make_and_install
+from ..utils.funcs import get_inject_parser, read_compile_db, unpack_tar, configure_project, preprocess, run_local, make_and_install, git_addable_c_files, apply_replacements
 from ..utils.database_types import Bug, DuaBytes, Build, Run, BugKind, AtpKind, LavaDatabase
 from ..inject.dataflow import genFnTraceHelper, genStackVarHelper
 
@@ -163,7 +163,7 @@ def inject_bugs(bug_list, db: LavaDatabase, lava_p : LavaPaths, project: dict, a
     
     if not os.path.exists(os.path.join(lava_p.bugs_build, '.git')):
         configure_project(lava_p, main_directory=lava_p.bugs_build)
-        preprocess(lava_p, main_directory=lava_p.bugs_build)
+        preprocess(lava_p, main_directory=lava_p.bugs_build, environment="inject")
 
     sys.stdout.flush()
     sys.stderr.flush()
@@ -238,22 +238,10 @@ def inject_bugs(bug_list, db: LavaDatabase, lava_p : LavaPaths, project: dict, a
         bug_solutions.update(modify_source(filename))
 
     clang_apply = os.path.join(project['llvm-dir'], 'bin', 'clang-apply-replacements')
-    one_replacement_success = False
-    for src_dir in src_dirs:
-        if project['debug']:
-            print("Looking at src_dir: {}".format(src_dir))
-
-        clang_cmd = [clang_apply, '.', '-remove-change-desc-files']
-        if project['debug']:  # Don't remove desc files
-            clang_cmd = [clang_apply, '.']
-        print("Apply replacements in {} with {}".format(os.path.join(lava_p.bugs_build, src_dir), clang_cmd))
-        rv, output = run_local(clang_cmd, cwd=os.path.join(lava_p.bugs_build, src_dir), debug=project['debug'], capture_output=True)
-
-        if rv == 0:
-            print("Success in {}".format(src_dir))
-            one_replacement_success = True
-
-    assert one_replacement_success, "clang-apply-replacements failed in all possible directories"
+    # In debug mode keep the .yaml change-description files around for inspection.
+    rcs = apply_replacements(lava_p.bugs_build, all_c_files, clang_apply, remove_yaml=not project['debug'])
+    print("Apply replacements return codes: {}".format(rcs))
+    assert any(rv == 0 for rv in rcs), "clang-apply-replacements failed in all possible directories"
     build = Build(
         compile=False, 
         output="",
@@ -267,15 +255,16 @@ def inject_bugs(bug_list, db: LavaDatabase, lava_p : LavaPaths, project: dict, a
     build_label = str(build.id)
     print(f"Saving C source changes for build {build_label}...")
     try:
-        # Use Python's rglob to safely find all .c files in root AND subdirectories
-        build_path = Path(lava_p.bugs_build)
-        c_files = [str(p.relative_to(build_path)) for p in build_path.rglob("*.c")]
-        
+        c_files = git_addable_c_files(lava_p.bugs_build)
+
         if not c_files:
             raise AssertionError(f"No .c files found in the project directory for build {build_label}!")
 
-        # Pass the exact file list to Git safely
-        run_local(["git", "add"] + c_files, cwd=lava_p.bugs_build)
+        # Pass the exact file list to Git safely. -f: naming files explicitly
+        # makes git refuse outright if the project's own .gitignore excludes
+        # one (e.g. a generated .c file) -- we're using git purely as LAVA's
+        # own change-tracking, not honoring the target's gitignore.
+        run_local(["git", "add", "-f"] + c_files, cwd=lava_p.bugs_build)
 
         # Confirm that LavaTool actually modified tracked files
         rv_status, _ = run_local(["git", "diff", "--cached", "--quiet"], cwd=lava_p.bugs_build, capture_output=True)

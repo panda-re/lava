@@ -1,0 +1,16 @@
+{
+    "name": "freetype2",
+    "db": "freetype2",
+    "tarfile": "freetype2.tar.gz",
+    "configure": "sh autogen.sh && ./configure --prefix={install_dir} --with-harfbuzz=no --with-bzip2=no --with-png=no --with-brotli=no --with-zlib=no",
+    "pre_make": "cp -n {config_dir}/ftlava.c . && cp {config_dir}/ftlava.mk .",
+    "instrument_exclude_dirs": "src/tools",
+    "make": "make -f ftlava.mk",
+    "clean": "make clean && rm -f ftlava ftlava.o",
+    "install": "make install && mkdir -p {install_dir}/bin && cp ftlava {install_dir}/bin/ftlava",
+    "command": "{install_dir}/bin/ftlava {input_file}",
+    "main_file": [
+        "ftlava.c"
+    ],
+    "dataflow": false
+}
