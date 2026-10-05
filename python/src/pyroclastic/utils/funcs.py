@@ -328,7 +328,7 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", environmen
     if pre_make != "":
         if os.path.isfile(os.path.join(main_directory, 'Makefile')):
             blindfolds = {
-            "   ACLOCAL": "true",
+                "ACLOCAL": "true",
                 "AUTOCONF": "true",
                 "AUTOMAKE": "true",
                 "AUTOHEADER": "true",
@@ -446,7 +446,14 @@ def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment
                 print("compile_commands.json has not changed. Skipping commit to keep git history clean.")
 
     # Execute final installation step cleanly, have some flags, just in case we have to run make before processing, this avoids extra compiling.
-    run_local(f"{lava_path.config['install']}", env=env, shell=True, debug=True, cwd=str(main_directory), logfile=lf)
+    # In the rare case that the 'install' commands needs an install directory, here it is
+    install_command = lava_path.config["install"]
+    install_dir = os.path.join(main_directory, "lava-install")
+
+    if "{install_dir}" in install_command:
+        install_command = install_command.format(install_dir=str(install_dir))
+
+    run_local(f"{install_command}", env=env, shell=True, debug=True, cwd=str(main_directory), logfile=lf)
     print("Install has completed")
     return build_output
 
