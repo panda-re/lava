@@ -20,7 +20,13 @@ COPY . /
 RUN mv /tmp/$(echo "$BASE_IMAGE" | sed 's/:/_/g')_build.txt /tmp/build_dep.txt && \
     mv /tmp/$(echo "$BASE_IMAGE" | sed 's/:/_/g')_base.txt /tmp/base_dep.txt
 
-# Base image just needs runtime dependencies
+# Install dependencies to compile LAVA
+RUN [ -e /tmp/build_dep.txt ] && \
+    apt-get -qq update && \
+    apt-get install -y --no-install-recommends $(cat /tmp/build_dep.txt | grep -o '^[^#]*') && \
+    apt-get clean
+
+# Install run-time dependencies
 RUN [ -e /tmp/base_dep.txt ] && \
     apt-get -qq update -y && \
     apt-get -qq install -y --no-install-recommends curl jq $(cat /tmp/base_dep.txt | grep -o '^[^#]*') && \
@@ -45,11 +51,6 @@ RUN LIBHC_VERSION=$(curl -s https://api.github.com/repos/AndrewQuijano/libhc/rel
     curl -LJ -o /tmp/libhc-dev_${LIBHC_TAG}_all.deb https://github.com/AndrewQuijano/libhc/releases/download/${LIBHC_VERSION}/libhc-dev_${LIBHC_TAG}_all.deb && \
     $SUDO apt-get -y install /tmp/libhc-dev_${LIBHC_TAG}_all.deb && \
     rm "/tmp/libhc-dev_${LIBHC_TAG}_all.deb"
-
-RUN [ -e /tmp/build_dep.txt ] && \
-    apt-get -qq update && \
-    apt-get install -y --no-install-recommends $(cat /tmp/build_dep.txt | grep -o '^[^#]*') && \
-    apt-get clean
 
 #### Essentially same as install.sh
 RUN rm -rf /tools/build && \
