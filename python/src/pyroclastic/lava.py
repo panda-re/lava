@@ -222,9 +222,15 @@ def main():
     args = parse_lava_args()
 
     # Confirm environment variables to access the DB are set
-    if 'POSTGRES_USER' not in os.environ or 'POSTGRES_PASSWORD' not in os.environ:
-        print("[!] Please set the POSTGRES_USER and POSTGRES_PASSWORD environment variables to access the database. Use the `export` function!")
+    postgres_user = os.environ.get("POSTGRES_USER")
+    postgres_password = os.environ.get("POSTGRES_PASSWORD")
+
+    if not postgres_user or not postgres_password:
+        print("[!] Please set POSTGRES_USER and POSTGRES_PASSWORD...")
         sys.exit(1)
+
+    os.environ["PGUSER"] = postgres_user
+    os.environ["PGPASSWORD"] = postgres_password
 
     # Check for existence of local host.json. If it doesn't exist, prompt the user to create one and exit.
     current_workspace = Path.cwd()
