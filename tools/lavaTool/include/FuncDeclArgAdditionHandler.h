@@ -89,6 +89,12 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
             return;
         }
 
+        // The data_flow parameter is only paired with call-site arguments under -arg_dataflow
+        // (CallExprArgAdditionHandler is registered only then); adding it alone breaks every call.
+        if (!ArgDataflow) {
+            return;
+        }
+
         // only instrument if function being decl / def is in whitelist
         // 4. LAVA + CHAFF DATA FLOW INJECTION
         if (fninstr(fnname)) {
