@@ -51,8 +51,9 @@ namespace {
 std::string StripPrefix(std::string filename, std::string prefix) {
     size_t prefix_len = prefix.length();
     if (filename.compare(0, prefix_len, prefix) != 0) {
-        printf("Not a prefix!\n");
-        assert(false);
+        // Outside -src-prefix (system headers): no DUA lives there. Return a name that matches
+        // nothing (the old printf + assert(false) printed millions of lines; assert is off in Release).
+        return std::string();
     }
     while (filename[prefix_len] == '/') {
         prefix_len++;
@@ -478,32 +479,34 @@ int main(int argc, const char **argv) {
     } while (_duas.size() > 0);
 
 
+    // Commit the DUA updates first: the bug cleanup below is slow on big DBs, and losing it must
+    // not lose these (the whole run used to be one transaction).
+    t->commit();
+    delete t;
     std::cerr << "Finished cleaning up DUA, now updating Bugs\n";
-    // Update Bugs used invalid Duas to Invalid Type
-    odb::result<Bug> allbugs(db->query<Bug>());
-    for (odb::result<Bug>::iterator rit(allbugs.begin());
-            rit != allbugs.end(); rit++) {
 
-        Bug *bug = rit.load();
-        if (bug->trigger->dua->fake_dua) {
-            //bug->type = Bug::TYPE_END;
-            //db->update(*bug);
-            db->erase(*bug);
-        } else {
-            if (bug->type != Bug::CHAFF_STACK_UNUSED) {
-                for (uint64_t dua_id : bug->extra_duas) {
-                    const DuaBytes *dua_bytes = db->load<DuaBytes>(dua_id);
-                    if (dua_bytes->dua->fake_dua) {
-                        //bug->type = Bug::TYPE_END;
-                        //db->update(*bug);
-                        db->erase(*bug);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
+    // Erase bugs that use a fake DUA: as trigger, or as an extra DUA (except CHAFF_STACK_UNUSED,
+    // which doesn't use its extra DUAs that way). Done in SQL: loading every Bug through ODB one
+    // at a time took hours and GBs of RAM on libxml2 (10M bugs). Bugs already used by a build or
+    // run are kept (deleting them would violate build_bugs/run foreign keys).
+    // Nested loops are off for these statements: the planner's stats don't know how many DUAs
+    // just became fake, and a nested loop over the bug table's BugUniq index ran for hours.
+    t = new odb::transaction(db->begin());
+    db->execute("SET LOCAL enable_nestloop = off");
+    db->execute("CREATE TEMP TABLE fake_duabytes ON COMMIT DROP AS"
+                " SELECT db.id FROM duabytes db JOIN dua d ON d.id = db.dua WHERE d.fake_dua");
+    db->execute("ANALYZE fake_duabytes");
+    const std::string unused =
+        " AND NOT EXISTS (SELECT 1 FROM build_bugs bb WHERE bb.value = bug.id)"
+        " AND NOT EXISTS (SELECT 1 FROM run r WHERE r.fuzzed = bug.id)";
+    unsigned long long erased = db->execute(
+        "DELETE FROM bug USING fake_duabytes f WHERE bug.trigger = f.id" + unused);
+    erased += db->execute(
+        "DELETE FROM bug WHERE bug.id IN ("
+        "  SELECT b.id FROM bug b CROSS JOIN LATERAL unnest(b.extra_duas) AS e(id)"
+        "  JOIN fake_duabytes f ON f.id = e.id"
+        "  WHERE b.type <> " + std::to_string((int)Bug::CHAFF_STACK_UNUSED) + ")" + unused);
+    std::cerr << "Erased " << erased << " bugs that use fake DUAs\n";
     t->commit();
     return 0;
 }

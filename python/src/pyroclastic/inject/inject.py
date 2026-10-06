@@ -14,7 +14,8 @@ from typing import List, Optional
 # LAVA imports
 from ..utils.vars import LavaPaths
 from ..utils.funcs import get_inject_parser, read_compile_db, unpack_tar, configure_project, preprocess, run_local, make_and_install, git_addable_c_files, apply_replacements
-from ..utils.database_types import Bug, DuaBytes, Build, Run, BugKind, AtpKind, LavaDatabase
+from sqlalchemy import delete, exists, select
+from ..utils.database_types import Bug, BuildBug, Dua, DuaBytes, SourceLval, Build, Run, BugKind, AtpKind, LavaDatabase
 from ..inject.dataflow import genFnTraceHelper, genStackVarHelper
 
 NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
@@ -456,9 +457,15 @@ def mutate_file(unfuzzed_filename: str, fuzz_labels_list: list, new_filename: st
             file_bytes[offset] = c_val[i]
 
     else:
-        for fuzz_labels in fuzz_labels_list:
+        # Chaff bugs are over-constrained on their extra DUA: lavaTool's lava_check_const_high /
+        # lava_check_const_low_* only set lava_state when that value is 0, and the bug fires only
+        # when lava_check_state() sees both halves. So the extra DUA's bytes must be 0, not the magic.
+        is_chaff = "CHAFF" in BugKind(bug.type).name
+        # trigger (n == 0) last, so it wins if its bytes overlap an extra DUA's
+        for n, fuzz_labels in reversed(list(enumerate(fuzz_labels_list))):
+            value = magic_val if (n == 0 or not is_chaff) else b"\x00\x00\x00\x00"
             for i, offset in zip(range(4), fuzz_labels):
-                file_bytes[offset] = magic_val[i]
+                file_bytes[offset] = value[i]
 
     with open(new_filename, 'wb') as fuzzed_f:
         fuzzed_f.write(file_bytes)
@@ -1069,28 +1076,28 @@ def check_architecture_compatibility(target_arch: str, strict_64_only: bool = Tr
 
 
 def nuke_invalid_lava_bugs(db: LavaDatabase):
+    """
+    Delete real (non-chaff) bugs whose trigger DUA is one of lavaTool's own lava_chaff_* variables.
+    Done as one DELETE in Postgres: the bug table can hold tens of millions of rows, and loading them
+    as ORM objects (plus three lazy loads each) ran out of memory on libxml2 (10.1M bugs).
+    Bugs already used by a build or run are left alone.
+    """
     print("Scanning database to nuke invalid real-bugs tied to chaff nodes...")
-    all_bugs = db.session.query(Bug).all()
-    nuked_count = 0
-
-    for bug in all_bugs:
-        # Cast the raw integer from the DB back to the BugKind Enum
-        bug_enum = BugKind(bug.type)
-
-        # Safer check: if "CHAFF" is not in the enum name, it is a real bug
-        is_real_bug = "CHAFF" not in bug_enum.name
-
-        # Traverse the relationships to get the AST name
-        lval = bug.trigger_relationship.dua_relationship.lval_relationship
-
-        # If it is a real bug AND it is tied to a chaff node, NUKE IT.
-        if is_real_bug and lval and "lava_chaff" in lval.ast_name:
-            print(f"NUKE: Deleting Bug ID {bug.id} (Type: {bug_enum.name} on chaff node: {lval.ast_name})")
-            db.session.delete(bug)
-            nuked_count += 1
+    chaff_types = [kind.value for kind in BugKind if "CHAFF" in kind.name]
+    invalid = select(Bug.id) \
+        .join(DuaBytes, DuaBytes.id == Bug.trigger) \
+        .join(Dua, Dua.id == DuaBytes.dua) \
+        .join(SourceLval, SourceLval.id == Dua.lval) \
+        .where(Bug.type.not_in(chaff_types)) \
+        .where(SourceLval.ast_name.like("%lava_chaff%")) \
+        .where(~exists().where(BuildBug.value == Bug.id)) \
+        .where(~exists().where(Run.fuzzed == Bug.id))
+    nuked_count = db.session.execute(
+        delete(Bug).where(Bug.id.in_(invalid)).execution_options(synchronize_session=False)
+    ).rowcount
+    db.session.commit()
 
     if nuked_count > 0:
-        db.session.commit()
         print(f"Database sanitized: Permanently nuked {nuked_count} invalid bugs.")
     else:
         print("Database sanitized: No invalid chaff-tied bugs found.")
