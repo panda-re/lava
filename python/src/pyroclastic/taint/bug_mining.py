@@ -7,6 +7,8 @@ Second arg is an input file you want to run, under panda, to get taint info.
 """
 
 import os
+from pathlib import Path
+from ..utils.database_types import FileTaint, LavaDatabase
 import sys
 import shlex
 import shutil
@@ -120,9 +122,30 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
     pypanda/record_cmd/copy_to_guest against a project's actual install
     directory without wading through the full taint pipeline, e.g. to
     confirm a binary even launches before debugging why no taint appeared.
-    step: list of steps to run, can be "record", "replay", or "parse". 
+    step: list of steps to run, can be "record", "replay", or "parse".
     If None, run all steps.
     """
+    pending = []
+    if raw_command is None:
+        input_root = Path(project_data["config_dir"]).resolve() / "inputs"
+        if not input_root.is_dir():
+            raise FileNotFoundError(input_root)
+        with LavaDatabase(project_data) as db:
+            for source in sorted(input_root.rglob("*")):
+                if not source.is_file():
+                    continue
+                identity = FileTaint.identity(source, project_data["command"])
+                existing = db.session.query(FileTaint).filter_by(**identity).first()
+                if existing and existing.complete:
+                    continue
+                if existing is None:
+                    db.session.add(FileTaint(**identity, complete=False))
+                pending.append((source.relative_to(input_root), source))
+            db.session.commit()
+        if not pending:
+            progress("bug_mining", 0, "All inputs have already been mined with this command")
+            return
+
     class State:
         guest_command = ""
         install_directory = ""
@@ -133,12 +156,13 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
     state.tar_directory = os.path.abspath(tar_files.splitlines()[0].split(os.path.sep)[0])
     state.install_directory = os.path.join(state.tar_directory, 'lava-install')
     # recording_timeout = project_data["recording_timeout"]
-    # Parsing existing JSON must not initialize PANDA or open its QCOW.
-    needs_panda = raw_command is not None or steps is None or any(
-        step in steps for step in ('record', 'replay'))
-    panda = Panda(generic=project_data['qemu']) if needs_panda else None
     panda_log = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
     pandalog_json = "{}/queries-{}.json".format(project_data['output_dir'], project_data['name'])
+    reuse_json = raw_command is None and steps is None and os.path.exists(pandalog_json)
+    # Panda() itself may download a QCOW, so decide whether to reuse JSON first.
+    needs_panda = raw_command is not None or (not reuse_json and (
+        steps is None or any(step in steps for step in ('record', 'replay'))))
+    panda = Panda(generic=project_data['qemu']) if needs_panda else None
 
     def create_recording_wrapper():
         """
@@ -179,8 +203,14 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
             progress("bug_mining", 0, "Deleting existing inputs/ directory in guest install")
             shutil.rmtree(guest_directory_inputs_path)
 
-        # TODO: You need to filter input files already mined
-        shutil.copytree(input_file_directory, guest_directory_inputs_path)
+        if raw_command is not None:
+            shutil.copytree(input_file_directory, guest_directory_inputs_path)
+        else:
+            os.makedirs(guest_directory_inputs_path)
+            for relative, source in pending:
+                guest_input = os.path.join(guest_directory_inputs_path, str(relative))
+                os.makedirs(os.path.dirname(guest_input), exist_ok=True)
+                shutil.copyfile(source, guest_input)
 
         # 2. BUILD THE PER-FILE COMMAND, WITH A REAL SHELL VARIABLE DROPPED IN
         if raw_command is not None:
@@ -348,7 +378,7 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
 
     # Check if there is already a PANDA log...
     # If there is, skip straight to parsing the replay output, otherwise do the whole pipeline
-    if steps is None and os.path.exists(pandalog_json):
+    if reuse_json:
         progress("bug_mining", 0, f"PANDA log json already exists at {pandalog_json}, skipping straight to parsing replay output")
         parse_replay_output()
         return

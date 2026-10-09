@@ -647,7 +647,7 @@ def collect_src_and_print(bugs_to_inject: List[Bug], db: LavaDatabase):
         print("DUA:")
         print("   ", bug.trigger_relationship.dua_relationship)
         print("      Src_file: ", bug.lval_relationship.loc.filename)
-        print("      Filename: ", bug.trigger_relationship.dua_relationship.inputfile)
+        print("      Filename: ", bug.trigger_relationship.dua_relationship.file_taint.filename)
 
         if len(bug.extra_duas):
             print("EXTRA DUAS:")
@@ -694,7 +694,7 @@ def get_suffix(file_name: str) -> str:
 
 
 def run_modified_program(project: dict, install_dir: str, original_input_file: str,
-                         shell: bool= False):
+                         shell: bool= False, command: Optional[str] = None):
     """
     Run the command to test if the injected bug did crash the program or not.
     This is to confirm, even with modifications, the program does NOT crash with the original input.
@@ -705,12 +705,13 @@ def run_modified_program(project: dict, install_dir: str, original_input_file: s
         install_dir: directory with binary
         original_input_file: The input file passed into the modified program
         shell: Run on bash shell or not
+        command: Saved FileTaint command, when validating a mined bug.
 
     Returns:
         return value: the return output code. This determines success vs segfault.
         stdout, stderror: A tuple of both standard output and standard error
     """
-    cmd = project['command'].format(install_dir=install_dir, input_file=original_input_file)
+    cmd = (command if command is not None else project['command']).format(install_dir=install_dir, input_file=original_input_file)
     # cmd = "{}".format(cmd) # ... this is a nop?
     # cmd = '/bin/bash -c '+ pipes.quote(cmd)
     envv = {}
@@ -783,7 +784,7 @@ def seed_input_for_bug(project: dict, bug: Bug) -> str:
     Get the path to the unfuzzed input this bug was mined from.
     The trigger's all_labels (and every extra DUA's) are byte offsets into the
     input PANDA recorded when the DUA was found, stored as the trigger Dua's
-    inputfile (a basename, by both the C++ and Python fbi). Mutating any other
+    FileTaint filename. Mutating any other
     seed writes the magic value at the wrong offsets, so the bug looks like it
     didn't validate when it's actually real.
     Args:
@@ -792,7 +793,8 @@ def seed_input_for_bug(project: dict, bug: Bug) -> str:
     Returns:
         Absolute path to the seed input under <config_dir>/inputs
     """
-    seed_name = bug.trigger_relationship.dua_relationship.inputfile
+    file_taint = bug.trigger_relationship.dua_relationship.file_taint
+    seed_name = file_taint.filename
     seed_path = os.path.abspath(os.path.join(project["config_dir"], "inputs", seed_name))
     if not os.path.isfile(seed_path):
         raise FileNotFoundError(
@@ -852,8 +854,10 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
         fuzz_labels_list.extend([d.all_labels for d in extra_query])
     mutate_file(str(unfuzzed_input_file), fuzz_labels_list, fuzzed_input_file_name, bug,
             solution=solution, **mutfile_kwargs)
+    file_taint = bug.trigger_relationship.dua_relationship.file_taint
     rv, output = run_modified_program(project, lp.bugs_install,
-                                      fuzzed_input_file_name, shell=True)
+                                      fuzzed_input_file_name, shell=True,
+                                      command=file_taint.command if file_taint else None)
     print(f"retval = {rv}")
     validated = False
     if not bug.trigger_relationship.dua_relationship.fake_dua:
@@ -914,7 +918,7 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
 
 
 # validate this set of bugs
-def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths,
+def validate_bugs(bug_list: list[int], db: LavaDatabase, lp: LavaPaths,
                   project: dict, input_files: list[str], build : Build,
                   arguments: argparse.Namespace, competition: bool = False, bug_solutions=None,
                   bug_results: Optional[dict] = None):
@@ -932,12 +936,18 @@ def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths,
     print("TESTING -- ORIG INPUT")
     print(bug_list)
     print("------------\n")
+    bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
     unfuzzed_outputs = {}
-    for input_file in input_files:
-        unfuzzed_input = os.path.join(project["config_dir"], 'inputs', os.path.basename(input_file))
+    for bug in bugs_to_inject:
+        input_id = bug.trigger_relationship.dua_relationship.inputfile
+        if input_id in unfuzzed_outputs:
+            continue
+        unfuzzed_input = seed_input_for_bug(project, bug)
+        file_taint = bug.trigger_relationship.dua_relationship.file_taint
         rv, output = run_modified_program(project, lp.bugs_install,
-                                          str(unfuzzed_input), shell=True)
-        unfuzzed_outputs[os.path.basename(input_file)] = output
+                                          unfuzzed_input, shell=True,
+                                          command=file_taint.command if file_taint else None)
+        unfuzzed_outputs[input_id] = output
         if rv != arguments.exitCode:
             print("***** buggy program fails on original input - \
                   Exit code {} does not match expected {}"
@@ -947,8 +957,8 @@ def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths,
             print(decode_output(output[1]))
             assert False  # Fails on original input
         else:
-            print("buggy program succeeds on original input {}"
-                  "with exit code {}".format(input_file, rv))
+            print("buggy program succeeds on original input {} "
+                  "with exit code {}".format(unfuzzed_input, rv))
         print("output:")
         lines = decode_output(output[0]) + " ; " + decode_output(output[1])
         db.session.add(Run(build_relationship=build, fuzzed=None, exitcode=rv,
@@ -959,7 +969,6 @@ def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths,
     # second, try each of the fuzzed inputs and validate
     print("TESTING -- FUZZED INPUTS")
     real_bugs = []
-    bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
     for bug_index, bug in enumerate(bugs_to_inject):
         print("=" * 60)
         print("Validating bug {} of {} ".format(
@@ -1116,7 +1125,7 @@ def bug_manifest_entry(bug: Bug, result: Optional[dict]) -> dict:
     trigger = bug.trigger_relationship
     dua = trigger.dua_relationship
     lval = bug.lval_relationship
-    seed = result["seed"] if result else dua.inputfile
+    seed = result["seed"] if result else dua.file_taint.filename
     return {
         "id": bug.id,
         # DB ids restart after `lava -r`; this survives resets as long as mining

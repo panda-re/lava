@@ -2,11 +2,11 @@ import logging
 from bisect import bisect_left
 from heapq import heappush, heappop
 from sqlalchemy import select, tuple_
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 from typing import cast, Dict
 import argparse
 from ..utils.database_types import print_phase2_stats, AttackPoint, Bug, \
-    DuaBytes, Dua, LavaDatabase, BugKind, AtpExecution, AtpKind, LivenessDelta, Range, DuaViableByte
+    DuaBytes, Dua, LavaDatabase, BugKind, AtpExecution, AtpKind, LivenessDelta, Range, DuaViableByte, FileTaint
 from ..taint.taint_utils import get_dua_dead_range, disjoint, merge_into
 from ..utils.vars import parse_vars
 
@@ -198,7 +198,8 @@ def _get_or_create_bug_like_cpp(
         project_data: dict,
         is_new_atp: bool,
         extra_duas_prechosen: list[DuaBytes] | None = None,
-        skip_cache: BugSkipCache | None = None):
+        skip_cache: BugSkipCache | None = None,
+        execution: AtpExecution | None = None):
     prechosen = extra_duas_prechosen or []
     num_extra_duas = NUM_EXTRA_DUAS[bug_type] - len(prechosen)
     if num_extra_duas < 0:
@@ -281,7 +282,8 @@ def _get_or_create_bug_like_cpp(
             max_liveness=c_max_liveness,
             atp=atp,
             extra_duas=[e.id for e in extra_duas],
-            stackoff=stackoff
+            stackoff=stackoff,
+            execution=execution
         ))
         if skip_cache is not None:
             skip_cache.record(atp.id, bug_type, trigger_dua.lval)
@@ -340,7 +342,10 @@ class LivenessTimeline:
 
 def _record_injectable_bugs_offline_lava1(project_data: dict):
     with LavaDatabase(project_data) as db:
-        distinct_files = db.session.query(Dua.inputfile).distinct().all()
+        inputs = db.session.query(Dua.inputfile)
+        inputs = inputs.join(FileTaint, Dua.inputfile == FileTaint.id).filter(
+            FileTaint.command == project_data['command'], FileTaint.complete.is_(True))
+        distinct_files = inputs.distinct().all()
         file_list = [f[0] for f in distinct_files]
 
         if not file_list:
@@ -351,7 +356,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
         skip_cache = BugSkipCache(db.session)
         for inputfile in file_list:
             print(f"[*] Processing bug combinatorics target file: {inputfile}...")
-            executions = db.session.query(AtpExecution).filter_by(inputfile=inputfile).order_by(
+            executions = db.session.query(AtpExecution).options(joinedload(AtpExecution.atp)).filter_by(inputfile=inputfile).order_by(
                 AtpExecution.instr.asc(), AtpExecution.id.asc()).all()
             dua_stream = load_lava1_duas(db.session, inputfile)
 
@@ -362,14 +367,12 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
             for ex in executions:
                 executions_by_instr.setdefault(ex.instr, []).append(ex)
 
-            # C++ locates the RET_BUFFER pad's AttackPoint by (loc, type) alone, which
-            # is the exact same row used for the QUERY_POINT AttackPoint at that source
-            # location -- build that lookup once instead of re-querying per dua.
-            query_point_atp_by_loc: dict = {}
+            # Preserve the execution context of the QUERY_POINT that observed each pad.
+            query_point_execution_by_site: dict = {}
             for ex in executions:
-                candidate = db.session.query(AttackPoint).get(ex.atp_id)
+                candidate = ex.atp
                 if candidate is not None and AtpKind(candidate.type) == AtpKind.QUERY_POINT:
-                    query_point_atp_by_loc[candidate.loc] = candidate
+                    query_point_execution_by_site[(candidate.loc, ex.instr)] = ex
 
             liveness_timeline = LivenessTimeline(db.session, inputfile)
             recent_dead_duas: dict[int, Dua] = {}
@@ -399,7 +402,8 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                         pad = get_dua_exploit_pad(d, offline_liveness)
                         if not pad.empty() and (d.fake_dua or pad.size() >= 20):
                             trigger = get_or_create_dua_bytes(db, dua_bytes_cache, d, pad)
-                            d_atp = query_point_atp_by_loc.get(d.lval_relationship.loc)
+                            d_execution = query_point_execution_by_site.get((d.lval_relationship.loc, d.instr))
+                            d_atp = d_execution.atp if d_execution is not None else None
                             if d_atp is not None:
                                 # recent_dead_duas does NOT yet contain `d` here -- any
                                 # older dua still registered at d's own lval stays a
@@ -409,6 +413,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                                     skip_cache=skip_cache,
                                     dua_bytes_cache=dua_bytes_cache,
                                     atp=d_atp,
+                                    execution=d_execution,
                                     bug_type=BugKind.BUG_RET_BUFFER,
                                     stackoff=0,
                                     available_duas=sorted(recent_dead_duas.values(), key=lambda x: x.instr),
@@ -444,7 +449,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                 # Preserve stable sorting (including lval insertion order for ties).
                 available_duas = sorted(recent_dead_duas.values(), key=lambda x: x.instr)
                 for exec_event in executions_by_instr[instr]:
-                    atp = db.session.query(AttackPoint).get(exec_event.atp_id)
+                    atp = exec_event.atp
                     if not atp:
                         continue
 
@@ -467,11 +472,12 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                             dua_bytes_cache=dua_bytes_cache,
                             atp=atp,
                             bug_type=bug_type,
-                            stackoff=getattr(atp, 'stack_offset', 0),
+                            stackoff=exec_event.stack_offset,
+                            execution=exec_event,
                             available_duas=available_duas,
                             offline_liveness=offline_liveness,
                             project_data=project_data,
-                            is_new_atp=exec_event.id == atp.id,
+                            is_new_atp=False,
                             extra_duas_prechosen=[]
                         )
 
@@ -482,7 +488,8 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                             dua_bytes_cache=dua_bytes_cache,
                             atp=atp,
                             bug_type=BugKind.BUG_CHAFF_STACK_UNUSED,
-                            stackoff=getattr(atp, 'stack_offset', 0),
+                            stackoff=exec_event.stack_offset,
+                            execution=exec_event,
                             available_duas=available_duas,
                             offline_liveness=offline_liveness,
                             project_data=project_data,
@@ -506,7 +513,8 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                                         dua_bytes_cache=dua_bytes_cache,
                                         atp=atp,
                                         bug_type=chaff_kind,
-                                        stackoff=getattr(atp, 'stack_offset', 0),
+                                        stackoff=exec_event.stack_offset,
+                                        execution=exec_event,
                                         available_duas=available_duas,
                                         offline_liveness=offline_liveness,
                                         project_data=project_data,
@@ -556,7 +564,10 @@ def _record_injectable_bugs_offline_lava2(project_data: dict):
     that map to those bug types) are skipped entirely.
     """
     with LavaDatabase(project_data) as db:
-        executions = db.session.query(AtpExecution).order_by(
+        execution_query = db.session.query(AtpExecution).options(joinedload(AtpExecution.atp))
+        execution_query = execution_query.join(FileTaint, AtpExecution.inputfile == FileTaint.id).filter(
+            FileTaint.command == project_data['command'], FileTaint.complete.is_(True))
+        executions = execution_query.order_by(
             AtpExecution.atp_id.asc(), AtpExecution.inputfile.asc(), AtpExecution.instr.asc()
         ).all()
 
@@ -572,7 +583,7 @@ def _record_injectable_bugs_offline_lava2(project_data: dict):
             executions_by_atp.setdefault(ex.atp_id, []).append(ex)
 
         for atp_id, atp_executions in executions_by_atp.items():
-            atp = db.session.query(AttackPoint).get(atp_id)
+            atp = atp_executions[0].atp
             if not atp:
                 continue
 
@@ -636,7 +647,7 @@ def _record_injectable_bugs_offline_lava2(project_data: dict):
                         dua_bytes_cache=dua_bytes_cache,
                         atp=atp,
                         bug_type=bug_type,
-                        stackoff=getattr(atp, 'stack_offset', 0),
+                        stackoff=0,
                         available_duas=available_duas,
                         offline_liveness=offline_liveness,
                         project_data=project_data,

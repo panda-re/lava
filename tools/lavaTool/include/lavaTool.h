@@ -18,6 +18,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <sstream>
+#include <stdexcept>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -483,11 +484,23 @@ LExpr knobTriggerAttack(const Bug *bug) {
         + (lava_get_upper * MagicTest<uint16_t>(magic_value, lava_get_lower));
 }
 
+// Trace indices are local to a FileTaint, never globally unique.
+std::unique_ptr<SourceTrace> source_trace_at(const FileTaint *input, uint64_t index) {
+    using Query = odb::query<SourceTrace>;
+    std::unique_ptr<SourceTrace> trace(db->query_one<SourceTrace>(
+            Query::file_taint == input->id && Query::index == index));
+    if (!trace) {
+        throw std::runtime_error("Missing source trace for FileTaint " +
+                std::to_string(input->id) + " at index " + std::to_string(index));
+    }
+    return trace;
+}
+
 void mark_for_siphon(const DuaBytes *dua_bytes) {
 
     LvalBytes lval_bytes(dua_bytes);
     auto tridx = dua_bytes->dua->trace_index;
-    const SourceTrace *tr = db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tridx);
+    auto tr = source_trace_at(dua_bytes->dua->inputfile, tridx);
     //siphons_at[lval_bytes.lval->loc].insert(lval_bytes);
     siphons_at[tr->loc].insert(lval_bytes);
 
@@ -501,7 +514,7 @@ void mark_for_siphon_extra(const DuaBytes *dua_bytes) {
 
     LvalBytes lval_bytes(dua_bytes);
     auto tridx = dua_bytes->dua->trace_index;
-    const SourceTrace *tr = db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tridx);
+    auto tr = source_trace_at(dua_bytes->dua->inputfile, tridx);
     extra_siphons_at[tr->loc].insert(lval_bytes);
 
     debug(INJECT) << "    Mark extra siphon at " << lval_bytes.lval->loc << "\n";
@@ -512,34 +525,38 @@ void mark_for_siphon_extra(const DuaBytes *dua_bytes) {
 
 void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
 
-    uint64_t tr_end = bug->atp->trace_index;
-    uint64_t tr_start = dua_bytes->dua->trace_index;
-
-    // End the window at the DUA siphon's next visit, where lava_set_extra() resets
-    // lava_state. ATPs are deduplicated by loc, so atp->trace_index is only its first
-    // visit and can precede a later-iteration DUA.
-    const ASTLoc &dua_loc = dua_bytes->dua->lval->loc;
-    uint64_t next_visit = UINT64_MAX;
-    for (const SourceTrace &st : db->query<SourceTrace>(
-            odb::query<SourceTrace>::loc.filename == dua_loc.filename &&
-            odb::query<SourceTrace>::loc.begin.line == dua_loc.begin.line &&
-            odb::query<SourceTrace>::loc.begin.column == dua_loc.begin.column &&
-            odb::query<SourceTrace>::loc.end.line == dua_loc.end.line &&
-            odb::query<SourceTrace>::loc.end.column == dua_loc.end.column &&
-            odb::query<SourceTrace>::index > tr_start)) {
-        next_visit = std::min(next_visit, st.index);
+    const AtpExecution *execution = bug->execution;
+    const Dua *dua = dua_bytes->dua;
+    if (!execution || execution->atp->id != bug->atp->id ||
+            execution->inputfile->id != dua->inputfile->id ||
+            execution->inputfile->id != bug->trigger->dua->inputfile->id) {
+        throw std::runtime_error("Bug " + std::to_string(bug->id) +
+                " requires an attack execution matching its ATP and DUA inputs");
     }
-    if (next_visit != UINT64_MAX) {
-        tr_end = next_visit;
+    uint64_t tr_end = execution->trace_index;
+    uint64_t tr_start = dua->trace_index;
+    if (tr_end < tr_start) {
+        throw std::runtime_error("Attack execution precedes the extra DUA for bug " +
+                std::to_string(bug->id));
+    }
+
+    // Stop before either the attack or the next siphon, which resets lava_state.
+    // duasan may have relocated the siphon away from the lval's original location.
+    auto siphon_trace = source_trace_at(dua->inputfile, tr_start);
+    const ASTLoc &dua_loc = siphon_trace->loc;
+    using Query = odb::query<SourceTrace>;
+    for (const SourceTrace &st : db->query<SourceTrace>(
+            Query::file_taint == dua->inputfile->id &&
+            Query::loc.filename == dua_loc.filename &&
+            Query::loc.begin.line == dua_loc.begin.line &&
+            Query::loc.begin.column == dua_loc.begin.column &&
+            Query::loc.end.line == dua_loc.end.line &&
+            Query::loc.end.column == dua_loc.end.column &&
+            Query::index > tr_start && Query::index < tr_end)) {
+        tr_end = std::min(tr_end, st.index);
     }
 
     LvalBytes lval_bytes(dua_bytes);
-
-    // Just for fail safe
-    // - probably won't even trigger the bug if things like this happens
-    if (tr_end < tr_start) {
-        tr_start = tr_end;
-    }
 
     // gen 4 overconstrain code - each taking care of 1 byte
     uint32_t nstep = 2;
@@ -570,8 +587,7 @@ void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
         if (tr_end != tr_start) {
             tr_start = tr_start + (rand() % (tr_end - tr_start));
         }
-        std::unique_ptr<SourceTrace> tr(
-                db->query_one<SourceTrace>(odb::query<SourceTrace>::index == tr_start));
+        auto tr = source_trace_at(dua->inputfile, tr_start);
         ASTLoc ast_loc = tr->loc;
         LExpr checker  = Test(bug);
         if (flipflag) {

@@ -16,6 +16,11 @@ on:
   #  branches:
   #    - master
 
+  # Automatically cancel any previous workflow on new push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+
 jobs:
   get_version:
     name: "Generate new release version"

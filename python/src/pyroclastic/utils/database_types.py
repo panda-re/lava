@@ -3,6 +3,8 @@ import random
 from dataclasses import dataclass
 from enum import IntEnum
 import os
+import hashlib
+from pathlib import Path
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy import ForeignKey, create_engine
 from sqlalchemy.dialects import postgresql
@@ -17,6 +19,26 @@ from sqlalchemy import UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import ARRAY
 
 Base = declarative_base()
+
+class FileTaint(Base):
+    """An input path, content hash, invocation, and mining completion marker."""
+    __tablename__ = 'filetaint'
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    command: Mapped[str] = mapped_column(Text, nullable=False)
+    complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    __table_args__ = (UniqueConstraint('filename', 'sha256', 'command', name='FileTaintUniq'),)
+
+    @staticmethod
+    def identity(filename, command):
+        filename = Path(filename).absolute()
+        digest = hashlib.sha256()
+        with filename.open('rb') as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(chunk)
+        return dict(filename=str(filename), sha256=digest.hexdigest(), command=command)
+
 
 class BuildBug(Base):
     __tablename__ = 'build_bugs'
@@ -111,7 +133,12 @@ class LavaDatabase(object):
         return self.session.query(Bug.id).count() > 1000000
 
     def uninjected(self):
-        return self.session.query(Bug).filter(~Bug.builds.any())
+        query = self.session.query(Bug).filter(~Bug.builds.any())
+        triggers = self.session.query(DuaBytes.id).join(Dua, DuaBytes.dua == Dua.id).join(
+            FileTaint, Dua.inputfile == FileTaint.id).filter(
+                FileTaint.command == self.project['command'], FileTaint.complete.is_(True))
+        query = query.filter(Bug.trigger.in_(triggers))
+        return query
 
     # returns uninjected (not yet in the build table) possibly fake bugs
     def uninjected2(self, fake, allowed_bugtypes=None):
@@ -129,9 +156,7 @@ class LavaDatabase(object):
 
     def uninjected_random_limit(self, allowed_bugtypes=None, count=100):
         # Fast, doesn't support fake bugs, only return IDs of allowed bugtypes
-        ret = self.session.query(Bug) \
-            .filter(~Bug.builds.any()) \
-            .options(load_only(Bug.id))
+        ret = self.uninjected().options(load_only(Bug.id))
         if allowed_bugtypes:
             ret = ret.filter(Bug.type.in_(allowed_bugtypes))
         return ret.order_by(func.random()).limit(count).all()
@@ -206,6 +231,8 @@ class Bug(Base):
     trigger: Mapped[int] = mapped_column('trigger', BigInteger, ForeignKey('duabytes.id'), nullable=False)
     trigger_lval: Mapped[int] = mapped_column('trigger_lval', BigInteger, ForeignKey('sourcelval.id'), nullable=False)
     atp: Mapped[int] = mapped_column('atp', BigInteger, ForeignKey('attackpoint.id'), nullable=False)
+    execution_id: Mapped[Optional[int]] = mapped_column("execution", BigInteger, ForeignKey("atp_execution.id"), nullable=True)
+    execution: Mapped[Optional["AtpExecution"]] = relationship("AtpExecution")
     type: Mapped[BugKind] = mapped_column("type", Integer, nullable=False)
 
     max_liveness: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
@@ -469,7 +496,9 @@ class LabelSet(Base):
 
     # 2. Data Columns
     ptr: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    inputfile: Mapped[str] = mapped_column(Text, nullable=False)
+    # Input identity is the FileTaint primary key.
+    inputfile: Mapped[int] = mapped_column(BigInteger, ForeignKey("filetaint.id"), nullable=False)
+    file_taint: Mapped["FileTaint"] = relationship("FileTaint", foreign_keys=[inputfile])
 
     # 3. Array Column (Using your SortedIntArray type)
     labels: Mapped[List[int]] = mapped_column(SortedIntArray, nullable=False)
@@ -526,11 +555,16 @@ class Dua(Base):
     byte_tcn: Mapped[List[int]] = mapped_column(postgresql.ARRAY(Integer), nullable=False)
     all_labels: Mapped[List[int]] = mapped_column(postgresql.ARRAY(Integer), nullable=False)
 
-    inputfile: Mapped[str] = mapped_column(Text, nullable=False)
+    # Input identity is the FileTaint primary key.
+    inputfile: Mapped[int] = mapped_column(BigInteger, ForeignKey("filetaint.id"), nullable=False)
     max_tcn: Mapped[int] = mapped_column(Integer, nullable=False)
     max_cardinality: Mapped[int] = mapped_column(Integer, nullable=False)
     instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
     fake_dua: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    file_taint: Mapped["FileTaint"] = relationship(
+        "FileTaint", primaryjoin="Dua.inputfile == FileTaint.id",
+        foreign_keys=[inputfile], viewonly=True)
 
     lval_relationship: Mapped["SourceLval"] = relationship("SourceLval",
                                                            viewonly=True,
@@ -544,8 +578,8 @@ class Dua(Base):
     # matched SourceTrace row, matching on `SourceTrace.index` instead of its primary key ID.
     source_trace_relationship: Mapped["SourceTrace"] = relationship(
         "SourceTrace",
-        primaryjoin="Dua.trace_index == SourceTrace.index",
-        foreign_keys=[trace_index],
+        primaryjoin="and_(Dua.trace_index == SourceTrace.index, Dua.inputfile == SourceTrace.file_taint_id)",
+        foreign_keys=[trace_index, inputfile],
         viewonly=True,  # viewonly ensures Python doesn't try to alter C++ tables automatically
     )
 
@@ -682,7 +716,7 @@ class CallTrace(Base):
 
         # We use lval_id directly (the Foreign Key ID) as it is much faster
         # than triggering a lazy load for the full SourceLval object.
-        return (self.caller, self.file ) < (other.caller, other.file)
+        return (self.caller, self.file) < (other.caller, other.file)
 
 
 class SourceTrace(Base):
@@ -692,6 +726,8 @@ class SourceTrace(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
 
     # #pragma db not_null
+    file_taint_id: Mapped[int] = mapped_column("file_taint", BigInteger, ForeignKey("filetaint.id"), nullable=False)
+    file_taint = relationship("FileTaint")
     index: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
     # #pragma db not_null ASTLoc loc
@@ -707,13 +743,13 @@ class SourceTrace(Base):
 
     # #pragma db index("SourceTraceUniq") unique members(index)
     __table_args__ = (
-        UniqueConstraint('index', name='SourceTraceUniq'),
+        UniqueConstraint('file_taint', 'index', name='SourceTraceUniq'),
     )
 
     def __lt__(self, other):
         if not isinstance(other, SourceTrace):
             return NotImplemented
-        return self.index < other.index
+        return (self.file_taint_id, self.index) < (other.file_taint_id, other.index)
 
     def __repr__(self):
         return f"<SourceTrace id={self.id} index={self.index} loc={self.loc}>"
@@ -737,38 +773,12 @@ class AttackPoint(Base):
     loc: Mapped[ASTLoc] = composite(create_ast_loc, _f, _bl, _bc, _el, _ec)
     type: Mapped[AtpKind] = mapped_column("type", Integer, nullable=False)
 
-    # --- 3. Chaff Bug Extensions ---
-    # std::vector<uint64_t> calltrace;
-    calltrace: Mapped[List[int]] = mapped_column(
-        postgresql.ARRAY(BigInteger),
-        nullable=False,
-        default=list,
-        server_default='{}'
-    )
-
-    # uint64_t trace_index; (Tracks context relationship to SourceTrace.index, if applicable)
-    trace_index: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    # stack offset, used for Chaff Bug Injection, will be used in Phase II for Bugs
-    stack_offset: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-
-    @property
-    def ctrace(self) -> List[int]:
-        """Alias to support legacy LAVA code expecting .ctrace"""
-        return self.calltrace
-
     def __str__(self):
-        return 'ATP[{}](loc={}:{}, type={}, trace_idx={})'.format(
-            self.id, self.loc.filename, self.loc.begin.line, AtpKind(self.type).name, self.trace_index
-        )
+        return f'ATP[{self.id}](loc={self.loc.filename}:{self.loc.begin.line}, type={AtpKind(self.type).name})'
 
-    # #pragma db index("AttackPointUniq") unique members(loc, type, trace_index)
-    # Updated to reflect your new uniqueness constraints
     __table_args__ = (
-        UniqueConstraint(
-            'loc_filename', 'loc_begin_line', 'loc_begin_column',
-            'loc_end_line', 'loc_end_column', 'type', 'trace_index',
-            name='AttackPointUniq'
-        ),
+        UniqueConstraint('loc_filename', 'loc_begin_line', 'loc_begin_column',
+                         'loc_end_line', 'loc_end_column', 'type', name='AttackPointUniq'),
     )
 
 class SourceFunction(Base):
@@ -836,10 +846,20 @@ class AtpExecution(Base):
     # Force the Postgres column name to be 'atp' to perfectly match C++ ODB
     atp_id: Mapped[int] = mapped_column("atp", BigInteger, ForeignKey('attackpoint.id'), nullable=False)
 
-    inputfile: Mapped[str] = mapped_column(Text, nullable=False)
+    # Input identity is the FileTaint primary key.
+    inputfile: Mapped[int] = mapped_column(BigInteger, ForeignKey("filetaint.id"), nullable=False)
+    input: Mapped["FileTaint"] = relationship("FileTaint", foreign_keys=[inputfile])
     instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
     pid: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tid: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    calltrace: Mapped[List[int]] = mapped_column(postgresql.ARRAY(BigInteger), nullable=False, default=list)
+    trace_index: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    stack_offset: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+
+    @property
+    def ctrace(self):
+        return self.calltrace
 
     __table_args__ = (
         UniqueConstraint('atp', 'inputfile', 'instr', name='AtpExecutionUniq'),
@@ -853,29 +873,13 @@ class AtpExecution(Base):
     def __repr__(self):
         return self.__str__()
 
-class LivenessSnapshot(Base):
-    """Saves the liveness (death instruction) of bytes so Phase II can check overlaps offline."""
-    __tablename__ = 'liveness_snapshot'
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    inputfile: Mapped[str] = mapped_column(Text, nullable=False)
-    label: Mapped[int] = mapped_column(Integer, nullable=False) # The taint label
-
-    # NEW: Track WHEN this snapshot was taken
-    atp_instr: Mapped[int] = mapped_column(BigInteger, nullable=False) 
-
-    # NEW: Store the actual liveness count
-    liveness_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-
-    # UPDATE: Allow multiple snapshots per label at different instruction points
-    __table_args__ = (
-        UniqueConstraint('inputfile', 'label', 'atp_instr', name='LivenessSnapshotUniq'),
-    )
-
 class LivenessDelta(Base):
     """Absolute label counts changed since the preceding saved checkpoint."""
     __tablename__ = 'liveness_delta'
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    inputfile: Mapped[str] = mapped_column(Text, nullable=False)
+    # Input identity is the FileTaint primary key.
+    inputfile: Mapped[int] = mapped_column(BigInteger, ForeignKey("filetaint.id"), nullable=False)
+    input: Mapped["FileTaint"] = relationship("FileTaint", foreign_keys=[inputfile])
     label: Mapped[int] = mapped_column(Integer, nullable=False)
 
     atp_instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -954,20 +958,15 @@ def print_bug_stats(project_data: dict, debug: bool = False):
         else:
             print("label_sets:", len(label_sets))
 
-        # 3. AttackPoints (AttackPointUniq: loc, type, trace_index)
+        # 3. Static attack points (unique: loc, type)
         try:
             attack_points = db.session.query(AttackPoint).order_by(
                 AttackPoint._f, AttackPoint._bl, AttackPoint._bc, AttackPoint._el, AttackPoint._ec,
-                AttackPoint.type, AttackPoint.trace_index).all()
+                AttackPoint.type).all()
         except Exception:
             attack_points = db.session.query(AttackPoint).all()
         if debug:
-            # calltrace holds CallTrace ids; print the (caller, file) each points to, in order.
-            ct_by_id = {ct.id: (ct.caller, ct.file) for ct in db.session.query(CallTrace)}
-            dump_table("ATTACK POINTS", attack_points, [
-                'type', 'loc',
-                ('calltrace', lambda a: [ct_by_id.get(i, f"<missing {i}>") for i in a.calltrace]),
-                'stack_offset', 'trace_index'])
+            dump_table("ATTACK POINTS", attack_points, ['type', 'loc'])
         else:
             print("attack_points:", len(attack_points))
 
@@ -990,7 +989,7 @@ def print_bug_stats(project_data: dict, debug: bool = False):
         else:
             print("duas:", len(duas))
 
-        # 5. CallTrace (unique: caller, file)
+        # 5. CallTrace (unique: caller, source file)
         try:
             call_traces = db.session.query(CallTrace).order_by(CallTrace.caller, CallTrace.file).all()
         except Exception:
@@ -1006,20 +1005,11 @@ def print_bug_stats(project_data: dict, debug: bool = False):
         #    attack_point_executions = db.session.query(AtpExecution).order_by(AtpExecution.id).all()
         #except Exception:
         #    attack_point_executions = db.session.query(AtpExecution).all()
-        #if debug and not project_data["use_c_fbi"]:
+        #if debug:
         #    dump_table("ATTACK POINT EXECUTIONS", attack_point_executions, ['id', 'atp', 'inputfile', 'instr', 'pid', 'tid'])
         #else:
         #    print("attack_point execution:", len(attack_point_executions))
 
-        # 7. Count Liveness
-        #try:
-        #    liveness_by_file_iter = db.session.query(LivenessSnapshot).order_by(LivenessSnapshot.id).all()
-        #except Exception:
-        #    liveness_by_file_iter = db.session.query(LivenessSnapshot).all()
-        #if debug and not project_data["use_c_fbi"]:
-        #    dump_table("LIVENESS SNAPSHOTS", liveness_by_file_iter, ['id', 'inputfile', 'death_instr'])
-        #else:
-        #    print("liveness:", len(liveness_by_file_iter))
 
 
 def _bug_atp_key(bug: Bug) -> tuple:
