@@ -45,7 +45,7 @@ jobs:
       - name: Install compile dependencies
         run: |
           version=$(lsb_release -rs)
-          dep_base=./dependencies/ubuntu_${version}_base.txt
+          dep_base=./dependencies/ubuntu_${version}_build.txt
           sudo apt-get -qq update
           if [ -f "${dep_base}" ]; then
             sudo apt-get -y install --no-install-recommends $(cat ${dep_base} | grep -o '^[^#]*')

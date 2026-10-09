@@ -19,7 +19,7 @@ class LavaPaths(object):
         self.source_directory = self.directory / self.name / self.tar_source_root
         self.project_dir = self.directory / self.name
         self.tar_to_unzip_path = Path(self.config['tarfile'])
-        self.llvm_path = Path(self.config.get('llvm', '/usr/lib/llvm-14'))
+        self.llvm_path = Path(self.config['llvm-dir'])
 
         # Used by the Coverage/Generate Inputs step
         self.generate_project_root_directory = Path(self.config['generation_dir']) / self.name
@@ -44,35 +44,8 @@ class LavaPaths(object):
         self.bugs_install = os.path.join(str(self.bugs_build), 'lava-install')
 
 
-def get_valid_architectures():
+def get_valid_architectures() -> list[str]:
     return ['x86_64', 'aarch64', 'arm', 'i386']
-
-
-class Project:
-    """
-    Simple getter/setter class so we can support .get like a JSON file
-    """
-
-    def __init__(self, data):
-        self.values = data
-
-    def __getitem__(self, key):
-        return self.values[key]
-
-    def __setitem__(self, key, value):
-        self.values[key] = value
-
-    def __contains__(self, key):
-        return key in self.values
-
-    def get(self, field, default):
-        if field in self.values:
-            return self.values[field]
-        else:
-            return default
-
-    def keys(self):
-        return self.values.keys()
 
 
 def validate_host(host: dict):
@@ -98,7 +71,7 @@ def validate_project(project_dict: dict):
     assert 'db' in project_dict
 
 
-def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
+def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default") -> dict:
     """
     Generates environment variables based on target architecture.
     mode: 'default', 'inject', 'llvm_cov' or 'panda'
@@ -182,7 +155,7 @@ def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default"):
     return env
 
 
-def parse_vars(project_name: str):
+def parse_vars(project_name: str) -> dict:
     host_json_path = Path.cwd() / "host.json"
     with open(host_json_path, 'r') as f:
         host = json.load(f)
@@ -284,19 +257,4 @@ def parse_vars(project_name: str):
     # should get LAVA query/inject instrumentation. Empty by default (no
     # filtering).
     project_data["instrument_exclude_dirs"] = project_data.get("instrument_exclude_dirs", "")
-
-    return Project(project_data)
-
-
-if __name__ == '__main__':
-    # Basic test
-    import sys
-    import pprint
-
-    project = parse_vars(sys.argv[1])
-    # project = parse_vars("toy")
-    pprint.pprint(project.values)
-    project["foo"] = "good_fake_val"
-    assert "good" in (project.get('fake', 'good_fake_val'))
-    assert "good" in (project.get('foo', 'bad_fake_val'))
-    assert "bad" not in (project.get('qemu', 'bad_fake_val'))
+    return project_data

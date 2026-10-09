@@ -396,6 +396,8 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                         )
 
                         if recent_duas_by_instr:
+                            # TODO: we should undo this once we deprecate C++ code
+                            # exploit_dua = random.choice(recent_duas_by_instr)
                             exploit_dua = recent_duas_by_instr[0]
                             exploit_range = get_dua_dead_range(exploit_dua, [], offline_liveness, project_data)
                             if not exploit_range.empty():
@@ -675,7 +677,7 @@ def print_phase2_stats(project_data: dict, debug: bool = False):
         print("total bug:", db.session.query(Bug).count())
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="Calculate code coverage using LLVM-COV.")
     parser.add_argument("--project", "-p", required=True, dest="project_name", help="Provide the LAVA project name")
     parser.add_argument("--mode", "-m", required=False, dest="mode", default="lava1", help="Specify the bug-generation mode")
@@ -686,3 +688,7 @@ if __name__ == "__main__":
     project = parse_vars(args.project_name)
     record_injectable_bugs_offline(project, args.mode)
     print_phase2_stats(project)
+
+
+if __name__ == "__main__":
+    main()
