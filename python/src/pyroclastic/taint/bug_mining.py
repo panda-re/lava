@@ -7,6 +7,9 @@ Second arg is an input file you want to run, under panda, to get taint info.
 """
 
 import os
+import hashlib
+from pathlib import Path
+from ..utils.database_types import FileTaint, LavaDatabase
 import sys
 import shlex
 import shutil
@@ -110,19 +113,43 @@ def check_dwarf_json_files(install_dir: str) -> None:
 def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, steps: Optional[list] = None):
     """
     Initializes the project and PANDA object based on arguments.
-
-    raw_command: smoke-test mode. When set, skip the normal per-file batch
-    command entirely and record this exact string once instead, with
-    pypanda's own verbose logging turned on so you see the real guest
-    output (record_cmd() doesn't return its result normally -- only prints
-    it if pandare.panda.debug is True, which this sets). Stops after
-    recording; does not replay or run FBI. Useful for sanity-checking
-    pypanda/record_cmd/copy_to_guest against a project's actual install
-    directory without wading through the full taint pipeline, e.g. to
-    confirm a binary even launches before debugging why no taint appeared.
-    step: list of steps to run, can be "record", "replay", or "parse". 
-    If None, run all steps.
     """
+    pending = []
+    if raw_command is None:
+        input_root = Path(project_data["config_dir"]).resolve() / "inputs"
+        if not input_root.is_dir():
+            raise FileNotFoundError(input_root)
+        with LavaDatabase(project_data) as db:
+            for source in sorted(input_root.rglob("*")):
+                if not source.is_file():
+                    continue
+                hasher = hashlib.sha256()
+                with source.open("rb") as input_stream:
+                    for chunk in iter(lambda: input_stream.read(1024 * 1024), b""):
+                        hasher.update(chunk)
+                digest = hasher.hexdigest()
+                identity = dict(filename=str(source), sha256=digest, command=project_data["command"])
+                existing = db.session.query(FileTaint).filter_by(**identity).first()
+                if existing and existing.complete:
+                    continue
+                # Database identity only: input bytes remain in the configured corpus.
+                input_key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+                if existing is None:
+                    db.session.add(FileTaint(**identity, input_key=input_key, complete=False))
+                pending.append((source.relative_to(input_root), source, input_key))
+            db.session.commit()
+        if not pending:
+            progress("bug_mining", 0, "All inputs have already been mined with this command")
+            return
+
+    # Stable across --record/--replay/--parse invocations, distinct for new inputs.
+    batch_key = hashlib.sha256(json.dumps([key for _, _, key in pending]).encode()).hexdigest()
+    if pending:
+        project_data["recording"] = batch_key
+    log_stem = Path(project_data['output_dir']).resolve() / f"queries-{project_data['name']}-{batch_key}"
+    panda_log = str(log_stem) + ".plog"
+    pandalog_json = str(log_stem) + ".json"
+
     class State:
         guest_command = ""
         install_directory = ""
@@ -137,8 +164,10 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
     needs_panda = raw_command is not None or steps is None or any(
         step in steps for step in ('record', 'replay'))
     panda = Panda(generic=project_data['qemu']) if needs_panda else None
-    panda_log = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
-    pandalog_json = "{}/queries-{}.json".format(project_data['output_dir'], project_data['name'])
+    project_data["mining_inputs"] = {
+        os.path.join(state.install_directory, 'inputs', str(relative)): key
+        for relative, _, key in pending
+    }
 
     def create_recording_wrapper():
         """
@@ -147,9 +176,10 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
         to the guest, and starts recording the specified command.
         1. Revert to 'root' snapshot
         2. Copy install_directory to guest
-        3. Start recording the command in state.guest_command, this runs the program on a folder of inputs
+        3. Start recording the command specified in guest_command, this runs the program on a folder of inputs
         4. Stop the recording after the command completes
         """
+        # Use absolute paths for BOTH arguments!
         guest_command = state.guest_command
         # Technically the first two steps of record_cmd
         # but running executable ONLY works with absolute paths
@@ -179,42 +209,22 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
             progress("bug_mining", 0, "Deleting existing inputs/ directory in guest install")
             shutil.rmtree(guest_directory_inputs_path)
 
-        # TODO: You need to filter input files already mined
-        shutil.copytree(input_file_directory, guest_directory_inputs_path)
-
         # 2. BUILD THE PER-FILE COMMAND, WITH A REAL SHELL VARIABLE DROPPED IN
         if raw_command is not None:
-            # Smoke-test mode: skip the whole per-file batch construction and
-            # record exactly what was passed on the command line.
-            progress("bug_mining", 0, f"SMOKE TEST: recording raw command as-is: {raw_command}")
+            shutil.copytree(input_file_directory, guest_directory_inputs_path)
             state.guest_command = raw_command
         else:
-            guest_executable_template = project_data['command'].format(
-                install_dir=shlex.quote(state.install_directory),
-                input_file='"$f"'
-            ).strip()
-
-            # 3. CONSTRUCT THE BATCH COMMAND AS A PLAIN BASH for LOOP.
-            # Deliberately not "find | xargs -I {}": that adds a layer of
-            # placeholder-substitution indirection on top of the one above, is
-            # harder to reproduce by hand when something goes wrong (which it has,
-            # twice), and buys nothing a for loop doesn't already give us --
-            # "for f in dir/*" is safe for filenames with spaces as long as "$f"
-            # stays quoted (glob expansion isn't subject to IFS word-splitting the
-            # way command substitution is). Same semantics either way: one
-            # continuous PANDA recording, one target process per file, run
-            # strictly sequentially.
-            batch_shell_command = (
-                f"for f in {shlex.quote(guest_directory_inputs_path)}/*; do "
-                f"{guest_executable_template}; done"
-            )
-
+            os.makedirs(guest_directory_inputs_path)
+            commands = []
+            for relative, source, input_key in pending:
+                guest_input = os.path.join(guest_directory_inputs_path, str(relative))
+                os.makedirs(os.path.dirname(guest_input), exist_ok=True)
+                shutil.copyfile(source, guest_input)
+                commands.append(project_data['command'].format(
+                    install_dir=shlex.quote(state.install_directory),
+                    input_file=shlex.quote(guest_input)))
+            batch_shell_command = "; ".join(commands)
             progress("bug_mining", 0, f"Generated Guest Command: {batch_shell_command}")
-
-            # Keep the fully-formed shell string as-is -- see the comment in
-            # create_recording_wrapper() for why round-tripping this through
-            # .split() + subprocess.list2cmdline() (the previous approach) is
-            # actively wrong here, not just unnecessary.
             state.guest_command = batch_shell_command
 
         # In CI/CD, we should try to use complete record and replay

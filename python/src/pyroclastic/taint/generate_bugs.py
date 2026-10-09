@@ -340,7 +340,11 @@ class LivenessTimeline:
 
 def _record_injectable_bugs_offline_lava1(project_data: dict):
     with LavaDatabase(project_data) as db:
-        distinct_files = db.session.query(Dua.inputfile).distinct().all()
+        inputs = db.session.query(Dua.inputfile)
+        if project_data.get("same_command", False):
+            inputs = inputs.join(FileTaint, Dua.inputfile == FileTaint.input_key).filter(
+                FileTaint.command == project_data['command'], FileTaint.complete.is_(True))
+        distinct_files = inputs.distinct().all()
         file_list = [f[0] for f in distinct_files]
 
         if not file_list:
@@ -556,7 +560,11 @@ def _record_injectable_bugs_offline_lava2(project_data: dict):
     that map to those bug types) are skipped entirely.
     """
     with LavaDatabase(project_data) as db:
-        executions = db.session.query(AtpExecution).order_by(
+        execution_query = db.session.query(AtpExecution)
+        if project_data.get("same_command", False):
+            execution_query = execution_query.join(FileTaint, AtpExecution.inputfile == FileTaint.input_key).filter(
+                FileTaint.command == project_data['command'], FileTaint.complete.is_(True))
+        executions = execution_query.order_by(
             AtpExecution.atp_id.asc(), AtpExecution.inputfile.asc(), AtpExecution.instr.asc()
         ).all()
 
