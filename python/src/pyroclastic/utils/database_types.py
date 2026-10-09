@@ -18,6 +18,19 @@ from sqlalchemy.dialects.postgresql import ARRAY
 
 Base = declarative_base()
 
+class FileTaint(Base):
+    """A completed mining input, including the immutable seed and invocation."""
+    __tablename__ = 'filetaint'
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    command: Mapped[str] = mapped_column(Text, nullable=False)
+    seed_path: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    recording: Mapped[str] = mapped_column(Text, nullable=False)
+    complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    __table_args__ = (UniqueConstraint('filename', 'sha256', 'command', name='FileTaintUniq'),)
+
+
 class BuildBug(Base):
     __tablename__ = 'build_bugs'
 
@@ -111,7 +124,13 @@ class LavaDatabase(object):
         return self.session.query(Bug.id).count() > 1000000
 
     def uninjected(self):
-        return self.session.query(Bug).filter(~Bug.builds.any())
+        query = self.session.query(Bug).filter(~Bug.builds.any())
+        if self.project.get("same_command", False):
+            triggers = self.session.query(DuaBytes.id).join(Dua, DuaBytes.dua == Dua.id).join(
+                FileTaint, Dua.inputfile == FileTaint.seed_path).filter(
+                    FileTaint.command == self.project['command'], FileTaint.complete.is_(True))
+            query = query.filter(Bug.trigger.in_(triggers))
+        return query
 
     # returns uninjected (not yet in the build table) possibly fake bugs
     def uninjected2(self, fake, allowed_bugtypes=None):
@@ -129,9 +148,7 @@ class LavaDatabase(object):
 
     def uninjected_random_limit(self, allowed_bugtypes=None, count=100):
         # Fast, doesn't support fake bugs, only return IDs of allowed bugtypes
-        ret = self.session.query(Bug) \
-            .filter(~Bug.builds.any()) \
-            .options(load_only(Bug.id))
+        ret = self.uninjected().options(load_only(Bug.id))
         if allowed_bugtypes:
             ret = ret.filter(Bug.type.in_(allowed_bugtypes))
         return ret.order_by(func.random()).limit(count).all()
@@ -532,20 +549,25 @@ class Dua(Base):
     instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
     fake_dua: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
+    file_taint: Mapped["FileTaint"] = relationship(
+        "FileTaint", primaryjoin="Dua.inputfile == FileTaint.seed_path",
+        foreign_keys=[inputfile], viewonly=True)
+
     lval_relationship: Mapped["SourceLval"] = relationship("SourceLval",
                                                            viewonly=True,
                                                            overlaps="lval")
 
     # --- Added for Chaff Bugs ---
     # uint64_t trace_index;
+    recording: Mapped[str] = mapped_column(Text, nullable=False, default="")
     trace_index: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     # OPTIONAL BOOTSTRAPPING FOR PYTHON:
     # This allows you to do `my_dua.source_trace` directly in Python to grab the
     # matched SourceTrace row, matching on `SourceTrace.index` instead of its primary key ID.
     source_trace_relationship: Mapped["SourceTrace"] = relationship(
         "SourceTrace",
-        primaryjoin="Dua.trace_index == SourceTrace.index",
-        foreign_keys=[trace_index],
+        primaryjoin="and_(Dua.trace_index == SourceTrace.index, Dua.recording == SourceTrace.recording)",
+        foreign_keys=[trace_index, recording],
         viewonly=True,  # viewonly ensures Python doesn't try to alter C++ tables automatically
     )
 
@@ -692,6 +714,7 @@ class SourceTrace(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
 
     # #pragma db not_null
+    recording: Mapped[str] = mapped_column(Text, nullable=False, default="")
     index: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
     # #pragma db not_null ASTLoc loc
@@ -707,7 +730,7 @@ class SourceTrace(Base):
 
     # #pragma db index("SourceTraceUniq") unique members(index)
     __table_args__ = (
-        UniqueConstraint('index', name='SourceTraceUniq'),
+        UniqueConstraint('recording', 'index', name='SourceTraceUniq'),
     )
 
     def __lt__(self, other):
@@ -747,6 +770,7 @@ class AttackPoint(Base):
     )
 
     # uint64_t trace_index; (Tracks context relationship to SourceTrace.index, if applicable)
+    recording: Mapped[str] = mapped_column(Text, nullable=False, default="")
     trace_index: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     # stack offset, used for Chaff Bug Injection, will be used in Phase II for Bugs
     stack_offset: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
@@ -766,7 +790,7 @@ class AttackPoint(Base):
     __table_args__ = (
         UniqueConstraint(
             'loc_filename', 'loc_begin_line', 'loc_begin_column',
-            'loc_end_line', 'loc_end_column', 'type', 'trace_index',
+            'loc_end_line', 'loc_end_column', 'type', 'recording', 'trace_index',
             name='AttackPointUniq'
         ),
     )

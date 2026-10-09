@@ -46,6 +46,7 @@ message Dua {
     uint64 trace_index = 11;
     uint64 length = 12;
     uint64 death_instr = 13;
+    string recording = 14;
 }
 
 message DuaBytes {
@@ -67,6 +68,7 @@ message AttackPoint {
     uint64 id = 1;
     ASTLoc loc = 2;
     AtpKind type = 3;
+    string recording = 4;
 }
 
 message Bug {
@@ -134,4 +136,14 @@ message LivenessSnapshot {
     uint32 label = 3;
     uint64 atp_instr = 4;
     uint64 liveness_count = 5;
+}
+
+message FileTaint {
+    uint64 id = 1;
+    string filename = 2;
+    string sha256 = 3;
+    string command = 4;
+    string seed_path = 5;
+    string recording = 6;
+    bool complete = 7;
 }

@@ -8,7 +8,7 @@ from typing import DefaultDict, Set, Optional, List, Tuple, cast
 from collections import defaultdict
 from sqlalchemy.orm import Session, joinedload
 from ..utils.funcs import dump_table
-from ..utils.database_types import SourceTrace, CallTrace
+from ..utils.database_types import SourceTrace, CallTrace, FileTaint
 from ..utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, LavaDatabase, Dua
 from ..utils.database_types import AtpKind, AtpExecution, LivenessSnapshot
 from ..taint.taint_utils import dprint, get_dua_dead_range, get_dead_range, merge_into
@@ -87,6 +87,7 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
         AttackPoint,
         loc=ast_loc,
         type=attack_point_type,
+        recording=project_data.get("recording", ""),
     ))
     atp_exec = cast(AtpExecution, get_or_create(
         session,
@@ -279,8 +280,10 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         AttackPoint,
         loc=ast_loc,
         type=AtpKind.QUERY_POINT,
+        recording=project_data.get("recording", ""),
+        trace_index=source_trace_index,
         defaults={
-            'trace_index' : source_trace_index,    
+
             'stack_offset' : stack_offset,
             'calltrace' : calltrace_ids,
         }
@@ -328,6 +331,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
                 'max_tcn': c_max_tcn,
                 'max_cardinality': c_max_card,
                 'trace_index': source_trace_index,
+                'recording': project_data.get('recording', ''),
             }
         ))
 
@@ -408,7 +412,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
     #        r = get_dua_dead_range(exploit_dua, [], project_data)
     #        if r.empty():
     #            continue
-    #        
+    #
     #        get_or_create(
     #            session,
     #            DuaBytes,
@@ -420,11 +424,11 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
     #        randcount -= 1
     #        if not recent_duas_by_instr:
     #            break
-    #        
+    #
     #        exploit_dua = recent_duas_by_instr[0]
     #        r = get_dua_dead_range(exploit_dua, [], project_data)
     #        if r.empty():
-    #            continue        
+    #            continue
     #        get_or_create(
     #            session,
     #            DuaBytes,
@@ -516,8 +520,8 @@ def update_unique_taint_sets(unique_label_set: dict, session: Session, project_d
             session,
             LabelSet,
             ptr=pointer,
+            inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
             defaults={
-                "inputfile": project_data.get("input_file", "UNKNOWN_FILE"),
                 "labels": labels
             }
         ))
@@ -612,7 +616,7 @@ def record_call(ple: dict):
     if file_callee.startswith(("/lib/", "/usr/lib/", "/lib64/")):
         return
 
-    # 2. Use boundary-safe regex to catch PANDA's dynamic formats 
+    # 2. Use boundary-safe regex to catch PANDA's dynamic formats
     # (e.g., "libc-2.13.so!malloc" or "libc.so!printf")
     if LIBC_BOUNDARY_RE.search(file_callee) or LIBC_BOUNDARY_RE.search(function_callee):
         return
@@ -634,7 +638,7 @@ def record_ret(ple: dict):
     if file_callee.startswith(("/lib/", "/usr/lib/", "/lib64/")):
         return
 
-    # 2. Use boundary-safe regex to catch PANDA's dynamic formats 
+    # 2. Use boundary-safe regex to catch PANDA's dynamic formats
     # (e.g., "libc-2.13.so!malloc" or "libc.so!printf")
     if LIBC_BOUNDARY_RE.search(file_callee) or LIBC_BOUNDARY_RE.search(function_callee):
         return
@@ -648,7 +652,7 @@ def record_ret(ple: dict):
     current_call_stack.pop()
 
 
-def record_trace(ple: dict, lava_db: dict[int, str], session: Session, source_trace_index: int):
+def record_trace(ple: dict, lava_db: dict[int, str], session: Session, source_trace_index: int, recording: str = ""):
     source_trace_id : int = ple["sourceTraceId"]["astLocId"]
     ast_loc_string : str = lava_db[source_trace_id]
     ast_loc : ASTLoc = ASTLoc.from_serialized(ast_loc_string)
@@ -656,7 +660,8 @@ def record_trace(ple: dict, lava_db: dict[int, str], session: Session, source_tr
         session,
         SourceTrace,
         loc=ast_loc,
-        index=source_trace_index
+        index=source_trace_index,
+        recording=recording
     )
 
 
@@ -704,23 +709,12 @@ def save_liveness_to_db(session: Session, atp_instr: int):
     if atp_instr == last_snapshotted_instr:
         return
 
-    snapshots_to_insert = []
     for input_file, liveness in liveness_by_file.items():
         for label, current_count in liveness.items():
-            # 2. Append the raw model instances directly to a list
-            snapshots_to_insert.append(
-                LivenessSnapshot(
-                    inputfile=input_file,
-                    label=label,
-                    atp_instr=atp_instr,
-                    liveness_count=current_count
-                )
-            )
+            get_or_create(session, LivenessSnapshot,
+                          inputfile=input_file, label=label, atp_instr=atp_instr,
+                          defaults={"liveness_count": current_count})
 
-    # 3. Add them all to the session at once
-    if snapshots_to_insert:
-        session.add_all(snapshots_to_insert)
-        
     # 4. Update the tracker
     last_snapshotted_instr = atp_instr
 
@@ -729,6 +723,16 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
     """
     Main function for Find Bug Inject (FBI) tool.
     """
+    global last_snapshotted_instr, num_real_duas, num_fake_duas
+    last_snapshotted_instr = -1
+    num_real_duas = num_fake_duas = 0
+    _L1_CACHE.clear()
+    liveness_by_file.clear()
+    dua_dependencies.clear()
+    recent_dead_duas.clear()
+    recent_duas_by_instr.clear()
+    ptr_to_labelset.clear()
+    current_call_stack.clear()
     # maps from ind -> (filename, lvalname, attackpointname)
     root_directory = project_data["output_dir"]
     lavadb = f"{root_directory}/lavadb"
@@ -749,6 +753,7 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
         print("POSTGRES_USER is not set")
         sys.exit(1)
 
+    observed_inputs = set()
     num_entries_read = 0
     batch_size = 500
     with open(panda_log_file, 'r') as plog_file:
@@ -771,10 +776,14 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                 elif "dwarf2Ret" in ple:
                     record_ret(ple)
                 elif "sourceTraceId" in ple:
-                    record_trace(ple, lava_db, db.session, current_source_trace_id)
+                    record_trace(ple, lava_db, db.session, current_source_trace_id, project_data.get("recording", ""))
                     current_source_trace_id += 1
                 elif "fileTaintMatch" in ple:
-                    project_data["input_file"] = os.path.basename(ple['fileTaintMatch']['filename'])
+                    guest_file = ple["fileTaintMatch"]["filename"]
+                    manifest = project_data.get("mining_inputs", {})
+                    project_data["input_file"] = manifest[guest_file] if manifest else os.path.basename(guest_file)
+                    observed_inputs.add(project_data["input_file"])
+                    last_snapshotted_instr = -1
                     project_data["pid"] = ple['fileTaintMatch'].get('pid', 0)
                     project_data["tid"] = ple['fileTaintMatch'].get('tid', 0)
                     # Nuke the global state
@@ -786,7 +795,7 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     current_call_stack.clear()
                     _L1_CACHE.clear()
 
-                if num_entries_read % batch_size == 0:
+                if num_entries_read % batch_size == 0 and not project_data.get("recording"):
                     try:
                         db.session.commit()
                     except Exception as e:
@@ -801,9 +810,13 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
 
                 if 0 < project_data.get("curtail", 0) < num_real_duas:
                     print(f"*** Curtailing output of fbi at {num_real_duas}")
+                    if project_data.get("recording"):
+                        raise RuntimeError("Curtailed mining is incomplete; increase curtail and retry")
                     break
 
-            # Once you are done, and no error on the entire log, update the database
+            # Completion and mined rows commit atomically, so failed parses can retry.
+            if project_data.get("recording"):
+                db.session.query(FileTaint).filter(FileTaint.recording == project_data["recording"], FileTaint.seed_path.in_(observed_inputs)).update({"complete": True})
             db.session.commit()
 
 
