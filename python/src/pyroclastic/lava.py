@@ -200,7 +200,7 @@ def make_panda(lava_paths: LavaPaths):
     This will create a new binary in the same location, but it will be statically linked and should work on PANDA.
 
     DO NOT try squashing this step with the add_queries step.
-    I tried it with toy, and LAVA broke, I'm not fully sure why, but the add_queries.log were NOT indentical so...
+    I tried it with toy, and LAVA broke, I'm not fully sure why, but the add_queries.log were NOT identical so...
     """
     start_time = tick()
     progress("everything", 1, "Make step -- making 64-bit version for PANDA with static compilation of code with Hypercall queries")
