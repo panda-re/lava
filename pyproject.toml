@@ -19,6 +19,16 @@ addopts = "-s"
 where = ["python/src"]
 include = ["pyroclastic", "pyroclastic.*"]
 
+[tool.coverage.run]
+branch = true
+source = ["python/src/pyroclastic"]
+relative_files = true
+# Include Python subprocesses launched by tests or the pipeline.
+patch = ["subprocess"]
+
+[tool.coverage.report]
+omit = ["*/lava_pb2.py"]
+
 [tool.setuptools.package-data]
 # This explicitly attaches the ODB files ONLY to the 'generated' sub-package
 "pyroclastic.data" = ["*.sql"]

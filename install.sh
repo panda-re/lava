@@ -83,7 +83,8 @@ rm -rf "./tools/build" "./tools/lavaODB/generated"
 cmake -B"./tools/build" \
       -H"./tools" \
       -DCMAKE_INSTALL_PREFIX="$CMAKE_INSTALL_PREFIX" \
-      -DCMAKE_BUILD_TYPE=Release
+      -DCMAKE_BUILD_TYPE=Release \
+      -DLAVA_ENABLE_COVERAGE="${LAVA_ENABLE_COVERAGE:-OFF}"
 
 progress "Compiling lavaTool"
 cmake --build "./tools/build" --parallel "$(nproc)" --config Release
