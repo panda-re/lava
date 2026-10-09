@@ -11,6 +11,9 @@ on:
   pull_request:
     branches:
       - master
+  push:
+    branches:
+      - master
 
 # Automatically cancel any previous workflow on new push.
 concurrency:
@@ -53,17 +56,45 @@ jobs:
       - name: Create Wheel file
         run: |
           python3 -m pip install --upgrade build
-          python3 -m pip install pytest protobuf>=4.21.0 matplotlib
+          python3 -m pip install pytest 'protobuf>=4.21.0' matplotlib 'coverage[toml]>=7.10'
           python3 -m build --wheel .
           python3 -m pip install dist/*.whl
 
       - name: Quick Python Test
         run: |
           lava-init --no-download
-          pytest python
+          python3 -m coverage run -m pytest python
         env:
           PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION : 'python'
           LAVA_TEST_REPORTS: test_reports
+
+      - name: Generate Python coverage report
+        if: ${{ !cancelled() && hashFiles('.coverage*') != '' }}
+        run: |
+          python3 -m coverage combine
+          python3 -m coverage xml -o coverage-python.xml
+          python3 -m coverage html -d htmlcov/unittests
+
+      - name: Upload Python coverage to Codecov
+        if: ${{ !cancelled() && hashFiles('coverage-python.xml') != '' }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-python.xml
+          disable_search: true
+          flags: unittests
+          fail_ci_if_error: true
+
+      - name: Save Python coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-unittests
+          path: |
+            coverage-python.xml
+            htmlcov/unittests/
+          retention-days: 7
+          if-no-files-found: warn
 
       # The KLEE-vs-DFS exploration figures drawn by python/tests/test_explore.py
       - name: Upload exploration figures
@@ -83,6 +114,9 @@ jobs:
       # Dynamic Fallback Evaluation: Checks manual dispatch UI inputs first, falls back to 'true' for PR/Push events
       USE_PRECOMPUTED_PLOG: ${{ github.event.inputs.use_precomputed_plog || 'true' }}
       USER: ${{ github.actor }}
+      LAVA_ENABLE_COVERAGE: "ON"
+      # Measure the checkout, including commands that would otherwise import the wheel.
+      PYTHONPATH: ${{ github.workspace }}/python/src
       # https://docs.github.com/en/actions/use-cases-and-examples/using-containerized-services/creating-postgresql-service-containers
     services:
       postgres:
@@ -106,6 +140,7 @@ jobs:
         bash install.sh
         python3 -m pip install --upgrade pip
         python3 -m pip install .
+        python3 -m pip install 'coverage[toml]>=7.10' 'gcovr>=8,<9'
     - name: Setup LAVA
       run: |
         chmod +x ./scripts/*
@@ -139,18 +174,18 @@ jobs:
         echo "localhost:5432:*:${POSTGRES_USER}:${POSTGRES_PASSWORD}" > ~/.pgpass
         chmod 600 ~/.pgpass
         # Adding Queries
-        python -m pyroclastic.lava -q toy
+        python3 -m coverage run -m pyroclastic.lava -q toy
         
         # Making Binary to run in PANDA
-        python -m pyroclastic.lava -m toy
+        python3 -m coverage run -m pyroclastic.lava -m toy
         
         # Run taint, but technically if we download PLog, we just convert it to JSON
         # and skip the PANDA run
-        python -m pyroclastic.lava -tc toy
+        python3 -m coverage run -m pyroclastic.lava -tc toy
         
         # Run injection step for various kinds of bugs
-        python -m pyroclastic.lava -i 1 toy --bugtypes "ptr_add"
-        python -m pyroclastic.lava -i 1 toy --bugtypes "ret_buffer"
+        python3 -m coverage run -m pyroclastic.lava -i 1 toy --bugtypes "ptr_add"
+        python3 -m coverage run -m pyroclastic.lava -i 1 toy --bugtypes "ret_buffer"
         # python -m pyroclastic.lava -i 1 toy --bugtypes "malloc_off_by_one"
         # python -m pyroclastic.lava -i 1 toy --bugtypes "chaff_stack_unused"
         # python -m pyroclastic.lava -i 1 toy --bugtypes "chaff_stack_const"
@@ -160,6 +195,46 @@ jobs:
         USER: ${{ github.actor }}
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: postgrespostgres
+
+    - name: Generate integration Python coverage report
+      if: ${{ !cancelled() && hashFiles('.coverage*') != '' }}
+      run: |
+        python3 -m coverage combine
+        python3 -m coverage xml -o coverage-integration-python.xml
+        python3 -m coverage html -d htmlcov/integration-python
+
+    - name: Generate C++ coverage report
+      if: ${{ !cancelled() && hashFiles('tools/build/**/*.gcno') != '' }}
+      run: |
+        mkdir -p htmlcov/cpp
+        # --xml takes the output filename; --xml-pretty only enables formatting.
+        python3 -m gcovr tools/build --root . --filter 'tools/' \
+          --exclude 'tools/lavaODB/generated/' \
+          --xml coverage-cpp.xml --xml-pretty \
+          --html-details htmlcov/cpp/index.html
+
+    - name: Upload integration coverage to Codecov
+      if: ${{ !cancelled() && hashFiles('coverage-integration-python.xml', 'coverage-cpp.xml') != '' }}
+      uses: codecov/codecov-action@v7
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: coverage-integration-python.xml,coverage-cpp.xml
+        disable_search: true
+        flags: integration
+        fail_ci_if_error: true
+
+    - name: Save integration coverage reports
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: coverage-integration
+        path: |
+          coverage-integration-python.xml
+          coverage-cpp.xml
+          htmlcov/integration-python/
+          htmlcov/cpp/
+        retention-days: 7
+        if-no-files-found: warn
 
   build_container:
     name: "Test building LAVA container"

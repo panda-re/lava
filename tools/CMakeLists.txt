@@ -33,6 +33,15 @@ endif()
 
 # Set the project version dynamically
 project(LAVA VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH})
+option(LAVA_ENABLE_COVERAGE "Instrument LAVA tools for gcov coverage" OFF)
+if(LAVA_ENABLE_COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        message(FATAL_ERROR "LAVA_ENABLE_COVERAGE requires GCC and matching gcov")
+    endif()
+    # Apply to both executables and static libraries in the subdirectories.
+    add_compile_options(--coverage -O0 -g)
+    add_link_options(--coverage)
+endif()
 include(GNUInstallDirs)
 if (DEFINED DEBUG)
     set(CMAKE_VERBOSE_MAKEFILE ON)
