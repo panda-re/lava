@@ -29,7 +29,22 @@ dua_dependencies: DefaultDict[int, Set[Dua]] = defaultdict(set)
 
 # Liveness for each input byte.
 # liveness: DefaultDict[int, int] = defaultdict(int)
-liveness_by_file = defaultdict(lambda: defaultdict(int))
+class LivenessCounts(defaultdict[int, int]):
+    """Track changed counts, including zero counts introduced by missing reads."""
+
+    def __init__(self, initial: Optional[dict[int, int]] = None):
+        super().__init__(int)
+        self.dirty: dict[int, None] = {}
+        for label, count in (initial or {}).items():
+            self[label] = count
+
+    def __setitem__(self, label: int, count: int) -> None:
+        if label not in self or self[label] != count:
+            self.dirty[label] = None
+        super().__setitem__(label, count)
+
+
+liveness_by_file = defaultdict(LivenessCounts)
 
 # number of bytes in lava magic value used to trigger bugs
 LAVA_MAGIC_VALUE_SIZE: int = 4
@@ -673,7 +688,8 @@ def save_liveness_to_db(session: Session, atp_instr: int):
     connection = None
     for input_file, liveness in liveness_by_file.items():
         previous = previous_by_file.setdefault(input_file, {})
-        for label, current_count in liveness.items():
+        for label in liveness.dirty:
+            current_count = liveness[label]
             if label in previous and previous[label] == current_count:
                 continue
             rows.append(dict(inputfile=input_file, label=label,
@@ -690,7 +706,10 @@ def save_liveness_to_db(session: Session, atp_instr: int):
 
     # Publish the comparison state only after every insert succeeds.
     for input_file, liveness in liveness_by_file.items():
-        previous_by_file[input_file] = dict(liveness)
+        previous = previous_by_file[input_file]
+        for label in liveness.dirty:
+            previous[label] = liveness[label]
+        liveness.dirty.clear()
     last_snapshotted_instr = atp_instr
 
 
@@ -721,7 +740,7 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
         sys.exit(1)
 
     num_entries_read = 0
-    with open(panda_log_file, 'r') as plog_file:
+    with open(panda_log_file, 'rb') as plog_file:
         # 'item' iterates over elements in the root array
         parser = ijson.items(plog_file, 'item')
 

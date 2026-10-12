@@ -80,6 +80,7 @@ def test_snapshot_batches_preserve_contents_and_first_checkpoint(monkeypatch):
     monkeypatch.setattr(mining, "MINING_INSERT_BATCH_SIZE", 2)
     monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
     counts = {"first": {1: 0, 2: 3, 3: 5}, "second": {4: 2}}
+    counts = {f: mining.LivenessCounts(c) for f, c in counts.items()}
     monkeypatch.setattr(mining, "liveness_by_file", counts)
     with snapshot_session() as session:
         mining.save_liveness_to_db(session, 10)
@@ -107,7 +108,7 @@ def test_snapshot_insert_does_not_flush_and_rolls_back(monkeypatch):
     from pyroclastic.taint import find_bug_injection as mining
     from pyroclastic.utils.database_types import LivenessDelta
     monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
-    monkeypatch.setattr(mining, "liveness_by_file", {"input": {1: 3}})
+    monkeypatch.setattr(mining, "liveness_by_file", {"input": mining.LivenessCounts({1: 3})})
     with snapshot_session() as session:
         pending = LivenessDelta(inputfile="pending", label=99, atp_instr=1,
                                    liveness_count=0)
@@ -134,7 +135,7 @@ def test_active_dua_removal_preserves_survivor_order(monkeypatch):
     monkeypatch.setattr(mining, "recent_dead_duas", {0: first, 1: dead, 2: last})
     monkeypatch.setattr(mining, "recent_duas_by_instr", dict.fromkeys([first, dead, last]))
     monkeypatch.setattr(mining, "dua_dependencies", {7: {first, dead, last}})
-    monkeypatch.setattr(mining, "liveness_by_file", {"input": defaultdict(int)})
+    monkeypatch.setattr(mining, "liveness_by_file", {"input": mining.LivenessCounts()})
     monkeypatch.setattr(mining, "ptr_to_labelset", {1: SimpleNamespace(labels=[7])})
     monkeypatch.setattr(mining, "is_dua_dead", lambda dua, *args: dua is not dead)
     monkeypatch.setattr(mining, "save_liveness_to_db", lambda *args: None)
@@ -246,7 +247,7 @@ def test_log_import_is_atomic_after_former_commit_boundary(tmp_path, monkeypatch
     monkeypatch.setenv("POSTGRES_USER", "test")
     monkeypatch.setenv("POSTGRES_PASSWORD", "test")
     monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
-    monkeypatch.setattr(mining, "liveness_by_file", {"input": {1: 3}})
+    monkeypatch.setattr(mining, "liveness_by_file", {"input": mining.LivenessCounts({1: 3})})
     session = snapshot_session()
 
     @contextmanager
@@ -326,6 +327,7 @@ def test_delta_reconstruction_matches_full_snapshots(monkeypatch):
     monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
     monkeypatch.setattr(mining, "MINING_INSERT_BATCH_SIZE", 3)
     counts = {"a": {}, "b": {0: 0}}
+    counts = {f: mining.LivenessCounts(c) for f, c in counts.items()}
     monkeypatch.setattr(mining, "liveness_by_file", counts)
     baseline = []
     with snapshot_session() as session:
@@ -354,7 +356,7 @@ def test_delta_failed_insert_does_not_advance_comparison_state(monkeypatch):
     from unittest.mock import MagicMock
     from pyroclastic.taint import find_bug_injection as mining
     monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
-    monkeypatch.setattr(mining, "liveness_by_file", {"a": {1: 2}})
+    monkeypatch.setattr(mining, "liveness_by_file", {"a": mining.LivenessCounts({1: 2})})
     session = MagicMock()
     session.info = {}
     session.connection.return_value.execute.side_effect = RuntimeError("write failed")
@@ -362,3 +364,49 @@ def test_delta_failed_insert_does_not_advance_comparison_state(monkeypatch):
         mining.save_liveness_to_db(session, 10)
     assert session.info["mining_liveness_counts"] == {"a": {}}
     assert mining.last_snapshotted_instr == -1
+
+
+def test_dirty_labels_include_missing_zero_and_deferred_changes(monkeypatch):
+    from pyroclastic.taint import find_bug_injection as mining
+    monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
+    counts = mining.LivenessCounts()
+    monkeypatch.setattr(mining, "liveness_by_file", {"a": counts})
+    assert counts[7] == 0
+    with snapshot_session() as session:
+        mining.save_liveness_to_db(session, 10)
+        assert not counts.dirty
+        counts[7] += 1
+        counts[8] += 1
+        mining.save_liveness_to_db(session, 10)
+        assert set(counts.dirty) == {7, 8}
+        mining.save_liveness_to_db(session, 11)
+        assert not counts.dirty
+        timeline = generate_bugs.LivenessTimeline(session, "a")
+        assert dict(timeline.at(10)) == {7: 0}
+        assert dict(timeline.at(11)) == {7: 1, 8: 1}
+
+
+def test_unchanged_checkpoint_does_not_scan_all_labels(monkeypatch):
+    from pyroclastic.taint import find_bug_injection as mining
+    from unittest.mock import MagicMock
+
+    class NoFullScan(mining.LivenessCounts):
+        def items(self):
+            raise AssertionError("checkpoint scanned every label")
+
+        def __iter__(self):
+            raise AssertionError("checkpoint copied every label")
+
+    monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
+    counts = NoFullScan({i: 0 for i in range(1000)})
+    monkeypatch.setattr(mining, "liveness_by_file", {"a": counts})
+    session = MagicMock()
+    session.info = {}
+    mining.save_liveness_to_db(session, 10)
+    session.connection.return_value.execute.reset_mock()
+    mining.save_liveness_to_db(session, 11)
+    session.connection.return_value.execute.assert_not_called()
+    counts[999] = 3
+    mining.save_liveness_to_db(session, 12)
+    rows = session.connection.return_value.execute.call_args.args[1]
+    assert rows == [dict(inputfile="a", label=999, atp_instr=12, liveness_count=3)]
