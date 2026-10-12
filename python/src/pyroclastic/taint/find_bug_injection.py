@@ -2,6 +2,7 @@ import sys
 import ijson
 import os
 import re
+from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError
 from typing import DefaultDict, Set, Optional, List, Tuple, cast
 from collections import defaultdict
@@ -52,6 +53,50 @@ _L1_CACHE = {}
 # A global to prevent duplicate liveness snapshots for the same instruction
 last_snapshotted_instr: int = -1
 
+ATP_EXECUTION_BATCH_SIZE = 1000
+
+
+def record_atp_execution(session: Session, *, atp_id: int, inputfile: str,
+                         instr: int, pid: int = 0, tid: int = 0):
+    """Buffer executions in first-observation order in the single-writer miner.
+
+    IDs are only consumed by Phase II, after the mining transaction commits.
+    Existing identities are loaded once per input file; their first payload wins.
+    """
+    if not session.info.get("mining_atp_execution_hooks"):
+        event.listen(session, "before_commit", flush_atp_executions)
+        event.listen(session, "after_soft_rollback", _rollback_atp_executions)
+        session.info["mining_atp_execution_hooks"] = True
+    state = session.info.setdefault("mining_atp_executions", {"keys": {}, "rows": []})
+    keys_by_file = state["keys"]
+    if inputfile not in keys_by_file:
+        table = AtpExecution.__table__
+        rows = session.connection().execute(
+            select(table.c.atp, table.c.instr).where(table.c.inputfile == inputfile))
+        keys_by_file[inputfile] = {(row.atp, row.instr) for row in rows}
+    key = (atp_id, instr)
+    if key in keys_by_file[inputfile]:
+        return
+    keys_by_file[inputfile].add(key)
+    state["rows"].append(dict(atp=atp_id, inputfile=inputfile, instr=instr, pid=pid, tid=tid))
+    if len(state["rows"]) >= ATP_EXECUTION_BATCH_SIZE:
+        flush_atp_executions(session)
+
+
+def flush_atp_executions(session: Session):
+    state = session.info.get("mining_atp_executions")
+    if state and state["rows"]:
+        session.connection().execute(AtpExecution.__table__.insert(), state["rows"])
+        state["rows"].clear()
+
+
+def _rollback_atp_executions(session: Session, previous_transaction):
+    # Root rollback invalidates both buffered and inserted identities. A generic
+    # get-or-create SAVEPOINT rollback must not discard unrelated executions.
+    if previous_transaction.parent is None:
+        session.info.pop("mining_atp_executions", None)
+
+
 def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str], project_data: dict):
     """
     Process an attack point log entry from PANDA logs.
@@ -83,17 +128,14 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
         loc=ast_loc,
         type=attack_point_type,
     ))
-    atp_exec = cast(AtpExecution, get_or_create(
+    record_atp_execution(
         session,
-        AtpExecution,
         atp_id=atp.id,
         inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
         instr=current_instr,
-        defaults={
-            'pid': project_data.get("pid", 0),
-            'tid': project_data.get("tid", 0)
-        }
-    ))
+        pid=project_data.get("pid", 0),
+        tid=project_data.get("tid", 0)
+    )
     save_liveness_to_db(session, current_instr)
 
 
@@ -269,16 +311,13 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         }
     ))
 
-    get_or_create(
+    record_atp_execution(
         session,
-        AtpExecution,
         atp_id=atp.id,
         inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
         instr=instr_addr,
-        defaults={
-            'pid': project_data.get("pid", 0),
-            'tid': project_data.get("tid", 0)
-        }
+        pid=project_data.get("pid", 0),
+        tid=project_data.get("tid", 0)
     )
     save_liveness_to_db(session, instr_addr)
 
@@ -442,6 +481,13 @@ def get_or_create(session: Session, model, defaults: Optional[dict] = None, **kw
     else:
         params = {**kwargs, **(defaults or {})}
         instance = model(**params)
+        if session.info.get("atomic_mining", False):
+            # The single-writer import owns one outer transaction. Any insert
+            # failure aborts the whole log, so per-entity SAVEPOINTs buy nothing.
+            session.add(instance)
+            session.flush()
+            _L1_CACHE[cache_key] = instance
+            return instance
         session.add(instance)
         try:
             with session.begin_nested():
@@ -713,13 +759,14 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
         sys.exit(1)
 
     num_entries_read = 0
-    batch_size = 500
     with open(panda_log_file, 'r') as plog_file:
         # 'item' iterates over elements in the root array
         parser = ijson.items(plog_file, 'item')
 
         current_source_trace_id = 0
-        with LavaDatabase(project_data) as db:
+        # One transaction for the whole import; exceptions roll back all rows.
+        with LavaDatabase(project_data) as db, db.session.begin():
+            db.session.info["atomic_mining"] = True
             for ple in parser:
                 num_entries_read += 1
 
@@ -749,14 +796,6 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     current_call_stack.clear()
                     _L1_CACHE.clear()
 
-                if num_entries_read % batch_size == 0:
-                    try:
-                        db.session.commit()
-                    except Exception as e:
-                        db.session.rollback()
-                        print(f"Batch commit failed at entry {num_entries_read}: {e}")
-                        raise
-
                 # Console printing
                 if num_entries_read % 10000 == 0:
                     print(f"processed {num_entries_read} pandalog entries")
@@ -766,8 +805,9 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     print(f"*** Curtailing output of fbi at {num_real_duas}")
                     break
 
-            # Once you are done, and no error on the entire log, update the database
-            db.session.commit()
+            # The transaction context commits only after successful processing.
+            # Drain the final partial execution batch before that commit.
+            flush_atp_executions(db.session)
 
 
 def main():

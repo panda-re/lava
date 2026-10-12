@@ -59,20 +59,21 @@ def get_or_create_dua_bytes(db: LavaDatabase, cache: dict, dua: Dua, r: Range) -
     if cache_key in cache:
         return cache[cache_key]
 
-    labels = set()
-    viable_bytes = dua.viable_bytes
-    for i in range(r.low, r.high):
-        if viable_bytes[i] is not None:
-            labels.update(viable_bytes[i].labels)
-
-    sorted_labels = sorted(list(labels))
-
-    # Native SQLAlchemy replacement for get_or_create
-    d_bytes = db.session.query(DuaBytes).filter_by(dua=dua.id, _low=r.low, _high=r.high).first()
-    if not d_bytes:
-        d_bytes = DuaBytes(dua=dua.id, selected=r, all_labels=sorted_labels)
+    # Pending bugs are irrelevant to this identity lookup; don't flush them.
+    with db.session.no_autoflush:
+        d_bytes = db.session.query(DuaBytes).filter_by(
+            dua=dua.id, _low=r.low, _high=r.high).first()
+    if d_bytes is None:
+        labels = set()
+        viable_bytes = dua.viable_bytes
+        for i in range(r.low, r.high):
+            if viable_bytes[i] is not None:
+                labels.update(viable_bytes[i].labels)
+        d_bytes = DuaBytes(dua=dua.id, selected=r, all_labels=sorted(labels))
         db.session.add(d_bytes)
-        db.session.flush()
+        # Its ID is needed immediately for ordered extras. Other pending bugs
+        # remain pending until their skip lookup or the transaction commit.
+        db.session.flush([d_bytes])
 
     cache[cache_key] = d_bytes
     return d_bytes
@@ -263,7 +264,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                     query_point_atp_by_loc[candidate.loc] = candidate
 
             recent_dead_duas: dict[int, Dua] = {}
-            recent_duas_by_instr: list[Dua] = []
+            recent_duas_by_instr: dict[Dua, None] = {}
             dua_idx = 0
 
             def prune_recent_duas(current_instr: int):
@@ -274,10 +275,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                 for lval_id in expired:
                     d = recent_dead_duas.pop(lval_id, None)
                     if d is not None:
-                        try:
-                            recent_duas_by_instr.remove(d)
-                        except ValueError:
-                            pass
+                        recent_duas_by_instr.pop(d, None)
 
             ordered_instrs = sorted(executions_by_instr.keys())
             for instr in ordered_instrs:
@@ -324,12 +322,9 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
 
                     if d.lval in recent_dead_duas:
                         old_dua = recent_dead_duas[d.lval]
-                        try:
-                            recent_duas_by_instr.remove(old_dua)
-                        except ValueError:
-                            pass
+                        recent_duas_by_instr.pop(old_dua, None)
                     recent_dead_duas[d.lval] = d
-                    recent_duas_by_instr.append(d)
+                    recent_duas_by_instr[d] = None
 
                 # Deaths recorded at this exact same instr are pruned only now, after
                 # every newly-observed dua at this checkpoint has had its own shot at
@@ -394,7 +389,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                         )
 
                         if recent_duas_by_instr:
-                            exploit_dua = recent_duas_by_instr[0]
+                            exploit_dua = next(iter(recent_duas_by_instr))
                             exploit_range = get_dua_dead_range(exploit_dua, [], offline_liveness, project_data)
                             if not exploit_range.empty():
                                 exploit_db = get_or_create_dua_bytes(db, dua_bytes_cache, exploit_dua, exploit_range)

@@ -139,3 +139,171 @@ def test_active_dua_removal_preserves_survivor_order(monkeypatch):
     assert dead.death_instr == 16
     # Preserve C++'s whole-bucket removal, including surviving shared dependencies.
     assert mining.dua_dependencies == {}
+
+
+def test_execution_batches_keep_identity_payload_and_order(monkeypatch):
+    from sqlalchemy import Column, Integer, MetaData, Table, Text, create_engine, event, select
+    from sqlalchemy.orm import Session
+    from pyroclastic.taint import find_bug_injection as mining
+    from pyroclastic.utils.database_types import AtpExecution
+    engine = create_engine("sqlite://")
+    table = Table("atp_execution", MetaData(),
+                  Column("id", Integer, primary_key=True), Column("atp", Integer),
+                  Column("inputfile", Text), Column("instr", Integer),
+                  Column("pid", Integer), Column("tid", Integer))
+    table.create(engine)
+    with engine.begin() as connection:
+        connection.execute(table.insert(), dict(atp=8, inputfile="a", instr=1, pid=10, tid=20))
+    statements = []
+    event.listen(engine, "before_cursor_execute",
+                 lambda conn, cursor, statement, params, context, many: statements.append(statement))
+    monkeypatch.setattr(mining, "ATP_EXECUTION_BATCH_SIZE", 2)
+    with Session(engine) as session:
+        # Existing rows and repeated buffered identities keep their first payload.
+        mining.record_atp_execution(session, atp_id=8, inputfile="a", instr=1, pid=99)
+        mining.record_atp_execution(session, atp_id=9, inputfile="a", instr=2, pid=30, tid=40)
+        mining.record_atp_execution(session, atp_id=9, inputfile="a", instr=2, pid=99)
+        mining.record_atp_execution(session, atp_id=9, inputfile="b", instr=2, pid=50, tid=60)
+        mining.record_atp_execution(session, atp_id=8, inputfile="a", instr=3, pid=70, tid=80)
+        mining.flush_atp_executions(session)
+        session.commit()
+        assert sum(s.startswith("SELECT") for s in statements) == 2
+        assert sum(s.startswith("INSERT") for s in statements) == 2
+        rows = session.connection().execute(select(table).order_by(table.c.id)).all()
+        assert [tuple(row) for row in rows] == [
+            (1, 8, "a", 1, 10, 20), (2, 9, "a", 2, 30, 40),
+            (3, 9, "b", 2, 50, 60), (4, 8, "a", 3, 70, 80)]
+
+
+def test_dua_bytes_cache_and_existing_row_avoid_work():
+    from unittest.mock import MagicMock
+    session = MagicMock()
+    existing = SimpleNamespace(id=10)
+    session.query.return_value.filter_by.return_value.first.return_value = existing
+    cache = {}
+    dua = SimpleNamespace(id=1)  # No viable_bytes: an existing row needs no labels.
+    db = SimpleNamespace(session=session)
+    assert generate_bugs.get_or_create_dua_bytes(db, cache, dua, Range(0, 4)) is existing
+    assert generate_bugs.get_or_create_dua_bytes(db, cache, dua, Range(0, 4)) is existing
+    session.query.assert_called_once()
+    session.flush.assert_not_called()
+
+
+def test_dua_bytes_creation_flushes_only_new_row():
+    from unittest.mock import MagicMock
+    session = MagicMock()
+    session.query.return_value.filter_by.return_value.first.return_value = None
+    dua = CountingDua()
+    dua.id = 1
+    cache = {}
+    created = generate_bugs.get_or_create_dua_bytes(
+        SimpleNamespace(session=session), cache, dua, Range(0, 4))
+    assert created.all_labels == [0, 1, 2, 3]
+    assert dua.reads == 1
+    session.flush.assert_called_once_with([created])
+    assert cache[(1, 0, 4)] is created
+
+
+def test_execution_buffer_commit_and_root_rollback():
+    from sqlalchemy import Column, Integer, MetaData, Table, Text, create_engine, select
+    from sqlalchemy.orm import Session
+    from pyroclastic.taint import find_bug_injection as mining
+    engine = create_engine("sqlite://")
+    table = Table("atp_execution", MetaData(),
+                  Column("id", Integer, primary_key=True), Column("atp", Integer),
+                  Column("inputfile", Text), Column("instr", Integer),
+                  Column("pid", Integer), Column("tid", Integer))
+    table.create(engine)
+    with Session(engine) as session:
+        mining.record_atp_execution(session, atp_id=1, inputfile="a", instr=1)
+        session.rollback()  # Discard buffered rows and their deduplication keys.
+        mining.record_atp_execution(session, atp_id=1, inputfile="a", instr=1, pid=7)
+        session.commit()  # Commit hook drains the partial batch.
+        rows = session.connection().execute(select(table)).all()
+        assert [tuple(row) for row in rows] == [(1, 1, "a", 1, 7, 0)]
+
+
+@pytest.mark.parametrize("malformed", [False, True])
+def test_log_import_is_atomic_after_former_commit_boundary(tmp_path, monkeypatch, malformed):
+    import json
+    from contextlib import contextmanager
+    from sqlalchemy import select, func
+    from pyroclastic.taint import find_bug_injection as mining
+    from pyroclastic.utils.database_types import LivenessSnapshot
+
+    (tmp_path / "lavadb").write_text("")
+    entries = [{"attackPoint": {}, "instr": hex(i)} for i in range(1, 502)]
+    encoded = json.dumps(entries)
+    # Fail after 501 complete events, beyond the former 500-entry commit.
+    log = tmp_path / "queries.json"
+    log.write_text(encoded[:-1] + ', {"attackPoint":' if malformed else encoded)
+    monkeypatch.setenv("POSTGRES_USER", "test")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "test")
+    monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
+    monkeypatch.setattr(mining, "liveness_by_file", {"input": {1: 3}})
+    session = snapshot_session()
+
+    @contextmanager
+    def database(project):
+        yield SimpleNamespace(session=session)
+
+    monkeypatch.setattr(mining, "LavaDatabase", database)
+    monkeypatch.setattr(mining, "attack_point_lval_usage",
+                        lambda entry, session, *args:
+                        mining.save_liveness_to_db(session, int(entry["instr"], 0)))
+    try:
+        if malformed:
+            import ijson
+            with pytest.raises(ijson.JSONError):
+                mining.parse_panda_log(str(log), {"output_dir": str(tmp_path)})
+        else:
+            mining.parse_panda_log(str(log), {"output_dir": str(tmp_path)})
+        count = session.connection().execute(
+            select(func.count()).select_from(LivenessSnapshot.__table__)).scalar_one()
+        assert count == (0 if malformed else 501)
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_atomic_get_or_create_without_savepoints(monkeypatch, fail):
+    from sqlalchemy import Column, Integer, Text, create_engine, event, select, func
+    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy.orm import Session, declarative_base
+    from pyroclastic.taint import find_bug_injection as mining
+
+    base = declarative_base()
+
+    class Entity(base):
+        __tablename__ = "entity"
+        id = Column(Integer, primary_key=True)
+        name = Column(Text, unique=True)
+        payload = Column(Integer)
+
+    engine = create_engine("sqlite://")
+    base.metadata.create_all(engine)
+    statements = []
+    event.listen(engine, "before_cursor_execute",
+                 lambda conn, cursor, sql, params, context, many: statements.append(sql))
+    monkeypatch.setattr(mining, "_L1_CACHE", {})
+    with Session(engine) as session:
+        def import_entities():
+            with session.begin():
+                session.info["atomic_mining"] = True
+                first = mining.get_or_create(session, Entity, name="a", defaults={"payload": 1})
+                again = mining.get_or_create(session, Entity, name="a", defaults={"payload": 99})
+                assert again is first
+                assert first.payload == 1
+                second = mining.get_or_create(session, Entity, name="b", defaults={"payload": 2})
+                assert second.id > first.id
+                if fail:
+                    session.add(Entity(name="a", payload=3))
+                    session.flush()
+        if fail:
+            with pytest.raises(IntegrityError):
+                import_entities()
+        else:
+            import_entities()
+        assert not any("SAVEPOINT" in sql for sql in statements)
+        assert sum(sql.startswith("SELECT") for sql in statements) == 2
+        assert session.execute(select(func.count()).select_from(Entity)).scalar_one() == (0 if fail else 2)
