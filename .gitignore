@@ -104,6 +104,10 @@ htmlcov/
 .cache
 nosetests.xml
 coverage.xml
+coverage-*.xml
+*.gcda
+*.gcno
+*.gcov
 *.cover
 *.py.cover
 .hypothesis/
