@@ -35,9 +35,9 @@ LAVA_MAGIC_VALUE_SIZE: int = 4
 # special flag to indicate untainted byte that we want to use for fake dua
 FAKE_DUA_BYTE_FLAG: int = 777
 
-# List of recent duas sorted by dua->instr. Invariant should hold that:
-recent_duas_by_instr: list[Dua] = []
+# Active DUAs in discovery order, with constant-time membership/removal.
 # set(recent_dead_duas.values()) == set(recent_duas_by_instr).
+recent_duas_by_instr: dict[Dua, None] = {}
 # Map from source lval ID to most recent DUA incarnation.
 recent_dead_duas: dict[int, Dua] = {}
 
@@ -340,14 +340,9 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             # We have seen this LVAL before. Replace it.
             old_dua = recent_dead_duas[lval_id]
 
-            # Remove from recent_duas_by_instr
-            # Note: Python list.remove is O(N). If this list is huge,
-            # we might need a better structure, but recent window is usually small-ish.
-            try:
-                recent_duas_by_instr.remove(old_dua)
+            if old_dua in recent_duas_by_instr:
+                del recent_duas_by_instr[old_dua]
                 old_dua.death_instr = instr_addr
-            except ValueError:
-                pass  # Should ideally not happen based on C++ logic assertions
 
             # Clean up old dependencies
             for l in old_dua.all_labels:
@@ -360,7 +355,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         # Enforce sorted order logic for recent_duas_by_instr
         # C++ did: assert(dua->instr >= recent_duas_by_instr.back()->instr);
         # This implies the log is processed in execution order, so we can just append.
-        recent_duas_by_instr.append(dua)
+        recent_duas_by_instr[dua] = None
 
         # Verify invariants
         assert len(recent_dead_duas) == len(recent_duas_by_instr), "Mismatched counts between recent_dead_duas and recent_duas_by_instr"
@@ -392,7 +387,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
     #        if not recent_duas_by_instr:
     #            break
     #        
-    #        exploit_dua = recent_duas_by_instr[0]
+    #        exploit_dua = next(iter(recent_duas_by_instr))
     #        r = get_dua_dead_range(exploit_dua, [], project_data)
     #        if r.empty():
     #            continue        
@@ -546,8 +541,7 @@ def update_liveness(panda_log_entry: dict, session: Session, project_data: dict)
         if not is_dua_dead(dua, liveness, project_data):
             dua.death_instr = current_instr
             recent_dead_duas.pop(dua.lval_relationship.id, None)
-            if dua in recent_duas_by_instr:
-                recent_duas_by_instr.remove(dua)
+            recent_duas_by_instr.pop(dua, None)
             assert len(recent_dead_duas) == len(recent_duas_by_instr)
             non_viable_duas.append(dua)
 
@@ -661,31 +655,36 @@ def load_db(db_file: str) -> dict[int, str]:
     return string_ids
 
 
+# Bound transient snapshot memory independently of the log-entry commit interval.
+LIVENESS_INSERT_BATCH_SIZE = 1000
+
+
 def save_liveness_to_db(session: Session, atp_instr: int):
     global last_snapshotted_instr
 
-    # 1. Instantly bail if we already saved snapshots for this exact instruction
+    # Preserve first-snapshot behavior for equal-instruction events.
     if atp_instr == last_snapshotted_instr:
         return
 
-    snapshots_to_insert = []
+    rows = []
+    statement = LivenessSnapshot.__table__.insert()
+    # Core writes use the session's transaction without autoflushing unrelated ORM
+    # state. Snapshots have no foreign keys and no consumer needs their ORM objects.
+    connection = None
     for input_file, liveness in liveness_by_file.items():
         for label, current_count in liveness.items():
-            # 2. Append the raw model instances directly to a list
-            snapshots_to_insert.append(
-                LivenessSnapshot(
-                    inputfile=input_file,
-                    label=label,
-                    atp_instr=atp_instr,
-                    liveness_count=current_count
-                )
-            )
+            rows.append(dict(inputfile=input_file, label=label,
+                             atp_instr=atp_instr, liveness_count=current_count))
+            if len(rows) == LIVENESS_INSERT_BATCH_SIZE:
+                if connection is None:
+                    connection = session.connection()
+                connection.execute(statement, rows)
+                rows = []
+    if rows:
+        if connection is None:
+            connection = session.connection()
+        connection.execute(statement, rows)
 
-    # 3. Add them all to the session at once
-    if snapshots_to_insert:
-        session.add_all(snapshots_to_insert)
-        
-    # 4. Update the tracker
     last_snapshotted_instr = atp_instr
 
 
