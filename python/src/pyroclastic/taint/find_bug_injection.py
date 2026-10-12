@@ -1,17 +1,17 @@
-import json
 import sys
 import ijson
 import os
 import re
+from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError
 from typing import DefaultDict, Set, Optional, List, Tuple, cast
 from collections import defaultdict
 from sqlalchemy.orm import Session, joinedload
-from ..utils.funcs import dump_table
+from ..utils.database_types import print_bug_stats
 from ..utils.database_types import SourceTrace, CallTrace
 from ..utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, LavaDatabase, Dua
-from ..utils.database_types import AtpKind, AtpExecution, LivenessSnapshot
-from ..taint.taint_utils import dprint, get_dua_dead_range, get_dead_range, merge_into
+from ..utils.database_types import AtpKind, AtpExecution, LivenessDelta
+from ..taint.taint_utils import get_dua_dead_range, get_dead_range, merge_into
 from ..utils.vars import parse_vars
 
 # Matches "libc" at clean boundaries:
@@ -29,16 +29,31 @@ dua_dependencies: DefaultDict[int, Set[Dua]] = defaultdict(set)
 
 # Liveness for each input byte.
 # liveness: DefaultDict[int, int] = defaultdict(int)
-liveness_by_file = defaultdict(lambda: defaultdict(int))
+class LivenessCounts(defaultdict[int, int]):
+    """Track changed counts, including zero counts introduced by missing reads."""
+
+    def __init__(self, initial: Optional[dict[int, int]] = None):
+        super().__init__(int)
+        self.dirty: dict[int, None] = {}
+        for label, count in (initial or {}).items():
+            self[label] = count
+
+    def __setitem__(self, label: int, count: int) -> None:
+        if label not in self or self[label] != count:
+            self.dirty[label] = None
+        super().__setitem__(label, count)
+
+
+liveness_by_file = defaultdict(LivenessCounts)
 
 # number of bytes in lava magic value used to trigger bugs
 LAVA_MAGIC_VALUE_SIZE: int = 4
 # special flag to indicate untainted byte that we want to use for fake dua
 FAKE_DUA_BYTE_FLAG: int = 777
 
-# List of recent duas sorted by dua->instr. Invariant should hold that:
-recent_duas_by_instr: list[Dua] = []
+# Active DUAs in discovery order, with constant-time membership/removal.
 # set(recent_dead_duas.values()) == set(recent_duas_by_instr).
+recent_duas_by_instr: dict[Dua, None] = {}
 # Map from source lval ID to most recent DUA incarnation.
 recent_dead_duas: dict[int, Dua] = {}
 
@@ -53,6 +68,51 @@ _L1_CACHE = {}
 # A global to prevent duplicate liveness snapshots for the same instruction
 last_snapshotted_instr: int = -1
 
+# Bound temporary row buffers; batches remain inside the whole-log transaction.
+MINING_INSERT_BATCH_SIZE = 1000
+
+
+def record_atp_execution(session: Session, *, atp_id: int, inputfile: str,
+                         instr: int, pid: int = 0, tid: int = 0):
+    """Buffer executions in first-observation order in the single-writer miner.
+
+    IDs are only consumed by Phase II, after the mining transaction commits.
+    Existing identities are loaded once per input file; their first payload wins.
+    """
+    if not session.info.get("mining_atp_execution_hooks"):
+        event.listen(session, "before_commit", flush_atp_executions)
+        event.listen(session, "after_soft_rollback", _rollback_atp_executions)
+        session.info["mining_atp_execution_hooks"] = True
+    state = session.info.setdefault("mining_atp_executions", {"keys": {}, "rows": []})
+    keys_by_file = state["keys"]
+    if inputfile not in keys_by_file:
+        table = AtpExecution.__table__
+        rows = session.connection().execute(
+            select(table.c.atp, table.c.instr).where(table.c.inputfile == inputfile))
+        keys_by_file[inputfile] = {(row.atp, row.instr) for row in rows}
+    key = (atp_id, instr)
+    if key in keys_by_file[inputfile]:
+        return
+    keys_by_file[inputfile].add(key)
+    state["rows"].append(dict(atp=atp_id, inputfile=inputfile, instr=instr, pid=pid, tid=tid))
+    if len(state["rows"]) >= MINING_INSERT_BATCH_SIZE:
+        flush_atp_executions(session)
+
+
+def flush_atp_executions(session: Session):
+    state = session.info.get("mining_atp_executions")
+    if state and state["rows"]:
+        session.connection().execute(AtpExecution.__table__.insert(), state["rows"])
+        state["rows"].clear()
+
+
+def _rollback_atp_executions(session: Session, previous_transaction):
+    # Root rollback invalidates both buffered and inserted identities. A generic
+    # get-or-create SAVEPOINT rollback must not discard unrelated executions.
+    if previous_transaction.parent is None:
+        session.info.pop("mining_atp_executions", None)
+
+
 def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str], project_data: dict):
     """
     Process an attack point log entry from PANDA logs.
@@ -66,19 +126,15 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
     source_info = attack_point["srcInfo"]
     ast_id = source_info["astLocId"]
     current_instr = int(ple["instr"], 0)
-    dprint(project_data, f"attack point id = {ast_id}")
 
     # ignore duas in header files
     # Remember, in PandaLog, AttackPoint filenames are numbers!
     if is_header_file(ind2str[ast_id]):
         return
 
-    dprint(project_data, "ATTACK POINT")
     if len(recent_dead_duas) == 0:
-        dprint(project_data, "no duas yet -- discarding attack point")
         return
 
-    dprint(project_data, f"{len(recent_dead_duas)} viable duas remain")
     ast_loc: ASTLoc = ASTLoc.from_serialized(ind2str[ast_id])
     attack_point_type = attack_point["info"]
 
@@ -88,19 +144,15 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
         loc=ast_loc,
         type=attack_point_type,
     ))
-    atp_exec = cast(AtpExecution, get_or_create(
+    record_atp_execution(
         session,
-        AtpExecution,
         atp_id=atp.id,
         inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
         instr=current_instr,
-        defaults={
-            'pid': project_data.get("pid", 0),
-            'tid': project_data.get("tid", 0)
-        }
-    ))
+        pid=project_data.get("pid", 0),
+        tid=project_data.get("tid", 0)
+    )
     save_liveness_to_db(session, current_instr)
-    dprint(project_data, f"@ATP: {atp} {atp_exec}")
 
 
 # Assuming globals/constants are available:
@@ -129,7 +181,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         return
 
     instr_addr = int(ple["instr"], 0)
-    dprint(project_data, f"TAINT QUERY HYPERCALL len={length} num_tainted={num_tainted}")
 
     # 2. Collect Labels & Unique Sets
     all_labels = set()  # Using set for O(1) uniqueness, sorted list later if needed
@@ -148,7 +199,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
     viable_byte: List[LabelSet | None] = [None] * length
     byte_tcn = [0] * length
 
-    dprint(project_data,f"considering taint queries on {num_tainted} bytes\n")
     is_dua = False
     is_fake_dua = False
     num_viable_bytes = 0
@@ -159,7 +209,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             offset: int = taint_query["offset"]
             if offset >= length:
                 continue
-            dprint(project_data,f"considering offset = {offset}")
             ptr = int(taint_query["ptr"], 0)
             tcn = taint_query["tcn"]
 
@@ -181,10 +230,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             # Bytes are ONLY discarded if debug mode is ON!
             # "if (current_byte_not_ok && debug)"
             debug = project_data.get("debug", False)
-            if current_byte_not_ok and debug:
-                dprint(project_data, f"discarding byte {offset}...")
-            else:
-                dprint(project_data, "retaining byte")
+            if not (current_byte_not_ok and debug):
                 # THIS IS THE C++ UNCONDITIONAL RETAIN LOGIC!
                 c_max_tcn = max(tcn, c_max_tcn)
                 c_max_card = max(len(label_set.labels), c_max_card)
@@ -194,8 +240,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
 
             # Merge labels (Python set update handles deduping)
             all_labels.update(label_set.labels)
-            dprint(project_data, f"keeping byte @ offset {offset}")
-        dprint(project_data, "{num_viable_bytes} viable bytes in lval")
 
         # Check DUA Viability
         # 1. Enough viable bytes
@@ -217,8 +261,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
     if (project_data.get('chaff_bugs', False) and not is_dua and
             cpp_style_diff >= LAVA_MAGIC_VALUE_SIZE):
 
-        dprint(project_data, "not enough taint -- what about non-taint?")
-        dprint(project_data, f"len={length} num_tainted={num_tainted}")
 
         # Reset viable_byte to clean slate for fake generation
         viable_byte: List[LabelSet | None] = [None] * length
@@ -254,7 +296,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             is_fake_dua = True
 
     # 5. Database Persistence & Registration
-    dprint(project_data, f"is_dua={is_dua} is_fake_dua={is_fake_dua}")
     assert not (is_dua and is_fake_dua)
 
     ast_loc_id: int = source_info["astLocId"]
@@ -273,7 +314,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         calltrace_ids.append(ct.id)
 
     # Create AttackPoint (QUERY_POINT) for Chaff Bugs
-    # TODO: We might want to differentiate ATPs for Chaff Bugs and RET_BUFFER?
     atp = cast(AttackPoint, get_or_create(
         session,
         AttackPoint,
@@ -286,16 +326,13 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         }
     ))
 
-    get_or_create(
+    record_atp_execution(
         session,
-        AtpExecution,
         atp_id=atp.id,
         inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
         instr=instr_addr,
-        defaults={
-            'pid': project_data.get("pid", 0),
-            'tid': project_data.get("tid", 0)
-        }
+        pid=project_data.get("pid", 0),
+        tid=project_data.get("tid", 0)
     )
     save_liveness_to_db(session, instr_addr)
 
@@ -336,19 +373,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             for l in sorted_labels:
                 dua_dependencies[l].add(dua)
 
-        # Save Exploit Pads used for RET_BUFFER offline
-        #if length >= 20:
-        #    dua_range: Range = get_dua_exploit_pad(dua)
-        #    get_or_create(
-        #        session,
-        #        DuaBytes,
-        #        dua=dua.id,
-        #        selected=dua_range,
-        #    )
-        #    dprint(project_data, f"Saved DuaBytes for DUA {dua.id}: [{dua_range.low}, {dua_range.high}]")
-
-        dprint(project_data, "OK DUA.")
-
         # 6. Global State Maintenance (recent_dead_duas)
         # Logic: Replace old DUA with same lval_id, or insert new.
 
@@ -358,23 +382,14 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             # We have seen this LVAL before. Replace it.
             old_dua = recent_dead_duas[lval_id]
 
-            # Remove from recent_duas_by_instr
-            # Note: Python list.remove is O(N). If this list is huge,
-            # we might need a better structure, but recent window is usually small-ish.
-            try:
-                recent_duas_by_instr.remove(old_dua)
+            if old_dua in recent_duas_by_instr:
+                del recent_duas_by_instr[old_dua]
                 old_dua.death_instr = instr_addr
-            except ValueError:
-                pass  # Should ideally not happen based on C++ logic assertions
 
             # Clean up old dependencies
             for l in old_dua.all_labels:
                 if old_dua in dua_dependencies[l]:
                     dua_dependencies[l].remove(old_dua)
-
-            dprint(project_data,"previously observed lval")
-        else:
-            dprint(project_data, "new lval")
 
         # Insert/Update the map
         recent_dead_duas[lval_id] = dua
@@ -382,7 +397,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         # Enforce sorted order logic for recent_duas_by_instr
         # C++ did: assert(dua->instr >= recent_duas_by_instr.back()->instr);
         # This implies the log is processed in execution order, so we can just append.
-        recent_duas_by_instr.append(dua)
+        recent_duas_by_instr[dua] = None
 
         # Verify invariants
         assert len(recent_dead_duas) == len(recent_duas_by_instr), "Mismatched counts between recent_dead_duas and recent_duas_by_instr"
@@ -393,44 +408,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             num_real_duas += 1
         if is_fake_dua:
             num_fake_duas += 1
-    else:
-        # Debugging discard
-        filename = source_info["filename"]
-        line_number = source_info["linenum"]
-        ast_node_name = source_info["astnodename"]
-        dprint(project_data, f"discarded {num_viable_bytes} viable bytes {len(all_labels)} labels"
-                             f"{filename}:{line_number} {ast_node_name}")
-
-    # Pre-compute Dua Pads for Chaff Bugs
-    # randcount = random_sampling_threshold
-    # if random_sampling_threshold > len(recent_duas_by_instr):
-    #    for lval_id, exploit_dua in recent_dead_duas.items():
-    #        r = get_dua_dead_range(exploit_dua, [], project_data)
-    #        if r.empty():
-    #            continue
-    #        
-    #        get_or_create(
-    #            session,
-    #            DuaBytes,
-    #            dua=exploit_dua.id,
-    #            selected=r,
-    #        )
-    #else:
-    #    while randcount > 0:
-    #        randcount -= 1
-    #        if not recent_duas_by_instr:
-    #            break
-    #        
-    #        exploit_dua = recent_duas_by_instr[0]
-    #        r = get_dua_dead_range(exploit_dua, [], project_data)
-    #        if r.empty():
-    #            continue        
-    #        get_or_create(
-    #            session,
-    #            DuaBytes,
-    #            dua=exploit_dua.id,
-    #            selected=r
-    #        )
 
 
 def _make_hashable(val):
@@ -476,6 +453,13 @@ def get_or_create(session: Session, model, defaults: Optional[dict] = None, **kw
     else:
         params = {**kwargs, **(defaults or {})}
         instance = model(**params)
+        if session.info.get("atomic_mining", False):
+            # The single-writer import owns one outer transaction. Any insert
+            # failure aborts the whole log, so per-entity SAVEPOINTs buy nothing.
+            session.add(instance)
+            session.flush()
+            _L1_CACHE[cache_key] = instance
+            return instance
         session.add(instance)
         try:
             with session.begin_nested():
@@ -499,8 +483,6 @@ def update_unique_taint_sets(unique_label_set: dict, session: Session, project_d
         session (Session): Database session to add the LabelSet
         project_data (dict): Lava project parameters
     """
-    dprint(project_data, "UNIQUE TAINT SET")
-    dprint(project_data, json.dumps(unique_label_set))
     ptr_str = str(unique_label_set["ptr"])
     pointer = int(ptr_str, 0)
 
@@ -522,7 +504,6 @@ def update_unique_taint_sets(unique_label_set: dict, session: Session, project_d
             }
         ))
         ptr_to_labelset[pointer] = label_set
-    dprint(project_data, f"{len(ptr_to_labelset)} unique taint sets\n")
 
 
 def update_liveness(panda_log_entry: dict, session: Session, project_data: dict):
@@ -556,7 +537,6 @@ def update_liveness(panda_log_entry: dict, session: Session, project_data: dict)
     liveness = liveness_by_file[current_file]
     current_instr = int(panda_log_entry["instr"], 0)
     tainted_branch = panda_log_entry["taintedBranch"]
-    dprint(project_data, "TAINTED BRANCH")
 
     all_labels: set[int] = set()
     for taint_query in tainted_branch["taintQuery"]:
@@ -570,23 +550,19 @@ def update_liveness(panda_log_entry: dict, session: Session, project_data: dict)
     duas_to_check: set[Dua] = set()
     for label in all_labels:
         liveness[label] += 1
-        dprint(project_data, f"checking viability of {len(recent_dead_duas)} duas")
         depends = dua_dependencies.get(label)
         if depends:
-            merge_into(duas_to_check, set(depends) if isinstance(depends, list) else depends)
+            merge_into(duas_to_check, depends)
 
     non_viable_duas = []
     for dua in duas_to_check:
         if not is_dua_dead(dua, liveness, project_data):
-            dprint(project_data, f"{str(dua)}\n ** DUA not viable\n")
             dua.death_instr = current_instr
             recent_dead_duas.pop(dua.lval_relationship.id, None)
-            if dua in recent_duas_by_instr:
-                recent_duas_by_instr.remove(dua)
+            recent_duas_by_instr.pop(dua, None)
             assert len(recent_dead_duas) == len(recent_duas_by_instr)
             non_viable_duas.append(dua)
 
-    dprint(project_data, f"{len(non_viable_duas)} non-viable duas \n")
     for dua in non_viable_duas:
         for label in dua.all_labels:
             if label in dua_dependencies:
@@ -700,28 +676,40 @@ def load_db(db_file: str) -> dict[int, str]:
 def save_liveness_to_db(session: Session, atp_instr: int):
     global last_snapshotted_instr
 
-    # 1. Instantly bail if we already saved snapshots for this exact instruction
+    # Preserve first-snapshot behavior for equal-instruction events.
     if atp_instr == last_snapshotted_instr:
         return
 
-    snapshots_to_insert = []
+    rows = []
+    statement = LivenessDelta.__table__.insert()
+    previous_by_file = session.info.setdefault("mining_liveness_counts", {})
+    # Core writes use the session's transaction without autoflushing unrelated ORM
+    # state. Snapshots have no foreign keys and no consumer needs their ORM objects.
+    connection = None
     for input_file, liveness in liveness_by_file.items():
-        for label, current_count in liveness.items():
-            # 2. Append the raw model instances directly to a list
-            snapshots_to_insert.append(
-                LivenessSnapshot(
-                    inputfile=input_file,
-                    label=label,
-                    atp_instr=atp_instr,
-                    liveness_count=current_count
-                )
-            )
+        previous = previous_by_file.setdefault(input_file, {})
+        for label in liveness.dirty:
+            current_count = liveness[label]
+            if label in previous and previous[label] == current_count:
+                continue
+            rows.append(dict(inputfile=input_file, label=label,
+                             atp_instr=atp_instr, liveness_count=current_count))
+            if len(rows) == MINING_INSERT_BATCH_SIZE:
+                if connection is None:
+                    connection = session.connection()
+                connection.execute(statement, rows)
+                rows = []
+    if rows:
+        if connection is None:
+            connection = session.connection()
+        connection.execute(statement, rows)
 
-    # 3. Add them all to the session at once
-    if snapshots_to_insert:
-        session.add_all(snapshots_to_insert)
-        
-    # 4. Update the tracker
+    # Publish the comparison state only after every insert succeeds.
+    for input_file, liveness in liveness_by_file.items():
+        previous = previous_by_file[input_file]
+        for label in liveness.dirty:
+            previous[label] = liveness[label]
+        liveness.dirty.clear()
     last_snapshotted_instr = atp_instr
 
 
@@ -729,6 +717,8 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
     """
     Main function for Find Bug Inject (FBI) tool.
     """
+    global last_snapshotted_instr
+    last_snapshotted_instr = -1
     # maps from ind -> (filename, lvalname, attackpointname)
     root_directory = project_data["output_dir"]
     lavadb = f"{root_directory}/lavadb"
@@ -750,13 +740,14 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
         sys.exit(1)
 
     num_entries_read = 0
-    batch_size = 500
-    with open(panda_log_file, 'r') as plog_file:
+    with open(panda_log_file, 'rb') as plog_file:
         # 'item' iterates over elements in the root array
         parser = ijson.items(plog_file, 'item')
 
         current_source_trace_id = 0
-        with LavaDatabase(project_data) as db:
+        # One transaction for the whole import; exceptions roll back all rows.
+        with LavaDatabase(project_data) as db, db.session.begin():
+            db.session.info["atomic_mining"] = True
             for ple in parser:
                 num_entries_read += 1
 
@@ -777,7 +768,10 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     project_data["input_file"] = os.path.basename(ple['fileTaintMatch']['filename'])
                     project_data["pid"] = ple['fileTaintMatch'].get('pid', 0)
                     project_data["tid"] = ple['fileTaintMatch'].get('tid', 0)
+                    last_snapshotted_instr = -1
+                    db.session.info.pop("mining_liveness_counts", None)
                     # Nuke the global state
+                    current_source_trace_id = 0
                     liveness_by_file.clear()
                     dua_dependencies.clear()
                     recent_dead_duas.clear()
@@ -785,14 +779,6 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     ptr_to_labelset.clear()
                     current_call_stack.clear()
                     _L1_CACHE.clear()
-
-                if num_entries_read % batch_size == 0:
-                    try:
-                        db.session.commit()
-                    except Exception as e:
-                        db.session.rollback()
-                        print(f"Batch commit failed at entry {num_entries_read}: {e}")
-                        raise
 
                 # Console printing
                 if num_entries_read % 10000 == 0:
@@ -803,113 +789,9 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     print(f"*** Curtailing output of fbi at {num_real_duas}")
                     break
 
-            # Once you are done, and no error on the entire log, update the database
-            db.session.commit()
-
-
-def _fmt_loc(loc) -> str:
-    return f"{loc.filename}:{loc.begin.line}:{loc.begin.column}:{loc.end.line}:{loc.end.column}"
-
-
-def print_bug_stats(project_data: dict, debug: bool = False):
-    """
-    Examines and prints the complete structural contents of all mined elements
-    in a deterministic order, safely handling any nested database sequences.
-
-    Rows are sorted by their unique-index members (lava.hxx) and foreign keys are
-    printed as the row they point to, never as raw ids: ids depend on insertion
-    order, so they only line up between a C++ and a Python run by luck, which
-    stops holding on bigger, more-branching targets.
-    """
-    with LavaDatabase(project_data) as db:
-        # 1. SourceLvals (SourceLvalUniq: loc, ast_name)
-        try:
-            source_lvals = db.session.query(SourceLval).order_by(
-                SourceLval._f, SourceLval._bl, SourceLval._bc, SourceLval._el, SourceLval._ec,
-                SourceLval.ast_name).all()
-        except Exception:
-            source_lvals = db.session.query(SourceLval).all()
-        if debug:
-            dump_table("SOURCE LVALS", source_lvals, ['ast_name', 'len_bytes', 'loc'])
-        else:
-            print("source_lvals:", len(source_lvals))
-
-        # 2. LabelSets (LabelSetUniq: ptr, inputfile -- ptr alone ties across inputs)
-        try:
-            label_sets = db.session.query(LabelSet).order_by(LabelSet.inputfile, LabelSet.ptr).all()
-        except Exception:
-            label_sets = db.session.query(LabelSet).all()
-        if debug:
-            dump_table("LABEL SETS", label_sets, ['ptr', 'inputfile', 'labels'])
-        else:
-            print("label_sets:", len(label_sets))
-
-        # 3. AttackPoints (AttackPointUniq: loc, type, trace_index)
-        try:
-            attack_points = db.session.query(AttackPoint).order_by(
-                AttackPoint._f, AttackPoint._bl, AttackPoint._bc, AttackPoint._el, AttackPoint._ec,
-                AttackPoint.type, AttackPoint.trace_index).all()
-        except Exception:
-            attack_points = db.session.query(AttackPoint).all()
-        if debug:
-            # calltrace holds CallTrace ids; print the (caller, file) each points to, in order.
-            ct_by_id = {ct.id: (ct.caller, ct.file) for ct in db.session.query(CallTrace)}
-            dump_table("ATTACK POINTS", attack_points, [
-                'type', 'loc',
-                ('calltrace', lambda a: [ct_by_id.get(i, f"<missing {i}>") for i in a.calltrace]),
-                'stack_offset', 'trace_index'])
-        else:
-            print("attack_points:", len(attack_points))
-
-        # 4. DUAs (DuaUniq: lval, inputfile, instr, fake_dua), instr first so the
-        # dump still reads in trace order
-        try:
-            duas = db.session.query(Dua).join(SourceLval, Dua.lval == SourceLval.id).options(
-                joinedload(Dua.lval_relationship)).order_by(
-                Dua.instr, Dua.inputfile,
-                SourceLval._f, SourceLval._bl, SourceLval._bc, SourceLval._el, SourceLval._ec,
-                SourceLval.ast_name, Dua.fake_dua).all()
-        except Exception:
-            duas = db.session.query(Dua).all()
-
-        if debug:
-            dump_table("DUAs (Dead Uncomplicated Available)", duas, [
-                ('lval', lambda d: f"{_fmt_loc(d.lval_relationship.loc)} {d.lval_relationship.ast_name}"),
-                'instr', 'fake_dua', 'inputfile',
-                'max_tcn', 'max_cardinality', 'all_labels', 'byte_tcn', 'viable_bytes', 'trace_index', 'death_instr'])
-        else:
-            print("duas:", len(duas))
-
-        # 5. CallTrace (unique: caller, file)
-        try:
-            call_traces = db.session.query(CallTrace).order_by(CallTrace.caller, CallTrace.file).all()
-        except Exception:
-            call_traces = db.session.query(CallTrace).all()
-
-        if debug:
-            dump_table("CallTrace", call_traces, ['caller', 'file'])
-        else:
-            print("call traces:", len(call_traces))
-
-        # 6. Count Attack Point Execution
-        #try:
-        #    attack_point_executions = db.session.query(AtpExecution).order_by(AtpExecution.id).all()
-        #except Exception:
-        #    attack_point_executions = db.session.query(AtpExecution).all()
-        #if debug and not project_data["use_c_fbi"]:
-        #    dump_table("ATTACK POINT EXECUTIONS", attack_point_executions, ['id', 'atp', 'inputfile', 'instr', 'pid', 'tid'])
-        #else:
-        #    print("attack_point execution:", len(attack_point_executions))
-
-        # 7. Count Liveness
-        #try:
-        #    liveness_by_file_iter = db.session.query(LivenessSnapshot).order_by(LivenessSnapshot.id).all()
-        #except Exception:
-        #    liveness_by_file_iter = db.session.query(LivenessSnapshot).all()
-        #if debug and not project_data["use_c_fbi"]:
-        #    dump_table("LIVENESS SNAPSHOTS", liveness_by_file_iter, ['id', 'inputfile', 'death_instr'])
-        #else:
-        #    print("liveness:", len(liveness_by_file_iter))
+            # The transaction context commits only after successful processing.
+            # Drain the final partial execution batch before that commit.
+            flush_atp_executions(db.session)
 
 
 def main():

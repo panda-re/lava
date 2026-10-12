@@ -17,10 +17,11 @@ from typing import Optional
 
 # LAVA
 from . import dwarfdump
-from ..taint.find_bug_injection import parse_panda_log, print_bug_stats
+from ..taint.find_bug_injection import parse_panda_log
+from ..utils.database_types import print_bug_stats, print_phase2_stats
 from ..utils.vars import parse_vars
 from ..utils.funcs import tick, tock, progress
-from ..taint.generate_bugs import record_injectable_bugs_offline, print_phase2_stats
+from ..taint.generate_bugs import record_injectable_bugs_offline
 
 
 def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optional[str] = None):

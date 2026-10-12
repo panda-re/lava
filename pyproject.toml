@@ -80,6 +80,7 @@ classifiers = [
 ]
 [project.scripts]
 lava = "pyroclastic.lava:main"
+lava-dump = "pyroclastic.utils.database_types:main"
 lava-init = "pyroclastic.utils.init_host:main"
 lava-verify = "pyroclastic.inject.verify_build:main"
 lava-coverage = "pyroclastic.magmalyze.coverage:main"

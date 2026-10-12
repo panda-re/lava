@@ -1,15 +1,13 @@
+from typing import Iterable, Sequence, TypeVar
 from ..utils.database_types import Dua, Range, LabelSet
 
-
-def dprint(project_data: dict, message: str):
-    if project_data.get("debug", False):
-        print(message)
+T = TypeVar("T")
 
 
-def disjoint(list1: list[int] | set[int], list2: list[int]) -> bool:
+def disjoint(list1: Sequence[int], list2: Sequence[int]) -> bool:
     """
-    Return True if the two sorted lists have no element in common.
-    Both lists must be sorted in ascending order.
+    Return True if the two sorted sequences have no element in common.
+    Both sequences must be sorted in ascending order; sort sets before calling.
     """
     i, j = 0, 0
     len1, len2 = len(list1), len(list2)
@@ -31,20 +29,17 @@ def count_nonzero(viable_bytes: list[LabelSet]) -> int:
     return sum(1 for x in viable_bytes if x is not None)
 
 
-def merge_into(target_set: set[int | Dua], new_labels: set[int | Dua]) -> set:
+def merge_into(target_set: set[T], new_labels: Iterable[T]) -> set[T]:
     target_set.update(new_labels)
     return target_set
 
 
 def get_dua_dead_range(dua: Dua, to_avoid: list[int], liveness: dict[int, int], project_data: dict) -> Range:
     viable_bytes = dua.viable_bytes
-    dprint(project_data, f"checking viability of dua: currently {count_nonzero(viable_bytes)} viable bytes")
     if "nodua" in dua.lval_relationship.ast_name:
-        dprint(project_data, f"Found nodua symbol, skipping {dua.lval_relationship.ast_name}")
         empty = Range(0, 0)
         return empty
-    result = get_dead_range(dua.viable_bytes, to_avoid, liveness, project_data)
-    dprint(project_data, f"{dua}\ndua has {result.size()} viable bytes")
+    result = get_dead_range(viable_bytes, to_avoid, liveness, project_data)
     return result
 
 
@@ -64,9 +59,6 @@ def get_dead_range(viable_bytes: list[LabelSet | None], to_avoid: list[int],
             else:
                 for label in label_set.labels:
                     if liveness.get(label, 0) > project_data["max_liveness"]:
-                        # Also fixed the KeyError risk in the dprint statement!
-                        dprint(project_data,
-                               f"byte offset is nonviable b/c label {label} has liveness {liveness.get(label, 0)}")
                         byte_viable = False
                         break
 

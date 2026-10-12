@@ -1289,10 +1289,14 @@ def main(arguments: argparse.Namespace, lp: LavaPaths):
     print("inject complete %.2f seconds" % (time.time() - start_time))
 
 
-if __name__ == "__main__":
+def inject_main():
     parent = get_inject_parser()
     parser = argparse.ArgumentParser(parents=[parent], description='Inject and test LAVA bugs.')
     parser.add_argument('-p', '--project_name', help='Project name')
     args = parser.parse_args()
     lp = LavaPaths(args)
     main(args, lp)
+
+
+if __name__ == "__main__":
+    inject_main()

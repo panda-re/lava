@@ -135,3 +135,12 @@ message LivenessSnapshot {
     uint64 atp_instr = 4;
     uint64 liveness_count = 5;
 }
+
+// Absolute counts changed since the preceding saved checkpoint.
+message LivenessDelta {
+    uint64 id = 1;
+    string inputfile = 2;
+    uint32 label = 3;
+    uint64 atp_instr = 4;
+    uint64 liveness_count = 5;
+}
