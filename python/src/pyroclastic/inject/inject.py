@@ -4,6 +4,7 @@ import sys
 import time
 import math
 import os
+import hashlib
 import json
 import struct
 import shutil
@@ -785,6 +786,12 @@ def seed_input_for_bug(project: dict, bug: Bug) -> str:
     Returns:
         Absolute path to the seed input under <config_dir>/inputs
     """
+    provenance = bug.trigger_relationship.dua_relationship.file_taint
+    if provenance:
+        seed_path = provenance.seed_path
+        if hashlib.sha256(Path(seed_path).read_bytes()).hexdigest() != provenance.sha256:
+            raise ValueError(f"Mined seed hash mismatch: {seed_path}")
+        return seed_path
     seed_name = bug.trigger_relationship.dua_relationship.inputfile
     seed_path = os.path.abspath(os.path.join(project["config_dir"], "inputs", seed_name))
     if not os.path.isfile(seed_path):
@@ -845,7 +852,11 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
         fuzz_labels_list.extend([d.all_labels for d in extra_query])
     mutate_file(str(unfuzzed_input_file), fuzz_labels_list, fuzzed_input_file_name, bug,
             solution=solution, **mutfile_kwargs)
-    rv, output = run_modified_program(project, lp.bugs_install,
+    invocation_project = dict(project)
+    provenance = bug.trigger_relationship.dua_relationship.file_taint
+    if provenance:
+        invocation_project['command'] = provenance.command
+    rv, output = run_modified_program(invocation_project, lp.bugs_install,
                                       fuzzed_input_file_name, shell=True)
     print(f"retval = {rv}")
     validated = False
@@ -926,11 +937,15 @@ def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths,
     print(bug_list)
     print("------------\n")
     unfuzzed_outputs = {}
-    for input_file in input_files:
-        unfuzzed_input = os.path.join(project["config_dir"], 'inputs', os.path.basename(input_file))
-        rv, output = run_modified_program(project, lp.bugs_install,
-                                          str(unfuzzed_input), shell=True)
-        unfuzzed_outputs[os.path.basename(input_file)] = output
+    for bug in bug_list:
+        unfuzzed_input = seed_input_for_bug(project, bug)
+        invocation_project = dict(project)
+        provenance = bug.trigger_relationship.dua_relationship.file_taint
+        if provenance:
+            invocation_project['command'] = provenance.command
+        rv, output = run_modified_program(invocation_project, lp.bugs_install,
+                                          unfuzzed_input, shell=True)
+        unfuzzed_outputs[bug.trigger_relationship.dua_relationship.inputfile] = output
         if rv != arguments.exitCode:
             print("***** buggy program fails on original input - \
                   Exit code {} does not match expected {}"

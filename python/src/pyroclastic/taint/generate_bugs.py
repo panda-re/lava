@@ -3,7 +3,7 @@ from typing import cast, Dict
 import argparse
 from sqlalchemy.orm import joinedload
 from ..utils.database_types import AttackPoint, Bug, \
-    DuaBytes, Dua, LavaDatabase, BugKind, AtpExecution, AtpKind, LivenessSnapshot, Range
+    DuaBytes, Dua, LavaDatabase, BugKind, AtpExecution, AtpKind, LivenessSnapshot, Range, FileTaint
 from ..taint.taint_utils import get_dua_dead_range, disjoint, merge_into
 from ..utils.vars import parse_vars
 
@@ -232,7 +232,11 @@ def _get_or_create_bug_like_cpp(
 
 def _record_injectable_bugs_offline_lava1(project_data: dict):
     with LavaDatabase(project_data) as db:
-        distinct_files = db.session.query(Dua.inputfile).distinct().all()
+        inputs = db.session.query(Dua.inputfile)
+        if project_data.get("same_command", False):
+            inputs = inputs.join(FileTaint, Dua.inputfile == FileTaint.seed_path).filter(
+                FileTaint.command == project_data['command'], FileTaint.complete.is_(True))
+        distinct_files = inputs.distinct().all()
         file_list = [f[0] for f in distinct_files]
 
         if not file_list:
@@ -460,7 +464,11 @@ def _record_injectable_bugs_offline_lava2(project_data: dict):
     that map to those bug types) are skipped entirely.
     """
     with LavaDatabase(project_data) as db:
-        executions = db.session.query(AtpExecution).order_by(
+        execution_query = db.session.query(AtpExecution)
+        if project_data.get("same_command", False):
+            execution_query = execution_query.join(FileTaint, AtpExecution.inputfile == FileTaint.seed_path).filter(
+                FileTaint.command == project_data['command'], FileTaint.complete.is_(True))
+        executions = execution_query.order_by(
             AtpExecution.atp_id.asc(), AtpExecution.inputfile.asc(), AtpExecution.instr.asc()
         ).all()
 

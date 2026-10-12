@@ -286,6 +286,7 @@ struct Dua {
 
     uint64_t instr;     // instr count
     bool fake_dua;      // true iff this dua is fake (corresponds to untainted bytes)
+    std::string recording;
     uint64_t trace_index;   // Index into the SourceTrace
     uint64_t length;    // length of taint query header, used to make DuaBytes retroactively
     #pragma db null
@@ -347,6 +348,7 @@ struct Dua {
         p.add_byte_tcn(0);
         p.add_all_labels(0);
         p.set_inputfile(this->inputfile);
+        p.set_recording(this->recording);
         p.set_max_tcn(this->max_tcn);
         p.set_max_cardinality(this->max_cardinality);
         p.set_instr(this->instr);
@@ -413,6 +415,32 @@ struct DuaBytes {
 };
 
 #pragma db object
+struct FileTaint {
+#pragma db id auto
+    uint64_t id;
+#pragma db not_null
+    std::string filename;
+#pragma db not_null
+    std::string sha256;
+#pragma db not_null
+    std::string command;
+#pragma db not_null unique
+    std::string seed_path;
+#pragma db not_null
+    std::string recording;
+#pragma db not_null
+    bool complete;
+#pragma db index("FileTaintUniq") unique members(filename, sha256, command)
+    void __enforce_proto() const {
+        enforce_name_match<FileTaint, lava::FileTaint>("FileTaint");
+        lava::FileTaint p;
+        p.set_id(id); p.set_filename(filename); p.set_sha256(sha256);
+        p.set_command(command); p.set_seed_path(seed_path);
+        p.set_recording(recording); p.set_complete(complete);
+    }
+};
+
+#pragma db object
 struct SourceTrace {
 #pragma db id auto
     uint64_t id;
@@ -420,12 +448,14 @@ struct SourceTrace {
 #pragma db not_null
     uint64_t index;
 #pragma db not_null
+    std::string recording;
+#pragma db not_null
     ASTLoc loc;
 
-#pragma db index("SourceTraceUniq") unique members(index)
+#pragma db index("SourceTraceUniq") unique members(recording, index)
 
     bool operator<(const SourceTrace &other) const {
-        return index < other.index;
+        return std::tie(recording, index) < std::tie(other.recording, other.index);
     }
 };
 
@@ -469,10 +499,11 @@ struct AttackPoint {
     } type;
 
     std::vector<uint64_t> calltrace;
+    std::string recording;
     uint64_t trace_index;   // Index into the SourceTrace
     uint64_t stack_offset;  // Used for Chaff Bugs
 
-#pragma db index("AttackPointUniq") unique members(loc, type, trace_index)
+#pragma db index("AttackPointUniq") unique members(loc, type, recording, trace_index)
 
     bool operator<(const AttackPoint &other) const {
         return std::tie(type, loc) <
@@ -506,6 +537,7 @@ struct AttackPoint {
         lava::AttackPoint p;
         p.set_id(this->id);
         this->loc.__enforce_proto();
+        p.set_recording(this->recording);
         p.set_type(static_cast<lava::AttackPoint::AtpKind>(this->type));
     }
 };
