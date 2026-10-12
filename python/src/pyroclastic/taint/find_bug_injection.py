@@ -765,7 +765,11 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     record_trace(ple, lava_db, db.session, current_source_trace_id)
                     current_source_trace_id += 1
                 elif "fileTaintMatch" in ple:
-                    project_data["input_file"] = os.path.basename(ple['fileTaintMatch']['filename'])
+                    next_input = os.path.basename(ple['fileTaintMatch']['filename'])
+                    # A repeated open of the same input is not a fresh label stream.
+                    if project_data.get("input_file") == next_input:
+                        continue
+                    project_data["input_file"] = next_input
                     project_data["pid"] = ple['fileTaintMatch'].get('pid', 0)
                     project_data["tid"] = ple['fileTaintMatch'].get('tid', 0)
                     last_snapshotted_instr = -1
