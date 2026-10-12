@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..utils.database_types import print_bug_stats
 from ..utils.database_types import SourceTrace, CallTrace
 from ..utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, LavaDatabase, Dua
-from ..utils.database_types import AtpKind, AtpExecution, LivenessSnapshot
+from ..utils.database_types import AtpKind, AtpExecution, LivenessDelta
 from ..taint.taint_utils import get_dua_dead_range, get_dead_range, merge_into
 from ..utils.vars import parse_vars
 
@@ -53,7 +53,8 @@ _L1_CACHE = {}
 # A global to prevent duplicate liveness snapshots for the same instruction
 last_snapshotted_instr: int = -1
 
-ATP_EXECUTION_BATCH_SIZE = 1000
+# Bound temporary row buffers; batches remain inside the whole-log transaction.
+MINING_INSERT_BATCH_SIZE = 1000
 
 
 def record_atp_execution(session: Session, *, atp_id: int, inputfile: str,
@@ -79,7 +80,7 @@ def record_atp_execution(session: Session, *, atp_id: int, inputfile: str,
         return
     keys_by_file[inputfile].add(key)
     state["rows"].append(dict(atp=atp_id, inputfile=inputfile, instr=instr, pid=pid, tid=tid))
-    if len(state["rows"]) >= ATP_EXECUTION_BATCH_SIZE:
+    if len(state["rows"]) >= MINING_INSERT_BATCH_SIZE:
         flush_atp_executions(session)
 
 
@@ -298,7 +299,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         calltrace_ids.append(ct.id)
 
     # Create AttackPoint (QUERY_POINT) for Chaff Bugs
-    # TODO: We might want to differentiate ATPs for Chaff Bugs and RET_BUFFER?
     atp = cast(AttackPoint, get_or_create(
         session,
         AttackPoint,
@@ -358,18 +358,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             for l in sorted_labels:
                 dua_dependencies[l].add(dua)
 
-        # Save Exploit Pads used for RET_BUFFER offline
-        #if length >= 20:
-        #    dua_range: Range = get_dua_exploit_pad(dua)
-        #    get_or_create(
-        #        session,
-        #        DuaBytes,
-        #        dua=dua.id,
-        #        selected=dua_range,
-        #    )
-        #    dprint(project_data, f"Saved DuaBytes for DUA {dua.id}: [{dua_range.low}, {dua_range.high}]")
-
-
         # 6. Global State Maintenance (recent_dead_duas)
         # Logic: Replace old DUA with same lval_id, or insert new.
 
@@ -405,37 +393,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             num_real_duas += 1
         if is_fake_dua:
             num_fake_duas += 1
-
-    # Pre-compute Dua Pads for Chaff Bugs
-    # randcount = random_sampling_threshold
-    # if random_sampling_threshold > len(recent_duas_by_instr):
-    #    for lval_id, exploit_dua in recent_dead_duas.items():
-    #        r = get_dua_dead_range(exploit_dua, [], project_data)
-    #        if r.empty():
-    #            continue
-    #        
-    #        get_or_create(
-    #            session,
-    #            DuaBytes,
-    #            dua=exploit_dua.id,
-    #            selected=r,
-    #        )
-    #else:
-    #    while randcount > 0:
-    #        randcount -= 1
-    #        if not recent_duas_by_instr:
-    #            break
-    #        
-    #        exploit_dua = next(iter(recent_duas_by_instr))
-    #        r = get_dua_dead_range(exploit_dua, [], project_data)
-    #        if r.empty():
-    #            continue        
-    #        get_or_create(
-    #            session,
-    #            DuaBytes,
-    #            dua=exploit_dua.id,
-    #            selected=r
-    #        )
 
 
 def _make_hashable(val):
@@ -701,10 +658,6 @@ def load_db(db_file: str) -> dict[int, str]:
     return string_ids
 
 
-# Bound transient snapshot memory independently of the log-entry commit interval.
-LIVENESS_INSERT_BATCH_SIZE = 1000
-
-
 def save_liveness_to_db(session: Session, atp_instr: int):
     global last_snapshotted_instr
 
@@ -713,15 +666,19 @@ def save_liveness_to_db(session: Session, atp_instr: int):
         return
 
     rows = []
-    statement = LivenessSnapshot.__table__.insert()
+    statement = LivenessDelta.__table__.insert()
+    previous_by_file = session.info.setdefault("mining_liveness_counts", {})
     # Core writes use the session's transaction without autoflushing unrelated ORM
     # state. Snapshots have no foreign keys and no consumer needs their ORM objects.
     connection = None
     for input_file, liveness in liveness_by_file.items():
+        previous = previous_by_file.setdefault(input_file, {})
         for label, current_count in liveness.items():
+            if label in previous and previous[label] == current_count:
+                continue
             rows.append(dict(inputfile=input_file, label=label,
                              atp_instr=atp_instr, liveness_count=current_count))
-            if len(rows) == LIVENESS_INSERT_BATCH_SIZE:
+            if len(rows) == MINING_INSERT_BATCH_SIZE:
                 if connection is None:
                     connection = session.connection()
                 connection.execute(statement, rows)
@@ -731,6 +688,9 @@ def save_liveness_to_db(session: Session, atp_instr: int):
             connection = session.connection()
         connection.execute(statement, rows)
 
+    # Publish the comparison state only after every insert succeeds.
+    for input_file, liveness in liveness_by_file.items():
+        previous_by_file[input_file] = dict(liveness)
     last_snapshotted_instr = atp_instr
 
 
@@ -738,6 +698,8 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
     """
     Main function for Find Bug Inject (FBI) tool.
     """
+    global last_snapshotted_instr
+    last_snapshotted_instr = -1
     # maps from ind -> (filename, lvalname, attackpointname)
     root_directory = project_data["output_dir"]
     lavadb = f"{root_directory}/lavadb"
@@ -787,7 +749,10 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     project_data["input_file"] = os.path.basename(ple['fileTaintMatch']['filename'])
                     project_data["pid"] = ple['fileTaintMatch'].get('pid', 0)
                     project_data["tid"] = ple['fileTaintMatch'].get('tid', 0)
+                    last_snapshotted_instr = -1
+                    db.session.info.pop("mining_liveness_counts", None)
                     # Nuke the global state
+                    current_source_trace_id = 0
                     liveness_by_file.clear()
                     dua_dependencies.clear()
                     recent_dead_duas.clear()

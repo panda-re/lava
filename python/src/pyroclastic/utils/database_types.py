@@ -13,7 +13,7 @@ from sqlalchemy.sql.expression import func
 from sqlalchemy.types import BigInteger, Boolean, Integer, Text
 from sqlalchemy.engine.url import URL
 from sqlalchemy.types import TypeDecorator
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import ARRAY
 
 Base = declarative_base()
@@ -869,6 +869,22 @@ class LivenessSnapshot(Base):
     # UPDATE: Allow multiple snapshots per label at different instruction points
     __table_args__ = (
         UniqueConstraint('inputfile', 'label', 'atp_instr', name='LivenessSnapshotUniq'),
+    )
+
+class LivenessDelta(Base):
+    """Absolute label counts changed since the preceding saved checkpoint."""
+    __tablename__ = 'liveness_delta'
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    inputfile: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    atp_instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    liveness_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+
+    __table_args__ = (
+        UniqueConstraint('inputfile', 'label', 'atp_instr', name='LivenessDeltaUniq'),
+        Index('LivenessDeltaTimeline', 'inputfile', 'atp_instr', 'id'),
     )
 
 def dump_table(title: str, rows: list, attributes: list):

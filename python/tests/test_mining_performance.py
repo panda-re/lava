@@ -64,7 +64,7 @@ def snapshot_session():
     from sqlalchemy import Column, Integer, MetaData, Table, Text, create_engine
     from sqlalchemy.orm import Session
     engine = create_engine("sqlite://")
-    Table("liveness_snapshot", MetaData(),
+    Table("liveness_delta", MetaData(),
           Column("id", Integer, primary_key=True),
           Column("inputfile", Text, nullable=False),
           Column("label", Integer, nullable=False),
@@ -76,8 +76,8 @@ def snapshot_session():
 def test_snapshot_batches_preserve_contents_and_first_checkpoint(monkeypatch):
     from sqlalchemy import select
     from pyroclastic.taint import find_bug_injection as mining
-    from pyroclastic.utils.database_types import LivenessSnapshot
-    monkeypatch.setattr(mining, "LIVENESS_INSERT_BATCH_SIZE", 2)
+    from pyroclastic.utils.database_types import LivenessDelta
+    monkeypatch.setattr(mining, "MINING_INSERT_BATCH_SIZE", 2)
     monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
     counts = {"first": {1: 0, 2: 3, 3: 5}, "second": {4: 2}}
     monkeypatch.setattr(mining, "liveness_by_file", counts)
@@ -86,29 +86,35 @@ def test_snapshot_batches_preserve_contents_and_first_checkpoint(monkeypatch):
         counts["first"][2] = 7
         mining.save_liveness_to_db(session, 10)  # Equal instr keeps first state.
         mining.save_liveness_to_db(session, 11)
-        rows = session.execute(select(LivenessSnapshot.inputfile, LivenessSnapshot.label,
-                                      LivenessSnapshot.atp_instr,
-                                      LivenessSnapshot.liveness_count)
-                               .order_by(LivenessSnapshot.id)).all()
+        rows = session.execute(select(LivenessDelta.inputfile, LivenessDelta.label,
+                                      LivenessDelta.atp_instr,
+                                      LivenessDelta.liveness_count)
+                               .order_by(LivenessDelta.id)).all()
         assert rows == [("first", 1, 10, 0), ("first", 2, 10, 3),
                         ("first", 3, 10, 5), ("second", 4, 10, 2),
-                        ("first", 1, 11, 0), ("first", 2, 11, 7),
-                        ("first", 3, 11, 5), ("second", 4, 11, 2)]
+                        ("first", 2, 11, 7)]
+        timeline = generate_bugs.LivenessTimeline(session, "first")
+        timeline.PAGE_SIZE = 2
+        assert dict(timeline.at(10)) == {1: 0, 2: 3, 3: 5}
+        assert dict(timeline.at(11)) == {1: 0, 2: 7, 3: 5}
+        assert dict(timeline.at(12)) == {1: 0, 2: 7, 3: 5}
+        assert dict(timeline.at(9)) == {}
+        assert dict(timeline.at(10)) == {1: 0, 2: 3, 3: 5}
 
 
 def test_snapshot_insert_does_not_flush_and_rolls_back(monkeypatch):
     from sqlalchemy import select, func
     from pyroclastic.taint import find_bug_injection as mining
-    from pyroclastic.utils.database_types import LivenessSnapshot
+    from pyroclastic.utils.database_types import LivenessDelta
     monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
     monkeypatch.setattr(mining, "liveness_by_file", {"input": {1: 3}})
     with snapshot_session() as session:
-        pending = LivenessSnapshot(inputfile="pending", label=99, atp_instr=1,
+        pending = LivenessDelta(inputfile="pending", label=99, atp_instr=1,
                                    liveness_count=0)
         session.add(pending)
         mining.save_liveness_to_db(session, 10)
         assert pending in session.new
-        count = select(func.count()).select_from(LivenessSnapshot.__table__)
+        count = select(func.count()).select_from(LivenessDelta.__table__)
         assert session.connection().execute(count).scalar_one() == 1
         session.rollback()
         assert session.connection().execute(count).scalar_one() == 0
@@ -157,7 +163,7 @@ def test_execution_batches_keep_identity_payload_and_order(monkeypatch):
     statements = []
     event.listen(engine, "before_cursor_execute",
                  lambda conn, cursor, statement, params, context, many: statements.append(statement))
-    monkeypatch.setattr(mining, "ATP_EXECUTION_BATCH_SIZE", 2)
+    monkeypatch.setattr(mining, "MINING_INSERT_BATCH_SIZE", 2)
     with Session(engine) as session:
         # Existing rows and repeated buffered identities keep their first payload.
         mining.record_atp_execution(session, atp_id=8, inputfile="a", instr=1, pid=99)
@@ -229,7 +235,7 @@ def test_log_import_is_atomic_after_former_commit_boundary(tmp_path, monkeypatch
     from contextlib import contextmanager
     from sqlalchemy import select, func
     from pyroclastic.taint import find_bug_injection as mining
-    from pyroclastic.utils.database_types import LivenessSnapshot
+    from pyroclastic.utils.database_types import LivenessDelta
 
     (tmp_path / "lavadb").write_text("")
     entries = [{"attackPoint": {}, "instr": hex(i)} for i in range(1, 502)]
@@ -248,9 +254,11 @@ def test_log_import_is_atomic_after_former_commit_boundary(tmp_path, monkeypatch
         yield SimpleNamespace(session=session)
 
     monkeypatch.setattr(mining, "LavaDatabase", database)
-    monkeypatch.setattr(mining, "attack_point_lval_usage",
-                        lambda entry, session, *args:
-                        mining.save_liveness_to_db(session, int(entry["instr"], 0)))
+    def save_checkpoint(entry, session, *args):
+        instr = int(entry["instr"], 0)
+        mining.liveness_by_file["input"][1] = instr
+        mining.save_liveness_to_db(session, instr)
+    monkeypatch.setattr(mining, "attack_point_lval_usage", save_checkpoint)
     try:
         if malformed:
             import ijson
@@ -259,7 +267,7 @@ def test_log_import_is_atomic_after_former_commit_boundary(tmp_path, monkeypatch
         else:
             mining.parse_panda_log(str(log), {"output_dir": str(tmp_path)})
         count = session.connection().execute(
-            select(func.count()).select_from(LivenessSnapshot.__table__)).scalar_one()
+            select(func.count()).select_from(LivenessDelta.__table__)).scalar_one()
         assert count == (0 if malformed else 501)
     finally:
         session.close()
@@ -307,3 +315,50 @@ def test_atomic_get_or_create_without_savepoints(monkeypatch, fail):
         assert not any("SAVEPOINT" in sql for sql in statements)
         assert sum(sql.startswith("SELECT") for sql in statements) == 2
         assert session.execute(select(func.count()).select_from(Entity)).scalar_one() == (0 if fail else 2)
+
+
+def test_delta_reconstruction_matches_full_snapshots(monkeypatch):
+    import random
+    from sqlalchemy import select, func
+    from pyroclastic.taint import find_bug_injection as mining
+    from pyroclastic.utils.database_types import LivenessDelta
+    rng = random.Random(1234)
+    monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
+    monkeypatch.setattr(mining, "MINING_INSERT_BATCH_SIZE", 3)
+    counts = {"a": {}, "b": {0: 0}}
+    monkeypatch.setattr(mining, "liveness_by_file", counts)
+    baseline = []
+    with snapshot_session() as session:
+        for instr in range(100):
+            for _ in range(rng.randrange(4)):
+                filename = rng.choice(["a", "b"])
+                label = rng.randrange(12)
+                counts[filename][label] = counts[filename].get(label, 0) + 1
+            mining.save_liveness_to_db(session, instr)
+            baseline.append({f: dict(c) for f, c in counts.items()})
+            # Changes at the same instr must wait for the next saved checkpoint.
+            counts["a"][99] = counts["a"].get(99, 0) + 1
+            mining.save_liveness_to_db(session, instr)
+        timelines = {f: generate_bugs.LivenessTimeline(session, f) for f in counts}
+        for timeline in timelines.values():
+            timeline.PAGE_SIZE = 3
+        for instr, checkpoint in enumerate(baseline):
+            for filename, timeline in timelines.items():
+                assert dict(timeline.at(instr)) == checkpoint[filename]
+        stored = session.execute(select(func.count()).select_from(LivenessDelta)).scalar_one()
+        full_rows = sum(len(c) for checkpoint in baseline for c in checkpoint.values())
+        assert stored < full_rows
+
+
+def test_delta_failed_insert_does_not_advance_comparison_state(monkeypatch):
+    from unittest.mock import MagicMock
+    from pyroclastic.taint import find_bug_injection as mining
+    monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
+    monkeypatch.setattr(mining, "liveness_by_file", {"a": {1: 2}})
+    session = MagicMock()
+    session.info = {}
+    session.connection.return_value.execute.side_effect = RuntimeError("write failed")
+    with pytest.raises(RuntimeError, match="write failed"):
+        mining.save_liveness_to_db(session, 10)
+    assert session.info["mining_liveness_counts"] == {"a": {}}
+    assert mining.last_snapshotted_instr == -1

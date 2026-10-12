@@ -1,9 +1,10 @@
 import logging
 from bisect import bisect_left
+from sqlalchemy import select, tuple_
 from typing import cast, Dict
 import argparse
 from ..utils.database_types import print_phase2_stats, AttackPoint, Bug, \
-    DuaBytes, Dua, LavaDatabase, BugKind, AtpExecution, AtpKind, LivenessSnapshot, Range
+    DuaBytes, Dua, LavaDatabase, BugKind, AtpExecution, AtpKind, LivenessDelta, Range
 from ..taint.taint_utils import get_dua_dead_range, disjoint, merge_into
 from ..utils.vars import parse_vars
 
@@ -230,6 +231,57 @@ def _get_or_create_bug_like_cpp(
         ))
 
 
+class LivenessTimeline:
+    """Reconstruct checkpoints from absolute deltas with bounded scalar pages.
+
+    LAVA 1 asks in instruction order. Backward seeks (the experimental LAVA 2
+    path) restart reconstruction instead of returning a later checkpoint's state.
+    """
+    PAGE_SIZE = 1000
+
+    def __init__(self, session, inputfile):
+        self.session = session
+        self.inputfile = inputfile
+        self.reset()
+
+    def reset(self):
+        self.counts = {}
+        self.position = None
+        self.page = []
+        self.index = 0
+        self.exhausted = False
+        self.instr = -1
+
+    def at(self, instr):
+        if instr < self.instr:
+            self.reset()
+        while True:
+            if self.index == len(self.page):
+                if self.exhausted:
+                    break
+                statement = select(LivenessDelta.atp_instr, LivenessDelta.id,
+                                   LivenessDelta.label, LivenessDelta.liveness_count).where(
+                                       LivenessDelta.inputfile == self.inputfile)
+                if self.position is not None:
+                    statement = statement.where(
+                        tuple_(LivenessDelta.atp_instr, LivenessDelta.id) > self.position)
+                statement = statement.order_by(LivenessDelta.atp_instr, LivenessDelta.id).limit(self.PAGE_SIZE)
+                with self.session.no_autoflush:
+                    self.page = self.session.execute(statement).all()
+                self.index = 0
+                if not self.page:
+                    self.exhausted = True
+                    break
+            row = self.page[self.index]
+            if row.atp_instr > instr:
+                break
+            self.counts[row.label] = row.liveness_count
+            self.position = (row.atp_instr, row.id)
+            self.index += 1
+        self.instr = instr
+        return self.counts
+
+
 def _record_injectable_bugs_offline_lava1(project_data: dict):
     with LavaDatabase(project_data) as db:
         distinct_files = db.session.query(Dua.inputfile).distinct().all()
@@ -263,6 +315,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                 if candidate is not None and AtpKind(candidate.type) == AtpKind.QUERY_POINT:
                     query_point_atp_by_loc[candidate.loc] = candidate
 
+            liveness_timeline = LivenessTimeline(db.session, inputfile)
             recent_dead_duas: dict[int, Dua] = {}
             recent_duas_by_instr: dict[Dua, None] = {}
             dua_idx = 0
@@ -291,11 +344,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                     newly_observed_duas.append(dua_stream[dua_idx])
                     dua_idx += 1
 
-                liveness_records = db.session.query(LivenessSnapshot).filter(
-                    LivenessSnapshot.inputfile == inputfile,
-                    LivenessSnapshot.atp_instr == instr
-                ).all()
-                offline_liveness: dict[int, int] = {r.label: r.liveness_count for r in liveness_records}
+                offline_liveness = liveness_timeline.at(instr)
 
                 for d in newly_observed_duas:
                     if d.lval_relationship.len_bytes >= 20:
@@ -463,6 +512,7 @@ def _record_injectable_bugs_offline_lava2(project_data: dict):
 
         dua_bytes_cache: Dict[tuple, DuaBytes] = {}
 
+        liveness_timelines = {}
         executions_by_atp: dict[int, list[AtpExecution]] = {}
         for ex in executions:
             executions_by_atp.setdefault(ex.atp_id, []).append(ex)
@@ -521,11 +571,9 @@ def _record_injectable_bugs_offline_lava2(project_data: dict):
             ordered_keys = sorted(groups.keys(), key=group_max_distance, reverse=True)
 
             for inputfile, instr in ordered_keys:
-                liveness_records = db.session.query(LivenessSnapshot).filter(
-                    LivenessSnapshot.inputfile == inputfile,
-                    LivenessSnapshot.atp_instr == instr
-                ).all()
-                offline_liveness: dict[int, int] = {r.label: r.liveness_count for r in liveness_records}
+                if inputfile not in liveness_timelines:
+                    liveness_timelines[inputfile] = LivenessTimeline(db.session, inputfile)
+                offline_liveness = liveness_timelines[inputfile].at(instr)
                 available_duas = groups[(inputfile, instr)]
 
                 for bug_type in target_bug_kinds:

@@ -842,4 +842,44 @@ struct LivenessSnapshot {
         p.set_liveness_count(this->liveness_count);
     }
 };
+
+#pragma db object table("liveness_delta")
+struct LivenessDelta {
+#pragma db id auto
+    uint64_t id;
+
+    std::string inputfile;
+    uint32_t label;
+    uint64_t atp_instr;
+    uint64_t liveness_count;
+
+// Absolute counts changed since the preceding saved checkpoint.
+#pragma db index("LivenessDeltaTimeline") members(inputfile, atp_instr, id)
+#pragma db index("LivenessDeltaUniq") unique members(inputfile, label, atp_instr)
+
+    LivenessDelta() {}
+    LivenessDelta(std::string inputfile, uint32_t label, uint64_t atp_instr, uint64_t liveness_count)
+        : id(0), inputfile(inputfile), label(label), atp_instr(atp_instr), liveness_count(liveness_count) {}
+
+    bool operator<(const LivenessDelta &other) const {
+        return std::tie(inputfile, label, atp_instr, liveness_count) <
+            std::tie(other.inputfile, other.label, other.atp_instr, liveness_count);
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const LivenessDelta &snap) {
+        os << "Liveness[" << snap.inputfile << "]: Label " << snap.label << " dies at instr " << snap.atp_instr;
+        return os;
+    }
+
+    // SCHEMA ENFORCEMENT
+    void __enforce_proto() const {
+        enforce_name_match<LivenessDelta, lava::LivenessDelta>("LivenessDelta");
+        lava::LivenessDelta p;
+        p.set_id(this->id);
+        p.set_inputfile(this->inputfile);
+        p.set_label(this->label);
+        p.set_atp_instr(this->atp_instr);
+        p.set_liveness_count(this->liveness_count);
+    }
+};
 #endif
