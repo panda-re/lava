@@ -1,4 +1,4 @@
-from typing import List, Union, Any, Optional, cast
+from typing import List, Union, Any, Optional, Dict, cast
 import random
 from dataclasses import dataclass
 from enum import IntEnum
@@ -8,7 +8,7 @@ from sqlalchemy import ForeignKey, create_engine
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.orderinglist import ordering_list
-from sqlalchemy.orm import load_only, relationship, sessionmaker, composite, Mapped, mapped_column
+from sqlalchemy.orm import joinedload, load_only, relationship, sessionmaker, composite, Mapped, mapped_column
 from sqlalchemy.sql.expression import func
 from sqlalchemy.types import BigInteger, Boolean, Integer, Text
 from sqlalchemy.engine.url import URL
@@ -870,3 +870,291 @@ class LivenessSnapshot(Base):
     __table_args__ = (
         UniqueConstraint('inputfile', 'label', 'atp_instr', name='LivenessSnapshotUniq'),
     )
+
+def dump_table(title: str, rows: list, attributes: list):
+    """attributes: attribute names, or (label, getter) pairs for computed columns,
+    e.g. to print a foreign key's resolved row instead of its insertion-order id."""
+    print(f"\n==================================================")
+    print(f"=== {title} (Row Count: {len(rows)}) ===")
+    print(f"==================================================")
+    for idx, row in enumerate(rows):
+        print(f"  [{idx}] Row Instance Entry:")
+        for attr in attributes:
+            getter = None
+            if isinstance(attr, tuple):
+                attr, getter = attr
+            if getter is not None or hasattr(row, attr):
+                val = getter(row) if getter is not None else getattr(row, attr)
+
+                # Track list inner types cleanly for your surgical debugging verification
+                if isinstance(val, list):
+                    inner_type = f"list of {type(val[0]).__name__}" if val else "empty list"
+                    # Limit output size to prevent terminal buffer spam on giant label lists
+                    display_val = val if len(val) <= 12 else f"{val[:10]}... (+{len(val) - 10} more)"
+                    # FIX: Coerce the array token to a string BEFORE passing alignment modifiers
+                    str_val = str(display_val)
+                else:
+                    inner_type = type(val).__name__
+                    str_val = str(val)
+
+                print(f"    - {attr:<16}: {str_val:<55} | Type: {inner_type}")
+            else:
+                print(f"    - {attr:<16}: [NOT FOUND ON OBJECT VALUE]")
+
+def _fmt_loc(loc) -> str:
+    return f"{loc.filename}:{loc.begin.line}:{loc.begin.column}:{loc.end.line}:{loc.end.column}"
+
+
+def print_bug_stats(project_data: dict, debug: bool = False):
+    """
+    Examines and prints the complete structural contents of all mined elements
+    in a deterministic order, safely handling any nested database sequences.
+
+    Rows are sorted by their unique-index members (lava.hxx) and foreign keys are
+    printed as the row they point to, never as raw ids: ids depend on insertion
+    order, so they only line up between a C++ and a Python run by luck, which
+    stops holding on bigger, more-branching targets.
+    """
+    with LavaDatabase(project_data) as db:
+        # 1. SourceLvals (SourceLvalUniq: loc, ast_name)
+        try:
+            source_lvals = db.session.query(SourceLval).order_by(
+                SourceLval._f, SourceLval._bl, SourceLval._bc, SourceLval._el, SourceLval._ec,
+                SourceLval.ast_name).all()
+        except Exception:
+            source_lvals = db.session.query(SourceLval).all()
+        if debug:
+            dump_table("SOURCE LVALS", source_lvals, ['ast_name', 'len_bytes', 'loc'])
+        else:
+            print("source_lvals:", len(source_lvals))
+
+        # 2. LabelSets (LabelSetUniq: ptr, inputfile -- ptr alone ties across inputs)
+        try:
+            label_sets = db.session.query(LabelSet).order_by(LabelSet.inputfile, LabelSet.ptr).all()
+        except Exception:
+            label_sets = db.session.query(LabelSet).all()
+        if debug:
+            dump_table("LABEL SETS", label_sets, ['ptr', 'inputfile', 'labels'])
+        else:
+            print("label_sets:", len(label_sets))
+
+        # 3. AttackPoints (AttackPointUniq: loc, type, trace_index)
+        try:
+            attack_points = db.session.query(AttackPoint).order_by(
+                AttackPoint._f, AttackPoint._bl, AttackPoint._bc, AttackPoint._el, AttackPoint._ec,
+                AttackPoint.type, AttackPoint.trace_index).all()
+        except Exception:
+            attack_points = db.session.query(AttackPoint).all()
+        if debug:
+            # calltrace holds CallTrace ids; print the (caller, file) each points to, in order.
+            ct_by_id = {ct.id: (ct.caller, ct.file) for ct in db.session.query(CallTrace)}
+            dump_table("ATTACK POINTS", attack_points, [
+                'type', 'loc',
+                ('calltrace', lambda a: [ct_by_id.get(i, f"<missing {i}>") for i in a.calltrace]),
+                'stack_offset', 'trace_index'])
+        else:
+            print("attack_points:", len(attack_points))
+
+        # 4. DUAs (DuaUniq: lval, inputfile, instr, fake_dua), instr first so the
+        # dump still reads in trace order
+        try:
+            duas = db.session.query(Dua).join(SourceLval, Dua.lval == SourceLval.id).options(
+                joinedload(Dua.lval_relationship)).order_by(
+                Dua.instr, Dua.inputfile,
+                SourceLval._f, SourceLval._bl, SourceLval._bc, SourceLval._el, SourceLval._ec,
+                SourceLval.ast_name, Dua.fake_dua).all()
+        except Exception:
+            duas = db.session.query(Dua).all()
+
+        if debug:
+            dump_table("DUAs (Dead Uncomplicated Available)", duas, [
+                ('lval', lambda d: f"{_fmt_loc(d.lval_relationship.loc)} {d.lval_relationship.ast_name}"),
+                'instr', 'fake_dua', 'inputfile',
+                'max_tcn', 'max_cardinality', 'all_labels', 'byte_tcn', 'viable_bytes', 'trace_index', 'death_instr'])
+        else:
+            print("duas:", len(duas))
+
+        # 5. CallTrace (unique: caller, file)
+        try:
+            call_traces = db.session.query(CallTrace).order_by(CallTrace.caller, CallTrace.file).all()
+        except Exception:
+            call_traces = db.session.query(CallTrace).all()
+
+        if debug:
+            dump_table("CallTrace", call_traces, ['caller', 'file'])
+        else:
+            print("call traces:", len(call_traces))
+
+        # 6. Count Attack Point Execution
+        #try:
+        #    attack_point_executions = db.session.query(AtpExecution).order_by(AtpExecution.id).all()
+        #except Exception:
+        #    attack_point_executions = db.session.query(AtpExecution).all()
+        #if debug and not project_data["use_c_fbi"]:
+        #    dump_table("ATTACK POINT EXECUTIONS", attack_point_executions, ['id', 'atp', 'inputfile', 'instr', 'pid', 'tid'])
+        #else:
+        #    print("attack_point execution:", len(attack_point_executions))
+
+        # 7. Count Liveness
+        #try:
+        #    liveness_by_file_iter = db.session.query(LivenessSnapshot).order_by(LivenessSnapshot.id).all()
+        #except Exception:
+        #    liveness_by_file_iter = db.session.query(LivenessSnapshot).all()
+        #if debug and not project_data["use_c_fbi"]:
+        #    dump_table("LIVENESS SNAPSHOTS", liveness_by_file_iter, ['id', 'inputfile', 'death_instr'])
+        #else:
+        #    print("liveness:", len(liveness_by_file_iter))
+
+
+def _bug_atp_key(bug: Bug) -> tuple:
+    """Resolve a Bug's atp to its real-world identity (source loc + type) instead
+    of the raw auto-increment id. IDs only happen to line up between a C++ run and
+    a Python run because both populate a freshly-wiped DB in the same order --
+    that's not guaranteed on a bigger/more-branching project, where an id-based
+    diff would flag two runs' identical bugs as mismatched just because they were
+    discovered in a different order."""
+    atp = bug.atp_relationship
+    loc = atp.loc
+    return loc.filename, loc.begin.line, loc.begin.column, loc.end.line, loc.end.column, atp.type
+
+
+def _bug_lval_key(bug: Bug) -> tuple:
+    """Same idea as _bug_atp_key, for the trigger's source lval (loc + ast_name)."""
+    lval = bug.lval_relationship
+    loc = lval.loc
+    return loc.filename, loc.begin.line, loc.begin.column, loc.end.line, loc.end.column, lval.ast_name
+
+
+def _bug_trigger_key(bug: Bug) -> tuple:
+    """Same idea as _bug_atp_key, for the trigger DuaBytes: DuaBytesUniq (dua,
+    selected) with the dua resolved to DuaUniq minus lval (already in _bug_lval_key)."""
+    trigger = bug.trigger_relationship
+    dua = trigger.dua_relationship
+    return dua.inputfile, dua.instr, dua.fake_dua, trigger.selected.low, trigger.selected.high
+
+
+def _dua_str(dua: Dua, with_lval: bool) -> str:
+    """DuaUniq (lval, inputfile, instr, fake_dua) as one line. The rest of the Dua
+    (max_tcn, liveness, ...) is already covered by the Phase I DUA dump."""
+    s = f"instr={dua.instr} {'fake' if dua.fake_dua else 'real'} input={dua.inputfile}"
+    if with_lval:
+        loc = dua.lval_relationship.loc
+        s = (f"{loc.filename}:{loc.begin.line}:{loc.begin.column}:{loc.end.line}:{loc.end.column} "
+             f"{dua.lval_relationship.ast_name} {s}")
+    return s
+
+
+def _dump_bugs(bugs: list[Bug], extras_by_id: Dict[int, DuaBytes]):
+    print(f"\n==================================================")
+    print(f"=== BUGS (Row Count: {len(bugs)}) ===")
+    print(f"==================================================")
+    for idx, bug in enumerate(bugs):
+        a = _bug_atp_key(bug)
+        t = _bug_lval_key(bug)
+        atp_str = f"{a[0]}:{a[1]}:{a[2]}:{a[3]}:{a[4]} [{AtpKind(a[5]).name}]"
+        trig_str = f"{t[0]}:{t[1]}:{t[2]}:{t[3]}:{t[4]} {t[5]}"
+        trigger = bug.trigger_relationship
+        # The trigger's lval is trigger_lval above, so it isn't repeated here.
+        trig_dua_str = _dua_str(trigger.dua_relationship, with_lval=False)
+        trig_bytes_str = f"[{trigger.selected.low}, {trigger.selected.high})"
+        print(f"  [{idx}] Row Instance Entry:")
+        print(f"    - {'type':<16}: {BugKind(bug.type).name:<55} | Type: BugKind")
+        print(f"    - {'atp':<16}: {atp_str:<55} | Type: AttackPoint")
+        print(f"    - {'trigger_lval':<16}: {trig_str:<55} | Type: SourceLval")
+        print(f"    - {'trigger_dua':<16}: {trig_dua_str:<55} | Type: Dua")
+        print(f"    - {'trigger_bytes':<16}: {trig_bytes_str:<55} | Type: DuaBytes")
+        print(f"    - {'max_liveness':<16}: {str(bug.max_liveness):<55} | Type: int")
+        print(f"    - {'stackoff':<16}: {str(bug.stackoff):<55} | Type: int")
+        # Should always equal NUM_EXTRA_DUAS[bug.type].
+        print(f"    - {'num_extra_duas':<16}: {str(len(bug.extra_duas)):<55} | Type: int")
+        # extra_duas holds DuaBytes ids (insertion-order dependent), so print what
+        # each points to. Stored order is kept: for chaff bugs the position maps to
+        # a lava_set_extra slot, so a reordering is a real divergence.
+        for i, extra_id in enumerate(bug.extra_duas):
+            extra = extras_by_id.get(extra_id)
+            if extra is None:
+                print(f"    - {f'extra_dua[{i}]':<16}: <missing DuaBytes>")
+                continue
+            extra_dua_str = _dua_str(extra.dua_relationship, with_lval=True)
+            extra_bytes_str = f"[{extra.selected.low}, {extra.selected.high})"
+            print(f"    - {f'extra_dua[{i}]':<16}: {extra_dua_str:<55} | Type: Dua")
+            print(f"    - {f'extra_bytes[{i}]':<16}: {extra_bytes_str:<55} | Type: DuaBytes")
+
+
+def print_phase2_stats(project_data: dict, debug: bool = False):
+    """
+    Dumps the entities specifically created/managed around Phase II.
+    The DuaBytes table isn't dumped on its own: it also holds rows for candidates
+    that were rejected before becoming bugs, which never affect injection. Each
+    bug's trigger and extra DuaBytes are printed inline instead.
+    """
+    with LavaDatabase(project_data) as db:
+        if debug:
+            bugs = db.session.query(Bug).options(
+                joinedload(Bug.atp_relationship),
+                joinedload(Bug.lval_relationship),
+                joinedload(Bug.trigger_relationship).joinedload(DuaBytes.dua_relationship),
+            ).all()
+            # Sort by resolved semantic identity (see _bug_atp_key/_bug_lval_key),
+            # not raw ids, so the printed order -- and any diff against it -- is
+            # stable across separately-populated databases. The trigger's content
+            # breaks ties: BugUniq is (type, atp, trigger, extra_duas), so two bugs
+            # can legally share (type, atp, trigger_lval) with different trigger bytes.
+            extra_ids = {i for b in bugs for i in b.extra_duas}
+            extras_by_id: Dict[int, DuaBytes] = {
+                x.id: x for x in db.session.query(DuaBytes).options(
+                    joinedload(DuaBytes.dua_relationship).joinedload(Dua.lval_relationship)
+                ).filter(DuaBytes.id.in_(extra_ids))
+            } if extra_ids else {}
+            def extra_key(extra_id):
+                extra = extras_by_id.get(extra_id)
+                if extra is None:
+                    return (False,)
+                return (True, _dua_str(extra.dua_relationship, with_lval=True),
+                        extra.selected.low, extra.selected.high)
+
+            bugs.sort(key=lambda b: (b.type, _bug_atp_key(b), _bug_lval_key(b),
+                                     _bug_trigger_key(b), b.max_liveness, b.stackoff,
+                                     tuple(extra_key(i) for i in b.extra_duas)))
+            _dump_bugs(bugs, extras_by_id)
+        else:
+            print("bugs:", db.session.query(Bug).count())
+
+        print("Count\tBug Num\tName")
+        for kind in BugKind:
+            n = db.session.query(Bug).filter(Bug.type == kind).count()
+            print("%d\t%d\t%s" % (n, kind.value, kind.name))
+        print("total bug:", db.session.query(Bug).count())
+
+
+def dump_tables(project_data: dict, phase: str = "all"):
+    """Print the existing Phase I/II diagnostic views without running mining.
+
+    These are semantic views, not a complete or lossless database export.
+    """
+    if phase not in {"all", "1", "2"}:
+        raise ValueError(f"Unknown dump phase: {phase}")
+    if phase in {"all", "1"}:
+        print_bug_stats(project_data, debug=True)
+    if phase in {"all", "2"}:
+        print_phase2_stats(project_data, debug=True)
+
+
+def main():
+    import argparse
+    from pyroclastic.utils.vars import parse_vars
+
+    parser = argparse.ArgumentParser(description="Dump LAVA database diagnostics for comparison.")
+    parser.add_argument("--project", "-p", required=True, help="LAVA project name (uses host.json)")
+    parser.add_argument("--phase", choices=("all", "1", "2"), default="all",
+                        help="Dump both phases (default), taint entities (1), or bugs (2)")
+    parser.add_argument("--database", help="Override the resolved database name for saved runs")
+    args = parser.parse_args()
+    project = parse_vars(args.project)
+    if args.database:
+        project["db"] = args.database
+    dump_tables(project, args.phase)
+
+
+if __name__ == "__main__":
+    main()

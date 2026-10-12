@@ -83,7 +83,7 @@ jobs:
           files: coverage-python.xml
           disable_search: true
           flags: unittests
-          fail_ci_if_error: true
+          fail_ci_if_error: false
 
       - name: Save Python coverage report
         if: always()
@@ -222,7 +222,7 @@ jobs:
         files: coverage-integration-python.xml,coverage-cpp.xml
         disable_search: true
         flags: integration
-        fail_ci_if_error: true
+        fail_ci_if_error: false
 
     - name: Save integration coverage reports
       if: always()

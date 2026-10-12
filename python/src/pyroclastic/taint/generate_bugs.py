@@ -1,8 +1,7 @@
 import logging
 from typing import cast, Dict
 import argparse
-from sqlalchemy.orm import joinedload
-from ..utils.database_types import AttackPoint, Bug, \
+from ..utils.database_types import print_phase2_stats, AttackPoint, Bug, \
     DuaBytes, Dua, LavaDatabase, BugKind, AtpExecution, AtpKind, LivenessSnapshot, Range
 from ..taint.taint_utils import get_dua_dead_range, disjoint, merge_into
 from ..utils.vars import parse_vars
@@ -562,120 +561,7 @@ def record_injectable_bugs_offline(project_data: dict, mode: str = "lava1"):
     raise ValueError(f"Unknown bug-generation mode '{mode}'. Expected 'lava1' or 'lava2'.")
 
 
-def _bug_atp_key(bug: Bug) -> tuple:
-    """Resolve a Bug's atp to its real-world identity (source loc + type) instead
-    of the raw auto-increment id. IDs only happen to line up between a C++ run and
-    a Python run because both populate a freshly-wiped DB in the same order --
-    that's not guaranteed on a bigger/more-branching project, where an id-based
-    diff would flag two runs' identical bugs as mismatched just because they were
-    discovered in a different order."""
-    atp = bug.atp_relationship
-    loc = atp.loc
-    return loc.filename, loc.begin.line, loc.begin.column, loc.end.line, loc.end.column, atp.type
-
-
-def _bug_lval_key(bug: Bug) -> tuple:
-    """Same idea as _bug_atp_key, for the trigger's source lval (loc + ast_name)."""
-    lval = bug.lval_relationship
-    loc = lval.loc
-    return loc.filename, loc.begin.line, loc.begin.column, loc.end.line, loc.end.column, lval.ast_name
-
-
-def _bug_trigger_key(bug: Bug) -> tuple:
-    """Same idea as _bug_atp_key, for the trigger DuaBytes: DuaBytesUniq (dua,
-    selected) with the dua resolved to DuaUniq minus lval (already in _bug_lval_key)."""
-    trigger = bug.trigger_relationship
-    dua = trigger.dua_relationship
-    return dua.inputfile, dua.instr, dua.fake_dua, trigger.selected.low, trigger.selected.high
-
-
-def _dua_str(dua: Dua, with_lval: bool) -> str:
-    """DuaUniq (lval, inputfile, instr, fake_dua) as one line. The rest of the Dua
-    (max_tcn, liveness, ...) is already covered by the Phase I DUA dump."""
-    s = f"instr={dua.instr} {'fake' if dua.fake_dua else 'real'} input={dua.inputfile}"
-    if with_lval:
-        loc = dua.lval_relationship.loc
-        s = (f"{loc.filename}:{loc.begin.line}:{loc.begin.column}:{loc.end.line}:{loc.end.column} "
-             f"{dua.lval_relationship.ast_name} {s}")
-    return s
-
-
-def _dump_bugs(bugs: list[Bug], extras_by_id: Dict[int, DuaBytes]):
-    print(f"\n==================================================")
-    print(f"=== BUGS (Row Count: {len(bugs)}) ===")
-    print(f"==================================================")
-    for idx, bug in enumerate(bugs):
-        a = _bug_atp_key(bug)
-        t = _bug_lval_key(bug)
-        atp_str = f"{a[0]}:{a[1]}:{a[2]}:{a[3]}:{a[4]} [{AtpKind(a[5]).name}]"
-        trig_str = f"{t[0]}:{t[1]}:{t[2]}:{t[3]}:{t[4]} {t[5]}"
-        trigger = bug.trigger_relationship
-        # The trigger's lval is trigger_lval above, so it isn't repeated here.
-        trig_dua_str = _dua_str(trigger.dua_relationship, with_lval=False)
-        trig_bytes_str = f"[{trigger.selected.low}, {trigger.selected.high})"
-        print(f"  [{idx}] Row Instance Entry:")
-        print(f"    - {'type':<16}: {BugKind(bug.type).name:<55} | Type: BugKind")
-        print(f"    - {'atp':<16}: {atp_str:<55} | Type: AttackPoint")
-        print(f"    - {'trigger_lval':<16}: {trig_str:<55} | Type: SourceLval")
-        print(f"    - {'trigger_dua':<16}: {trig_dua_str:<55} | Type: Dua")
-        print(f"    - {'trigger_bytes':<16}: {trig_bytes_str:<55} | Type: DuaBytes")
-        print(f"    - {'max_liveness':<16}: {str(bug.max_liveness):<55} | Type: int")
-        print(f"    - {'stackoff':<16}: {str(bug.stackoff):<55} | Type: int")
-        # Should always equal NUM_EXTRA_DUAS[bug.type].
-        print(f"    - {'num_extra_duas':<16}: {str(len(bug.extra_duas)):<55} | Type: int")
-        # extra_duas holds DuaBytes ids (insertion-order dependent), so print what
-        # each points to. Stored order is kept: for chaff bugs the position maps to
-        # a lava_set_extra slot, so a reordering is a real divergence.
-        for i, extra_id in enumerate(bug.extra_duas):
-            extra = extras_by_id.get(extra_id)
-            if extra is None:
-                print(f"    - {f'extra_dua[{i}]':<16}: <missing DuaBytes>")
-                continue
-            extra_dua_str = _dua_str(extra.dua_relationship, with_lval=True)
-            extra_bytes_str = f"[{extra.selected.low}, {extra.selected.high})"
-            print(f"    - {f'extra_dua[{i}]':<16}: {extra_dua_str:<55} | Type: Dua")
-            print(f"    - {f'extra_bytes[{i}]':<16}: {extra_bytes_str:<55} | Type: DuaBytes")
-
-
-def print_phase2_stats(project_data: dict, debug: bool = False):
-    """
-    Dumps the entities specifically created/managed around Phase II.
-    The DuaBytes table isn't dumped on its own: it also holds rows for candidates
-    that were rejected before becoming bugs, which never affect injection. Each
-    bug's trigger and extra DuaBytes are printed inline instead.
-    """
-    with LavaDatabase(project_data) as db:
-        if debug:
-            bugs = db.session.query(Bug).options(
-                joinedload(Bug.atp_relationship),
-                joinedload(Bug.lval_relationship),
-                joinedload(Bug.trigger_relationship).joinedload(DuaBytes.dua_relationship),
-            ).all()
-            # Sort by resolved semantic identity (see _bug_atp_key/_bug_lval_key),
-            # not raw ids, so the printed order -- and any diff against it -- is
-            # stable across separately-populated databases. The trigger's content
-            # breaks ties: BugUniq is (type, atp, trigger, extra_duas), so two bugs
-            # can legally share (type, atp, trigger_lval) with different trigger bytes.
-            bugs.sort(key=lambda b: (b.type, _bug_atp_key(b), _bug_lval_key(b),
-                                     _bug_trigger_key(b), b.max_liveness, b.stackoff))
-            extra_ids = {i for b in bugs for i in b.extra_duas}
-            extras_by_id: Dict[int, DuaBytes] = {
-                x.id: x for x in db.session.query(DuaBytes).options(
-                    joinedload(DuaBytes.dua_relationship).joinedload(Dua.lval_relationship)
-                ).filter(DuaBytes.id.in_(extra_ids))
-            } if extra_ids else {}
-            _dump_bugs(bugs, extras_by_id)
-        else:
-            print("bugs:", db.session.query(Bug).count())
-
-        print("Count\tBug Num\tName")
-        for kind in BugKind:
-            n = db.session.query(Bug).filter(Bug.type == kind).count()
-            print("%d\t%d\t%s" % (n, kind.value, kind.name))
-        print("total bug:", db.session.query(Bug).count())
-
-
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="Calculate code coverage using LLVM-COV.")
     parser.add_argument("--project", "-p", required=True, dest="project_name", help="Provide the LAVA project name")
     parser.add_argument("--mode", "-m", required=False, dest="mode", default="lava1", help="Specify the bug-generation mode")
@@ -686,3 +572,7 @@ if __name__ == "__main__":
     project = parse_vars(args.project_name)
     record_injectable_bugs_offline(project, args.mode)
     print_phase2_stats(project)
+
+
+if __name__ == "__main__":
+    main()
