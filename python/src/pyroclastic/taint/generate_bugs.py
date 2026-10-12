@@ -1,10 +1,12 @@
 import logging
 from bisect import bisect_left
+from heapq import heappush, heappop
 from sqlalchemy import select, tuple_
+from sqlalchemy.orm import selectinload
 from typing import cast, Dict
 import argparse
 from ..utils.database_types import print_phase2_stats, AttackPoint, Bug, \
-    DuaBytes, Dua, LavaDatabase, BugKind, AtpExecution, AtpKind, LivenessDelta, Range
+    DuaBytes, Dua, LavaDatabase, BugKind, AtpExecution, AtpKind, LivenessDelta, Range, DuaViableByte
 from ..taint.taint_utils import get_dua_dead_range, disjoint, merge_into
 from ..utils.vars import parse_vars
 
@@ -136,6 +138,55 @@ def most_recent_dua_per_lval(duas: list[Dua]) -> dict[int, Dua]:
     return by_lval
 
 
+class BugSkipCache:
+    """Share skip identities between calls, keeping each call's snapshot fixed."""
+
+    def __init__(self, session):
+        self.session = session
+        self.loaded = {}
+        self.accepted = {}
+
+    def snapshot(self, atp_id, bug_type):
+        key = (atp_id, bug_type.value)
+        if key not in self.loaded:
+            rows = self.session.query(Bug.trigger_lval).filter(
+                Bug.atp == atp_id, Bug.type == bug_type.value).all()
+            self.loaded[key] = {row[0] for row in rows}
+        return self.loaded[key] | self.accepted.get(key, set())
+
+    def record(self, atp_id, bug_type, lval):
+        self.accepted.setdefault((atp_id, bug_type.value), set()).add(lval)
+
+
+def load_lava1_duas(session, inputfile, page_size=500):
+    """Load ordered DUAs with relationships in bounded SQL batches.
+
+    The existing reconstruction still retains the file's DUA history in memory.
+    """
+    result = []
+    position = None
+    while True:
+        query = session.query(Dua).filter(Dua.inputfile == inputfile).options(
+            selectinload(Dua.lval_relationship),
+            selectinload(Dua._viable_bytes_assoc).selectinload(DuaViableByte.labelset))
+        if position is not None:
+            query = query.filter(tuple_(Dua.instr, Dua.id) > position)
+        page = query.order_by(Dua.instr, Dua.id).limit(page_size).all()
+        if not page:
+            return result
+        result.extend(page)
+        position = (page[-1].instr, page[-1].id)
+
+
+def prune_dead_duas(deaths, instr, recent_dead_duas, recent_duas_by_instr):
+    while deaths and deaths[0][0] <= instr:
+        _, _, dua = heappop(deaths)
+        # A queued death belongs to this exact incarnation, not its replacement.
+        if recent_dead_duas.get(dua.lval) is dua:
+            del recent_dead_duas[dua.lval]
+            recent_duas_by_instr.pop(dua, None)
+
+
 def _get_or_create_bug_like_cpp(
         db: LavaDatabase,
         dua_bytes_cache: Dict[tuple, DuaBytes],
@@ -146,14 +197,17 @@ def _get_or_create_bug_like_cpp(
         offline_liveness: dict[int, int],
         project_data: dict,
         is_new_atp: bool,
-        extra_duas_prechosen: list[DuaBytes] | None = None):
+        extra_duas_prechosen: list[DuaBytes] | None = None,
+        skip_cache: BugSkipCache | None = None):
     prechosen = extra_duas_prechosen or []
     num_extra_duas = NUM_EXTRA_DUAS[bug_type] - len(prechosen)
     if num_extra_duas < 0:
         return
 
     skip_trigger_lvals: set[int] = set()
-    if not is_new_atp:
+    if not is_new_atp and skip_cache is not None:
+        skip_trigger_lvals = skip_cache.snapshot(atp.id, bug_type)
+    elif not is_new_atp:
         prior_rows = db.session.query(Bug.trigger_lval).filter(
             Bug.atp == atp.id,
             Bug.type == bug_type.value
@@ -229,6 +283,8 @@ def _get_or_create_bug_like_cpp(
             extra_duas=[e.id for e in extra_duas],
             stackoff=stackoff
         ))
+        if skip_cache is not None:
+            skip_cache.record(atp.id, bug_type, trigger_dua.lval)
 
 
 class LivenessTimeline:
@@ -292,12 +348,12 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
             return
 
         dua_bytes_cache: Dict[tuple, DuaBytes] = {}
+        skip_cache = BugSkipCache(db.session)
         for inputfile in file_list:
             print(f"[*] Processing bug combinatorics target file: {inputfile}...")
             executions = db.session.query(AtpExecution).filter_by(inputfile=inputfile).order_by(
                 AtpExecution.instr.asc(), AtpExecution.id.asc()).all()
-            dua_stream = db.session.query(Dua).filter_by(inputfile=inputfile).order_by(
-                Dua.instr.asc(), Dua.id.asc()).all()
+            dua_stream = load_lava1_duas(db.session, inputfile)
 
             if not executions:
                 continue
@@ -320,15 +376,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
             recent_duas_by_instr: dict[Dua, None] = {}
             dua_idx = 0
 
-            def prune_recent_duas(current_instr: int):
-                expired = [
-                    lval_id for lval_id, d in recent_dead_duas.items()
-                    if d.death_instr is not None and d.death_instr <= current_instr
-                ]
-                for lval_id in expired:
-                    d = recent_dead_duas.pop(lval_id, None)
-                    if d is not None:
-                        recent_duas_by_instr.pop(d, None)
+            deaths = []
 
             ordered_instrs = sorted(executions_by_instr.keys())
             for instr in ordered_instrs:
@@ -358,6 +406,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                                 # legal trigger, matching C++'s insertion order.
                                 _get_or_create_bug_like_cpp(
                                     db=db,
+                                    skip_cache=skip_cache,
                                     dua_bytes_cache=dua_bytes_cache,
                                     atp=d_atp,
                                     bug_type=BugKind.BUG_RET_BUFFER,
@@ -374,6 +423,8 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                         recent_duas_by_instr.pop(old_dua, None)
                     recent_dead_duas[d.lval] = d
                     recent_duas_by_instr[d] = None
+                    if d.death_instr is not None:
+                        heappush(deaths, (d.death_instr, d.id, d))
 
                 # Deaths recorded at this exact same instr are pruned only now, after
                 # every newly-observed dua at this checkpoint has had its own shot at
@@ -384,7 +435,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                 # ambiguity. Giving new arrivals first crack at anything not yet pruned
                 # is what actually recovers C++'s RET_BUFFER count on this trace (verified
                 # against a from-scratch, non-batched replay of queries-toy.json).
-                prune_recent_duas(instr)
+                prune_dead_duas(deaths, instr, recent_dead_duas, recent_duas_by_instr)
 
                 if not recent_dead_duas:
                     continue
@@ -412,6 +463,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                             continue
                         _get_or_create_bug_like_cpp(
                             db=db,
+                            skip_cache=skip_cache,
                             dua_bytes_cache=dua_bytes_cache,
                             atp=atp,
                             bug_type=bug_type,
@@ -426,6 +478,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                     if AtpKind(atp.type) == AtpKind.QUERY_POINT:
                         _get_or_create_bug_like_cpp(
                             db=db,
+                            skip_cache=skip_cache,
                             dua_bytes_cache=dua_bytes_cache,
                             atp=atp,
                             bug_type=BugKind.BUG_CHAFF_STACK_UNUSED,
@@ -449,6 +502,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                                 ):
                                     _get_or_create_bug_like_cpp(
                                         db=db,
+                                    skip_cache=skip_cache,
                                         dua_bytes_cache=dua_bytes_cache,
                                         atp=atp,
                                         bug_type=chaff_kind,

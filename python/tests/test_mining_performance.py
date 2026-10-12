@@ -410,3 +410,102 @@ def test_unchanged_checkpoint_does_not_scan_all_labels(monkeypatch):
     mining.save_liveness_to_db(session, 12)
     rows = session.connection.return_value.execute.call_args.args[1]
     assert rows == [dict(inputfile="a", label=999, atp_instr=12, liveness_count=3)]
+
+
+def test_skip_cache_preserves_new_atp_and_per_call_visibility():
+    from unittest.mock import MagicMock
+    session = MagicMock()
+    session.query.return_value.filter.return_value.all.return_value = [(9,)]
+    accepted = []
+    session.add.side_effect = accepted.append
+    cache = generate_bugs.BugSkipCache(session)
+    duas = [SimpleNamespace(id=i, instr=i, lval=lval, fake_dua=False)
+            for i, lval in [(1, 9), (2, 10), (3, 10)]]
+    def run(is_new):
+        generate_bugs._get_or_create_bug_like_cpp(
+            SimpleNamespace(session=session), {}, SimpleNamespace(id=1),
+            BugKind.BUG_PTR_ADD, 0, duas, {}, {}, is_new, skip_cache=cache)
+    with patch.object(generate_bugs, "get_dua_dead_range", return_value=Range(0, 4)), \
+            patch.object(generate_bugs, "get_or_create_dua_bytes",
+                         side_effect=lambda db, cache, dua, r: SimpleNamespace(id=dua.id, all_labels=[])), \
+            patch.object(generate_bugs, "Bug", side_effect=lambda **kw: kw):
+        run(False)
+        assert [bug["trigger_lval"] for bug in accepted] == [10, 10]
+        run(False)
+        assert len(accepted) == 2  # Pending accepts now suppress the next call.
+        run(True)
+        assert [bug["trigger_lval"] for bug in accepted] == [10, 10, 9, 10, 10]
+    session.query.assert_called_once()
+
+
+def test_death_heap_ignores_replaced_incarnations_and_preserves_order():
+    from heapq import heappush
+    class D:
+        def __init__(self, id, lval, death):
+            self.id, self.lval, self.death_instr = id, lval, death
+    old, replacement, other = D(1, 1, 10), D(2, 1, 20), D(3, 2, 10)
+    active = {1: replacement, 2: other}
+    ordered = dict.fromkeys([other, replacement])
+    deaths = []
+    for d in (old, replacement, other):
+        heappush(deaths, (d.death_instr, d.id, d))
+    generate_bugs.prune_dead_duas(deaths, 9, active, ordered)
+    assert list(ordered) == [other, replacement]
+    generate_bugs.prune_dead_duas(deaths, 10, active, ordered)
+    assert active == {1: replacement}
+    assert list(ordered) == [replacement]
+    generate_bugs.prune_dead_duas(deaths, 20, active, ordered)
+    assert not active and not ordered and not deaths
+
+
+def test_dua_relationship_loader_pages_with_instruction_id_ties():
+    from unittest.mock import MagicMock
+    session = MagicMock()
+    query = session.query.return_value
+    query.filter.return_value = query
+    query.options.return_value = query
+    query.order_by.return_value = query
+    query.limit.return_value = query
+    first = [SimpleNamespace(instr=1, id=1), SimpleNamespace(instr=1, id=2)]
+    second = [SimpleNamespace(instr=1, id=3), SimpleNamespace(instr=2, id=4)]
+    query.all.side_effect = [first, second, []]
+    assert generate_bugs.load_lava1_duas(session, "input", 2) == first + second
+    assert query.options.call_count == 3
+    assert all(call.args == (2,) for call in query.limit.call_args_list)
+    # Initial file filter per page plus strict keyset boundaries after page one.
+    assert query.filter.call_count == 5
+
+
+def test_death_heap_matches_full_scan_across_replacements():
+    import random
+    from heapq import heappush
+    rng = random.Random(71)
+    class D:
+        def __init__(self, id, lval, death):
+            self.id, self.lval, self.death_instr = id, lval, death
+    reference, active = {}, {}
+    reference_order, active_order = {}, {}
+    deaths = []
+    next_id = 0
+    for instr in range(100):
+        for _ in range(rng.randrange(5)):
+            next_id += 1
+            d = D(next_id, rng.randrange(20),
+                  None if rng.randrange(4) == 0 else instr + rng.randrange(10))
+            for by_lval, ordered in ((reference, reference_order), (active, active_order)):
+                previous = by_lval.get(d.lval)
+                if previous is not None:
+                    ordered.pop(previous, None)
+                by_lval[d.lval] = d
+                ordered[d] = None
+            if d.death_instr is not None:
+                heappush(deaths, (d.death_instr, d.id, d))
+            # Newly observed DUAs retain their opportunity before pruning.
+            assert list(reference_order) == list(active_order)
+        expired = [lval for lval, d in reference.items()
+                   if d.death_instr is not None and d.death_instr <= instr]
+        for lval in expired:
+            reference_order.pop(reference.pop(lval), None)
+        generate_bugs.prune_dead_duas(deaths, instr, active, active_order)
+        assert list(reference.values()) == list(active.values())
+        assert list(reference_order) == list(active_order)
