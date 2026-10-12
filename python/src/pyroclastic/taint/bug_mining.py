@@ -101,6 +101,7 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
     directory without wading through the full taint pipeline, e.g. to
     confirm a binary even launches before debugging why no taint appeared.
     """
+    # recording_timeout = project_data["recording_timeout"]
     panda = Panda(generic=project_data['qemu'])
     panda_log = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
     pandalog_json = "{}/queries-{}.json".format(project_data['output_dir'], project_data['name'])
@@ -129,7 +130,11 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
         panda.copy_to_guest(state.install_directory, absolute_paths=True)
 
         # Pass in None for snap_name since I already did the revert_sync already
-        panda.record_cmd(guest_command=guest_command, snap_name=None)
+        # TODO: We need to add recording_timeout once PyPanda is updated
+        panda.record_cmd(
+            guest_command=guest_command,
+            snap_name=None,
+        )
         panda.stop_run()
 
     def record():
