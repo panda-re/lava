@@ -1,4 +1,5 @@
 import logging
+from bisect import bisect_left
 from typing import cast, Dict
 import argparse
 from ..utils.database_types import print_phase2_stats, AttackPoint, Bug, \
@@ -59,9 +60,10 @@ def get_or_create_dua_bytes(db: LavaDatabase, cache: dict, dua: Dua, r: Range) -
         return cache[cache_key]
 
     labels = set()
+    viable_bytes = dua.viable_bytes
     for i in range(r.low, r.high):
-        if dua.viable_bytes[i] is not None:
-            labels.update(dua.viable_bytes[i].labels)
+        if viable_bytes[i] is not None:
+            labels.update(viable_bytes[i].labels)
 
     sorted_labels = sorted(list(labels))
 
@@ -160,6 +162,9 @@ def _get_or_create_bug_like_cpp(
     for extra in prechosen:
         merge_into(prechosen_labels, set[int](extra.all_labels))
 
+    # Keep equal-instruction DUAs out of the extras, exactly as the old scan did.
+    available_instrs = [d.instr for d in available_duas]
+    prechosen_labels_sorted = sorted(prechosen_labels)
     for trigger_dua in available_duas:
         lval_id = trigger_dua.lval
         if lval_id in skip_trigger_lvals:
@@ -169,7 +174,7 @@ def _get_or_create_bug_like_cpp(
         # is NOT guaranteed sorted (Python set iteration order depends on the hash
         # table's internal layout, not insertion order), so an unsorted to_avoid
         # here silently breaks the merge and can wrongly accept/reject bytes.
-        selected = get_dua_dead_range(trigger_dua, sorted(prechosen_labels), offline_liveness, project_data)
+        selected = get_dua_dead_range(trigger_dua, prechosen_labels_sorted, offline_liveness, project_data)
         if selected.empty():
             continue
 
@@ -178,12 +183,7 @@ def _get_or_create_bug_like_cpp(
         labels_so_far: set[int] = set[int](prechosen_labels)
         merge_into(labels_so_far, set[int](trigger.all_labels))
 
-        end_index = 0
-        for i, d in enumerate(available_duas):
-            if d.instr < trigger_dua.instr:
-                end_index = i + 1
-            else:
-                break
+        end_index = bisect_left(available_instrs, trigger_dua.instr)
 
         if num_extra_duas < end_index:
             for _ in range(num_extra_duas):
@@ -345,6 +345,9 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                 if not recent_dead_duas:
                     continue
 
+                # Active state is unchanged while processing this checkpoint's ATPs.
+                # Preserve stable sorting (including lval insertion order for ties).
+                available_duas = sorted(recent_dead_duas.values(), key=lambda x: x.instr)
                 for exec_event in executions_by_instr[instr]:
                     atp = db.session.query(AttackPoint).get(exec_event.atp_id)
                     if not atp:
@@ -352,10 +355,6 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
 
                     target_bug_kinds: list[BugKind] = get_bug_kinds_for_atp(AtpKind(atp.type))
                     if not target_bug_kinds:
-                        continue
-
-                    available_duas = sorted(recent_dead_duas.values(), key=lambda x: x.instr)
-                    if not available_duas:
                         continue
 
                     for bug_type in target_bug_kinds:

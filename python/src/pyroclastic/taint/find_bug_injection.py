@@ -1,4 +1,3 @@
-import json
 import sys
 import ijson
 import os
@@ -11,7 +10,7 @@ from ..utils.database_types import print_bug_stats
 from ..utils.database_types import SourceTrace, CallTrace
 from ..utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, LavaDatabase, Dua
 from ..utils.database_types import AtpKind, AtpExecution, LivenessSnapshot
-from ..taint.taint_utils import dprint, get_dua_dead_range, get_dead_range, merge_into
+from ..taint.taint_utils import get_dua_dead_range, get_dead_range, merge_into
 from ..utils.vars import parse_vars
 
 # Matches "libc" at clean boundaries:
@@ -66,19 +65,15 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
     source_info = attack_point["srcInfo"]
     ast_id = source_info["astLocId"]
     current_instr = int(ple["instr"], 0)
-    dprint(project_data, f"attack point id = {ast_id}")
 
     # ignore duas in header files
     # Remember, in PandaLog, AttackPoint filenames are numbers!
     if is_header_file(ind2str[ast_id]):
         return
 
-    dprint(project_data, "ATTACK POINT")
     if len(recent_dead_duas) == 0:
-        dprint(project_data, "no duas yet -- discarding attack point")
         return
 
-    dprint(project_data, f"{len(recent_dead_duas)} viable duas remain")
     ast_loc: ASTLoc = ASTLoc.from_serialized(ind2str[ast_id])
     attack_point_type = attack_point["info"]
 
@@ -100,7 +95,6 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
         }
     ))
     save_liveness_to_db(session, current_instr)
-    dprint(project_data, f"@ATP: {atp} {atp_exec}")
 
 
 # Assuming globals/constants are available:
@@ -129,7 +123,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         return
 
     instr_addr = int(ple["instr"], 0)
-    dprint(project_data, f"TAINT QUERY HYPERCALL len={length} num_tainted={num_tainted}")
 
     # 2. Collect Labels & Unique Sets
     all_labels = set()  # Using set for O(1) uniqueness, sorted list later if needed
@@ -148,7 +141,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
     viable_byte: List[LabelSet | None] = [None] * length
     byte_tcn = [0] * length
 
-    dprint(project_data,f"considering taint queries on {num_tainted} bytes\n")
     is_dua = False
     is_fake_dua = False
     num_viable_bytes = 0
@@ -159,7 +151,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             offset: int = taint_query["offset"]
             if offset >= length:
                 continue
-            dprint(project_data,f"considering offset = {offset}")
             ptr = int(taint_query["ptr"], 0)
             tcn = taint_query["tcn"]
 
@@ -181,10 +172,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             # Bytes are ONLY discarded if debug mode is ON!
             # "if (current_byte_not_ok && debug)"
             debug = project_data.get("debug", False)
-            if current_byte_not_ok and debug:
-                dprint(project_data, f"discarding byte {offset}...")
-            else:
-                dprint(project_data, "retaining byte")
+            if not (current_byte_not_ok and debug):
                 # THIS IS THE C++ UNCONDITIONAL RETAIN LOGIC!
                 c_max_tcn = max(tcn, c_max_tcn)
                 c_max_card = max(len(label_set.labels), c_max_card)
@@ -194,8 +182,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
 
             # Merge labels (Python set update handles deduping)
             all_labels.update(label_set.labels)
-            dprint(project_data, f"keeping byte @ offset {offset}")
-        dprint(project_data, "{num_viable_bytes} viable bytes in lval")
 
         # Check DUA Viability
         # 1. Enough viable bytes
@@ -217,8 +203,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
     if (project_data.get('chaff_bugs', False) and not is_dua and
             cpp_style_diff >= LAVA_MAGIC_VALUE_SIZE):
 
-        dprint(project_data, "not enough taint -- what about non-taint?")
-        dprint(project_data, f"len={length} num_tainted={num_tainted}")
 
         # Reset viable_byte to clean slate for fake generation
         viable_byte: List[LabelSet | None] = [None] * length
@@ -254,7 +238,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             is_fake_dua = True
 
     # 5. Database Persistence & Registration
-    dprint(project_data, f"is_dua={is_dua} is_fake_dua={is_fake_dua}")
     assert not (is_dua and is_fake_dua)
 
     ast_loc_id: int = source_info["astLocId"]
@@ -347,7 +330,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         #    )
         #    dprint(project_data, f"Saved DuaBytes for DUA {dua.id}: [{dua_range.low}, {dua_range.high}]")
 
-        dprint(project_data, "OK DUA.")
 
         # 6. Global State Maintenance (recent_dead_duas)
         # Logic: Replace old DUA with same lval_id, or insert new.
@@ -372,10 +354,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
                 if old_dua in dua_dependencies[l]:
                     dua_dependencies[l].remove(old_dua)
 
-            dprint(project_data,"previously observed lval")
-        else:
-            dprint(project_data, "new lval")
-
         # Insert/Update the map
         recent_dead_duas[lval_id] = dua
 
@@ -393,13 +371,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             num_real_duas += 1
         if is_fake_dua:
             num_fake_duas += 1
-    else:
-        # Debugging discard
-        filename = source_info["filename"]
-        line_number = source_info["linenum"]
-        ast_node_name = source_info["astnodename"]
-        dprint(project_data, f"discarded {num_viable_bytes} viable bytes {len(all_labels)} labels"
-                             f"{filename}:{line_number} {ast_node_name}")
 
     # Pre-compute Dua Pads for Chaff Bugs
     # randcount = random_sampling_threshold
@@ -499,8 +470,6 @@ def update_unique_taint_sets(unique_label_set: dict, session: Session, project_d
         session (Session): Database session to add the LabelSet
         project_data (dict): Lava project parameters
     """
-    dprint(project_data, "UNIQUE TAINT SET")
-    dprint(project_data, json.dumps(unique_label_set))
     ptr_str = str(unique_label_set["ptr"])
     pointer = int(ptr_str, 0)
 
@@ -522,7 +491,6 @@ def update_unique_taint_sets(unique_label_set: dict, session: Session, project_d
             }
         ))
         ptr_to_labelset[pointer] = label_set
-    dprint(project_data, f"{len(ptr_to_labelset)} unique taint sets\n")
 
 
 def update_liveness(panda_log_entry: dict, session: Session, project_data: dict):
@@ -556,7 +524,6 @@ def update_liveness(panda_log_entry: dict, session: Session, project_data: dict)
     liveness = liveness_by_file[current_file]
     current_instr = int(panda_log_entry["instr"], 0)
     tainted_branch = panda_log_entry["taintedBranch"]
-    dprint(project_data, "TAINTED BRANCH")
 
     all_labels: set[int] = set()
     for taint_query in tainted_branch["taintQuery"]:
@@ -570,15 +537,13 @@ def update_liveness(panda_log_entry: dict, session: Session, project_data: dict)
     duas_to_check: set[Dua] = set()
     for label in all_labels:
         liveness[label] += 1
-        dprint(project_data, f"checking viability of {len(recent_dead_duas)} duas")
         depends = dua_dependencies.get(label)
         if depends:
-            merge_into(duas_to_check, set(depends) if isinstance(depends, list) else depends)
+            merge_into(duas_to_check, depends)
 
     non_viable_duas = []
     for dua in duas_to_check:
         if not is_dua_dead(dua, liveness, project_data):
-            dprint(project_data, f"{str(dua)}\n ** DUA not viable\n")
             dua.death_instr = current_instr
             recent_dead_duas.pop(dua.lval_relationship.id, None)
             if dua in recent_duas_by_instr:
@@ -586,7 +551,6 @@ def update_liveness(panda_log_entry: dict, session: Session, project_data: dict)
             assert len(recent_dead_duas) == len(recent_duas_by_instr)
             non_viable_duas.append(dua)
 
-    dprint(project_data, f"{len(non_viable_duas)} non-viable duas \n")
     for dua in non_viable_duas:
         for label in dua.all_labels:
             if label in dua_dependencies:
