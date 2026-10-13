@@ -310,7 +310,8 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
             fbi_args = ['fbi',
                         project_data["host_path"],
                         lava_project,
-                        pandalog_json]
+                        pandalog_json,
+                        str(project_data.get("curtail", 0))]
 
             print(f"C++ fbi invocation: [{subprocess.list2cmdline(fbi_args)}]")
             sys.stdout.flush()
