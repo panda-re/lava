@@ -60,15 +60,20 @@ if [ "$SKIP_DEPS" != 1 ]; then
   # TODO: Switch to panda-re libhc when available
   # Check if libhc is installed
   if ! dpkg -l | grep -q libhc-dev; then
-    echo "libhc-dev is not installed. Installing now..."
-    # shellcheck disable=SC2034
-    LIBHC_VERSION=$(curl -s https://api.github.com/repos/AndrewQuijano/libhc/releases/latest | jq -r .tag_name)
+    release_url=$(curl --fail --silent --show-error --location --retry 5 \
+      --output /dev/null --write-out '%{url_effective}' \
+      https://github.com/AndrewQuijano/libhc/releases/latest) || exit 1
+
+    LIBHC_VERSION=${release_url##*/}
     LIBHC_TAG=${LIBHC_VERSION#v}
-    # shellcheck disable=SC2086
-    curl -LJ -o /tmp/libhc-dev_${LIBHC_TAG}_all.deb https://github.com/AndrewQuijano/libhc/releases/download/${LIBHC_VERSION}/libhc-dev_${LIBHC_TAG}_all.deb
-    # shellcheck disable=SC2086
-    $SUDO apt-get -y install /tmp/libhc-dev_${LIBHC_TAG}_all.deb
-    rm "/tmp/libhc-dev_${LIBHC_TAG}_all.deb"
+
+    curl --fail --show-error --location --retry 5 \
+      --output /tmp/libhc-dev_all.deb \
+      "https://github.com/AndrewQuijano/libhc/releases/download/${LIBHC_VERSION}/libhc-dev_${LIBHC_TAG}_all.deb" \
+      || exit 1
+
+    $SUDO apt-get -y install /tmp/libhc-dev_all.deb
+    rm /tmp/libhc-dev_all.deb
   else
     echo "libhc is already installed."
   fi
