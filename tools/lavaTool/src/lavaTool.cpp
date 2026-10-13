@@ -139,6 +139,13 @@ int main(int argc, const char **argv) {
                     // Siphon Overconstrain injection point
                     mark_for_overconst_extra(bug, dua_bytes);
                 }
+            } else if (bug->type == Bug::REL_WRITE) {
+                // REL_WRITE's attack reads its two extra DUAs with Get() (lava_val[] slots, see
+                // LavaMatchHandler), so they need regular siphons, as in original LAVA. Without this
+                // the attack's data_slots.at() threw map::at and lavaTool crashed.
+                for (uint64_t dua_id : bug->extra_duas) {
+                    mark_for_siphon(db->load<DuaBytes>(dua_id));
+                }
             }
         }
     }

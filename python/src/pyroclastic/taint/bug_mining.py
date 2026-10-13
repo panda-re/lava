@@ -11,6 +11,7 @@ import sys
 import shlex
 import shutil
 import subprocess
+import json
 from pandare import Panda
 import argparse
 from typing import Optional
@@ -22,6 +23,68 @@ from ..utils.database_types import print_bug_stats, print_phase2_stats
 from ..utils.vars import parse_vars
 from ..utils.funcs import tick, tock, progress
 from ..taint.generate_bugs import record_injectable_bugs_offline
+
+
+def check_dwarf_json_files(install_dir: str) -> None:
+    """
+    Recursively find and validate the four DWARF JSON files.
+
+    All four must:
+      - Exist in the same directory beneath install_dir
+      - Share the same filename prefix
+      - Be non-empty
+      - Contain valid JSON
+
+    Raises RuntimeError if validation fails.
+    """
+    expected_suffixes = (
+        "_funcinfo.json",
+        "_globvar.json",
+        "_lineinfo.json",
+        "_typeinfo.json",
+    )
+
+    if not os.path.isdir(install_dir):
+        raise RuntimeError(
+            f"Install directory does not exist: {install_dir}"
+        )
+
+    errors = []
+
+    for root, _, files in os.walk(install_dir):
+        for filename in files:
+            if not filename.endswith("_funcinfo.json"):
+                continue
+
+            prefix = filename[:-len("_funcinfo.json")]
+
+            paths = [
+                os.path.join(root, prefix + suffix)
+                for suffix in expected_suffixes
+            ]
+
+            if not all(os.path.isfile(path) for path in paths):
+                continue
+
+            try:
+                for path in paths:
+                    if os.path.getsize(path) == 0:
+                        raise RuntimeError(f"Empty JSON file: {path}")
+
+                    with open(path, "r", encoding="utf-8") as f:
+                        json.load(f)
+
+                return  # All four JSON files are valid
+
+            except (OSError, UnicodeError, ValueError) as exc:
+                errors.append(str(exc))
+
+    raise RuntimeError(
+        f"DWARF JSON validation failed under {install_dir}. "
+        "Could not find four valid JSON files sharing "
+        "the same prefix and directory."
+        + (f"\nErrors: {'; '.join(errors)}" if errors else "")
+    )
 
 
 def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optional[str] = None):
@@ -38,6 +101,7 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
     directory without wading through the full taint pipeline, e.g. to
     confirm a binary even launches before debugging why no taint appeared.
     """
+    # recording_timeout = project_data["recording_timeout"]
     panda = Panda(generic=project_data['qemu'])
     panda_log = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
     pandalog_json = "{}/queries-{}.json".format(project_data['output_dir'], project_data['name'])
@@ -66,7 +130,11 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
         panda.copy_to_guest(state.install_directory, absolute_paths=True)
 
         # Pass in None for snap_name since I already did the revert_sync already
-        panda.record_cmd(guest_command=guest_command, snap_name=None)
+        # TODO: We need to add recording_timeout once PyPanda is updated
+        panda.record_cmd(
+            guest_command=guest_command,
+            snap_name=None,
+        )
         panda.stop_run()
 
     def record():
@@ -87,6 +155,7 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
             progress("bug_mining", 0, "Deleting existing inputs/ directory in guest install")
             shutil.rmtree(guest_directory_inputs_path)
 
+        # TODO: You need to filter input files already mined
         shutil.copytree(input_file_directory, guest_directory_inputs_path)
 
         # 2. BUILD THE PER-FILE COMMAND, WITH A REAL SHELL VARIABLE DROPPED IN
@@ -164,6 +233,9 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
 
         progress("bug_mining", 1, "Converting Dwarf Dump into JSON")
         dwarfdump.parse_dwarfdump(result.stdout, guest_executable, project_root=state.tar_directory)
+
+        check_dwarf_json_files(state.tar_directory)
+
         proc_name = os.path.basename(guest_executable)
 
         progress("bug_mining", 1, "Starting first and only replay, tainting on file open...")
@@ -238,7 +310,8 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
             fbi_args = ['fbi',
                         project_data["host_path"],
                         lava_project,
-                        pandalog_json]
+                        pandalog_json,
+                        str(project_data.get("curtail", 0))]
 
             print(f"C++ fbi invocation: [{subprocess.list2cmdline(fbi_args)}]")
             sys.stdout.flush()

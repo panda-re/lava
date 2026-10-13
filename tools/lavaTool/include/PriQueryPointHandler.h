@@ -45,37 +45,52 @@ using namespace clang;
 struct PriQueryPointHandler : public LavaMatchHandler {
     using LavaMatchHandler::LavaMatchHandler; // Inherit constructor
 
-    // DWARF debug info usually gives us strings like "(*p)" or "(**p)".
-    // To prevent segfaults, we want to generate checks: "p" or "p && *p".
-    std::string GenerateNullChecks(std::string Expr) {
-        std::string Checks;
-        std::string Current = Expr;
-
-        // Peel off layers of pointers (*p) -> p
-        while (true) {
-            // 1. Strip outer parentheses: "(*p)" -> "*p"
-            if (Current.size() >= 2 && Current.front() == '(' && Current.back() == ')') {
-                Current = Current.substr(1, Current.size() - 2);
-                continue; // Re-evaluate the stripped string
+    // DUA names are address expressions built from "(*X)", "*(X)", ".field" and "&(...)", e.g.
+    // "&((*((*ctxt).node)).children)". Every pointer that the name dereferences must be non-null
+    // before the siphon reads through it, so return "X1 && X2 && ..." with one check per "*"
+    // operand, inner (shorter) pointers first: "(ctxt) && (((*ctxt).node))".
+    // (The old version only peeled leading '*'s, so a name like the one above was guarded by the
+    // always-true "&(...)" and crashed whenever ctxt->node was NULL.)
+    std::string GenerateNullChecks(const std::string &Expr) {
+        std::vector<std::string> operands;
+        for (size_t i = 0; i < Expr.size(); i++) {
+            if (Expr[i] != '*') {
+                continue;
             }
-
-            // 2. If it starts with '*', it is a dereference.
-            // We must check the pointer being dereferenced.
-            if (Current.size() > 1 && Current.front() == '*') {
-                Current = Current.substr(1); // Strip the '*'
-
-                // Current is now the pointer address (e.g., "p" or "*p").
-                // Add it to our safety checks.
-                std::string NewCheck = "(" + Current + ")";
-                if (!Checks.empty()) {
-                    Checks += " && ";
+            size_t j = i + 1;
+            std::string operand;
+            if (j < Expr.size() && Expr[j] == '(') {
+                int depth = 0;
+                size_t k = j;
+                for (; k < Expr.size(); k++) {
+                    if (Expr[k] == '(') depth++;
+                    else if (Expr[k] == ')' && --depth == 0) break;
                 }
-                Checks += NewCheck;
-                continue; // Loop again to handle multiple levels (**p)
+                if (k >= Expr.size()) {
+                    continue; // unbalanced; leave it unguarded rather than emit bad C
+                }
+                operand = Expr.substr(j, k - j + 1);
+            } else {
+                size_t k = j;
+                while (k < Expr.size() && (isalnum((unsigned char)Expr[k]) || Expr[k] == '_')) {
+                    k++;
+                }
+                operand = Expr.substr(j, k - j);
             }
-
-            // If no parens and no star, we have reached the base variable. Done.
-            break;
+            if (!operand.empty() &&
+                std::find(operands.begin(), operands.end(), operand) == operands.end()) {
+                operands.push_back(operand);
+            }
+        }
+        // An inner pointer is a substring of every outer one, so shorter first is inner first.
+        std::stable_sort(operands.begin(), operands.end(),
+                [](const std::string &a, const std::string &b) { return a.size() < b.size(); });
+        std::string Checks;
+        for (const std::string &operand : operands) {
+            if (!Checks.empty()) {
+                Checks += " && ";
+            }
+            Checks += "(" + operand + ")";
         }
         return Checks;
     }
@@ -103,9 +118,14 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         }
 
         for (const LvalBytes &lval_bytes : map_get_default(extra_siphons_at, ast_loc)) {
-            result_ss << LavaSetExtra(
-                    lval_bytes.lval, lval_bytes.selected,
-                    extra_data_slots.at(lval_bytes)).render() << ";\n";
+            // Same guard as the siphons above: the name may dereference pointers that are NULL here.
+            std::string nntests = GenerateNullChecks(lval_bytes.lval->ast_name);
+            if (!nntests.empty()) {
+                nntests += " && ";
+            }
+            result_ss << LIf(nntests + lval_bytes.lval->ast_name,
+                    LavaSetExtra(lval_bytes.lval, lval_bytes.selected,
+                                 extra_data_slots.at(lval_bytes))).render() << "\n";
         }
 
         std::string result = result_ss.str();

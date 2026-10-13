@@ -10,5 +10,6 @@
     "main_file": [
         "utils/transicc/transicc.c"
     ],
-    "dataflow": false
+    "dataflow": false,
+    "curtail" : 5000
 }

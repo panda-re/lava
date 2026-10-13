@@ -141,14 +141,16 @@ public:
                 typedefDecl().bind("typedefdecl"),
                 makeHandler<FunctionPointerTypedefHandler>());
 #endif
+    }
 
-    // printf read disclosures
+    // printf read disclosures. Registered for both passes and with or without -arg_dataflow:
+    // inside the block above it only ran during an -arg_dataflow inject, so the query pass never
+    // recorded a PRINTF_LEAK attack point and printf_leak bugs could never be mined.
     addMatcher(
         callExpr(
             callee(functionDecl(hasName("::printf"))),
             unless(argumentCountIs(1))).bind("call_expression"),
         makeHandler<ReadDisclosureHandler>());
-    }
 
 	addMatcher(
 		callExpr(
@@ -196,7 +198,11 @@ public:
             // Chaff bugs always need their macros AND their storage arrays, regardless of LAVA's dataflow settings.
             std::stringstream chaff_logic;
             chaff_logic << "\n// --- Chaff Bug Macros ---\n"
+                        << "#ifdef DUA_LOGGING\n"
+                        << "#define lava_set(slot, val) { fprintf(stderr, \"\\nlava_set:%d=%d: %s:%d\\n\", (int)(slot), (int)(val), __FILE__, __LINE__); fflush(NULL); lava_val[slot] = (val&0xffffffff); }\n"
+                        << "#else\n"
                         << "#define lava_set(slot, val) { lava_val[slot] = (val&0xffffffff); }\n"
+                        << "#endif\n"
                         << "#define lava_get(slot)  lava_val[slot] \n"
                         << "#define lava_set_extra(slot, val) { lava_extra[slot] = (val&0xffffffff); lava_state[slot]=0; }\n"
                         << "#define lava_get_extra(slot) ((unsigned long long)lava_extra[slot]) \n"
@@ -225,31 +231,9 @@ public:
             }
             insert_at_top.append(chaff_logic.str());
 
-            // --- SURGERY PART 2: ORIGINAL LAVA LOGIC (Guarded by !ArgDataflow) ---
-            // Original LAVA bugs only need this global storage if they aren't using the ArgDataflow backend.
-            if (!ArgDataflow) {
-                if (main_files.count(getAbsolutePath(Filename)) > 0) {
-                    std::stringstream top;
-                    top << "\n// --- LAVA Storage & Functions ---\n"
-                        << "static unsigned int lava_val[" << data_slots.size() << "] = {0};\n"
-                        << "void lava_set(unsigned int, unsigned int);\n"
-                        << "__attribute__((visibility(\"default\")))\n"
-                        << "void lava_set(unsigned int slot, unsigned int val) {\n"
-                        << "#ifdef DUA_LOGGING\n"
-                        << "    fprintf(stderr, \"\\nlava_set:%d=%d: %s:%d\\n\", slot, val, __FILE__, __LINE__);\n"
-                        << "    fflush(NULL);\n"
-                        << "#endif\n"
-                        << "    lava_val[slot] = val; }\n"
-                        << "unsigned int lava_get(unsigned int);\n"
-                        << "__attribute__((visibility(\"default\")))\n"
-                        << "unsigned int lava_get(unsigned int slot) { return lava_val[slot]; }\n";
-                    insert_at_top.append(top.str());
-                } else {
-                    insert_at_top.append("\n// --- LAVA Externs ---\n"
-                                         "void lava_set(unsigned int bn, unsigned int val);\n"
-                                         "extern unsigned int lava_get(unsigned int);\n");
-                }
-            }
+            // Original LAVA bugs (no -arg_dataflow) use the same lava_set/lava_get macros and lava_val[]
+            // storage as chaff bugs above. A second set of lava_set/lava_get functions plus a static
+            // lava_val[] used to be emitted here, which the macros above broke at compile time.
         }
 
         debug(INJECT) << "Inserting macros and lava_set/get or dataflow at top of file\n";

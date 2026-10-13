@@ -11,5 +11,6 @@
     "main_file": [
         "apps/openssl.c"
     ],
-    "dataflow": false
+    "dataflow": false,
+    "curtail" : 5000
 }

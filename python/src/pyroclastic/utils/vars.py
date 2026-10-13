@@ -231,6 +231,15 @@ def parse_vars(project_name: str) -> dict:
     project_data["max_tcn"] = project_data.get("max_tcn", 100)
     project_data["max_lval_size"] = project_data.get("max_lval_size", 100)
     project_data["curtail"] = project_data.get("curtail", 0)
+    recording_timeout = project_data.get("recording_timeout", 180)
+    if recording_timeout is not None and (
+        isinstance(recording_timeout, bool)
+        or not isinstance(recording_timeout, (int, float))
+        or recording_timeout <= 0
+    ):
+        raise ValueError("recording_timeout must be a positive number of seconds or null")
+    project_data["recording_timeout"] = recording_timeout
+
     # For now use 'lava1' to mean original LAVA
     project_data["lava_mode"] = host.get("lava_mode", "lava1")
 

@@ -11,5 +11,6 @@
     "main_file": [
         "pngtest.c"
     ],
-    "dataflow": false
+    "dataflow": false,
+    "curtail" : 5000
 }

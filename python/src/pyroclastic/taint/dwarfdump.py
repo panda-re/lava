@@ -20,19 +20,14 @@ import bisect
 import functools
 from typing import Optional
 
-# Bug 1 (docs/dwarfdump.log): DIE tags that can legitimately be the resolved
-# target of a pointer/sugar-type "overlay" (a DW_TAG_pointer_type or
-# const/volatile/restrict/typedef DIE with no inline DW_AT_type, whose target
-# is only known once the *next* sibling DIE is seen). Used to stop the parser
-# from wiring a pointer's ref to whatever non-type DIE (e.g. a DW_TAG_variable
-# -- in LAVA's case, its own injected LAVA_ATTACK_POINT global) happens to
-# follow it at the same nesting level.
-TYPE_DIE_TAGS = {
-    "DW_TAG_base_type", "DW_TAG_pointer_type", "DW_TAG_structure_type",
-    "DW_TAG_union_type", "DW_TAG_enumeration_type", "DW_TAG_array_type",
-    "DW_TAG_subroutine_type", "DW_TAG_const_type", "DW_TAG_volatile_type",
-    "DW_TAG_restrict_type", "DW_TAG_typedef",
-}
+# Bug 1 (docs/dwarfdump.log): a DW_TAG_pointer_type or
+# const/volatile/restrict/typedef DIE with no DW_AT_type is a pointer to /
+# qualifier of void. `dwarfdump -dil` prints all of a DIE's attributes on
+# its own line, so a missing DW_AT_type really is missing. (An older
+# "overlay" scheme took the target from the next DIE instead; that turned
+# `const void` into `const <next type>` and, for void**, made two pointer
+# types reference each other -- 15 such cycles in openssl, which sent
+# dwarf2_type_to_string() into an infinite loop at replay time.)
 
 # Bug 1 fix, continued: reserved per-CU type-table offset for a synthetic
 # "void" placeholder (see the DW_TAG_compile_unit handler, which inserts one
@@ -873,7 +868,6 @@ def parse_dwarfdump(input_data: str, prefix: str="", project_root: Optional[str]
                 # but don't touch it if it doesn't break any tests!
                 line_info.insert(srcfn, lno, col, addr)
 
-    type_overlay = None
     cu_off = None
     lvl_stack = []
     scope_stack = []
@@ -923,19 +917,6 @@ def parse_dwarfdump(input_data: str, prefix: str="", project_root: Optional[str]
                     continue
 
             if "DW_TAG_compile_unit" in line:
-                if type_overlay is not None:
-                    # Bug 1 fix, continued (found live on openssl): an
-                    # unclosed overlay (a pointer/sugar-type DIE with no
-                    # inline DW_AT_type) that was the very last DIE of the
-                    # previous CU never got a "next sibling" DIE to resolve
-                    # against. Flush it as a genuine untyped pointer/sugar
-                    # type instead of silently dropping it from the type
-                    # table, which left anything pointing at it dangling.
-                    # ref points at the VOID_PLACEHOLDER_OFFSET entry rather
-                    # than staying None/null -- see that constant's comment.
-                    type_overlay[2].ref = VOID_PLACEHOLDER_OFFSET
-                    type_info.insert(type_overlay[0], type_overlay[1], type_overlay[2])
-                    type_overlay = None
                 if 'DW_AT_low_pc' in res and 'DW_AT_high_pc' in res:
                     base_addr = int(res['DW_AT_low_pc'], 16) + reloc_base
                     end_addr = int(res['DW_AT_high_pc'], 16) + reloc_base
@@ -981,29 +962,6 @@ def parse_dwarfdump(input_data: str, prefix: str="", project_root: Optional[str]
 
             if lvl != lvl_stack[-1][0] and lvl != (lvl_stack[-1][0]+1):
                 continue
-
-            if lvl_stack[-1][1] in ['SugarType', 'DW_TAG_pointer_type']:
-                assert lvl == lvl_stack[-1][0], "Invalid level for type overlay"
-                lvl_stack.pop()
-                assert type_overlay, "Type overlay missing"
-                # Bug 1 fix: only wire the overlay's ref to the next DIE if
-                # that DIE actually describes a type. Previously this ran
-                # unconditionally, so a pointer/sugar type with no inline
-                # DW_AT_type (a genuine void*) would get its ref pointed at
-                # whatever non-type DIE (e.g. a DW_TAG_variable) happened to
-                # be next in raw DWARF offset order -- a dangling reference
-                # that crashes the C++ dwarf2 plugin at PANDA replay time.
-                if tname in TYPE_DIE_TAGS:
-                    type_overlay[2].ref = idx
-                else:
-                    # This genuinely is an untyped pointer/sugar type (e.g.
-                    # void*, or const void* -> const's own ref) -- point at
-                    # the synthetic placeholder instead of wiring it to an
-                    # unrelated DIE, or leaving it None/null (unsafe -- see
-                    # VOID_PLACEHOLDER_OFFSET's comment).
-                    type_overlay[2].ref = VOID_PLACEHOLDER_OFFSET
-                type_info.insert(type_overlay[0], type_overlay[1], type_overlay[2])
-                type_overlay = None
 
             if tname == "DW_TAG_lexical_block":
                 # Same family as Bug 7: a lexical block with no PC range of
@@ -1278,11 +1236,11 @@ def parse_dwarfdump(input_data: str, prefix: str="", project_root: Optional[str]
             elif tname == "DW_TAG_pointer_type":
                 name = res['DW_AT_name'] if 'DW_AT_name' in res else "void"
 
-                if 'DW_AT_type' not in res:
-                    lvl_stack.append((lvl, 'DW_TAG_pointer_type'))
-                    type_overlay = (cu_off, idx, PointerType(name, cu_off, None))
-                    continue
-                target = int(res['DW_AT_type'], 16)
+                # No DW_AT_type means void* (see Bug 1 above)
+                if 'DW_AT_type' in res:
+                    target = int(res['DW_AT_type'], 16)
+                else:
+                    target = VOID_PLACEHOLDER_OFFSET
 
                 t = PointerType(name, cu_off, target)
 
@@ -1307,11 +1265,11 @@ def parse_dwarfdump(input_data: str, prefix: str="", project_root: Optional[str]
                 name = res['DW_AT_name'] if 'DW_AT_name' in res else "void"
                 t = SugarType(name, cu_off)
 
-                if 'DW_AT_type' not in res:
-                    lvl_stack.append((lvl, 'SugarType'))
-                    type_overlay = (cu_off, idx, t)
-                    continue
-                t.ref = int(res['DW_AT_type'], 16)
+                # No DW_AT_type means a qualifier/typedef of void (see Bug 1 above)
+                if 'DW_AT_type' in res:
+                    t.ref = int(res['DW_AT_type'], 16)
+                else:
+                    t.ref = VOID_PLACEHOLDER_OFFSET
 
                 type_info.insert(cu_off, idx, t)
 
@@ -1346,14 +1304,6 @@ def parse_dwarfdump(input_data: str, prefix: str="", project_root: Optional[str]
                 pass
             elif tname == "DW_TAG_constant":
                 pass
-
-        # Bug 1 fix, continued: same flush as above, for the very last CU in
-        # the file (its trailing unclosed overlay never triggers the
-        # DW_TAG_compile_unit-boundary flush since there's no next CU).
-        if type_overlay is not None:
-            type_overlay[2].ref = VOID_PLACEHOLDER_OFFSET
-            type_info.insert(type_overlay[0], type_overlay[1], type_overlay[2])
-            type_overlay = None
 
     with open(prefix+'_lineinfo.json', 'w') as file:
         dump_json(file, line_info)

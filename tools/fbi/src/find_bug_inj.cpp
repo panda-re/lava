@@ -21,6 +21,7 @@ extern "C" {
 }
 
 #include <json/json.h>
+#include "pandalog_json_reader.h"
 
 #include <iostream>
 #include <fstream>
@@ -411,6 +412,16 @@ template<Bug::Type bug_type>
 void record_injectable_bugs_at(const uint32_t stackoff, const AttackPoint *atp, bool is_new_atp,
         std::initializer_list<const DuaBytes *> extra_duas);
 
+const LabelSet* lookup_labelset(const Json::Value& tq, const Json::Value& ple) {
+    Ptr ptr = std::strtoull(tq["ptr"].asString().c_str(), 0, 0);
+    auto it = ptr_to_labelset.find(ptr);
+    if (it == ptr_to_labelset.end()) {
+        throw std::runtime_error("Missing label-set pointer " + std::to_string(ptr) +
+            " at instr=" + ple["instr"].asString() + " input=" + inputfile);
+    }
+    return it->second;
+}
+
 void taint_query_pri(Json::Value& ple) {
     Json::Value tqh = ple["taintQueryPri"];
     // size of query in bytes & num tainted bytes found
@@ -471,7 +482,7 @@ void taint_query_pri(Json::Value& ple) {
 		        continue;
 	        }
 	        dprintf("considering offset = %d\n", offset);
-            const LabelSet *ls = ptr_to_labelset.at(std::strtoull(tq["ptr"].asString().c_str(), 0, 0));
+            const LabelSet *ls = lookup_labelset(tq, ple);
             byte_tcn[offset] = std::strtoul(tq["tcn"].asString().c_str(), 0, 0);
 
             // flag for tracking *why* we discarded a byte
@@ -716,7 +727,7 @@ void update_liveness(const Json::Value& ple) {
         // This should be O(mn) for m sets, n elems each.
         // though we should have n >> m in our worst case.
         const std::vector<uint32_t> &cur_labels =
-            ptr_to_labelset.at(std::strtoull(tq["ptr"].asString().c_str(), 0, 0)) -> labels;
+            lookup_labelset(tq, ple) -> labels;
         merge_into(cur_labels.begin(), cur_labels.end(), all_labels);
     }
 
@@ -1021,8 +1032,8 @@ void record_ret(Json::Value ple) {
         return;
     }
     assert (cur_call_stack.back() == std::make_pair(
-                ret["fileCallee"].asString().c_str(),
-                ret["functionNameCallee"].asString().c_str()));
+                ret["fileCallee"].asString(),
+                ret["functionNameCallee"].asString()));
     cur_call_stack.pop_back();
 }
 
@@ -1039,18 +1050,15 @@ void record_trace(Json::Value ple) {
 int main (int argc, char **argv) {
     if (argc != 4 && argc != 5) {
         printf("Find Bug Inject (FBI)");
-        printf("usage: fbi host.json ProjectName pandalog inputfile [curtail count]\n");
+        printf("usage: fbi host.json ProjectName pandalog [curtail count]\n");
         printf("    Project JSON file may specify properties:\n");
         printf("        max_liveness: Maximum liveness for DUAs\n");
         printf("        max_cardinality: Maximum cardinality for labelsets on DUAs\n");
         printf("        max_tcn: Maximum taint compute number for DUAs\n");
         printf("        max_lval_size: Maximum bytewise size for \n");
+        printf("        curtail: Stop mining after this many real DUA discoveries (0 disables)\n");
         printf("    pandalog: Pandalog. Should be like queries-file-5.22-bash.iso.plog\n");
         exit (1);
-    }
-
-    if (argc == 6) {
-        curtail = atoi(argv[5]);
     }
 
     // We want decimation to be deterministic, so srand w/ magic value.
@@ -1120,15 +1128,26 @@ int main (int argc, char **argv) {
     max_lval = std::strtoul(project["max_lval_size"].asString().c_str(), 0, 0);
     printf("max lval size = %d\n", max_lval);
 
-    if (curtail == 0) { // Will be 0 unless specified on command line
-        if (!project["curtail"].isUInt()) {
-            curtail = 0;
-        } else{
-            // null should never happen, if it does we'll violate an assert in the asUInt
-            curtail = std::strtoul(project.get("curtail", Json::Value::null).asString().c_str(), 0, 0);
+    // The orchestrator passes the value loaded from the project JSON. Standalone
+    // invocations without an override read the same setting directly.
+    if (argc == 5) {
+        const std::string value(argv[4]);
+        if (value.empty() || value.find_first_not_of("0123456789") != std::string::npos) {
+            throw std::runtime_error("curtail must be a non-negative integer");
         }
+        const unsigned long long count = std::stoull(value);
+        if (count > UINT32_MAX) {
+            throw std::runtime_error("curtail exceeds uint32 range");
+        }
+        curtail = static_cast<uint32_t>(count);
+    } else {
+        const Json::Value count = project.get("curtail", 0);
+        if (!count.isUInt()) {
+            throw std::runtime_error("curtail must be a non-negative uint32 integer");
+        }
+        curtail = count.asUInt();
     }
-    printf("Curtail is %d\n", curtail);
+    printf("Curtail is %u\n", curtail);
 
     std::string db_name = project["db"].asString() + host.get("db_suffix", "").asString();
     std::string DBHost = host.get("host", "database").asString();
@@ -1167,13 +1186,16 @@ int main (int argc, char **argv) {
     // pandalog_open(plog.c_str(), "r");
     // See line 949
     std::ifstream plog_json(plog.c_str());
-    Json::Value plog_file;
-    plog_json >> plog_file;
+    if (!plog_json) {
+        throw std::runtime_error("Could not open pandalog: " + plog);
+    }
+    PandalogJsonReader entries(plog_json);
+    Json::Value ple;
     
     uint64_t num_entries_read = 0;
 
 
-    for (Json::Value& ple: plog_file) {
+    while (entries.next(ple)) {
         // collect log entries that have same instr count (and pc).
         // these are to be considered together.
         // Panda__LogEntry *ple;
@@ -1214,6 +1236,11 @@ int main (int argc, char **argv) {
 
             // 3. Update your live tracker state variable
             // (Ensure inputfilename or a similar string tracker is accessible)
+            // Reopening the same input does not restart PANDA's label-set stream.
+            // Later queries may reference pointers defined before this marker.
+            if (inputfile == base_filename) {
+                continue;
+            }
             inputfile = base_filename;
 
             // --- NUKE THE GLOBAL STATE ---
