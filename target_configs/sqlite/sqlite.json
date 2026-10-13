@@ -13,5 +13,6 @@
     "main_file": [
         "shell.c"
     ],
-    "dataflow": false
+    "dataflow": false,
+    "curtail" : 5000
 }
