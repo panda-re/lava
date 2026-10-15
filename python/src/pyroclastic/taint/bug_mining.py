@@ -87,7 +87,7 @@ def check_dwarf_json_files(install_dir: str) -> None:
     )
 
 
-def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optional[str] = None):
+def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None):
     """
     Initializes the project and PANDA object based on arguments.
 
@@ -355,4 +355,4 @@ if __name__ == "__main__":
                              "replay, no FBI. E.g.: --smoke-test 'echo hello_from_guest'")
     args = parser.parse_args()
     project = parse_vars(args.project)
-    run_taint_pipeline(args.project, project, raw_command=args.smoke_test)
+    run_taint_pipeline(project, raw_command=args.smoke_test)

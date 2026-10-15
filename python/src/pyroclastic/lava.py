@@ -303,7 +303,7 @@ def main():
         lf = lava_path.logs_directory / "bug_mining.log"
         progress("everything", 1, f"PANDA taint analysis prospective bug mining -- logging to {lf}")
         with log_to_file(lf):
-            bug_mining.run_taint_pipeline(lava_path.config['name'], lava_path.config)
+            bug_mining.run_taint_pipeline(lava_path.config)
         time_diff = tock(start)
         progress("everything", 1, f"bug_mining complete {time_diff} seconds")
         # Default print last 8 lines of the log, which should have the summary of bug_injection
