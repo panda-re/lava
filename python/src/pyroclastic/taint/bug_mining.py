@@ -305,30 +305,9 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
         """
         print("Calling fbi - Mining PANDA log and populating database...")
         start = tick()
-
-        if project_data["use_c_fbi"]:
-            fbi_args = ['fbi',
-                        project_data["host_path"],
-                        lava_project,
-                        pandalog_json,
-                        str(project_data.get("curtail", 0))]
-
-            print(f"C++ fbi invocation: [{subprocess.list2cmdline(fbi_args)}]")
-            sys.stdout.flush()
-            try:
-                subprocess.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
-            except subprocess.CalledProcessError as e:
-                print("FBI Failed. Possible causes: \n" +
-                      "\tNo DUAs found because taint analysis failed: \n"
-                      "\t\t Ensure PANDA 'saw open of file we want to taint'\n"
-                      "\t\t Make sure target has debug symbols (version2): No 'failed DWARF loading' messages\n"
-                      "\tFBI crashed (bad arguments, config, or other untested code)")
-                raise e
-        else:
-            print(f"Python fbi invocation")
-            lava_mode = project_data["lava_mode"]
-            parse_panda_log(pandalog_json, project_data)
-            record_injectable_bugs_offline(project_data, lava_mode)
+        lava_mode = project_data["lava_mode"]
+        parse_panda_log(pandalog_json, project_data)
+        record_injectable_bugs_offline(project_data, lava_mode)
         # Print all states from both Mining and Bug Creation
         print_bug_stats(project_data, debug=False)
         print_phase2_stats(project_data, debug=False)
