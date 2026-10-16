@@ -45,7 +45,6 @@ def parse_lava_args() -> argparse.Namespace:
     # --- Expert/Dev Options ---
     expert = parser.add_argument_group("Expert only options")
     expert.add_argument("--test-data-flow", action="store_true", help="Inject data-flow only, 0 bugs")
-    expert.add_argument("--curtail", type=int, default=0, help="Curtail bug-finding after count bugs")
 
     # --- Backwards Compatibility / Combined Flags ---
     # Argparse doesn't natively do '-ak', so we check sys.argv for it later

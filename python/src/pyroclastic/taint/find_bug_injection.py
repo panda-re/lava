@@ -2,6 +2,7 @@ import sys
 import ijson
 import os
 import re
+import argparse
 from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError
 from typing import DefaultDict, Set, Optional, List, Tuple, cast
@@ -799,11 +800,17 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
 
 
 def main():
-    project_name = sys.argv[1]
-    panda_log = sys.argv[2]
-
-    project = parse_vars(project_name)
-    parse_panda_log(panda_log, project)
+    parser = argparse.ArgumentParser(prog='This program is used to record and replay on PANDA '
+                                              'to determine bug injection points using taint analysis.')
+    parser.add_argument('-p', '--project', dest='project', action='store',
+                        help="The name of the project, this contains project specific data", 
+                        required=True, type=str)
+    parser.add_argument('-t', '--trace', dest='trace', action='store',
+                        help="The path to the PANDA log file to be processed",
+                        required=True, type=str)
+    args = parser.parse_args()
+    project = parse_vars(args.project)
+    parse_panda_log(args.trace, project)
 
 
 if __name__ == "__main__":
