@@ -45,7 +45,6 @@ def parse_lava_args() -> argparse.Namespace:
     # --- Expert/Dev Options ---
     expert = parser.add_argument_group("Expert only options")
     expert.add_argument("--test-data-flow", action="store_true", help="Inject data-flow only, 0 bugs")
-    expert.add_argument("--curtail", type=int, default=0, help="Curtail bug-finding after count bugs")
 
     # --- Backwards Compatibility / Combined Flags ---
     # Argparse doesn't natively do '-ak', so we check sys.argv for it later
@@ -303,7 +302,7 @@ def main():
         lf = lava_path.logs_directory / "bug_mining.log"
         progress("everything", 1, f"PANDA taint analysis prospective bug mining -- logging to {lf}")
         with log_to_file(lf):
-            bug_mining.run_taint_pipeline(lava_path.config['name'], lava_path.config)
+            bug_mining.run_taint_pipeline(lava_path.config)
         time_diff = tock(start)
         progress("everything", 1, f"bug_mining complete {time_diff} seconds")
         # Default print last 8 lines of the log, which should have the summary of bug_injection

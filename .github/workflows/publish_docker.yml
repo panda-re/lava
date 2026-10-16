@@ -156,7 +156,7 @@ jobs:
       - get_version
       - publish-to-pypi
     if: github.repository == 'panda-re/lava' && github.ref == 'refs/heads/master'
-    runs-on: panda-arc
+    runs-on: ubuntu-22.04
     steps:
     - name: Login to Docker Registry
       uses: docker/login-action@v4

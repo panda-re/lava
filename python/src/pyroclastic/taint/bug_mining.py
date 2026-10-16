@@ -25,6 +25,26 @@ from ..utils.funcs import tick, tock, progress
 from ..taint.generate_bugs import record_injectable_bugs_offline
 
 
+def pandalog_conversion_env():
+    """Require native protobuf for pandalog conversion."""
+    env = os.environ.copy()
+    env['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'upb'
+    probe = subprocess.run(
+        [sys.executable, '-c',
+         'import pandare.plog_pb2; '
+         'from google.protobuf.internal import api_implementation; '
+         'assert api_implementation.Type() == "upb"'],
+        env=env, capture_output=True, text=True, timeout=30)
+    if probe.returncode:
+        raise RuntimeError(
+            'Native protobuf (upb) is required for pandalog conversion. '
+            'Rebuild/reinstall PyPANDA with modern plog_pb2.py bindings '
+            'and install a protobuf runtime with upb support.\n'
+            + probe.stderr.strip())
+    print('[*] Using native protobuf (upb) for pandalog conversion.')
+    return env
+
+
 def check_dwarf_json_files(install_dir: str) -> None:
     """
     Recursively find and validate the four DWARF JSON files.
@@ -87,7 +107,7 @@ def check_dwarf_json_files(install_dir: str) -> None:
     )
 
 
-def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optional[str] = None):
+def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, steps: Optional[list] = None):
     """
     Initializes the project and PANDA object based on arguments.
 
@@ -100,17 +120,21 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
     pypanda/record_cmd/copy_to_guest against a project's actual install
     directory without wading through the full taint pipeline, e.g. to
     confirm a binary even launches before debugging why no taint appeared.
+    step: list of steps to run, can be "record", "replay", or "parse". 
+    If None, run all steps.
     """
-    # recording_timeout = project_data["recording_timeout"]
-    panda = Panda(generic=project_data['qemu'])
-    panda_log = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
-    pandalog_json = "{}/queries-{}.json".format(project_data['output_dir'], project_data['name'])
-
     class State:
         guest_command = ""
         install_directory = ""
         tar_directory = ""
     state = State()
+    tar_files = subprocess.check_output(['tar', 'tf', project_data['tarfile']]).decode('utf-8')
+    state.tar_directory = os.path.abspath(tar_files.splitlines()[0].split(os.path.sep)[0])
+    state.install_directory = os.path.join(state.tar_directory, 'lava-install')
+    # recording_timeout = project_data["recording_timeout"]
+    panda = Panda(generic=project_data['qemu'])
+    panda_log = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
+    pandalog_json = "{}/queries-{}.json".format(project_data['output_dir'], project_data['name'])
 
     @panda.queue_blocking
     def create_recording_wrapper():
@@ -144,9 +168,6 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
         os.chdir(project_data['output_dir'])
 
         # When you unpack a tarfile, it usually creates a subdirectory.
-        tar_files = subprocess.check_output(['tar', 'tf', project_data['tarfile']]).decode('utf-8')
-        state.tar_directory = os.path.abspath(tar_files.splitlines()[0].split(os.path.sep)[0])
-        state.install_directory = os.path.join(state.tar_directory, 'lava-install')
         guest_directory_inputs_path = os.path.join(state.install_directory, 'inputs')
 
         progress("bug_mining", 0, f"Copying directory {input_file_directory} to {guest_directory_inputs_path}")
@@ -275,14 +296,14 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
         replay_time = tock(start)
         progress("bug_mining", 1, f"taint analysis complete {replay_time} seconds")
         sys.stdout.flush()
+        convert_plog_to_json()
 
-        # I attempted to upgrade the version, but panda had trouble including <protobuf-c/protobuf.h> something
-        # for now, we can use the python implementation, although it is slower
-        # https://github.com/protocolbuffers/protobuf/releases/tag/v21.0
-        # https://stackoverflow.com/questions/52040428/how-to-update-protobuf-runtime-library
-        os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
+    # Technically occurs inside replay, but it is just cleaner here.
+    def convert_plog_to_json():
+        start = tick()
+        conversion_env = pandalog_conversion_env()
         progress("bug_mining", 0, "Converting PANDA Log to JSON...")
-        convert_json_args = ['python3', '-m', 'pandare.plog_reader', panda_log]
+        convert_json_args = [sys.executable, '-m', 'pandare.plog_reader', panda_log]
         # TODO: Once Panda PR is in, using -c should avoid the warning
         #convert_json_args = [
         #    'python3',
@@ -293,10 +314,13 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
         print(f"panda log JSON invocation: [{subprocess.list2cmdline(convert_json_args)} > {pandalog_json}]")
         try:
             with open(pandalog_json, 'wb') as fd:
-                subprocess.check_call(convert_json_args, stdout=fd, stderr=sys.stderr)
+                subprocess.check_call(convert_json_args, stdout=fd, stderr=sys.stderr, env=conversion_env)
         except subprocess.CalledProcessError as e:
             print("The script to convert the panda log into JSON has failed")
             raise e
+
+        convert_time = tock(start)
+        progress("bug_mining", 1, f"Converted JSON in {convert_time} seconds")
 
     def parse_replay_output():
         """
@@ -305,30 +329,9 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
         """
         print("Calling fbi - Mining PANDA log and populating database...")
         start = tick()
-
-        if project_data["use_c_fbi"]:
-            fbi_args = ['fbi',
-                        project_data["host_path"],
-                        lava_project,
-                        pandalog_json,
-                        str(project_data.get("curtail", 0))]
-
-            print(f"C++ fbi invocation: [{subprocess.list2cmdline(fbi_args)}]")
-            sys.stdout.flush()
-            try:
-                subprocess.check_call(fbi_args, stdout=sys.stdout, stderr=sys.stderr)
-            except subprocess.CalledProcessError as e:
-                print("FBI Failed. Possible causes: \n" +
-                      "\tNo DUAs found because taint analysis failed: \n"
-                      "\t\t Ensure PANDA 'saw open of file we want to taint'\n"
-                      "\t\t Make sure target has debug symbols (version2): No 'failed DWARF loading' messages\n"
-                      "\tFBI crashed (bad arguments, config, or other untested code)")
-                raise e
-        else:
-            print(f"Python fbi invocation")
-            lava_mode = project_data["lava_mode"]
-            parse_panda_log(pandalog_json, project_data)
-            record_injectable_bugs_offline(project_data, lava_mode)
+        lava_mode = project_data["lava_mode"]
+        parse_panda_log(pandalog_json, project_data)
+        record_injectable_bugs_offline(project_data, lava_mode)
         # Print all states from both Mining and Bug Creation
         print_bug_stats(project_data, debug=False)
         print_phase2_stats(project_data, debug=False)
@@ -357,17 +360,26 @@ def run_taint_pipeline(lava_project: str, project_data: dict, raw_command: Optio
         progress("bug_mining", 0, f"PANDA log json already exists at {pandalog_json}, skipping straight to parsing replay output")
         parse_replay_output()
         return
-    record()
-    replay()
-    parse_replay_output()
+    if steps is None or "record" in steps:
+        record()
+    if steps is None or "replay" in steps:
+        replay()
+    if steps is None or "parse" in steps:
+        parse_replay_output()
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(prog='This program is used to record and replay on PANDA '
-                                          'to determine bug injection points using taint analysis.')
+                                              'to determine bug injection points using taint analysis.')
     parser.add_argument('-p', '--project', dest='project', action='store',
                         help="The name of the project, this contains project specific data", required=True,
                         type=str)
+    # Select your steps you want to do:
+    parser.add_argument("-a", "--all", action="store_true", help="Run all taint steps")
+    parser.add_argument("--record", action="store_true", help="Record the taint information from the PANDA log")
+    parser.add_argument("--replay", action="store_true", help="Replay the taint information to determine bug injection points")
+    parser.add_argument("--parse", action="store_true", help="Parse the replay output to determine bug injection points")
+    # Have a smoke test for debugging PANDA commands
     parser.add_argument('--smoke-test', dest='smoke_test',
                         action='store', default=None, type=str,
                         help="Skip the normal per-file batch command; revert/copy-to-guest as usual but "
@@ -376,4 +388,11 @@ if __name__ == "__main__":
                              "replay, no FBI. E.g.: --smoke-test 'echo hello_from_guest'")
     args = parser.parse_args()
     project = parse_vars(args.project)
-    run_taint_pipeline(args.project, project, raw_command=args.smoke_test)
+    steps = [
+        step for step in ('record', 'replay', 'parse')
+        if getattr(args, step)
+    ]
+    run_taint_pipeline(project, raw_command=args.smoke_test, steps=None if args.all or not steps else steps)
+
+if __name__ == "__main__":
+    main()
