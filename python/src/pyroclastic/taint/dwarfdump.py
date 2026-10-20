@@ -17,7 +17,10 @@ import json
 import re
 import os
 import functools
-from typing import Optional
+import io
+import subprocess
+import tempfile
+from typing import Iterable, Optional, Union
 
 # Bug 1 (docs/dwarfdump.log): a DW_TAG_pointer_type or
 # const/volatile/restrict/typedef DIE with no DW_AT_type is a pointer to /
@@ -783,25 +786,51 @@ class LineRange(object):
                 }
 
 
-def parse_dwarfdump(input_data: str, prefix: str="", project_root: Optional[str] = None, debug: bool = False):
-    """
-    The main parsing routine. Reads dwarfdump output, processes both line info
-    and debug info sections, and populates the databases of variables, functions,
-    and types. Finally, it dumps the databases to JSON files.
+def dump_binary(executable: str, project_root: Optional[str] = None):
+    """Run dwarfdump without buffering its output in memory.
 
-    Args:
-        :param input_data: The content of the dwarfdump output.
-        :param prefix: Prefix for the output JSON filenames. Defaults to "".
-        :param project_root: The absolute path to the root of the extracted project folder, used for path resolution. Defaults to None.
-        :param debug: A boolean flag to enable debug output, printing each line of the .debug_line section as it is processed. Defaults to False.
+    Check command success before parsing or replacing any metadata files.
+    Stderr is inherited so warnings remain visible without an unread pipe.
     """
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output:
+        subprocess.run(["dwarfdump", "-dil", executable], stdout=output, check=True)
+        if output.tell() == 0:
+            raise RuntimeError("dwarfdump produced no output")
+        output.seek(0)
+        parse_dwarfdump(output, executable, project_root=project_root)
+
+
+def parse_dwarfdump(input_data: Union[str, Iterable[str]], prefix: str = "",
+                    project_root: Optional[str] = None, debug: bool = False):
+    """Parse text or a line iterator, spooling sections instead of retaining text.
+
+    Preserve the existing line-table-first parsing order even when dwarfdump
+    interleaves debug and line information across compilation units.
+    """
+    lines = io.StringIO(input_data) if isinstance(input_data, str) else input_data
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as line_rows, \
+            tempfile.TemporaryFile(mode="w+", encoding="utf-8") as info_rows:
+        for line in lines:
+            line = line.strip()
+            if line.startswith("0x"):
+                line_rows.write(line + "\n")
+            elif line.startswith("<") and not line.startswith("<pc>"):
+                info_rows.write(line + "\n")
+        line_rows.seek(0)
+        info_rows.seek(0)
+        _parse_dwarfdump_sections(
+            {".debug_line": line_rows, ".debug_info": info_rows},
+            prefix, project_root, debug)
+
+
+def _parse_dwarfdump_sections(data, prefix, project_root, debug):
+    """Consume the two section streams using the existing parsing logic."""
     reloc_base = 0
     line_info = LineDB()
     globvar_info = GlobVarDB()
     func_info = FunctionDB()
     type_info = TypeDB()
 
-    data = parse_section(input_data)
     tag = ".debug_line"
     if tag in data:
         srcfn = None

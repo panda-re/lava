@@ -128,15 +128,18 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
         install_directory = ""
         tar_directory = ""
     state = State()
+    os.chdir(project_data["output_dir"])
     tar_files = subprocess.check_output(['tar', 'tf', project_data['tarfile']]).decode('utf-8')
     state.tar_directory = os.path.abspath(tar_files.splitlines()[0].split(os.path.sep)[0])
     state.install_directory = os.path.join(state.tar_directory, 'lava-install')
     # recording_timeout = project_data["recording_timeout"]
-    panda = Panda(generic=project_data['qemu'])
+    # Parsing existing JSON must not initialize PANDA or open its QCOW.
+    needs_panda = raw_command is not None or steps is None or any(
+        step in steps for step in ('record', 'replay'))
+    panda = Panda(generic=project_data['qemu']) if needs_panda else None
     panda_log = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
     pandalog_json = "{}/queries-{}.json".format(project_data['output_dir'], project_data['name'])
 
-    @panda.queue_blocking
     def create_recording_wrapper():
         """
         Create a recording in PANDA with the given command arguments.
@@ -220,6 +223,7 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
             progress("bug_mining", 0, "Using complete record and replay, likely in GitHub CI/CD")
             panda.set_complete_rr_snapshot()
 
+        panda.queue_blocking(create_recording_wrapper)
         panda.run()
 
         record_time = tock(start)
@@ -241,20 +245,8 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
         if not os.path.exists(guest_executable):
             raise RuntimeError(f"Critical Error: {guest_executable} not found")
 
-        dwarf_cmd = ["dwarfdump", "-dil", guest_executable]
-        progress("bug_mining", 1, f"Running Dwarf Dump {subprocess.list2cmdline(dwarf_cmd)}")
-        result = subprocess.run(
-            dwarf_cmd,
-            capture_output=True,
-            text=True
-        )
-
-        if result.stdout is None:
-            raise RuntimeError(f"Critical Error: blank output from dwarfdump!")
-
-        progress("bug_mining", 1, "Converting Dwarf Dump into JSON")
-        dwarfdump.parse_dwarfdump(result.stdout, guest_executable, project_root=state.tar_directory)
-
+        progress("bug_mining", 1, f"Running Dwarf Dump on {guest_executable} to generate JSON files for taint analysis")
+        dwarfdump.dump_binary(guest_executable, project_root=state.tar_directory)
         check_dwarf_json_files(state.tar_directory)
 
         proc_name = os.path.basename(guest_executable)
@@ -356,7 +348,7 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
 
     # Check if there is already a PANDA log...
     # If there is, skip straight to parsing the replay output, otherwise do the whole pipeline
-    if os.path.exists(pandalog_json):
+    if steps is None and os.path.exists(pandalog_json):
         progress("bug_mining", 0, f"PANDA log json already exists at {pandalog_json}, skipping straight to parsing replay output")
         parse_replay_output()
         return

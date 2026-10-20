@@ -83,3 +83,39 @@ def test_address_regression_without_sequence_end_is_rejected(tmp_path):
             '0x100 [10,0] NS uri: "/src/main.c"',
             '0x80 [11,0] NS',
         ])
+
+
+def test_line_iterator_matches_text_input(tmp_path):
+    rows = ['0x100 [10,0] NS uri: "/src/main.c"',
+            '0x110 [10,0] ET']
+    expected = convert(tmp_path, rows)
+    prefix = str(tmp_path / 'stream')
+    parse_dwarfdump((row + '\n' for row in rows), prefix)
+    assert json.loads((tmp_path / 'stream_lineinfo.json').read_text()) == expected
+
+
+def test_failed_dwarfdump_does_not_replace_metadata(tmp_path, monkeypatch):
+    import subprocess
+    from pyroclastic.taint import dwarfdump
+
+    executable = str(tmp_path / 'binary')
+    metadata = tmp_path / 'binary_lineinfo.json'
+    metadata.write_text('existing metadata')
+
+    def fail(command, **kwargs):
+        kwargs['stdout'].write('partial output')
+        raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(dwarfdump.subprocess, 'run', fail)
+    with pytest.raises(subprocess.CalledProcessError):
+        dwarfdump.dump_binary(executable)
+    assert metadata.read_text() == 'existing metadata'
+
+
+def test_empty_dwarfdump_is_rejected(tmp_path, monkeypatch):
+    from pyroclastic.taint import dwarfdump
+
+    monkeypatch.setattr(dwarfdump.subprocess, 'run', lambda *args, **kwargs: None)
+    with pytest.raises(RuntimeError, match='no output'):
+        dwarfdump.dump_binary(str(tmp_path / 'binary'))
+    assert not list(tmp_path.glob('*.json'))
