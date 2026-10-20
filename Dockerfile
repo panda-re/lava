@@ -45,11 +45,16 @@ RUN cd /tmp && \
     rm -f /tmp/pandare_${UBUNTU_VERSION}.deb
 
 # Install libhc for hypercalls
-RUN LIBHC_VERSION=$(curl -s https://api.github.com/repos/AndrewQuijano/libhc/releases/latest | jq -r .tag_name) && \
-    LIBHC_TAG=${LIBHC_VERSION#v} && \
-    curl -LJ -o /tmp/libhc-dev_${LIBHC_TAG}_all.deb https://github.com/AndrewQuijano/libhc/releases/download/${LIBHC_VERSION}/libhc-dev_${LIBHC_TAG}_all.deb && \
-    $SUDO apt-get -y install /tmp/libhc-dev_${LIBHC_TAG}_all.deb && \
-    rm "/tmp/libhc-dev_${LIBHC_TAG}_all.deb"
+RUN release_url=$(curl --fail --silent --show-error --location --retry 5 \
+            --output /dev/null --write-out '%{url_effective}' \
+            https://github.com/AndrewQuijano/libhc/releases/latest) && \
+        LIBHC_VERSION=${release_url##*/} && \
+        LIBHC_TAG=${LIBHC_VERSION#v} && \
+        curl --fail --show-error --location --retry 5 \
+            --output /tmp/libhc-dev_all.deb \
+            "https://github.com/AndrewQuijano/libhc/releases/download/${LIBHC_VERSION}/libhc-dev_${LIBHC_TAG}_all.deb" && \
+        apt-get -y install /tmp/libhc-dev_all.deb && \
+        rm /tmp/libhc-dev_all.deb
 
 #### Essentially same as install.sh
 RUN rm -rf /tools/build && \
