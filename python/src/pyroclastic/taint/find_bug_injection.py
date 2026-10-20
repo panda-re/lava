@@ -227,12 +227,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
 
             current_byte_not_ok = tcn_too_high or card_too_high
 
-            # REPLICATING LAVA C++ BUG:
-            # Bytes are ONLY discarded if debug mode is ON!
-            # "if (current_byte_not_ok && debug)"
-            debug = project_data.get("debug", False)
-            if not (current_byte_not_ok and debug):
-                # THIS IS THE C++ UNCONDITIONAL RETAIN LOGIC!
+            if not current_byte_not_ok:
                 c_max_tcn = max(tcn, c_max_tcn)
                 c_max_card = max(len(label_set.labels), c_max_card)
 
@@ -261,7 +256,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
     cpp_style_diff = (length - num_tainted)
     if (project_data.get('chaff_bugs', False) and not is_dua and
             cpp_style_diff >= LAVA_MAGIC_VALUE_SIZE):
-
 
         # Reset viable_byte to clean slate for fake generation
         viable_byte: List[LabelSet | None] = [None] * length
