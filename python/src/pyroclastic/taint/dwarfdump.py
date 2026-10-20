@@ -16,9 +16,11 @@ import sys
 import json
 import re
 import os
-import bisect
 import functools
-from typing import Optional
+import io
+import subprocess
+import tempfile
+from typing import Iterable, Optional, Union
 
 # Bug 1 (docs/dwarfdump.log): a DW_TAG_pointer_type or
 # const/volatile/restrict/typedef DIE with no DW_AT_type is a pointer to /
@@ -264,79 +266,40 @@ class TypeDB(object):
         return jout
 
 class LineDB(object):
-    """
-    A database to store and manage source code line number and address mapping (LineRange objects).
+    """Build half-open PC intervals from consecutive DWARF line-table rows.
+
+    Source lines can move backwards and switch files within a sequence. Only
+    the next row's address determines where the pending row stops applying.
     """
     def __init__(self):
-        """Initializes an empty dictionary to store line data."""
         self.data = {}
+        self._pending = None
 
-    def _find_best_fit(self, srcfn: str, lno: int, addr: int):
-        """
-        (Internal) Finds the best-fitting LineRange entry for a previous line number
-        that should be extended to cover the current address range.
-
-        Args:
-            srcfn (str): Source file name.
-            lno (int): Line number to search for.
-            addr (int): Current address.
-
-        Returns:
-            int: The index of the best-fit LineRange, or -1 if none is found.
-        """
-        # Bugs 3/4 fix (docs/dwarfdump.log): this used to be a full O(n) scan
-        # over *every* entry for srcfn regardless of .lno, called ~5x per
-        # insert() on a real binary -- the single biggest cost in the whole
-        # parser (236s of 426s profiled on lcms2's transicc; sqlite's
-        # single-CU amalgamation made it far worse -- 35+ min and still not
-        # done before this fix). self.data[srcfn] is kept sorted by .lno (see
-        # insert()), so narrow to the contiguous slice with .lno == lno via
-        # binary search first, then only scan within that slice for the
-        # highpc-eligible match -- same result, O(log n + k) instead of O(n).
-        entries = self.data[srcfn]
-        lo = bisect.bisect_left(entries, lno, key=lambda x: x.lno)
-        hi = bisect.bisect_right(entries, lno, key=lambda x: x.lno)
-        r = [-1, -1]
-        for i in range(lo, hi):
-            if r[1] < entries[i].highpc and addr > entries[i].highpc:
-                r = [i, entries[i].highpc]
-        return r[0]
+    def _close_pending(self, addr: int):
+        if self._pending is None:
+            return
+        srcfn, row = self._pending
+        if addr < row.lowpc:
+            raise ValueError(
+                f"DWARF line address decreased within a sequence: "
+                f"{addr:#x} < {row.lowpc:#x}")
+        if addr > row.lowpc:
+            row.highpc = addr
+            self.data.setdefault(srcfn, []).append(row)
+        # Equal-address rows cover no instructions; the last row at that
+        # address will describe the following nonempty interval.
+        self._pending = None
 
     def insert(self, srcfn: str, lno: int, col: int, addr: int, func: int = 0):
-        """
-        Inserts or updates a code address to line number mapping.
-
-        Args:
-            srcfn (str): Source file name.
-            lno (int): Line number.
-            col (int): Column number.
-            addr (int): Start address of the line range.
-            func (int, optional): Address of the enclosing function. Defaults to None.
-        """
         assert srcfn, "Source filename not found in line info"
-        if srcfn not in self.data:
-            self.data[srcfn] = []
+        self._close_pending(addr)
+        self._pending = (srcfn, LineRange(lno, col, addr, addr, func))
 
-        if self.data[srcfn] and lno < self.data[srcfn][-1].lno:
-            i = -1
-        else:
-            i = self._find_best_fit(srcfn, lno, addr)
-        if i == -1:
-            # Bug 4 fix: previously appended then re-sorted the *entire*
-            # list from scratch on every new entry (90,820 calls / ~430M
-            # comparator invocations profiled on lcms2's transicc).
-            # bisect.insort keeps the list sorted incrementally instead --
-            # same end state, O(n) insertion (list shift) instead of a full
-            # O(n log n) re-sort every time.
-            bisect.insort(self.data[srcfn], LineRange(lno, col, addr, addr, func), key=lambda x: x.lno)
-
-        prevlno = lno-1
-        i = self._find_best_fit(srcfn, prevlno, addr)
-        while prevlno > 0 and i == -1:
-            prevlno -= 1
-            i = self._find_best_fit(srcfn, prevlno, addr)
-        if i != -1:
-            self.data[srcfn][i].highpc = addr
+    def end_sequence(self, addr: Optional[int] = None):
+        """Close at the end marker, never extending into another sequence."""
+        if addr is not None:
+            self._close_pending(addr)
+        self._pending = None
 
     # Bug 5 fix (docs/dwarfdump.log): update_function() used to live here --
     # an O(functions * total_lines) nested scan (for every function, over
@@ -823,29 +786,58 @@ class LineRange(object):
                 }
 
 
-def parse_dwarfdump(input_data: str, prefix: str="", project_root: Optional[str] = None, debug: bool = False):
-    """
-    The main parsing routine. Reads dwarfdump output, processes both line info
-    and debug info sections, and populates the databases of variables, functions,
-    and types. Finally, it dumps the databases to JSON files.
+def dump_binary(executable: str, project_root: Optional[str] = None):
+    """Run dwarfdump without buffering its output in memory.
 
-    Args:
-        :param input_data: The content of the dwarfdump output.
-        :param prefix: Prefix for the output JSON filenames. Defaults to "".
-        :param project_root: The absolute path to the root of the extracted project folder, used for path resolution. Defaults to None.
-        :param debug: A boolean flag to enable debug output, printing each line of the .debug_line section as it is processed. Defaults to False.
+    Check command success before parsing or replacing any metadata files.
+    Stderr is inherited so warnings remain visible without an unread pipe.
     """
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output:
+        subprocess.run(["dwarfdump", "-dil", executable], stdout=output, check=True)
+        if output.tell() == 0:
+            raise RuntimeError("dwarfdump produced no output")
+        output.seek(0)
+        parse_dwarfdump(output, executable, project_root=project_root)
+
+
+def parse_dwarfdump(input_data: Union[str, Iterable[str]], prefix: str = "",
+                    project_root: Optional[str] = None, debug: bool = False):
+    """Parse text or a line iterator, spooling sections instead of retaining text.
+
+    Preserve the existing line-table-first parsing order even when dwarfdump
+    interleaves debug and line information across compilation units.
+    """
+    lines = io.StringIO(input_data) if isinstance(input_data, str) else input_data
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as line_rows, \
+            tempfile.TemporaryFile(mode="w+", encoding="utf-8") as info_rows:
+        for line in lines:
+            line = line.strip()
+            if line.startswith("0x"):
+                line_rows.write(line + "\n")
+            elif line.startswith("<") and not line.startswith("<pc>"):
+                info_rows.write(line + "\n")
+        line_rows.seek(0)
+        info_rows.seek(0)
+        _parse_dwarfdump_sections(
+            {".debug_line": line_rows, ".debug_info": info_rows},
+            prefix, project_root, debug)
+
+
+def _parse_dwarfdump_sections(data, prefix, project_root, debug):
+    """Consume the two section streams using the existing parsing logic."""
     reloc_base = 0
     line_info = LineDB()
     globvar_info = GlobVarDB()
     func_info = FunctionDB()
     type_info = TypeDB()
 
-    data = parse_section(input_data)
     tag = ".debug_line"
     if tag in data:
+        srcfn = None
         for line in data[tag]:
             if line is None:
+                line_info.end_sequence()
+                srcfn = None
                 continue
             
             line = line.strip()
@@ -857,6 +849,11 @@ def parse_dwarfdump(input_data: str, prefix: str="", project_root: Optional[str]
                 addr = int(addrstr.strip(), 16) + reloc_base
                 lno = int(lnostr.strip().split(',')[0])
                 col = int(lnostr.strip().split(',')[1])
+                # End markers supply a boundary, not another source row.
+                if "ET" in info.split():
+                    line_info.end_sequence(addr)
+                    srcfn = None
+                    continue
                 if "uri:" in info:
                     srcfn = info.split("uri:")[-1].strip()
                     while srcfn and srcfn[0] in ['"', "'"]:
@@ -864,8 +861,6 @@ def parse_dwarfdump(input_data: str, prefix: str="", project_root: Optional[str]
                     while srcfn and srcfn[-1] in ['"', "'"]:
                         srcfn = srcfn[:-1]
                     srcfn = resolve_real_path(srcfn, project_root=project_root)
-                # I genuninely have no idea why if line info goes inside the 'if' this scripts breaks...
-                # but don't touch it if it doesn't break any tests!
                 line_info.insert(srcfn, lno, col, addr)
 
     cu_off = None

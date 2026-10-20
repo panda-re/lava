@@ -50,7 +50,7 @@ dependencies = [
     "db",
     "ipython",
     "numpy",
-    "pandare>=1.8.85",
+    "pandare",
     "PyYAML",
     "sqlalchemy",
     "tabulate",
@@ -87,7 +87,7 @@ lava-coverage = "pyroclastic.magmalyze.coverage:main"
 magmalyze = "pyroclastic.magmalyze.angr_concolic_explore:main"
 magmalyze-demo = "pyroclastic.magmalyze.explore_demo:main"
 # Mostly used for Testing
-taint = "pyroclastic.taint.bug_mining:run_taint_pipeline"
+taint-plog = "pyroclastic.taint.bug_mining:main"
 mine-plog = "pyroclastic.taint.find_bug_injection:main"
 
 [project.urls]

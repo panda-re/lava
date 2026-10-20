@@ -1,7 +1,0 @@
-:syntax glob
-*.swp
-build/
-config.mak
-panda.mak
-*.gch
-
