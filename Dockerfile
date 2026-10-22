@@ -65,8 +65,21 @@ RUN cmake -B"./tools/build" \
           -DCMAKE_BUILD_TYPE=Release
 RUN cmake --build "/tools/build" --target install --parallel "$(nproc)" --config Release
 
-# Install the pyroclast package
-RUN python3 -m pip install .
+# Isolate LAVA's Python dependencies from Ubuntu-managed Python packages.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3-venv && \
+    apt-get clean && \
+    python3 -m venv /opt/lava-venv
+ENV VIRTUAL_ENV=/opt/lava-venv
+ENV PATH="/opt/lava-venv/bin:${PATH}"
+
+# Install the pyroclastic package and fail the build if it is incomplete.
+RUN python3 -m pip install --upgrade pip setuptools wheel && \
+    python3 -m pip install --no-cache-dir . && \
+    python3 -m pip show pyroclastic && \
+    python3 -m pip check && \
+    command -v lava lava-init && \
+    python3 -c 'from importlib.resources import files; assert files("pyroclastic.data").joinpath("lava.sql").is_file()'
 
 # RUN useradd volcana
 # RUN chown -R volcana:volcana /tools/

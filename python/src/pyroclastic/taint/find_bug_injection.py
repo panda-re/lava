@@ -8,8 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from typing import DefaultDict, Set, Optional, List, Tuple, cast
 from collections import defaultdict
 from sqlalchemy.orm import Session, joinedload
-from ..utils.database_types import print_bug_stats
-from ..utils.database_types import SourceTrace, CallTrace
+from ..utils.database_types import SourceTrace, CallTrace, FileTaint
 from ..utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, LavaDatabase, Dua
 from ..utils.database_types import AtpKind, AtpExecution, LivenessDelta
 from ..taint.taint_utils import get_dua_dead_range, get_dead_range, merge_into
@@ -144,6 +143,7 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
         AttackPoint,
         loc=ast_loc,
         type=attack_point_type,
+        recording=project_data.get("recording", ""),
     ))
     record_atp_execution(
         session,
@@ -314,8 +314,10 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         AttackPoint,
         loc=ast_loc,
         type=AtpKind.QUERY_POINT,
+        recording=project_data.get("recording", ""),
+        trace_index=source_trace_index,
         defaults={
-            'trace_index' : source_trace_index,    
+
             'stack_offset' : stack_offset,
             'calltrace' : calltrace_ids,
         }
@@ -360,6 +362,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
                 'max_tcn': c_max_tcn,
                 'max_cardinality': c_max_card,
                 'trace_index': source_trace_index,
+                'recording': project_data.get('recording', ''),
             }
         ))
 
@@ -493,8 +496,8 @@ def update_unique_taint_sets(unique_label_set: dict, session: Session, project_d
             session,
             LabelSet,
             ptr=pointer,
+            inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
             defaults={
-                "inputfile": project_data.get("input_file", "UNKNOWN_FILE"),
                 "labels": labels
             }
         ))
@@ -583,7 +586,7 @@ def record_call(ple: dict):
     if file_callee.startswith(("/lib/", "/usr/lib/", "/lib64/")):
         return
 
-    # 2. Use boundary-safe regex to catch PANDA's dynamic formats 
+    # 2. Use boundary-safe regex to catch PANDA's dynamic formats
     # (e.g., "libc-2.13.so!malloc" or "libc.so!printf")
     if LIBC_BOUNDARY_RE.search(file_callee) or LIBC_BOUNDARY_RE.search(function_callee):
         return
@@ -605,7 +608,7 @@ def record_ret(ple: dict):
     if file_callee.startswith(("/lib/", "/usr/lib/", "/lib64/")):
         return
 
-    # 2. Use boundary-safe regex to catch PANDA's dynamic formats 
+    # 2. Use boundary-safe regex to catch PANDA's dynamic formats
     # (e.g., "libc-2.13.so!malloc" or "libc.so!printf")
     if LIBC_BOUNDARY_RE.search(file_callee) or LIBC_BOUNDARY_RE.search(function_callee):
         return
@@ -619,7 +622,7 @@ def record_ret(ple: dict):
     current_call_stack.pop()
 
 
-def record_trace(ple: dict, lava_db: dict[int, str], session: Session, source_trace_index: int):
+def record_trace(ple: dict, lava_db: dict[int, str], session: Session, source_trace_index: int, recording: str = ""):
     source_trace_id : int = ple["sourceTraceId"]["astLocId"]
     ast_loc_string : str = lava_db[source_trace_id]
     ast_loc : ASTLoc = ASTLoc.from_serialized(ast_loc_string)
@@ -627,7 +630,8 @@ def record_trace(ple: dict, lava_db: dict[int, str], session: Session, source_tr
         session,
         SourceTrace,
         loc=ast_loc,
-        index=source_trace_index
+        index=source_trace_index,
+        recording=recording
     )
 
 
@@ -734,6 +738,9 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
         print("POSTGRES_USER is not set")
         sys.exit(1)
 
+    if project_data.get("mining_inputs"):
+        project_data.pop("input_file", None)
+    observed_inputs = set()
     num_entries_read = 0
     with open(panda_log_file, 'rb') as plog_file:
         # 'item' iterates over elements in the root array
@@ -757,10 +764,16 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                 elif "dwarf2Ret" in ple:
                     record_ret(ple)
                 elif "sourceTraceId" in ple:
-                    record_trace(ple, lava_db, db.session, current_source_trace_id)
+                    record_trace(ple, lava_db, db.session, current_source_trace_id, project_data.get("recording", ""))
                     current_source_trace_id += 1
                 elif "fileTaintMatch" in ple:
-                    next_input = os.path.basename(ple['fileTaintMatch']['filename'])
+                    guest_input = ple['fileTaintMatch']['filename']
+                    manifest = project_data.get("mining_inputs", {})
+                    next_input = manifest[guest_input] if manifest else os.path.basename(guest_input)
+                    if manifest:
+                        observed_inputs.add(next_input)
+                        # The trace counter restarts for each target invocation.
+                        project_data["recording"] = next_input
                     # A repeated open of the same input is not a fresh label stream.
                     if project_data.get("input_file") == next_input:
                         continue
@@ -786,11 +799,16 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
 
                 if 0 < project_data.get("curtail", 0) < num_real_duas:
                     print(f"*** Curtailing output of fbi at {num_real_duas}")
+                    if project_data.get("recording"):
+                        raise RuntimeError("Curtailed mining is incomplete; increase curtail and retry")
                     break
 
             # The transaction context commits only after successful processing.
             # Drain the final partial execution batch before that commit.
             flush_atp_executions(db.session)
+            if observed_inputs:
+                db.session.query(FileTaint).filter(FileTaint.input_key.in_(observed_inputs)).update(
+                    {"complete": True}, synchronize_session=False)
 
 
 def main():

@@ -783,7 +783,7 @@ def seed_input_for_bug(project: dict, bug: Bug) -> str:
     Get the path to the unfuzzed input this bug was mined from.
     The trigger's all_labels (and every extra DUA's) are byte offsets into the
     input PANDA recorded when the DUA was found, stored as the trigger Dua's
-    inputfile (a basename, by both the C++ and Python fbi). Mutating any other
+    FileTaint filename (or inputfile basename for legacy imports). Mutating any other
     seed writes the magic value at the wrong offsets, so the bug looks like it
     didn't validate when it's actually real.
     Args:
@@ -792,7 +792,8 @@ def seed_input_for_bug(project: dict, bug: Bug) -> str:
     Returns:
         Absolute path to the seed input under <config_dir>/inputs
     """
-    seed_name = bug.trigger_relationship.dua_relationship.inputfile
+    file_taint = bug.trigger_relationship.dua_relationship.file_taint
+    seed_name = file_taint.filename if file_taint else bug.trigger_relationship.dua_relationship.inputfile
     seed_path = os.path.abspath(os.path.join(project["config_dir"], "inputs", seed_name))
     if not os.path.isfile(seed_path):
         raise FileNotFoundError(
@@ -852,7 +853,11 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
         fuzz_labels_list.extend([d.all_labels for d in extra_query])
     mutate_file(str(unfuzzed_input_file), fuzz_labels_list, fuzzed_input_file_name, bug,
             solution=solution, **mutfile_kwargs)
-    rv, output = run_modified_program(project, lp.bugs_install,
+    invocation_project = dict(project)
+    file_taint = bug.trigger_relationship.dua_relationship.file_taint
+    if file_taint:
+        invocation_project['command'] = file_taint.command
+    rv, output = run_modified_program(invocation_project, lp.bugs_install,
                                       fuzzed_input_file_name, shell=True)
     print(f"retval = {rv}")
     validated = False
@@ -933,11 +938,15 @@ def validate_bugs(bug_list, db: LavaDatabase, lp: LavaPaths,
     print(bug_list)
     print("------------\n")
     unfuzzed_outputs = {}
-    for input_file in input_files:
-        unfuzzed_input = os.path.join(project["config_dir"], 'inputs', os.path.basename(input_file))
-        rv, output = run_modified_program(project, lp.bugs_install,
-                                          str(unfuzzed_input), shell=True)
-        unfuzzed_outputs[os.path.basename(input_file)] = output
+    for bug in bug_list:
+        unfuzzed_input = seed_input_for_bug(project, bug)
+        invocation_project = dict(project)
+        file_taint = bug.trigger_relationship.dua_relationship.file_taint
+        if file_taint:
+            invocation_project['command'] = file_taint.command
+        rv, output = run_modified_program(invocation_project, lp.bugs_install,
+                                          unfuzzed_input, shell=True)
+        unfuzzed_outputs[bug.trigger_relationship.dua_relationship.inputfile] = output
         if rv != arguments.exitCode:
             print("***** buggy program fails on original input - \
                   Exit code {} does not match expected {}"

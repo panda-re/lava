@@ -164,6 +164,13 @@ jobs:
         username: pandare
         password: ${{ secrets.ALL_PANDARE_DOCKERHUB }}
 
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+      with:
+        version: latest
+        driver-opts: |
+          network=host
+
     - name: Check out
       uses: actions/checkout@v7
       with:
