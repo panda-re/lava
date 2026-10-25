@@ -233,12 +233,35 @@ struct SourceLval {
 };
 
 #pragma db object
+struct FileTaint {
+#pragma db id auto
+    uint64_t id;
+#pragma db not_null
+    std::string filename;
+#pragma db not_null
+    std::string sha256;
+#pragma db not_null
+    std::string command;
+#pragma db not_null
+    bool complete;
+#pragma db index("FileTaintUniq") unique members(filename, sha256, command)
+    void __enforce_proto() const {
+        enforce_name_match<FileTaint, lava::FileTaint>("FileTaint");
+        lava::FileTaint p;
+        p.set_id(id); p.set_filename(filename); p.set_sha256(sha256);
+        p.set_command(command);
+        p.set_complete(complete);
+    }
+};
+
+#pragma db object
 struct LabelSet {
 #pragma db id auto
     uint64_t id;
 
     uint64_t ptr;           // Pointer to labelset during taint run
-    std::string inputfile;  // Inputfile used for this run.
+#pragma db not_null
+    const FileTaint* inputfile;  // Inputfile used for this run.
 
     std::vector<uint32_t> labels;
 
@@ -256,7 +279,8 @@ struct LabelSet {
         lava::LabelSet p;
         p.set_id(this->id);
         p.set_ptr(this->ptr);
-        p.set_inputfile(this->inputfile);
+        this->inputfile->__enforce_proto();
+        p.mutable_file_taint()->set_id(this->inputfile->id);
         p.add_labels(0);
     }
 };
@@ -277,7 +301,8 @@ struct Dua {
     std::vector<uint32_t> all_labels;
 
     // Inputfile used when this dua appeared.
-    std::string inputfile;
+#pragma db not_null
+    const FileTaint* inputfile;
 
     // max tcn of any byte of this lval
     uint32_t max_tcn;
@@ -296,7 +321,7 @@ struct Dua {
     Dua() {}
     inline Dua(const SourceLval *lval, std::vector<const LabelSet*> &&viable_bytes,
             std::vector<uint32_t> &&byte_tcn, std::vector<uint32_t> &&all_labels,
-            std::string inputfile, uint32_t max_tcn, uint32_t max_cardinality,
+            const FileTaint* inputfile, uint32_t max_tcn, uint32_t max_cardinality,
             uint64_t instr, bool fake_dua, uint64_t src_tr, uint64_t length, odb::nullable<uint64_t> death_instr = {})
         : id(0), lval(lval), viable_bytes(std::move(viable_bytes)),
             byte_tcn(std::move(byte_tcn)), all_labels(std::move(all_labels)),
@@ -346,7 +371,8 @@ struct Dua {
         }
         p.add_byte_tcn(0);
         p.add_all_labels(0);
-        p.set_inputfile(this->inputfile);
+        this->inputfile->__enforce_proto();
+        p.mutable_file_taint()->set_id(this->inputfile->id);
         p.set_max_tcn(this->max_tcn);
         p.set_max_cardinality(this->max_cardinality);
         p.set_instr(this->instr);
@@ -420,12 +446,14 @@ struct SourceTrace {
 #pragma db not_null
     uint64_t index;
 #pragma db not_null
+    const FileTaint* file_taint;
+#pragma db not_null
     ASTLoc loc;
 
-#pragma db index("SourceTraceUniq") unique members(index)
+#pragma db index("SourceTraceUniq") unique members(file_taint, index)
 
     bool operator<(const SourceTrace &other) const {
-        return index < other.index;
+        return std::tie(file_taint->id, index) < std::tie(other.file_taint->id, other.index);
     }
 };
 
@@ -468,11 +496,7 @@ struct AttackPoint {
         TYPE_END
     } type;
 
-    std::vector<uint64_t> calltrace;
-    uint64_t trace_index;   // Index into the SourceTrace
-    uint64_t stack_offset;  // Used for Chaff Bugs
-
-#pragma db index("AttackPointUniq") unique members(loc, type, trace_index)
+#pragma db index("AttackPointUniq") unique members(loc, type)
 
     bool operator<(const AttackPoint &other) const {
         return std::tie(type, loc) <
@@ -507,6 +531,58 @@ struct AttackPoint {
         p.set_id(this->id);
         this->loc.__enforce_proto();
         p.set_type(static_cast<lava::AttackPoint::AtpKind>(this->type));
+    }
+};
+
+#pragma db object table("atp_execution")
+struct AtpExecution {
+#pragma db id auto
+    uint64_t id;
+
+#pragma db not_null
+    const AttackPoint* atp; // This generates the atp_id Foreign Key!
+
+#pragma db not_null
+    const FileTaint* inputfile;
+    uint64_t instr;
+    uint64_t pid;
+    uint64_t tid;
+    std::vector<uint64_t> calltrace;
+    uint64_t trace_index;
+    uint64_t stack_offset;
+
+#pragma db index("AtpExecutionUniq") unique members(atp, inputfile, instr)
+
+    AtpExecution() {}
+    AtpExecution(const AttackPoint* atp, const FileTaint* inputfile, uint64_t instr, uint64_t pid, uint64_t tid)
+        : id(0), atp(atp), inputfile(inputfile), instr(instr), pid(pid), tid(tid), trace_index(0), stack_offset(0) {}
+
+    bool operator<(const AtpExecution &other) const {
+        return std::tie(atp->id, inputfile, instr) <
+            std::tie(other.atp->id, other.inputfile, other.instr);
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const AtpExecution &exec) {
+        os << "AtpExecution[" << exec.inputfile << " @ instr=" << exec.instr << "] -> ATP ID: " << exec.atp->id;
+        return os;
+    }
+
+    // SCHEMA ENFORCEMENT
+    void __enforce_proto() const {
+        enforce_name_match<AtpExecution, lava::AtpExecution>("AtpExecution");
+        lava::AtpExecution p;
+        p.set_id(this->id);
+        if (this->atp) {
+            this->atp->__enforce_proto();
+        }
+        this->inputfile->__enforce_proto();
+        p.mutable_input()->set_id(this->inputfile->id);
+        p.set_instr(this->instr);
+        p.set_pid(this->pid);
+        p.set_tid(this->tid);
+        p.add_calltrace(0);
+        p.set_trace_index(trace_index);
+        p.set_stack_offset(stack_offset);
     }
 };
 
@@ -548,6 +624,9 @@ struct Bug {
 #pragma db not_null
     const AttackPoint* atp;
 
+#pragma db null
+    const AtpExecution* execution;
+
     uint64_t max_liveness;
 
     // Possible exploit pad for ret-eax bugs.
@@ -567,7 +646,7 @@ struct Bug {
     Bug(Type type, const DuaBytes *trigger, uint64_t max_liveness,
             const AttackPoint *atp, std::vector<uint64_t> extra_duas, uint32_t stackoff)
         : id(0), type(type), trigger(trigger), trigger_lval(trigger->dua->lval),
-            atp(atp), max_liveness(max_liveness), extra_duas(extra_duas),
+            atp(atp), execution(nullptr), max_liveness(max_liveness), extra_duas(extra_duas),
             magic(0), stackoff(stackoff) {
         for (int i = 0; i < 4; i++) {
             magic <<= 8;
@@ -615,6 +694,10 @@ struct Bug {
         }
         if (this->atp) {
             this->atp->__enforce_proto();
+        }
+        if (execution) {
+            execution->__enforce_proto();
+            p.mutable_execution()->set_id(execution->id);
         }
         p.set_max_liveness(this->max_liveness);
         p.add_extra_duas(0);
@@ -761,94 +844,13 @@ struct Call {
     }
 };
 
-#pragma db object table("atp_execution")
-struct AtpExecution {
-#pragma db id auto
-    uint64_t id;
-
-#pragma db not_null
-    const AttackPoint* atp; // This generates the atp_id Foreign Key!
-
-    std::string inputfile;
-    uint64_t instr;
-    uint64_t pid;
-    uint64_t tid;
-
-#pragma db index("AtpExecutionUniq") unique members(atp, inputfile, instr)
-
-    AtpExecution() {}
-    AtpExecution(const AttackPoint* atp, std::string inputfile, uint64_t instr, uint64_t pid, uint64_t tid)
-        : id(0), atp(atp), inputfile(inputfile), instr(instr), pid(pid), tid(tid) {}
-
-    bool operator<(const AtpExecution &other) const {
-        return std::tie(atp->id, inputfile, instr) <
-            std::tie(other.atp->id, other.inputfile, other.instr);
-    }
-
-    friend std::ostream &operator<<(std::ostream &os, const AtpExecution &exec) {
-        os << "AtpExecution[" << exec.inputfile << " @ instr=" << exec.instr << "] -> ATP ID: " << exec.atp->id;
-        return os;
-    }
-
-    // SCHEMA ENFORCEMENT
-    void __enforce_proto() const {
-        enforce_name_match<AtpExecution, lava::AtpExecution>("AtpExecution");
-        lava::AtpExecution p;
-        p.set_id(this->id);
-        if (this->atp) {
-            this->atp->__enforce_proto();
-        }
-        p.set_inputfile(this->inputfile);
-        p.set_instr(this->instr);
-        p.set_pid(this->pid);
-        p.set_tid(this->tid);
-    }
-};
-
-#pragma db object table("liveness_snapshot")
-struct LivenessSnapshot {
-#pragma db id auto
-    uint64_t id;
-
-    std::string inputfile;
-    uint32_t label;
-    uint64_t atp_instr;
-    uint64_t liveness_count;
-
-#pragma db index("LivenessSnapshotUniq") unique members(inputfile, label, atp_instr)
-
-    LivenessSnapshot() {}
-    LivenessSnapshot(std::string inputfile, uint32_t label, uint64_t atp_instr, uint64_t liveness_count)
-        : id(0), inputfile(inputfile), label(label), atp_instr(atp_instr), liveness_count(liveness_count) {}
-
-    bool operator<(const LivenessSnapshot &other) const {
-        return std::tie(inputfile, label, atp_instr, liveness_count) <
-            std::tie(other.inputfile, other.label, other.atp_instr, liveness_count);
-    }
-
-    friend std::ostream &operator<<(std::ostream &os, const LivenessSnapshot &snap) {
-        os << "Liveness[" << snap.inputfile << "]: Label " << snap.label << " dies at instr " << snap.atp_instr;
-        return os;
-    }
-
-    // SCHEMA ENFORCEMENT
-    void __enforce_proto() const {
-        enforce_name_match<LivenessSnapshot, lava::LivenessSnapshot>("LivenessSnapshot");
-        lava::LivenessSnapshot p;
-        p.set_id(this->id);
-        p.set_inputfile(this->inputfile);
-        p.set_label(this->label);
-        p.set_atp_instr(this->atp_instr);
-        p.set_liveness_count(this->liveness_count);
-    }
-};
-
 #pragma db object table("liveness_delta")
 struct LivenessDelta {
 #pragma db id auto
     uint64_t id;
 
-    std::string inputfile;
+#pragma db not_null
+    const FileTaint* inputfile;
     uint32_t label;
     uint64_t atp_instr;
     uint64_t liveness_count;
@@ -858,7 +860,7 @@ struct LivenessDelta {
 #pragma db index("LivenessDeltaUniq") unique members(inputfile, label, atp_instr)
 
     LivenessDelta() {}
-    LivenessDelta(std::string inputfile, uint32_t label, uint64_t atp_instr, uint64_t liveness_count)
+    LivenessDelta(const FileTaint* inputfile, uint32_t label, uint64_t atp_instr, uint64_t liveness_count)
         : id(0), inputfile(inputfile), label(label), atp_instr(atp_instr), liveness_count(liveness_count) {}
 
     bool operator<(const LivenessDelta &other) const {
@@ -876,7 +878,8 @@ struct LivenessDelta {
         enforce_name_match<LivenessDelta, lava::LivenessDelta>("LivenessDelta");
         lava::LivenessDelta p;
         p.set_id(this->id);
-        p.set_inputfile(this->inputfile);
+        this->inputfile->__enforce_proto();
+        p.mutable_input()->set_id(this->inputfile->id);
         p.set_label(this->label);
         p.set_atp_instr(this->atp_instr);
         p.set_liveness_count(this->liveness_count);

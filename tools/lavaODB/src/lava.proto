@@ -27,8 +27,8 @@ message SourceLval {
 
 message LabelSet {
     uint64 id = 1;
-    uint64 ptr = 2;         // Pointer to labelset during taint run
-    string inputfile = 3;   // Inputfile used for this run.
+    uint64 ptr = 2;             // Pointer to labelset during taint run
+    FileTaint file_taint = 3;   // Input for this run
     repeated uint32 labels = 4;
 };
 
@@ -38,7 +38,7 @@ message Dua {
     repeated LabelSet viable_bytes = 3;
     repeated uint32 byte_tcn = 4;
     repeated uint32 all_labels = 5;
-    string inputfile = 6;
+    FileTaint file_taint = 6;
     uint32 max_tcn = 7;
     uint32 max_cardinality = 8;
     uint64 instr = 9;
@@ -85,6 +85,7 @@ message Bug {
     uint64 max_liveness = 6;
     repeated uint64 extra_duas = 7;
     uint32 magic = 8;
+    AtpExecution execution = 9;
 }
 
 message Build {
@@ -122,25 +123,28 @@ message Call {
 message AtpExecution {
     uint64 id = 1;
     AttackPoint atp = 2;
-    string inputfile = 3;
+    FileTaint input = 3;
     uint64 instr = 4;
     uint64 pid = 5;
     uint64 tid = 6;
-}
-
-message LivenessSnapshot {
-    uint64 id = 1;
-    string inputfile = 2;
-    uint32 label = 3;
-    uint64 atp_instr = 4;
-    uint64 liveness_count = 5;
+    repeated uint64 calltrace = 7;
+    uint64 trace_index = 8;
+    uint64 stack_offset = 9;
 }
 
 // Absolute counts changed since the preceding saved checkpoint.
 message LivenessDelta {
     uint64 id = 1;
-    string inputfile = 2;
+    FileTaint input = 2;
     uint32 label = 3;
     uint64 atp_instr = 4;
     uint64 liveness_count = 5;
+}
+
+message FileTaint {
+    uint64 id = 1;
+    string filename = 2;
+    string sha256 = 3;
+    string command = 4;
+    bool complete = 5;
 }

@@ -39,6 +39,7 @@ def test_dead_range_without_debug():
 ])
 def test_extra_selection_strict_prior_boundary(instructions, expected):
     accepted = []
+    execution = SimpleNamespace(id=17)
     duas = [SimpleNamespace(id=i + 1, instr=instr, lval=i + 1, fake_dua=False)
             for i, instr in enumerate(instructions)]
 
@@ -53,10 +54,12 @@ def test_extra_selection_strict_prior_boundary(instructions, expected):
             dua_bytes_cache={}, atp=SimpleNamespace(id=1),
             bug_type=BugKind.BUG_RET_BUFFER, stackoff=0,
             available_duas=duas, offline_liveness={}, project_data={}, is_new_atp=True,
+            execution=execution,
         )
 
     assert [bug["trigger"].id for bug in accepted] == expected
     assert all(bug["extra_duas"] == [1] for bug in accepted)
+    assert all(bug["execution"] is execution for bug in accepted)
 
 
 def snapshot_session():
@@ -135,12 +138,12 @@ def test_active_dua_removal_preserves_survivor_order(monkeypatch):
     monkeypatch.setattr(mining, "recent_dead_duas", {0: first, 1: dead, 2: last})
     monkeypatch.setattr(mining, "recent_duas_by_instr", dict.fromkeys([first, dead, last]))
     monkeypatch.setattr(mining, "dua_dependencies", {7: {first, dead, last}})
-    monkeypatch.setattr(mining, "liveness_by_file", {"input": mining.LivenessCounts()})
+    monkeypatch.setattr(mining, "liveness_by_file", {1: mining.LivenessCounts()})
     monkeypatch.setattr(mining, "ptr_to_labelset", {1: SimpleNamespace(labels=[7])})
     monkeypatch.setattr(mining, "is_dua_dead", lambda dua, *args: dua is not dead)
     monkeypatch.setattr(mining, "save_liveness_to_db", lambda *args: None)
     mining.update_liveness({"instr": "0x10", "taintedBranch": {"taintQuery": [{"ptr": 1}]}},
-                           None, {"input_file": "input"})
+                           None, {"file_taint_id": 1})
     assert list(mining.recent_duas_by_instr) == [first, last]
     assert list(mining.recent_dead_duas.values()) == [first, last]
     assert dead.death_instr == 16
@@ -149,7 +152,7 @@ def test_active_dua_removal_preserves_survivor_order(monkeypatch):
 
 
 def test_execution_batches_keep_identity_payload_and_order(monkeypatch):
-    from sqlalchemy import Column, Integer, MetaData, Table, Text, create_engine, event, select
+    from sqlalchemy import Column, Integer, JSON, MetaData, Table, Text, create_engine, event, select
     from sqlalchemy.orm import Session
     from pyroclastic.taint import find_bug_injection as mining
     from pyroclastic.utils.database_types import AtpExecution
@@ -157,7 +160,10 @@ def test_execution_batches_keep_identity_payload_and_order(monkeypatch):
     table = Table("atp_execution", MetaData(),
                   Column("id", Integer, primary_key=True), Column("atp", Integer),
                   Column("inputfile", Text), Column("instr", Integer),
-                  Column("pid", Integer), Column("tid", Integer))
+                  Column("pid", Integer), Column("tid", Integer),
+                  Column("calltrace", JSON),
+                  Column("trace_index", Integer), Column("stack_offset", Integer))
+    monkeypatch.setattr(mining.AtpExecution, "__table__", table)
     table.create(engine)
     with engine.begin() as connection:
         connection.execute(table.insert(), dict(atp=8, inputfile="a", instr=1, pid=10, tid=20))
@@ -168,18 +174,24 @@ def test_execution_batches_keep_identity_payload_and_order(monkeypatch):
     with Session(engine) as session:
         # Existing rows and repeated buffered identities keep their first payload.
         mining.record_atp_execution(session, atp_id=8, inputfile="a", instr=1, pid=99)
-        mining.record_atp_execution(session, atp_id=9, inputfile="a", instr=2, pid=30, tid=40)
+        mining.record_atp_execution(session, atp_id=9, inputfile="a", instr=2, pid=30, tid=40,
+                                    calltrace=[11], trace_index=3, stack_offset=8)
         mining.record_atp_execution(session, atp_id=9, inputfile="a", instr=2, pid=99)
-        mining.record_atp_execution(session, atp_id=9, inputfile="b", instr=2, pid=50, tid=60)
+        mining.record_atp_execution(session, atp_id=9, inputfile="b", instr=2, pid=50, tid=60,
+                                    calltrace=[22], trace_index=4, stack_offset=16)
         mining.record_atp_execution(session, atp_id=8, inputfile="a", instr=3, pid=70, tid=80)
         mining.flush_atp_executions(session)
         session.commit()
         assert sum(s.startswith("SELECT") for s in statements) == 2
         assert sum(s.startswith("INSERT") for s in statements) == 2
-        rows = session.connection().execute(select(table).order_by(table.c.id)).all()
+        rows = session.connection().execute(select(table.c.id, table.c.atp, table.c.inputfile, table.c.instr, table.c.pid, table.c.tid).order_by(table.c.id)).all()
         assert [tuple(row) for row in rows] == [
             (1, 8, "a", 1, 10, 20), (2, 9, "a", 2, 30, 40),
             (3, 9, "b", 2, 50, 60), (4, 8, "a", 3, 70, 80)]
+        contexts = session.connection().execute(
+            select(table.c.inputfile, table.c.calltrace, table.c.trace_index, table.c.stack_offset)
+            .where(table.c.atp == 9).order_by(table.c.id)).all()
+        assert contexts == [("a", [11], 3, 8), ("b", [22], 4, 16)]
 
 
 def test_dua_bytes_cache_and_existing_row_avoid_work():
@@ -211,22 +223,25 @@ def test_dua_bytes_creation_flushes_only_new_row():
     assert cache[(1, 0, 4)] is created
 
 
-def test_execution_buffer_commit_and_root_rollback():
-    from sqlalchemy import Column, Integer, MetaData, Table, Text, create_engine, select
+def test_execution_buffer_commit_and_root_rollback(monkeypatch):
+    from sqlalchemy import Column, Integer, JSON, MetaData, Table, Text, create_engine, select
     from sqlalchemy.orm import Session
     from pyroclastic.taint import find_bug_injection as mining
     engine = create_engine("sqlite://")
     table = Table("atp_execution", MetaData(),
                   Column("id", Integer, primary_key=True), Column("atp", Integer),
                   Column("inputfile", Text), Column("instr", Integer),
-                  Column("pid", Integer), Column("tid", Integer))
+                  Column("pid", Integer), Column("tid", Integer),
+                  Column("calltrace", JSON),
+                  Column("trace_index", Integer), Column("stack_offset", Integer))
+    monkeypatch.setattr(mining.AtpExecution, "__table__", table)
     table.create(engine)
     with Session(engine) as session:
         mining.record_atp_execution(session, atp_id=1, inputfile="a", instr=1)
         session.rollback()  # Discard buffered rows and their deduplication keys.
         mining.record_atp_execution(session, atp_id=1, inputfile="a", instr=1, pid=7)
         session.commit()  # Commit hook drains the partial batch.
-        rows = session.connection().execute(select(table)).all()
+        rows = session.connection().execute(select(table.c.id, table.c.atp, table.c.inputfile, table.c.instr, table.c.pid, table.c.tid)).all()
         assert [tuple(row) for row in rows] == [(1, 1, "a", 1, 7, 0)]
 
 
@@ -236,10 +251,15 @@ def test_log_import_is_atomic_after_former_commit_boundary(tmp_path, monkeypatch
     from contextlib import contextmanager
     from sqlalchemy import select, func
     from pyroclastic.taint import find_bug_injection as mining
-    from pyroclastic.utils.database_types import LivenessDelta
+    from pyroclastic.utils.database_types import FileTaint, LivenessDelta
 
     (tmp_path / "lavadb").write_text("")
-    entries = [{"attackPoint": {}, "instr": hex(i)} for i in range(1, 502)]
+    inputs = tmp_path / "inputs"
+    inputs.mkdir()
+    (inputs / "input").write_bytes(b"input")
+    project = dict(output_dir=str(tmp_path), config_dir=str(tmp_path), command="tool {input_file}")
+    entries = [{"fileTaintMatch": {"filename": "/guest/input"}}]
+    entries.extend({"attackPoint": {}, "instr": hex(i)} for i in range(1, 502))
     encoded = json.dumps(entries)
     # Fail after 501 complete events, beyond the former 500-entry commit.
     log = tmp_path / "queries.json"
@@ -249,6 +269,9 @@ def test_log_import_is_atomic_after_former_commit_boundary(tmp_path, monkeypatch
     monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
     monkeypatch.setattr(mining, "liveness_by_file", {"input": mining.LivenessCounts({1: 3})})
     session = snapshot_session()
+    FileTaint.__table__.create(session.get_bind())
+    session.add(FileTaint(id=1, **FileTaint.identity(inputs / "input", project['command']), complete=False))
+    session.commit()
 
     @contextmanager
     def database(project):
@@ -257,16 +280,17 @@ def test_log_import_is_atomic_after_former_commit_boundary(tmp_path, monkeypatch
     monkeypatch.setattr(mining, "LavaDatabase", database)
     def save_checkpoint(entry, session, *args):
         instr = int(entry["instr"], 0)
-        mining.liveness_by_file["input"][1] = instr
+        counts = mining.liveness_by_file.setdefault(1, mining.LivenessCounts())
+        counts[1] = instr
         mining.save_liveness_to_db(session, instr)
     monkeypatch.setattr(mining, "attack_point_lval_usage", save_checkpoint)
     try:
         if malformed:
             import ijson
             with pytest.raises(ijson.JSONError):
-                mining.parse_panda_log(str(log), {"output_dir": str(tmp_path)})
+                mining.parse_panda_log(str(log), project)
         else:
-            mining.parse_panda_log(str(log), {"output_dir": str(tmp_path)})
+            mining.parse_panda_log(str(log), project)
         count = session.connection().execute(
             select(func.count()).select_from(LivenessDelta.__table__)).scalar_one()
         assert count == (0 if malformed else 501)
@@ -509,3 +533,43 @@ def test_death_heap_matches_full_scan_across_replacements():
         generate_bugs.prune_dead_duas(deaths, instr, active, active_order)
         assert list(reference.values()) == list(active.values())
         assert list(reference_order) == list(active_order)
+
+
+def test_lava1_loads_static_atps_once_for_repeated_executions(monkeypatch):
+    """Execution maps must retain ATPs instead of issuing one SELECT per event."""
+    from contextlib import contextmanager
+    from sqlalchemy import Column, Integer, JSON, MetaData, Table, create_engine, event
+    from sqlalchemy.orm import Session
+    from pyroclastic.utils.database_types import AttackPoint, AtpExecution, Dua, FileTaint
+
+    # SQLite substitutes JSON for the PostgreSQL calltrace array in this fixture.
+    monkeypatch.setattr(AtpExecution.__table__.c.calltrace, 'type', JSON())
+    engine = create_engine('sqlite://')
+    for model in (FileTaint, AttackPoint, AtpExecution):
+        model.__table__.create(engine)
+    inputs = Table('dua', MetaData(), Column('id', Integer, primary_key=True), Column('inputfile', Integer))
+    inputs.create(engine)
+    with engine.begin() as connection:
+        connection.execute(FileTaint.__table__.insert(), dict(
+            id=1, filename='/input', sha256='hash', command='tool', complete=True))
+        connection.execute(inputs.insert(), dict(id=1, inputfile=1))
+        connection.execute(AttackPoint.__table__.insert(), [dict(
+            id=i, loc_filename='test.c', loc_begin_line=i, loc_begin_column=1,
+            loc_end_line=i, loc_end_column=2, type=3) for i in range(1, 11)])
+        connection.execute(AtpExecution.__table__.insert(), [dict(
+            id=i, atp=(i - 1) % 10 + 1, inputfile=1, instr=i, pid=1, tid=1,
+            calltrace=[], trace_index=i, stack_offset=0) for i in range(1, 101)])
+    statements = []
+    event.listen(engine, 'before_cursor_execute', lambda conn, cursor, statement, params, context, many:
+                 statements.append(statement) if statement.startswith('SELECT') else None)
+
+    @contextmanager
+    def database(project):
+        with Session(engine) as session:
+            yield SimpleNamespace(session=session)
+
+    monkeypatch.setattr(generate_bugs, 'LavaDatabase', database)
+    monkeypatch.setattr(generate_bugs, 'load_lava1_duas', lambda *args: [])
+    monkeypatch.setattr(generate_bugs.LivenessTimeline, 'at', lambda *args: {})
+    generate_bugs._record_injectable_bugs_offline_lava1({'command': 'tool'})
+    assert len(statements) == 2  # Input list, then executions joined to static ATPs.

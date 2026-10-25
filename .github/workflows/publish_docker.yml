@@ -16,6 +16,11 @@ on:
   #  branches:
   #    - master
 
+  # Automatically cancel any previous workflow on new push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+
 jobs:
   get_version:
     name: "Generate new release version"
@@ -163,6 +168,13 @@ jobs:
       with:
         username: pandare
         password: ${{ secrets.ALL_PANDARE_DOCKERHUB }}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+      with:
+        version: latest
+        driver-opts: |
+          network=host
 
     - name: Check out
       uses: actions/checkout@v7

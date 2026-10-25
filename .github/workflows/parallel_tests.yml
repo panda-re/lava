@@ -145,7 +145,11 @@ jobs:
     - name: Setup LAVA
       run: |
         chmod +x ./scripts/*
-        lava-init -a
+        if [ "$USE_PRECOMPUTED_PLOG" = "true" ]; then
+          lava-init -a --no-download
+        else
+          lava-init -a
+        fi
     - name: Handle PANDA Log Sourcing
       run: |
         PROJECT_NAME="toy"

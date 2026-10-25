@@ -1,8 +1,8 @@
 # LAVA: Large Scale Automated Vulnerability Addition
 
-[![Publish Lava Package and Container](https://github.com/panda-re/lava/actions/workflows/publish_docker.yml/badge.svg)](https://github.com/panda-re/lava/actions/workflows/publish_docker.yml)
+[![Publish Lava Package and Container](../../actions/workflows/publish_docker.yml/badge.svg)](../../actions/workflows/publish_docker.yml)
 
-[![Lava Tests](https://github.com/panda-re/lava/actions/workflows/parallel_tests.yml/badge.svg)](https://github.com/panda-re/lava/actions/workflows/parallel_tests.yml)
+[![Lava Tests](../../actions/workflows/parallel_tests.yml/badge.svg)](../../actions/workflows/parallel_tests.yml)
 
 Evaluating and improving bug-finding tools is currently difficult due to
 a shortage of ground truth corpora (i.e., software that has known bugs
@@ -30,8 +30,74 @@ $ docker pull pandare/lava
 ```
 Or build from this repository:
 ```
-$ DOCKER_BUILDKIT=1 docker build lava .
+$ DOCKER_BUILDKIT=1 docker build -t pandare/lava:local .
 ```
+
+If Docker Engine runs directly inside WSL and build steps cannot access the
+network (for example, APT reports `Temporary failure resolving`), try using
+WSL's host network for the build:
+
+```bash
+DOCKER_BUILDKIT=1 docker build --network=host -t pandare/lava:local .
+```
+
+This applies to build steps only; containers launched later use their own
+network settings.
+
+### Container workspace
+
+From a workspace containing `target_bins/` and `target_configs/`, use the
+launcher to open a shell or run a command. It mounts the workspace at the same
+absolute path so paths written to `host.json` remain valid between runs.
+Replace `/path/to/lava` with the checkout containing the launcher:
+
+```bash
+/path/to/lava/scripts/docker-shell.sh
+/path/to/lava/scripts/docker-shell.sh -- lava-init
+/path/to/lava/scripts/docker-shell.sh -- lava --help
+```
+
+Docker runs as your UID/GID and stores its writable home in
+`.lava-container-home/` within the workspace. If your host `~/.panda/` exists,
+the launcher mounts it as the container's PANDA cache so existing QCOWs and
+kernel files are reused. Downloads and cache changes persist in that host
+directory. Use `--panda-cache /path/to/cache` to select another existing cache.
+Without a host cache, PANDA stores downloads in `.lava-container-home/.panda/`.
+The launcher uses
+`pandare/lava:latest` by default; use `--image pandare/lava:v3.3.4` to select a
+release, or `--image pandare/lava:local` for the local build above.
+
+PostgreSQL must already be running. Export `POSTGRES_USER` and
+`POSTGRES_PASSWORD`, to the database endpoint reachable from inside the container. For a database on a Docker network, pass `--network NETWORK` and use its container name as `host`.
+`localhost` inside Docker refers to the LAVA container itself. Once configured:
+
+```bash
+/path/to/lava/scripts/docker-shell.sh --network NETWORK -- lava -ak toy
+```
+
+`-k` deletes existing project data without confirmation. The launcher replaces
+the old project-name-first interface; commands now follow `--`.
+
+### HPC with Apptainer / Singularity
+
+On an allocated compute node, use the runtime provided by the cluster. Pull a
+versioned image once into persistent storage, then reuse it for jobs:
+
+```bash
+apptainer pull /path/to/scratch/lava-v3.3.4.sif docker://pandare/lava:v3.3.4
+/path/to/lava/scripts/docker-shell.sh --runtime apptainer \
+  --image /path/to/scratch/lava-v3.3.4.sif -- lava-init
+/path/to/lava/scripts/docker-shell.sh --runtime apptainer \
+  --image /path/to/scratch/lava-v3.3.4.sif -- lava -tc toy
+```
+
+Use `--runtime singularity` if that is the installed command. These runtimes
+use the host user's identity and network; configure `host.json` for a reachable
+PostgreSQL service and export the same credentials. The launcher neither starts
+the database nor requests a scheduler allocation. Run it inside your cluster's
+interactive allocation or batch script. This does not establish that a release
+image supports the complete pipeline; verify the image installation and run a
+toy project before submitting a large mining job.
 
 ## Ubuntu, Debian
 ### Local Installation
@@ -51,13 +117,12 @@ Download the Debian packages located in the [releases](https://github.com/panda-
 ## Final steps
 
 ### Utilizing host.json
-Next, run `init_host` to generate a `host.json` in your `~/.lava` directory.
+Next, run `init-host` to generate a `host.json` in your current working directory directory.
 This file is used by LAVA to store settings specific
 to your machine. You can edit these settings as necessary, but the default
 values should work, see [vars.py](https://github.com/panda-re/lava/blob/master/python/src/pyroclastic/utils/vars.py).
 
 A few values to keep in mind are the following:
-* **pguser** This is the name of database user, currently defaults to `postgres`
 * **host** is the name of the Postgres SQL database with all the LAVA bugs. Currently, it defaults to `database`, although if you installed LAVA locally, you likely should change this to `localhost`
 
 **NOTE**: You also need two environment variables for the Postgres SQL database:

@@ -53,6 +53,19 @@ class TestSchema(unittest.TestCase):
         missing = proto_messages - python_types
         self.assertEqual(len(missing), 0, f"Protobuf defines messages missing in Python: {missing}")
 
+    def test_file_taint_message_fields_are_relationships(self):
+        """Nested FileTaint messages expose objects backed by database foreign keys."""
+        for message in lava_pb2.DESCRIPTOR.message_types_by_name.values():
+            for field in message.fields:
+                if field.message_type is None or field.message_type.name != 'FileTaint':
+                    continue
+                mapper = self.sql_mappers[message.name]
+                relation = mapper.relationships[field.name]
+                self.assertIs(relation.mapper.class_, database_types.FileTaint)
+                self.assertTrue(any(fk.target_fullname == 'filetaint.id'
+                                    for column in relation.local_columns
+                                    for fk in column.foreign_keys))
+
     def test_field_synchronization(self):
         """Ensure every field in every Proto message exists in Python."""
         mismatches = []

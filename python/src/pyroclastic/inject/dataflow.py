@@ -1,5 +1,5 @@
 import json
-from ..utils.database_types import LavaDatabase, CallTrace, Bug, BugKind, AttackPoint
+from ..utils.database_types import LavaDatabase, CallTrace, Bug, BugKind
 
 
 def genFnTraceHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist: str, combined_json: str):
@@ -18,8 +18,8 @@ def genFnTraceHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist: 
     bug_list = db.session.query(Bug).filter(Bug.id.in_(bug_list)).filter(Bug.type == BugKind.BUG_CHAFF_STACK_UNUSED).all()
     for bug in bug_list:
         likely_root = None
-        atp_obj = db.session.query(AttackPoint).get(bug.atp)
-        for calltrace_id in atp_obj.ctrace[::-1]:
+        execution = bug.execution
+        for calltrace_id in (execution.calltrace if execution is not None else [])[::-1]:
             calltrace: CallTrace = db.session.query(CallTrace).get(calltrace_id)
             if not calltrace:
                 continue
@@ -63,9 +63,9 @@ def genStackVarHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist:
     # append addvar to the functions of stack overflow
     bug_list = db.session.query(Bug).filter(Bug.id.in_(bug_list)).filter(Bug.type == BugKind.BUG_CHAFF_STACK_CONST).all()
     for bug in bug_list:
-        atp_obj = db.session.query(AttackPoint).get(bug.atp)
-        if atp_obj.ctrace:
-            current_calltrace_id = atp_obj.ctrace[-1]
+        execution = bug.execution
+        if execution is not None and execution.calltrace:
+            current_calltrace_id = execution.calltrace[-1]
             calltrace = db.session.query(CallTrace).get(current_calltrace_id)
             function = calltrace.caller.split('!')[1]
             function_list.append(function)

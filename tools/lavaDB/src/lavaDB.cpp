@@ -7,19 +7,6 @@
 #include <algorithm>
 #include <iostream>
 
-std::vector<std::string> InvertDB(std::map<std::string, uint32_t> &n2ind) {
-    std::vector<std::string> ind2n;
-    uint32_t max_index = 0;
-    for ( auto kvp : n2ind ) {
-        max_index = std::max(max_index, kvp.second);
-    }
-    ind2n.resize(max_index + 1);
-    for ( auto kvp : n2ind ) {
-        ind2n[kvp.second] = kvp.first;
-    }
-    return ind2n;
-}
-
 std::map<std::string,uint32_t> LoadDB(std::string dbfile) {
     // Parse the db
     std::map<std::string,uint32_t> StringIDs;

@@ -8,8 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from typing import DefaultDict, Set, Optional, List, Tuple, cast
 from collections import defaultdict
 from sqlalchemy.orm import Session, joinedload
-from ..utils.database_types import print_bug_stats
-from ..utils.database_types import SourceTrace, CallTrace
+from ..utils.database_types import SourceTrace, CallTrace, FileTaint
 from ..utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, LavaDatabase, Dua
 from ..utils.database_types import AtpKind, AtpExecution, LivenessDelta
 from ..taint.taint_utils import get_dua_dead_range, get_dead_range, merge_into
@@ -66,15 +65,16 @@ current_call_stack: List[Tuple[str, str]] = []
 # A generalized, global in-memory cache for all database models
 _L1_CACHE = {}
 
-# A global to prevent duplicate liveness snapshots for the same instruction
+# A global to prevent duplicate liveness checkpoints for the same instruction
 last_snapshotted_instr: int = -1
 
 # Bound temporary row buffers; batches remain inside the whole-log transaction.
 MINING_INSERT_BATCH_SIZE = 1000
 
 
-def record_atp_execution(session: Session, *, atp_id: int, inputfile: str,
-                         instr: int, pid: int = 0, tid: int = 0):
+def record_atp_execution(session: Session, *, atp_id: int, inputfile: int,
+                         instr: int, pid: int = 0, tid: int = 0,
+                         calltrace=None, trace_index: int = 0, stack_offset: int = 0):
     """Buffer executions in first-observation order in the single-writer miner.
 
     IDs are only consumed by Phase II, after the mining transaction commits.
@@ -95,7 +95,8 @@ def record_atp_execution(session: Session, *, atp_id: int, inputfile: str,
     if key in keys_by_file[inputfile]:
         return
     keys_by_file[inputfile].add(key)
-    state["rows"].append(dict(atp=atp_id, inputfile=inputfile, instr=instr, pid=pid, tid=tid))
+    state["rows"].append(dict(atp=atp_id, inputfile=inputfile, instr=instr, pid=pid, tid=tid,
+                              calltrace=list(calltrace or []), trace_index=trace_index, stack_offset=stack_offset))
     if len(state["rows"]) >= MINING_INSERT_BATCH_SIZE:
         flush_atp_executions(session)
 
@@ -114,7 +115,21 @@ def _rollback_atp_executions(session: Session, previous_transaction):
         session.info.pop("mining_atp_executions", None)
 
 
-def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str], project_data: dict):
+def record_calltrace(session: Session):
+    calltrace_ids : list[int] = []
+    for file_callee, function_callee in current_call_stack:
+        ct = cast(CallTrace, get_or_create(
+            session,
+            CallTrace,
+            caller=function_callee,
+            file=file_callee,
+        ))
+        calltrace_ids.append(ct.id)
+
+    return calltrace_ids
+
+
+def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str], project_data: dict, source_trace_index: int = 0):
     """
     Process an attack point log entry from PANDA logs.
     Args:
@@ -148,10 +163,13 @@ def attack_point_lval_usage(ple: dict, session: Session, ind2str: dict[int, str]
     record_atp_execution(
         session,
         atp_id=atp.id,
-        inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
+        inputfile=project_data["file_taint_id"],
         instr=current_instr,
         pid=project_data.get("pid", 0),
-        tid=project_data.get("tid", 0)
+        tid=project_data.get("tid", 0),
+        calltrace=record_calltrace(session),
+        trace_index=source_trace_index,
+        stack_offset=source_info.get("insertionpoint", 0)
     )
     save_liveness_to_db(session, current_instr)
 
@@ -175,7 +193,6 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
 
     source_info = taint_query_header["srcInfo"]
     filename = source_info["filename"]
-    stack_offset: int = source_info["insertionpoint"]
 
     # Ignore headers
     if is_header_file(filename):
@@ -246,7 +263,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
 
             # get_dead_range expects a list of LabelSets (or None)
             # We assume get_dead_range returns a Range object with a .size property
-            liveness = liveness_by_file[project_data.get("input_file", "UNKNOWN_FILE")]
+            liveness = liveness_by_file[project_data["file_taint_id"]]
             dead_range = get_dead_range(viable_byte, [], liveness, project_data)
             if dead_range.size() >= LAVA_MAGIC_VALUE_SIZE:
                 is_dua = True
@@ -266,7 +283,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             session,
             LabelSet,
             ptr=FAKE_DUA_BYTE_FLAG,
-            inputfile="fakedua",
+            inputfile=project_data.get("file_taint_id"),
             default={"labels" : []}
         ))
 
@@ -298,15 +315,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
     # Create ASTLoc object
     ast_loc: ASTLoc = ASTLoc.from_serialized(ind2str[ast_loc_id])
 
-    calltrace_ids : list[int] = []
-    for file_callee, function_callee in current_call_stack:
-        ct = cast(CallTrace, get_or_create(
-            session,
-            CallTrace,
-            caller=function_callee,
-            file=file_callee,
-        ))
-        calltrace_ids.append(ct.id)
+    calltrace_ids = record_calltrace(session)
 
     # Create AttackPoint (QUERY_POINT) for Chaff Bugs
     atp = cast(AttackPoint, get_or_create(
@@ -314,20 +323,18 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
         AttackPoint,
         loc=ast_loc,
         type=AtpKind.QUERY_POINT,
-        defaults={
-            'trace_index' : source_trace_index,    
-            'stack_offset' : stack_offset,
-            'calltrace' : calltrace_ids,
-        }
     ))
 
     record_atp_execution(
         session,
         atp_id=atp.id,
-        inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
+        inputfile=project_data["file_taint_id"],
         instr=instr_addr,
         pid=project_data.get("pid", 0),
-        tid=project_data.get("tid", 0)
+        tid=project_data.get("tid", 0),
+        calltrace=calltrace_ids,
+        trace_index=source_trace_index,
+        stack_offset=source_info.get("insertionpoint", 0)
     )
     save_liveness_to_db(session, instr_addr)
 
@@ -348,7 +355,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             session,
             Dua,
             lval=lval.id,
-            inputfile=project_data.get("input_file", "UNKNOWN_FILE"),
+            inputfile=project_data["file_taint_id"],
             instr=instr_addr,
             fake_dua=is_fake_dua,
 
@@ -493,8 +500,8 @@ def update_unique_taint_sets(unique_label_set: dict, session: Session, project_d
             session,
             LabelSet,
             ptr=pointer,
+            inputfile=project_data["file_taint_id"],
             defaults={
-                "inputfile": project_data.get("input_file", "UNKNOWN_FILE"),
                 "labels": labels
             }
         ))
@@ -528,7 +535,7 @@ def update_liveness(panda_log_entry: dict, session: Session, project_data: dict)
         - Modifies global `recent_dead_duas` and `recent_duas_by_instr` (removes items).
         - Modifies global `dua_dependencies` (removes items).
     """
-    current_file = project_data.get("input_file", "UNKNOWN_FILE")
+    current_file = project_data["file_taint_id"]
     liveness = liveness_by_file[current_file]
     current_instr = int(panda_log_entry["instr"], 0)
     tainted_branch = panda_log_entry["taintedBranch"]
@@ -583,7 +590,7 @@ def record_call(ple: dict):
     if file_callee.startswith(("/lib/", "/usr/lib/", "/lib64/")):
         return
 
-    # 2. Use boundary-safe regex to catch PANDA's dynamic formats 
+    # 2. Use boundary-safe regex to catch PANDA's dynamic formats
     # (e.g., "libc-2.13.so!malloc" or "libc.so!printf")
     if LIBC_BOUNDARY_RE.search(file_callee) or LIBC_BOUNDARY_RE.search(function_callee):
         return
@@ -605,7 +612,7 @@ def record_ret(ple: dict):
     if file_callee.startswith(("/lib/", "/usr/lib/", "/lib64/")):
         return
 
-    # 2. Use boundary-safe regex to catch PANDA's dynamic formats 
+    # 2. Use boundary-safe regex to catch PANDA's dynamic formats
     # (e.g., "libc-2.13.so!malloc" or "libc.so!printf")
     if LIBC_BOUNDARY_RE.search(file_callee) or LIBC_BOUNDARY_RE.search(function_callee):
         return
@@ -619,7 +626,7 @@ def record_ret(ple: dict):
     current_call_stack.pop()
 
 
-def record_trace(ple: dict, lava_db: dict[int, str], session: Session, source_trace_index: int):
+def record_trace(ple: dict, lava_db: dict[int, str], session: Session, source_trace_index: int, file_taint_id: int):
     source_trace_id : int = ple["sourceTraceId"]["astLocId"]
     ast_loc_string : str = lava_db[source_trace_id]
     ast_loc : ASTLoc = ASTLoc.from_serialized(ast_loc_string)
@@ -627,7 +634,8 @@ def record_trace(ple: dict, lava_db: dict[int, str], session: Session, source_tr
         session,
         SourceTrace,
         loc=ast_loc,
-        index=source_trace_index
+        index=source_trace_index,
+        file_taint_id=file_taint_id
     )
 
 
@@ -677,17 +685,19 @@ def save_liveness_to_db(session: Session, atp_instr: int):
 
     rows = []
     statement = LivenessDelta.__table__.insert()
+    # Last successfully written absolute count, keyed by FileTaint ID then label.
+    # Comparing dirty labels against this cache avoids unchanged delta inserts.
     previous_by_file = session.info.setdefault("mining_liveness_counts", {})
     # Core writes use the session's transaction without autoflushing unrelated ORM
-    # state. Snapshots have no foreign keys and no consumer needs their ORM objects.
+    # state. Consumers reconstruct liveness from scalar delta rows.
     connection = None
-    for input_file, liveness in liveness_by_file.items():
-        previous = previous_by_file.setdefault(input_file, {})
+    for file_taint_id, liveness in liveness_by_file.items():
+        previous = previous_by_file.setdefault(file_taint_id, {})
         for label in liveness.dirty:
             current_count = liveness[label]
             if label in previous and previous[label] == current_count:
                 continue
-            rows.append(dict(inputfile=input_file, label=label,
+            rows.append(dict(inputfile=file_taint_id, label=label,
                              atp_instr=atp_instr, liveness_count=current_count))
             if len(rows) == MINING_INSERT_BATCH_SIZE:
                 if connection is None:
@@ -700,8 +710,8 @@ def save_liveness_to_db(session: Session, atp_instr: int):
         connection.execute(statement, rows)
 
     # Publish the comparison state only after every insert succeeds.
-    for input_file, liveness in liveness_by_file.items():
-        previous = previous_by_file[input_file]
+    for file_taint_id, liveness in liveness_by_file.items():
+        previous = previous_by_file[file_taint_id]
         for label in liveness.dirty:
             previous[label] = liveness[label]
         liveness.dirty.clear()
@@ -734,6 +744,9 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
         print("POSTGRES_USER is not set")
         sys.exit(1)
 
+    project_data.pop("file_taint_id", None)
+    observed_inputs = set()
+    inputs_by_guest_path = {}
     num_entries_read = 0
     with open(panda_log_file, 'rb') as plog_file:
         # 'item' iterates over elements in the root array
@@ -746,25 +759,41 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
             for ple in parser:
                 num_entries_read += 1
 
+                if project_data.get("file_taint_id") is None and "fileTaintMatch" not in ple:
+                    continue
                 if "taintQueryPri" in ple:
                     taint_query_pri(ple, db.session, lava_db, project_data, current_source_trace_id)
                 elif "taintedBranch" in ple:
                     update_liveness(ple, db.session, project_data)
                 elif "attackPoint" in ple:
-                    attack_point_lval_usage(ple, db.session, lava_db, project_data)
+                    attack_point_lval_usage(ple, db.session, lava_db, project_data, current_source_trace_id)
                 elif "dwarf2Call" in ple:
                     record_call(ple)
                 elif "dwarf2Ret" in ple:
                     record_ret(ple)
                 elif "sourceTraceId" in ple:
-                    record_trace(ple, lava_db, db.session, current_source_trace_id)
+                    record_trace(ple, lava_db, db.session, current_source_trace_id, project_data.get("file_taint_id"))
                     current_source_trace_id += 1
                 elif "fileTaintMatch" in ple:
-                    next_input = os.path.basename(ple['fileTaintMatch']['filename'])
-                    # A repeated open of the same input is not a fresh label stream.
-                    if project_data.get("input_file") == next_input:
+                    guest_input = ple['fileTaintMatch']['filename']
+                    if guest_input not in inputs_by_guest_path:
+                        # Resolve and hash once per file, not on every repeated open.
+                        relative = guest_input.split('/lava-install/inputs/', 1)[-1]
+                        if relative == guest_input:
+                            relative = os.path.basename(guest_input)
+                        source = os.path.join(project_data["config_dir"], "inputs", relative)
+                        identity = FileTaint.identity(source, project_data["command"])
+                        file_taint = db.session.query(FileTaint).filter_by(**identity).one()
+                        inputs_by_guest_path[guest_input] = (file_taint.id, file_taint.complete)
+                    next_input, complete = inputs_by_guest_path[guest_input]
+                    if complete:
+                        project_data["file_taint_id"] = None
                         continue
-                    project_data["input_file"] = next_input
+                    observed_inputs.add(next_input)
+                    # A repeated open of the same input is not a fresh label stream.
+                    if project_data.get("file_taint_id") == next_input:
+                        continue
+                    project_data["file_taint_id"] = next_input
                     project_data["pid"] = ple['fileTaintMatch'].get('pid', 0)
                     project_data["tid"] = ple['fileTaintMatch'].get('tid', 0)
                     last_snapshotted_instr = -1
@@ -786,11 +815,14 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
 
                 if 0 < project_data.get("curtail", 0) < num_real_duas:
                     print(f"*** Curtailing output of fbi at {num_real_duas}")
-                    break
+                    raise RuntimeError("Curtailed mining is incomplete; increase curtail and retry")
 
             # The transaction context commits only after successful processing.
             # Drain the final partial execution batch before that commit.
             flush_atp_executions(db.session)
+            if observed_inputs:
+                db.session.query(FileTaint).filter(FileTaint.id.in_(observed_inputs)).update(
+                    {"complete": True}, synchronize_session=False)
 
 
 def main():

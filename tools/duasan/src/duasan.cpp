@@ -343,11 +343,14 @@ public :
                   !(dua->lval->loc.begin < movloc.begin)) {
                     continue;
                 }
-                odb::result<SourceTrace> trres (db->query<SourceTrace>(
-                            odb::query<SourceTrace>::loc.filename == movloc.filename &&
-                            odb::query<SourceTrace>::loc.begin.line == movloc.begin.line &&
-                            odb::query<SourceTrace>::loc.begin.column == movloc.begin.column &&
-                            odb::query<SourceTrace>::index >= trace_index));
+                using Query = odb::query<SourceTrace>;
+                odb::result<SourceTrace> trres(db->query<SourceTrace>(
+                            (Query::file_taint == dua->inputfile->id &&
+                             Query::loc.filename == movloc.filename &&
+                             Query::loc.begin.line == movloc.begin.line &&
+                             Query::loc.begin.column == movloc.begin.column &&
+                             Query::index >= trace_index) +
+                            " ORDER BY " + Query::index + " LIMIT 1"));
                 if (!trres.empty()) {
                     dua->trace_index = trres.begin()->index;
                 } else {
