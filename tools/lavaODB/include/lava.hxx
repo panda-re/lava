@@ -782,68 +782,6 @@ struct Run {
     }
 };
 
-#pragma db object
-struct SourceFunction {
-#pragma db id auto
-    uint64_t id;
-
-    ASTLoc loc;
-    std::string name;       // Function name
-
-#pragma db index("SourceFunctionUniq") unique members(loc, name)
-
-    bool operator<(const SourceFunction &other) const {
-        return std::tie(loc, name) <
-            std::tie(other.loc, other.name);
-    }
-
-    // SCHEMA ENFORCEMENT:
-    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
-    void __enforce_proto() const {
-        lava::SourceFunction p;
-        p.set_id(this->id);
-        this->loc.__enforce_proto();
-        p.set_name(this->name);
-    }
-};
-
-#pragma db object
-struct Call {
-#pragma db id auto
-    uint64_t id;
-
-    uint64_t call_instr;    // Instruction count at call
-    uint64_t ret_instr;     // Instruction count at ret
-
-#pragma db not_null
-    const SourceFunction* called_function;
-    std::string callsite_file;
-    uint32_t callsite_line;
-
-#pragma db index("CallUniq") unique members(call_instr, ret_instr, called_function, callsite_file, callsite_line)
-
-    bool operator<(const Call &other) const {
-        return std::tie(call_instr, ret_instr, called_function->id,
-                callsite_file, callsite_line) <
-            std::tie(other.call_instr, other.ret_instr,
-                    other.called_function->id, other.callsite_file,
-                    other.callsite_line);
-    }
-
-    // SCHEMA ENFORCEMENT:
-    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
-    void __enforce_proto() const {
-        enforce_name_match<Call, lava::Call>("Call");
-        lava::Call p;
-        p.set_id(this->id);
-        p.set_call_instr(this->call_instr);
-        p.set_ret_instr(this->ret_instr);
-        this->called_function->__enforce_proto();
-        p.set_callsite_file(this->callsite_file);
-        p.set_callsite_line(this->callsite_line);
-    }
-};
-
 #pragma db object table("liveness_delta")
 struct LivenessDelta {
 #pragma db id auto

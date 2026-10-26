@@ -105,21 +105,6 @@ message Run {
     bool validated = 7;     // true if bug successfully triggered by inject.py
 }
 
-message SourceFunction {
-    uint64 id = 1;
-    ASTLoc loc = 2;
-    string name = 3;       // Function name
-}
-
-message Call {
-    uint64 id = 1;
-    uint64 call_instr = 2;    // Instruction count at call
-    uint64 ret_instr = 3;     // Instruction count at ret
-    SourceFunction called_function = 4;
-    string callsite_file = 5;
-    uint32 callsite_line = 6;
-}
-
 message AtpExecution {
     uint64 id = 1;
     AttackPoint atp = 2;
