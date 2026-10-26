@@ -506,6 +506,8 @@ def run_lavatool(bug_list: List[Bug], lp: LavaPaths, project: dict, filename: st
 
     if lt_debug:
         cmd.append("-debug")
+    if project.get("force_div_zero", False):
+        cmd.append("-debug-inject")
     if dataflow:
         cmd.append('-arg_dataflow')
     if knob_trigger > 0:
