@@ -410,6 +410,26 @@ def test_dirty_labels_include_missing_zero_and_deferred_changes(monkeypatch):
         assert dict(timeline.at(11)) == {7: 1, 8: 1}
 
 
+def test_final_liveness_flush_persists_equal_instruction_changes(monkeypatch):
+    from sqlalchemy import select
+    from pyroclastic.taint import find_bug_injection as mining
+    from pyroclastic.utils.database_types import LivenessDelta
+
+    monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
+    counts = mining.LivenessCounts({7: 1})
+    monkeypatch.setattr(mining, "liveness_by_file", {"input": counts})
+    with snapshot_session() as session:
+        mining.save_liveness_to_db(session, 10)
+        counts[7] = 2
+        mining.save_liveness_to_db(session, 10)
+        mining.flush_liveness_to_db(session)
+        rows = session.execute(select(LivenessDelta.atp_instr,
+                                      LivenessDelta.liveness_count)
+                               .order_by(LivenessDelta.id)).all()
+        assert rows == [(10, 1), (11, 2)]
+        assert not counts.dirty
+
+
 def test_unchanged_checkpoint_does_not_scan_all_labels(monkeypatch):
     from pyroclastic.taint import find_bug_injection as mining
     from unittest.mock import MagicMock
