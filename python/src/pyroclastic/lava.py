@@ -182,8 +182,8 @@ def reset_database(lava_paths: LavaPaths, config: dict):
     log_file = lava_paths.logs_directory / "dbwipe.log"
     sql_file = lava_paths.sql_file
     progress("everything", 1, f"Resetting lava db -- logging to {log_file}")
-    run_local(f"dropdb -U {database_user} -h {config['database']} {config['db']} || true", log_file, shell=True)
-    run_local(f"createdb -U {database_user} -h {config['database']} {config['db']} || true", log_file, shell=True)
+    run_local(f"dropdb --if-exists --force -U {database_user} -h {config['database']} {config['db']}", log_file, shell=True)
+    run_local(f"createdb -U {database_user} -h {config['database']} {config['db']}", log_file, shell=True)
     run_local(f"psql -U {database_user} -h {config['database']} -d {config['db']} -f {sql_file} ", log_file, shell=True)
     run_local("echo 'dbwipe complete'", log_file, shell=True)
 
