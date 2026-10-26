@@ -31,6 +31,36 @@ def test_dead_range_without_debug():
     assert dua.reads == 1
 
 
+def test_chaff_extra_selection_prefers_simple_valid_candidate():
+    def dua(dua_id, trace_index, labels, tcn=1, fake=False, length=4):
+        return SimpleNamespace(
+            id=dua_id,
+            instr=trace_index,
+            trace_index=trace_index,
+            fake_dua=fake,
+            byte_tcn=[tcn] * length,
+            viable_bytes=[SimpleNamespace(labels=labels) for _ in range(length)],
+            lval_relationship=SimpleNamespace(ast_name="value"),
+        )
+
+    candidates = [
+        dua(1, 1, [1], fake=True),
+        dua(2, 2, [2], length=3),
+        dua(3, 3, [3], tcn=1),
+        dua(4, 3, [4], tcn=2),
+    ]
+    selected = generate_bugs.select_best_chaff_extra_dua(
+        candidates,
+        SimpleNamespace(trace_index=10),
+        {},
+        {"max_liveness": 100},
+    )
+
+    assert selected is not None
+    assert selected[0].id == 3
+    assert selected[1] == Range(0, 4)
+
+
 @pytest.mark.parametrize("instructions, expected", [
     ([1, 1, 2], [3]),
     ([1, 2, 2], []),  # One prior DUA fails the historical strict 1 < end_index.
@@ -408,6 +438,26 @@ def test_dirty_labels_include_missing_zero_and_deferred_changes(monkeypatch):
         timeline = generate_bugs.LivenessTimeline(session, "a")
         assert dict(timeline.at(10)) == {7: 0}
         assert dict(timeline.at(11)) == {7: 1, 8: 1}
+
+
+def test_final_liveness_flush_persists_equal_instruction_changes(monkeypatch):
+    from sqlalchemy import select
+    from pyroclastic.taint import find_bug_injection as mining
+    from pyroclastic.utils.database_types import LivenessDelta
+
+    monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
+    counts = mining.LivenessCounts({7: 1})
+    monkeypatch.setattr(mining, "liveness_by_file", {"input": counts})
+    with snapshot_session() as session:
+        mining.save_liveness_to_db(session, 10)
+        counts[7] = 2
+        mining.save_liveness_to_db(session, 10)
+        mining.flush_liveness_to_db(session)
+        rows = session.execute(select(LivenessDelta.atp_instr,
+                                      LivenessDelta.liveness_count)
+                               .order_by(LivenessDelta.id)).all()
+        assert rows == [(10, 1), (11, 2)]
+        assert not counts.dirty
 
 
 def test_unchanged_checkpoint_does_not_scan_all_labels(monkeypatch):

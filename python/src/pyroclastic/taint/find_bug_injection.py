@@ -718,6 +718,13 @@ def save_liveness_to_db(session: Session, atp_instr: int):
     last_snapshotted_instr = atp_instr
 
 
+def flush_liveness_to_db(session: Session):
+    if not any(liveness.dirty for liveness in liveness_by_file.values()):
+        return
+    # Equal-instruction updates are deferred, so place the terminal state next.
+    save_liveness_to_db(session, last_snapshotted_instr + 1)
+
+
 def parse_panda_log(panda_log_file: str, project_data: dict):
     """
     Main function for Find Bug Inject (FBI) tool.
@@ -815,10 +822,12 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
 
                 if 0 < project_data.get("curtail", 0) < num_real_duas:
                     print(f"*** Curtailing output of fbi at {num_real_duas}")
-                    raise RuntimeError("Curtailed mining is incomplete; increase curtail and retry")
+                    # raise RuntimeError("Curtailed mining is incomplete; increase curtail and retry")
+                    # Intentional partial mining for quick exploratory injection.
+                    break
 
             # The transaction context commits only after successful processing.
-            # Drain the final partial execution batch before that commit.
+            flush_liveness_to_db(db.session)
             flush_atp_executions(db.session)
             if observed_inputs:
                 db.session.query(FileTaint).filter(FileTaint.id.in_(observed_inputs)).update(

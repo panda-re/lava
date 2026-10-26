@@ -781,62 +781,6 @@ class AttackPoint(Base):
                          'loc_end_line', 'loc_end_column', 'type', name='AttackPointUniq'),
     )
 
-class SourceFunction(Base):
-    __tablename__ = 'sourcefunction'
-
-    # Matches: uint64 id = 1
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-
-    # Matches: ASTLoc loc = 2
-    # --- 1. Define the ACTUAL Database Columns ---
-    # These hold the raw data. We prefix them with "loc_" to namespace them.
-    _f: Mapped[str] = mapped_column("loc_filename", Text, nullable=False)
-    _bl: Mapped[int] = mapped_column("loc_begin_line", Integer, nullable=False)
-    _bc: Mapped[int] = mapped_column("loc_begin_column", Integer, nullable=False)
-    _el: Mapped[int] = mapped_column("loc_end_line", Integer, nullable=False)
-    _ec: Mapped[int] = mapped_column("loc_end_column", Integer, nullable=False)
-
-    # --- 2. Define the Composite Bridge ---
-    # This maps the 5 columns above into your ASTLoc class.
-    loc: Mapped[ASTLoc] = composite(create_ast_loc, _f, _bl, _bc, _el, _ec)
-
-    # Matches: string name = 3
-    name: Mapped[str] = mapped_column(Text, nullable=False)
-
-    def __repr__(self):
-        return f"<SourceFunction(name='{self.name}', loc={self.loc})>"
-
-class Call(Base):
-    __tablename__ = 'call'
-
-    # Matches: uint64 id = 1
-    id: Mapped[int] = mapped_column('id', BigInteger, primary_key=True)
-
-    # Matches: uint64 call_instr = 2
-    call_instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
-
-    # Matches: uint64 ret_instr = 3
-    ret_instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
-
-    # Matches: SourceFunction called_function = 4
-    # We name the column 'called_function' to satisfy the Auditor's field check
-    called_function: Mapped[int] = mapped_column(
-        BigInteger,
-        ForeignKey('sourcefunction.id')
-    )
-
-    # Matches: string callsite_file = 5
-    callsite_file: Mapped[str] = mapped_column(Text, nullable=False)
-
-    # Matches: uint32 callsite_line = 6
-    callsite_line: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    # ORM Relationship (Internal use, ignored by Auditor if it looks for the column name)
-    called_function_obj: Mapped["SourceFunction"] = relationship("SourceFunction")
-
-    def __repr__(self):
-        return f"<Call(id={self.id}, file='{self.callsite_file}', line={self.callsite_line})>"
-
 class AtpExecution(Base):
     """Tracks WHEN an attack point was actually hit during the trace."""
     __tablename__ = 'atp_execution'  # Nicer snake_case table name
