@@ -31,6 +31,36 @@ def test_dead_range_without_debug():
     assert dua.reads == 1
 
 
+def test_chaff_extra_selection_prefers_simple_valid_candidate():
+    def dua(dua_id, trace_index, labels, tcn=1, fake=False, length=4):
+        return SimpleNamespace(
+            id=dua_id,
+            instr=trace_index,
+            trace_index=trace_index,
+            fake_dua=fake,
+            byte_tcn=[tcn] * length,
+            viable_bytes=[SimpleNamespace(labels=labels) for _ in range(length)],
+            lval_relationship=SimpleNamespace(ast_name="value"),
+        )
+
+    candidates = [
+        dua(1, 1, [1], fake=True),
+        dua(2, 2, [2], length=3),
+        dua(3, 3, [3], tcn=1),
+        dua(4, 3, [4], tcn=2),
+    ]
+    selected = generate_bugs.select_best_chaff_extra_dua(
+        candidates,
+        SimpleNamespace(trace_index=10),
+        {},
+        {"max_liveness": 100},
+    )
+
+    assert selected is not None
+    assert selected[0].id == 3
+    assert selected[1] == Range(0, 4)
+
+
 @pytest.mark.parametrize("instructions, expected", [
     ([1, 1, 2], [3]),
     ([1, 2, 2], []),  # One prior DUA fails the historical strict 1 < end_index.

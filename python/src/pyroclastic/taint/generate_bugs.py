@@ -29,6 +29,74 @@ NUM_EXTRA_DUAS = {
 # Derived from `#define RANDOM_DUA_TRIES 2` in the global scope of fbi.cpp.
 RANDOM_DUA_TRIES = 2
 
+class LivenessTimeline:
+    """Reconstruct checkpoints from absolute deltas with bounded scalar pages.
+
+    LAVA 1 asks in instruction order. Backward seeks (the experimental LAVA 2
+    path) restart reconstruction instead of returning a later checkpoint's state.
+    """
+    PAGE_SIZE = 1000
+
+    def __init__(self, session, inputfile):
+        self.session = session
+        self.inputfile = inputfile
+        self.reset()
+
+    def reset(self):
+        self.counts = {}
+        self.position = None
+        self.page = []
+        self.index = 0
+        self.exhausted = False
+        self.instr = -1
+
+    def at(self, instr):
+        if instr < self.instr:
+            self.reset()
+        while True:
+            if self.index == len(self.page):
+                if self.exhausted:
+                    break
+                statement = select(LivenessDelta.atp_instr, LivenessDelta.id,
+                                   LivenessDelta.label, LivenessDelta.liveness_count).where(
+                                       LivenessDelta.inputfile == self.inputfile)
+                if self.position is not None:
+                    statement = statement.where(
+                        tuple_(LivenessDelta.atp_instr, LivenessDelta.id) > self.position)
+                statement = statement.order_by(LivenessDelta.atp_instr, LivenessDelta.id).limit(self.PAGE_SIZE)
+                with self.session.no_autoflush:
+                    self.page = self.session.execute(statement).all()
+                self.index = 0
+                if not self.page:
+                    self.exhausted = True
+                    break
+            row = self.page[self.index]
+            if row.atp_instr > instr:
+                break
+            self.counts[row.label] = row.liveness_count
+            self.position = (row.atp_instr, row.id)
+            self.index += 1
+        self.instr = instr
+        return self.counts
+
+class BugSkipCache:
+    """Share skip identities between calls, keeping each call's snapshot fixed."""
+
+    def __init__(self, session):
+        self.session = session
+        self.loaded = {}
+        self.accepted = {}
+
+    def snapshot(self, atp_id, bug_type):
+        key = (atp_id, bug_type.value)
+        if key not in self.loaded:
+            rows = self.session.query(Bug.trigger_lval).filter(
+                Bug.atp == atp_id, Bug.type == bug_type.value).all()
+            self.loaded[key] = {row[0] for row in rows}
+        return self.loaded[key] | self.accepted.get(key, set())
+
+    def record(self, atp_id, bug_type, lval):
+        self.accepted.setdefault((atp_id, bug_type.value), set()).add(lval)
 
 def get_bug_kinds_for_atp(atp_kind: AtpKind) -> list[BugKind]:
     """
@@ -90,6 +158,64 @@ def get_max_liveness(offline_liveness: dict, trigger: DuaBytes) -> int:
     return c_max_liveness
 
 
+def select_best_chaff_extra_dua(
+        available_duas: list[Dua],
+        execution: AtpExecution,
+        offline_liveness: dict[int, int],
+        project_data: dict) -> tuple[Dua, Range] | None:
+    """Select a deterministic, low-risk extra DUA for a chaff ATP.
+
+    Chaff extras must provide a four-byte range before the ATP and remain useful
+    while the over-constraint checks are inserted.  This deliberately ranks
+    candidates without changing regular LAVA selection; runtime replay remains
+    the final feasibility check because the generated checker locations are in
+    the C++ injector.
+    """
+    best: tuple[tuple[int, int, int, int, int, int], Dua, Range] | None = None
+    for dua in available_duas:
+        if dua.fake_dua or dua.trace_index > execution.trace_index:
+            continue
+
+        selected = get_dua_dead_range(dua, [], offline_liveness, project_data)
+        if selected.empty():
+            continue
+
+        selected_labels = {
+            label
+            for label_set in dua.viable_bytes[selected.low:selected.high]
+            if label_set is not None
+            for label in label_set.labels
+        }
+        max_liveness = max(
+            (offline_liveness.get(label, 0) for label in selected_labels),
+            default=0,
+        )
+        max_tcn = max(dua.byte_tcn[selected.low:selected.high], default=0)
+        max_cardinality = max(
+            (len(label_set.labels)
+             for label_set in dua.viable_bytes[selected.low:selected.high]
+             if label_set is not None),
+            default=0,
+        )
+
+        # Prefer an earlier siphon, then simpler and less-live bytes. IDs make
+        # ties stable across runs and avoid depending on dictionary ordering.
+        score = (
+            execution.trace_index - dua.trace_index,
+            -max_liveness,
+            -max_tcn,
+            -max_cardinality,
+            -dua.instr,
+            -dua.id,
+        )
+        if best is None or score > best[0]:
+            best = (score, dua, selected)
+
+    if best is None:
+        return None
+    return best[1], best[2]
+
+
 def get_dua_exploit_pad(dua: Dua, liveness: dict[int, int]) -> Range:
     # Use integers for tracking logic
     current_low, current_high = 0, 0
@@ -136,26 +262,6 @@ def most_recent_dua_per_lval(duas: list[Dua]) -> dict[int, Dua]:
     for d in duas:
         by_lval[d.lval] = d
     return by_lval
-
-
-class BugSkipCache:
-    """Share skip identities between calls, keeping each call's snapshot fixed."""
-
-    def __init__(self, session):
-        self.session = session
-        self.loaded = {}
-        self.accepted = {}
-
-    def snapshot(self, atp_id, bug_type):
-        key = (atp_id, bug_type.value)
-        if key not in self.loaded:
-            rows = self.session.query(Bug.trigger_lval).filter(
-                Bug.atp == atp_id, Bug.type == bug_type.value).all()
-            self.loaded[key] = {row[0] for row in rows}
-        return self.loaded[key] | self.accepted.get(key, set())
-
-    def record(self, atp_id, bug_type, lval):
-        self.accepted.setdefault((atp_id, bug_type.value), set()).add(lval)
 
 
 def load_lava1_duas(session, inputfile, page_size=500):
@@ -287,57 +393,6 @@ def _get_or_create_bug_like_cpp(
         ))
         if skip_cache is not None:
             skip_cache.record(atp.id, bug_type, trigger_dua.lval)
-
-
-class LivenessTimeline:
-    """Reconstruct checkpoints from absolute deltas with bounded scalar pages.
-
-    LAVA 1 asks in instruction order. Backward seeks (the experimental LAVA 2
-    path) restart reconstruction instead of returning a later checkpoint's state.
-    """
-    PAGE_SIZE = 1000
-
-    def __init__(self, session, inputfile):
-        self.session = session
-        self.inputfile = inputfile
-        self.reset()
-
-    def reset(self):
-        self.counts = {}
-        self.position = None
-        self.page = []
-        self.index = 0
-        self.exhausted = False
-        self.instr = -1
-
-    def at(self, instr):
-        if instr < self.instr:
-            self.reset()
-        while True:
-            if self.index == len(self.page):
-                if self.exhausted:
-                    break
-                statement = select(LivenessDelta.atp_instr, LivenessDelta.id,
-                                   LivenessDelta.label, LivenessDelta.liveness_count).where(
-                                       LivenessDelta.inputfile == self.inputfile)
-                if self.position is not None:
-                    statement = statement.where(
-                        tuple_(LivenessDelta.atp_instr, LivenessDelta.id) > self.position)
-                statement = statement.order_by(LivenessDelta.atp_instr, LivenessDelta.id).limit(self.PAGE_SIZE)
-                with self.session.no_autoflush:
-                    self.page = self.session.execute(statement).all()
-                self.index = 0
-                if not self.page:
-                    self.exhausted = True
-                    break
-            row = self.page[self.index]
-            if row.atp_instr > instr:
-                break
-            self.counts[row.label] = row.liveness_count
-            self.position = (row.atp_instr, row.id)
-            self.index += 1
-        self.instr = instr
-        return self.counts
 
 
 def _record_injectable_bugs_offline_lava1(project_data: dict):
@@ -498,10 +553,16 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                         )
 
                         if recent_duas_by_instr:
-                            exploit_dua = next(iter(recent_duas_by_instr))
-                            exploit_range = get_dua_dead_range(exploit_dua, [], offline_liveness, project_data)
-                            if not exploit_range.empty():
-                                exploit_db = get_or_create_dua_bytes(db, dua_bytes_cache, exploit_dua, exploit_range)
+                            chaff_candidate = select_best_chaff_extra_dua(
+                                available_duas=available_duas,
+                                execution=exec_event,
+                                offline_liveness=offline_liveness,
+                                project_data=project_data,
+                            )
+                            if chaff_candidate is not None:
+                                exploit_dua, exploit_range = chaff_candidate
+                                exploit_db = get_or_create_dua_bytes(
+                                    db, dua_bytes_cache, exploit_dua, exploit_range)
                                 for chaff_kind in (
                                     BugKind.BUG_CHAFF_STACK_CONST,
                                     BugKind.BUG_CHAFF_HEAP_CONST,
@@ -509,7 +570,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                                 ):
                                     _get_or_create_bug_like_cpp(
                                         db=db,
-                                    skip_cache=skip_cache,
+                                        skip_cache=skip_cache,
                                         dua_bytes_cache=dua_bytes_cache,
                                         atp=atp,
                                         bug_type=chaff_kind,
