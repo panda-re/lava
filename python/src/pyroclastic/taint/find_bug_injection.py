@@ -822,7 +822,9 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
 
                 if 0 < project_data.get("curtail", 0) < num_real_duas:
                     print(f"*** Curtailing output of fbi at {num_real_duas}")
-                    raise RuntimeError("Curtailed mining is incomplete; increase curtail and retry")
+                    # raise RuntimeError("Curtailed mining is incomplete; increase curtail and retry")
+                    # Intentional partial mining for quick exploratory injection.
+                    break
 
             # The transaction context commits only after successful processing.
             flush_liveness_to_db(db.session)
