@@ -294,15 +294,15 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
                               'h_debugpath': state.install_directory,
                               'debug': debug
                           })
-        panda.load_plugin("pri_taint", args={
-            'hypercall': True,
-            'debug': debug
-        })
         panda.load_plugin("taint2",
                           args={
                               'no_tp': True,
                               'debug': debug
                           })
+        panda.load_plugin("pri_taint", args={
+            'hypercall': True,
+            'debug': debug
+        })
         panda.load_plugin('tainted_branch')
         panda.load_plugin("file_taint",
                           args={
