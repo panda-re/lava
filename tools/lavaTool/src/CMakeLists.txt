@@ -19,7 +19,6 @@ message(STATUS "Clang include dirs: ${CLANG_INCLUDE_DIRS}")
 
 # Add LLVM and Clang include directories
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
-include_directories(/usr/include/jsoncpp)
 link_directories(${LLVM_LIBRARY_DIRS})
 
 # Define LLVM and Clang libraries

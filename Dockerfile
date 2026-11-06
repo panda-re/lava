@@ -1,5 +1,4 @@
 ARG BASE_IMAGE="ubuntu:22.04"
-ARG PANDA_VERSION="v1.8.78"
 ARG CAPSTONE_VERSION="5.0.5"
 
 ### BASE IMAGE
@@ -14,7 +13,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 # we need to transform base_image into a windows compatible filename which we can't
 # do in a COPY command.
 COPY ./dependencies/* /tmp
-COPY . /
 
 RUN mv /tmp/$(echo "$BASE_IMAGE" | sed 's/:/_/g')_build.txt /tmp/build_dep.txt && \
     mv /tmp/$(echo "$BASE_IMAGE" | sed 's/:/_/g')_base.txt /tmp/base_dep.txt
@@ -56,8 +54,12 @@ RUN release_url=$(curl --fail --silent --show-error --location --retry 5 \
         apt-get -y install /tmp/libhc-dev_all.deb && \
         rm /tmp/libhc-dev_all.deb
 
+# Copy sources after dependencies so edits do not reinstall the toolchain.
+COPY . /
+
 #### Essentially same as install.sh
-RUN rm -rf /tools/build && \
+# Regenerate protobuf/ODB outputs with the container toolchain.
+RUN rm -rf /tools/build /tools/lavaODB/generated && \
     mkdir -p /tools/build
 RUN cmake -B"./tools/build" \
           -H"./tools" \
@@ -78,7 +80,8 @@ RUN python3 -m pip install --upgrade pip setuptools wheel && \
     python3 -m pip install --no-cache-dir . && \
     python3 -m pip show pyroclastic && \
     python3 -m pip check && \
-    command -v lava lava-init && \
+    command -v lava && \
+    command -v lava-init && \
     python3 -c 'from importlib.resources import files; assert files("pyroclastic.data").joinpath("lava.sql").is_file()'
 
 # RUN useradd volcana

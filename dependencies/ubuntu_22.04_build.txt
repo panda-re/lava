@@ -14,10 +14,6 @@ libodb-dev
 libodb-pgsql-dev
 g++-10
 
-# libjsoncpp needed for fbi json parsing
-# Should be able to delete upon removing C++
-libjsoncpp-dev
-
 # You need this for the lava.proto file
 protobuf-compiler
 libprotobuf-dev
