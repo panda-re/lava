@@ -205,7 +205,6 @@ struct SourceLval {
 
     std::string ast_name;
 
-    uint32_t len_bytes;
 
 #pragma db index("SourceLvalUniq") unique members(loc, ast_name)
 
@@ -227,7 +226,6 @@ struct SourceLval {
         lava::SourceLval p;
         p.set_id(this->id);
         p.set_ast_name(this->ast_name);
-        p.set_len_bytes(this->len_bytes);
         this->loc.__enforce_proto();
     }
 };
@@ -243,13 +241,16 @@ struct FileTaint {
 #pragma db not_null
     std::string command;
 #pragma db not_null
+    std::string architecture;
+#pragma db not_null
     bool complete;
-#pragma db index("FileTaintUniq") unique members(filename, sha256, command)
+#pragma db index("FileTaintUniq") unique members(filename, sha256, command, architecture)
     void __enforce_proto() const {
         enforce_name_match<FileTaint, lava::FileTaint>("FileTaint");
         lava::FileTaint p;
         p.set_id(id); p.set_filename(filename); p.set_sha256(sha256);
         p.set_command(command);
+        p.set_architecture(architecture);
         p.set_complete(complete);
     }
 };

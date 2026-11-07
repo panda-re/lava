@@ -82,15 +82,15 @@ class LivenessTimeline:
 class BugSkipCache:
     """Share skip identities between calls, keeping each call's snapshot fixed."""
 
-    def __init__(self, session):
-        self.session = session
+    def __init__(self, db):
+        self.db = db
         self.loaded = {}
         self.accepted = {}
 
     def snapshot(self, atp_id, bug_type):
         key = (atp_id, bug_type.value)
         if key not in self.loaded:
-            rows = self.session.query(Bug.trigger_lval).filter(
+            rows = self.db.scoped_bugs().with_entities(Bug.trigger_lval).filter(
                 Bug.atp == atp_id, Bug.type == bug_type.value).all()
             self.loaded[key] = {row[0] for row in rows}
         return self.loaded[key] | self.accepted.get(key, set())
@@ -315,7 +315,7 @@ def _get_or_create_bug_like_cpp(
     if not is_new_atp and skip_cache is not None:
         skip_trigger_lvals = skip_cache.snapshot(atp.id, bug_type)
     elif not is_new_atp:
-        prior_rows = db.session.query(Bug.trigger_lval).filter(
+        prior_rows = db.scoped_bugs().with_entities(Bug.trigger_lval).filter(
             Bug.atp == atp.id,
             Bug.type == bug_type.value
         ).all()
@@ -399,7 +399,8 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
     with LavaDatabase(project_data) as db:
         inputs = db.session.query(Dua.inputfile)
         inputs = inputs.join(FileTaint, Dua.inputfile == FileTaint.id).filter(
-            FileTaint.command == project_data['command'], FileTaint.complete.is_(True))
+            FileTaint.command == project_data['command'],
+            FileTaint.architecture == project_data['qemu'], FileTaint.complete.is_(True))
         distinct_files = inputs.distinct().all()
         file_list = [f[0] for f in distinct_files]
 
@@ -408,7 +409,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
             return
 
         dua_bytes_cache: Dict[tuple, DuaBytes] = {}
-        skip_cache = BugSkipCache(db.session)
+        skip_cache = BugSkipCache(db)
         for inputfile in file_list:
             print(f"[*] Processing bug combinatorics target file: {inputfile}...")
             executions = db.session.query(AtpExecution).options(joinedload(AtpExecution.atp)).filter_by(inputfile=inputfile).order_by(
@@ -453,7 +454,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                 offline_liveness = liveness_timeline.at(instr)
 
                 for d in newly_observed_duas:
-                    if d.lval_relationship.len_bytes >= 20:
+                    if d.length >= 20:
                         pad = get_dua_exploit_pad(d, offline_liveness)
                         if not pad.empty() and (d.fake_dua or pad.size() >= 20):
                             trigger = get_or_create_dua_bytes(db, dua_bytes_cache, d, pad)
@@ -627,7 +628,8 @@ def _record_injectable_bugs_offline_lava2(project_data: dict):
     with LavaDatabase(project_data) as db:
         execution_query = db.session.query(AtpExecution).options(joinedload(AtpExecution.atp))
         execution_query = execution_query.join(FileTaint, AtpExecution.inputfile == FileTaint.id).filter(
-            FileTaint.command == project_data['command'], FileTaint.complete.is_(True))
+            FileTaint.command == project_data['command'],
+            FileTaint.architecture == project_data['qemu'], FileTaint.complete.is_(True))
         executions = execution_query.order_by(
             AtpExecution.atp_id.asc(), AtpExecution.inputfile.asc(), AtpExecution.instr.asc()
         ).all()

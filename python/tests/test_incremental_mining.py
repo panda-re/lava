@@ -18,7 +18,7 @@ def test_trace_relationship_is_scoped_to_file_taint():
 
 def test_input_identity_includes_path_hash_and_command():
     constraint = next(c for c in FileTaint.__table__.constraints if c.name == 'FileTaintUniq')
-    assert {c.name for c in constraint.columns} == {'filename', 'sha256', 'command'}
+    assert {c.name for c in constraint.columns} == {'filename', 'sha256', 'command', 'architecture'}
 
 
 def test_labelset_lookup_includes_input():
@@ -57,7 +57,7 @@ def test_completed_input_skips_panda_and_copy(tmp_path):
     database = Mock()
     database.session.query.return_value.filter_by.return_value.first.return_value = Mock(complete=True)
     project = {'config_dir': str(tmp_path), 'output_dir': str(tmp_path / 'output'),
-               'command': '{install_dir}/bin/tool --input {input_file} --flag'}
+               'command': '{install_dir}/bin/tool --input {input_file} --flag', 'qemu': 'i386'}
     with patch.object(bug_mining, 'LavaDatabase') as db, patch.object(bug_mining, 'Panda') as panda:
         db.return_value.__enter__.return_value = database
         bug_mining.run_taint_pipeline(project)
@@ -160,7 +160,7 @@ def test_import_marks_only_observed_inputs_complete_atomically(tmp_path, monkeyp
     for key in ('one', 'two', 'unseen'):
         (inputs / key).write_text(key)
     with Session(engine) as session:
-        session.add_all([FileTaint(id=i, **FileTaint.identity(inputs / key, 'tool {input_file}'), complete=False)
+        session.add_all([FileTaint(id=i, **FileTaint.identity(inputs / key, 'tool {input_file}', 'i386'), complete=False)
                          for i, key in enumerate(('one', 'two', 'unseen'), start=1)])
         session.commit()
     events = [dict(fileTaintMatch=dict(filename='/guest/one'))] * 20 + [
@@ -184,7 +184,7 @@ def test_import_marks_only_observed_inputs_complete_atomically(tmp_path, monkeyp
     monkeypatch.setattr(fbi, 'LavaDatabase', database)
     identity = Mock(wraps=FileTaint.identity)
     monkeypatch.setattr(FileTaint, 'identity', identity)
-    project = dict(output_dir=str(tmp_path), config_dir=str(tmp_path), command='tool {input_file}')
+    project = dict(output_dir=str(tmp_path), config_dir=str(tmp_path), command='tool {input_file}', qemu='i386')
     if malformed:
         with pytest.raises(ijson.JSONError):
             fbi.parse_panda_log(str(log), project)

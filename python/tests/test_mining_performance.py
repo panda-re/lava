@@ -287,7 +287,7 @@ def test_log_import_is_atomic_after_former_commit_boundary(tmp_path, monkeypatch
     inputs = tmp_path / "inputs"
     inputs.mkdir()
     (inputs / "input").write_bytes(b"input")
-    project = dict(output_dir=str(tmp_path), config_dir=str(tmp_path), command="tool {input_file}")
+    project = dict(output_dir=str(tmp_path), config_dir=str(tmp_path), command="tool {input_file}", qemu="i386")
     entries = [{"fileTaintMatch": {"filename": "/guest/input"}}]
     entries.extend({"attackPoint": {}, "instr": hex(i)} for i in range(1, 502))
     encoded = json.dumps(entries)
@@ -300,7 +300,7 @@ def test_log_import_is_atomic_after_former_commit_boundary(tmp_path, monkeypatch
     monkeypatch.setattr(mining, "liveness_by_file", {"input": mining.LivenessCounts({1: 3})})
     session = snapshot_session()
     FileTaint.__table__.create(session.get_bind())
-    session.add(FileTaint(id=1, **FileTaint.identity(inputs / "input", project['command']), complete=False))
+    session.add(FileTaint(id=1, **FileTaint.identity(inputs / "input", project['command'], project['qemu']), complete=False))
     session.commit()
 
     @contextmanager
@@ -492,7 +492,9 @@ def test_skip_cache_preserves_new_atp_and_per_call_visibility():
     session.query.return_value.filter.return_value.all.return_value = [(9,)]
     accepted = []
     session.add.side_effect = accepted.append
-    cache = generate_bugs.BugSkipCache(session)
+    database = SimpleNamespace(session=session, scoped_bugs=lambda: session.query())
+    session.query.return_value.with_entities.return_value = session.query.return_value
+    cache = generate_bugs.BugSkipCache(database)
     duas = [SimpleNamespace(id=i, instr=i, lval=lval, fake_dua=False)
             for i, lval in [(1, 9), (2, 10), (3, 10)]]
     def run(is_new):

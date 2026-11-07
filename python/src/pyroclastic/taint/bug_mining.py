@@ -134,7 +134,7 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
             for source in sorted(input_root.rglob("*")):
                 if not source.is_file():
                     continue
-                identity = FileTaint.identity(source, project_data["command"])
+                identity = FileTaint.identity(source, project_data["command"], project_data["qemu"])
                 existing = db.session.query(FileTaint).filter_by(**identity).first()
                 if existing and existing.complete:
                     continue
@@ -158,6 +158,8 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
     # recording_timeout = project_data["recording_timeout"]
     panda_log = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
     pandalog_json = "{}/queries-{}.json".format(project_data['output_dir'], project_data['name'])
+    # TODO: Verify recording/JSON architecture before reuse or --parse; imported
+    # artifacts currently inherit host.json qemu and must match that target.
     reuse_json = raw_command is None and steps is None and os.path.exists(pandalog_json)
     # Panda() itself may download a QCOW, so decide whether to reuse JSON first.
     needs_panda = raw_command is not None or (not reuse_json and (

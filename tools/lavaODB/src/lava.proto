@@ -22,7 +22,6 @@ message SourceLval {
     uint64 id = 1;
     ASTLoc loc = 2;
     string ast_name = 3;
-    uint32 len_bytes = 4;
 }
 
 message LabelSet {
@@ -132,4 +131,5 @@ message FileTaint {
     string sha256 = 3;
     string command = 4;
     bool complete = 5;
+    string architecture = 6;
 }

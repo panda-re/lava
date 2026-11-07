@@ -344,8 +344,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             session,
             SourceLval,
             loc=ast_loc,
-            ast_name=str(source_info["astnodename"]),
-            defaults={'len_bytes': length}
+            ast_name=str(source_info["astnodename"])
         ))
 
         # Create Dua
@@ -361,6 +360,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
 
             # --- DATA PAYLOAD (Only used if creating a NEW entry) ---
             defaults={
+                'length': length,
                 'viable_bytes': viable_byte,
                 'byte_tcn': byte_tcn,
                 'all_labels': sorted_labels,
@@ -789,7 +789,7 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                         if relative == guest_input:
                             relative = os.path.basename(guest_input)
                         source = os.path.join(project_data["config_dir"], "inputs", relative)
-                        identity = FileTaint.identity(source, project_data["command"])
+                        identity = FileTaint.identity(source, project_data["command"], project_data["qemu"])
                         file_taint = db.session.query(FileTaint).filter_by(**identity).one()
                         inputs_by_guest_path[guest_input] = (file_taint.id, file_taint.complete)
                     next_input, complete = inputs_by_guest_path[guest_input]
