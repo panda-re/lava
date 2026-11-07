@@ -15,7 +15,7 @@ from typing import List, Optional
 from ..utils.vars import LavaPaths
 from ..utils.funcs import get_inject_parser, read_compile_db, unpack_tar, configure_project, preprocess, run_local, make_and_install, git_addable_c_files, apply_replacements
 from sqlalchemy import delete, exists, select
-from ..utils.database_types import Bug, BuildBug, Dua, DuaBytes, SourceLval, Build, Run, BugKind, AtpKind, LavaDatabase
+from ..utils.database_types import Bug, BuildBug, Dua, DuaBytes, SourceLval, Build, Run, BugKind, AtpKind, LavaDatabase, FileTaint
 from ..inject.dataflow import genFnTraceHelper, genStackVarHelper
 
 NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
@@ -110,10 +110,11 @@ def decode_output(raw: bytes) -> str:
 
 
 def get_bugs(db: LavaDatabase, bug_id_list: List[int]) -> List[Bug]:
-    bugs = []
-    for bug_id in bug_id_list:
-        bugs.append(db.session.query(Bug).filter(Bug.id == bug_id).all()[0])
-    return bugs
+    bugs = {bug.id: bug for bug in db.session.query(Bug).filter(Bug.id.in_(bug_id_list)).all()}
+    missing = set(bug_id_list) - bugs.keys()
+    if missing:
+        raise ValueError(f"Unknown bug IDs: {sorted(missing)}")
+    return [bugs[bug_id] for bug_id in bug_id_list]
 
 
 def get_allowed_bugtype_num(arguments: argparse.Namespace) -> list[int]:
@@ -146,13 +147,38 @@ def get_allowed_bugtype_num(arguments: argparse.Namespace) -> list[int]:
     return allowed_bugtype_nums
 
 
-# inject this set of bugs into the source place the resulting bugged-up
-# version of the program in bug_dir
+def validate_bug_targets(db: LavaDatabase, bug_ids):
+    """Validate all observations before generating helpers or changing sources."""
+    bugs = get_bugs(db, bug_ids)
+    missing = set(bug_ids) - {bug.id for bug in bugs}
+    if missing:
+        raise ValueError(f"Unknown bug IDs: {sorted(missing)}")
+    for bug in bugs:
+        inputs = [bug.trigger_relationship.dua_relationship.file_taint]
+        for extra_id in bug.extra_duas:
+            extra = db.session.get(DuaBytes, extra_id)
+            if extra is None:
+                raise ValueError(f"Bug {bug.id} references missing DuaBytes {extra_id}")
+            inputs.append(extra.dua_relationship.file_taint)
+        if bug.execution is not None:
+            inputs.append(bug.execution.input)
+        for source in inputs:
+            if (source is None or not source.complete or
+                    source.architecture != db.project['qemu'] or
+                    source.command != db.project['command']):
+                raise ValueError(
+                    f"Bug {bug.id} does not belong to completed analysis for "
+                    f"{db.project['qemu']} / {db.project['command']!r}")
+    return bugs
+
+
 def inject_bugs(bug_list, db: LavaDatabase, lava_p : LavaPaths, project: dict, arguments: argparse.Namespace,
                 dataflow: bool = False, competition: bool = False,
                 lavatoolseed: int = 0):
     # TODO: don't pass args, just pass the data we need to run
     # TODO: split into multiple functions, this is huge
+
+    validate_bug_targets(db, bug_list)
 
     if not os.path.exists(lava_p.bugs_parent):
         os.makedirs(lava_p.bugs_parent)
@@ -495,6 +521,8 @@ def run_lavatool(bug_list: List[Bug], lp: LavaPaths, project: dict, filename: st
         '-src-prefix=' + lp.bugs_build,
         '-host=' + db_hostname,
         '-db=' + db_name,
+        '-target-arch=' + project['qemu'],
+        '-target-command=' + project['command'],
         '-main-files=' + main_files,
         os.path.join(lp.bugs_build, filename)
     ]
@@ -506,6 +534,8 @@ def run_lavatool(bug_list: List[Bug], lp: LavaPaths, project: dict, filename: st
 
     if lt_debug:
         cmd.append("-debug")
+    if project.get("force_div_zero", False):
+        cmd.append("-debug-inject")
     if dataflow:
         cmd.append('-arg_dataflow')
     if knob_trigger > 0:
@@ -927,6 +957,7 @@ def validate_bugs(bug_list: list[int], db: LavaDatabase, lp: LavaPaths,
     is tested. It's owned by the caller so results survive an assert partway through,
     and main() can still write a (partial) manifest.json.
     """
+    bugs_to_inject = validate_bug_targets(db, bug_list)
     if bug_results is None:
         bug_results = {}
     timeout = project.get('timeout', 5)
@@ -936,7 +967,6 @@ def validate_bugs(bug_list: list[int], db: LavaDatabase, lp: LavaPaths,
     print("TESTING -- ORIG INPUT")
     print(bug_list)
     print("------------\n")
-    bugs_to_inject = db.session.query(Bug).filter(Bug.id.in_(bug_list)).all()
     unfuzzed_outputs = {}
     for bug in bugs_to_inject:
         input_id = bug.trigger_relationship.dua_relationship.inputfile
@@ -1097,6 +1127,10 @@ def nuke_invalid_lava_bugs(db: LavaDatabase):
         .join(DuaBytes, DuaBytes.id == Bug.trigger) \
         .join(Dua, Dua.id == DuaBytes.dua) \
         .join(SourceLval, SourceLval.id == Dua.lval) \
+        .join(FileTaint, FileTaint.id == Dua.inputfile) \
+        .where(FileTaint.architecture == db.project["qemu"]) \
+        .where(FileTaint.command == db.project["command"]) \
+        .where(FileTaint.complete.is_(True)) \
         .where(Bug.type.not_in(chaff_types)) \
         .where(SourceLval.ast_name.like("%lava_chaff%")) \
         .where(~exists().where(BuildBug.value == Bug.id)) \
@@ -1112,7 +1146,7 @@ def nuke_invalid_lava_bugs(db: LavaDatabase):
         print("Database sanitized: No invalid chaff-tied bugs found.")
 
 
-MANIFEST_FORMAT = 1
+MANIFEST_FORMAT = 2
 
 
 def bug_manifest_entry(bug: Bug, result: Optional[dict]) -> dict:
@@ -1130,11 +1164,13 @@ def bug_manifest_entry(bug: Bug, result: Optional[dict]) -> dict:
         "id": bug.id,
         # DB ids restart after `lava -r`; this survives resets as long as mining
         # does (bug type, attack point, trigger lval, seed, trigger bytes).
-        "key": "{}|{}:{}:{}|{}:{}:{}|{}|{}|{}:{}".format(
+        "key": "{}|{}|{}:{}:{}|{}:{}:{}|{}|{}|{}:{}".format(
+            dua.file_taint.architecture,
             BugKind(bug.type).name,
             atp.loc.filename, atp.loc.begin.line, atp.loc.begin.column,
             lval.loc.filename, lval.loc.begin.line, lval.loc.begin.column, lval.ast_name,
             seed, trigger.selected.low, trigger.selected.high),
+        "architecture": dua.file_taint.architecture,
         "type": BugKind(bug.type).name,
         "atp": {
             "file": atp.loc.filename,
@@ -1169,7 +1205,7 @@ def write_build_manifest(db: LavaDatabase, lp: LavaPaths, build: Build, bug_list
     """
     build_dir = get_build_dir(lp, build)
     build_dir.mkdir(parents=True, exist_ok=True)
-    tar_filename = f"build_{build.id}_injection.tar.gz"
+    tar_filename = f"build_{build.id}_{lp.config['qemu']}_injection.tar.gz"
     bugs_parent = Path(lp.bugs_parent)
 
     manifest = {
@@ -1182,6 +1218,7 @@ def write_build_manifest(db: LavaDatabase, lp: LavaPaths, build: Build, bug_list
         "tarball": tar_filename if (build_dir / tar_filename).exists() else None,
         "source_root": Path(lp.bugs_build).resolve().name,
         "command": lp.config['command'],
+        "architecture": lp.config['qemu'],
         # How validation built it (configure: env_var, make: inject). "validated" means
         # it crashed under THIS build; FuzzBench's own flags/sanitizers may differ.
         "build_env": {k: lp.config['inject'].get(k)
@@ -1229,6 +1266,7 @@ def main(arguments: argparse.Namespace, lp: LavaPaths):
 
     # obtain list of bugs to inject based on cmd-line args and consulting db
     bug_list = get_bug_list(arguments, db, allowed_bugtypes)
+    validate_bug_targets(db, bug_list)
 
     # TODO: Integrate the following lines when its time to put Chaff bugs in
     # Write the fnwhitelist to indicate root && end of dataflow

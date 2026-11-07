@@ -31,6 +31,36 @@ def test_dead_range_without_debug():
     assert dua.reads == 1
 
 
+def test_chaff_extra_selection_prefers_simple_valid_candidate():
+    def dua(dua_id, trace_index, labels, tcn=1, fake=False, length=4):
+        return SimpleNamespace(
+            id=dua_id,
+            instr=trace_index,
+            trace_index=trace_index,
+            fake_dua=fake,
+            byte_tcn=[tcn] * length,
+            viable_bytes=[SimpleNamespace(labels=labels) for _ in range(length)],
+            lval_relationship=SimpleNamespace(ast_name="value"),
+        )
+
+    candidates = [
+        dua(1, 1, [1], fake=True),
+        dua(2, 2, [2], length=3),
+        dua(3, 3, [3], tcn=1),
+        dua(4, 3, [4], tcn=2),
+    ]
+    selected = generate_bugs.select_best_chaff_extra_dua(
+        candidates,
+        SimpleNamespace(trace_index=10),
+        {},
+        {"max_liveness": 100},
+    )
+
+    assert selected is not None
+    assert selected[0].id == 3
+    assert selected[1] == Range(0, 4)
+
+
 @pytest.mark.parametrize("instructions, expected", [
     ([1, 1, 2], [3]),
     ([1, 2, 2], []),  # One prior DUA fails the historical strict 1 < end_index.
@@ -257,7 +287,7 @@ def test_log_import_is_atomic_after_former_commit_boundary(tmp_path, monkeypatch
     inputs = tmp_path / "inputs"
     inputs.mkdir()
     (inputs / "input").write_bytes(b"input")
-    project = dict(output_dir=str(tmp_path), config_dir=str(tmp_path), command="tool {input_file}")
+    project = dict(output_dir=str(tmp_path), config_dir=str(tmp_path), command="tool {input_file}", qemu="i386")
     entries = [{"fileTaintMatch": {"filename": "/guest/input"}}]
     entries.extend({"attackPoint": {}, "instr": hex(i)} for i in range(1, 502))
     encoded = json.dumps(entries)
@@ -270,7 +300,7 @@ def test_log_import_is_atomic_after_former_commit_boundary(tmp_path, monkeypatch
     monkeypatch.setattr(mining, "liveness_by_file", {"input": mining.LivenessCounts({1: 3})})
     session = snapshot_session()
     FileTaint.__table__.create(session.get_bind())
-    session.add(FileTaint(id=1, **FileTaint.identity(inputs / "input", project['command']), complete=False))
+    session.add(FileTaint(id=1, **FileTaint.identity(inputs / "input", project['command'], project['qemu']), complete=False))
     session.commit()
 
     @contextmanager
@@ -410,6 +440,26 @@ def test_dirty_labels_include_missing_zero_and_deferred_changes(monkeypatch):
         assert dict(timeline.at(11)) == {7: 1, 8: 1}
 
 
+def test_final_liveness_flush_persists_equal_instruction_changes(monkeypatch):
+    from sqlalchemy import select
+    from pyroclastic.taint import find_bug_injection as mining
+    from pyroclastic.utils.database_types import LivenessDelta
+
+    monkeypatch.setattr(mining, "last_snapshotted_instr", -1)
+    counts = mining.LivenessCounts({7: 1})
+    monkeypatch.setattr(mining, "liveness_by_file", {"input": counts})
+    with snapshot_session() as session:
+        mining.save_liveness_to_db(session, 10)
+        counts[7] = 2
+        mining.save_liveness_to_db(session, 10)
+        mining.flush_liveness_to_db(session)
+        rows = session.execute(select(LivenessDelta.atp_instr,
+                                      LivenessDelta.liveness_count)
+                               .order_by(LivenessDelta.id)).all()
+        assert rows == [(10, 1), (11, 2)]
+        assert not counts.dirty
+
+
 def test_unchanged_checkpoint_does_not_scan_all_labels(monkeypatch):
     from pyroclastic.taint import find_bug_injection as mining
     from unittest.mock import MagicMock
@@ -442,7 +492,9 @@ def test_skip_cache_preserves_new_atp_and_per_call_visibility():
     session.query.return_value.filter.return_value.all.return_value = [(9,)]
     accepted = []
     session.add.side_effect = accepted.append
-    cache = generate_bugs.BugSkipCache(session)
+    database = SimpleNamespace(session=session, scoped_bugs=lambda: session.query())
+    session.query.return_value.with_entities.return_value = session.query.return_value
+    cache = generate_bugs.BugSkipCache(database)
     duas = [SimpleNamespace(id=i, instr=i, lval=lval, fake_dua=False)
             for i, lval in [(1, 9), (2, 10), (3, 10)]]
     def run(is_new):
@@ -551,7 +603,8 @@ def test_lava1_loads_static_atps_once_for_repeated_executions(monkeypatch):
     inputs.create(engine)
     with engine.begin() as connection:
         connection.execute(FileTaint.__table__.insert(), dict(
-            id=1, filename='/input', sha256='hash', command='tool', complete=True))
+            id=1, filename='/input', sha256='hash', command='tool',
+            architecture='i386', complete=True))
         connection.execute(inputs.insert(), dict(id=1, inputfile=1))
         connection.execute(AttackPoint.__table__.insert(), [dict(
             id=i, loc_filename='test.c', loc_begin_line=i, loc_begin_column=1,
@@ -571,5 +624,5 @@ def test_lava1_loads_static_atps_once_for_repeated_executions(monkeypatch):
     monkeypatch.setattr(generate_bugs, 'LavaDatabase', database)
     monkeypatch.setattr(generate_bugs, 'load_lava1_duas', lambda *args: [])
     monkeypatch.setattr(generate_bugs.LivenessTimeline, 'at', lambda *args: {})
-    generate_bugs._record_injectable_bugs_offline_lava1({'command': 'tool'})
+    generate_bugs._record_injectable_bugs_offline_lava1({'command': 'tool', 'qemu': 'i386'})
     assert len(statements) == 2  # Input list, then executions joined to static ATPs.

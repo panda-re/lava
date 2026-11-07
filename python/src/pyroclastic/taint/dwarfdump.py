@@ -184,7 +184,7 @@ def parse_section(input_data: str) -> dict:
             result['.debug_info'].append(l)
     return result
 
-def reprocess_ops(ops):
+def reprocess_ops(ops, *, arm_locations=False):
     """
     Converts DWARF location/frame base operation values from strings to integers,
     handling hexadecimal addresses.
@@ -197,6 +197,13 @@ def reprocess_ops(ops):
     """
     out = []
     for op in ops:
+        if arm_locations and isinstance(op, str):
+            compact = re.fullmatch(
+                r'(DW_OP_breg(?:[0-9]|[12][0-9]|3[01]))([+-](?:0[xX][0-9a-fA-F]+|[0-9]+))', op)
+            if compact:
+                offset = compact.group(2)
+                out.extend([compact.group(1), int(offset, 16 if 'x' in offset.lower() else 10)])
+                continue
         if op.startswith('DW_'):
             out.append(op)
         elif type(op) == str:
@@ -807,6 +814,15 @@ def parse_dwarfdump(input_data: Union[str, Iterable[str]], prefix: str = "",
     Preserve the existing line-table-first parsing order even when dwarfdump
     interleaves debug and line information across compilation units.
     """
+    arm_locations = False
+    try:
+        with open(prefix, 'rb') as binary:
+            header = binary.read(20)
+        if len(header) == 20 and header[:4] == b'\x7fELF' and header[5] in (1, 2):
+            endian = 'little' if header[5] == 1 else 'big'
+            arm_locations = int.from_bytes(header[18:20], endian) in (40, 183)
+    except OSError:
+        pass
     lines = io.StringIO(input_data) if isinstance(input_data, str) else input_data
     with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as line_rows, \
             tempfile.TemporaryFile(mode="w+", encoding="utf-8") as info_rows:
@@ -820,10 +836,10 @@ def parse_dwarfdump(input_data: Union[str, Iterable[str]], prefix: str = "",
         info_rows.seek(0)
         _parse_dwarfdump_sections(
             {".debug_line": line_rows, ".debug_info": info_rows},
-            prefix, project_root, debug)
+            prefix, project_root, debug, arm_locations=arm_locations)
 
 
-def _parse_dwarfdump_sections(data, prefix, project_root, debug):
+def _parse_dwarfdump_sections(data, prefix, project_root, debug, *, arm_locations=False):
     """Consume the two section streams using the existing parsing logic."""
     reloc_base = 0
     line_info = LineDB()
@@ -999,7 +1015,7 @@ def _parse_dwarfdump_sections(data, prefix, project_root, debug):
                     if not x:
                         continue
                     v.loc_op.extend('DW_OP_{}'.format(x).split())
-                v.loc_op = reprocess_ops(v.loc_op)
+                v.loc_op = reprocess_ops(v.loc_op, arm_locations=arm_locations)
                 assert 'DW_AT_type' in res, "DW_AT_type missing in variable"
                 v.type = int(res['DW_AT_type'], 16)
 
@@ -1028,7 +1044,7 @@ def _parse_dwarfdump_sections(data, prefix, project_root, debug):
                     if not x:
                         continue
                     v.loc_op.extend('DW_OP_{}'.format(x).split())
-                v.loc_op = reprocess_ops(v.loc_op)
+                v.loc_op = reprocess_ops(v.loc_op, arm_locations=arm_locations)
                 assert 'DW_AT_type' in res, "DW_AT_type missing in formal parameter"
                 v.type = int(res['DW_AT_type'], 16)
 
@@ -1087,7 +1103,7 @@ def _parse_dwarfdump_sections(data, prefix, project_root, debug):
                     fb_op = [res['DW_AT_frame_base'].split(':')[-1].strip()]
                 else:
                     fb_op = []
-                fb_op = reprocess_ops(fb_op)
+                fb_op = reprocess_ops(fb_op, arm_locations=arm_locations)
 
                 f = FuncInfo(cu_off, name, scope, fb_op)
 

@@ -63,36 +63,6 @@ set(CPACK_DEBIAN_PACKAGE_COMPRESSION_TYPE "xz") # Use xz compression for smaller
 # Licensing information
 set(CPACK_DEBIAN_PACKAGE_LICENSE "GPL-2.0") # Specify the license type
 
-# Dependencies
-set(CPACK_DEBIAN_PACKAGE_DEPENDS
-    "python3-pip,
-    cmake,
-    clang-tools-14,
-    libclang-14-dev,
-    llvm-14-dev,
-    libcjson-dev,
-    odb,
-    libjsoncpp-dev,
-    g++-10,
-    libodb-pgsql-2.4,
-    libprotobuf-dev,
-    libprotobuf-c-dev,
-    bc,
-    build-essential,
-    git,
-    inotify-tools,
-    jq,
-    libfdt-dev,
-    libpq-dev,
-    postgresql,
-    socat,
-    ca-certificates,
-    libodbc2,
-    libodb-pgsql-dev,
-    libzmq3-dev,
-    dwarfdump"
-)
-
 # Setting name to match standard file names in apt
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}_${PROJECT_VERSION}_amd64")
 

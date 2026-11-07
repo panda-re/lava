@@ -45,6 +45,12 @@ void parse_whitelist(std::string whitelist_filename) {
     debug(FNARG) << "whitelist is " << whitelist.size() << " entries\n";
 }
 
+static bool valid_input(const FileTaint *input) {
+    return input && input->complete &&
+        input->architecture == TargetArchitecture.getValue() &&
+        input->command == TargetCommand.getValue();
+}
+
 int main(int argc, const char **argv) {
     auto ExpectedParser = CommonOptionsParser::create(argc, argv, LavaCategory);
     if (!ExpectedParser) {
@@ -85,6 +91,10 @@ int main(int argc, const char **argv) {
             errs() << "Error: Specify a database name with \"--db [name]\".  Exiting . . .\n";
             exit(1);
         }
+        if (TargetArchitecture.empty() || TargetCommand.empty()) {
+            errs() << "Error: Injection requires --target-arch and --target-command.\n";
+            return 1;
+        }
         const char* pgpass = std::getenv("POSTGRES_PASSWORD");
         const char* pguser = std::getenv("POSTGRES_USER");
         if (pgpass) {
@@ -109,6 +119,7 @@ int main(int argc, const char **argv) {
                     DBName, DBHost, DBPort));
         t = new odb::transaction(db->begin());
 
+        // Used to determine for 'extern' for the siphoning stuff
         main_files = parse_commas_strings(MainFileList);
 
         // get bug info for the injections we are supposed to be doing.
@@ -118,6 +129,20 @@ int main(int argc, const char **argv) {
         // for each bug_id, load that bug from DB and insert into bugs vector.
         std::transform(bug_ids.begin(), bug_ids.end(), std::back_inserter(bugs),
                 [&](uint32_t bug_id) { return db->load<Bug>(bug_id); });
+
+        for (const Bug *bug : bugs) {
+            bool valid = valid_input(bug->trigger->dua->inputfile);
+            for (uint64_t extra_id : bug->extra_duas) {
+                valid = valid && valid_input(db->load<DuaBytes>(extra_id)->dua->inputfile);
+            }
+            if (bug->execution) {
+                valid = valid && valid_input(bug->execution->inputfile);
+            }
+            if (!valid) {
+                errs() << "Error: Bug " << bug->id << " does not match the injection target.\n";
+                return 1;
+            }
+        }
 
         for (const Bug *bug : bugs) {
             ASTLoc atp_loc = bug->atp->loc;

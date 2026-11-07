@@ -44,7 +44,9 @@ authors = [
 keywords = ["lava", "panda", "bug-injection", "fuzzing", "dynamic-analysis"]
 requires-python = ">=3.10, <3.14"
 dependencies = [
-    "angr",
+    # angr 10 vendors Claripy; exploration uses angr 9's standalone API.
+    "angr>=9.2,<10",
+    "claripy>=9.2,<10",
     "compiledb",
     "colorama",
     "db",
@@ -79,6 +81,7 @@ classifiers = [
     "Natural Language :: English"
 ]
 [project.scripts]
+lava-compare = "pyroclastic.utils.compare_architectures:main"
 lava = "pyroclastic.lava:main"
 lava-dump = "pyroclastic.utils.database_types:main"
 lava-init = "pyroclastic.utils.init_host:main"

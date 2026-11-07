@@ -53,30 +53,39 @@ Replace `/path/to/lava` with the checkout containing the launcher:
 
 ```bash
 /path/to/lava/scripts/docker-shell.sh
-/path/to/lava/scripts/docker-shell.sh -- lava-init
-/path/to/lava/scripts/docker-shell.sh -- lava --help
+/path/to/lava/scripts/docker-shell.sh lava-init
+/path/to/lava/scripts/docker-shell.sh lava --help
 ```
 
-Docker runs as your UID/GID and stores its writable home in
-`.lava-container-home/` within the workspace. If your host `~/.panda/` exists,
-the launcher mounts it as the container's PANDA cache so existing QCOWs and
-kernel files are reused. Downloads and cache changes persist in that host
-directory. Use `--panda-cache /path/to/cache` to select another existing cache.
-Without a host cache, PANDA stores downloads in `.lava-container-home/.panda/`.
+Docker runs as your UID/GID with your host `HOME` path and always mounts
+`~/.panda/` at that same path in the container. Existing QCOWs and kernel files
+are reused, and downloads and cache changes persist there. The launcher creates
+`~/.panda/` if needed.
 The launcher uses
 `pandare/lava:latest` by default; use `--image pandare/lava:v3.3.4` to select a
 release, or `--image pandare/lava:local` for the local build above.
 
 PostgreSQL must already be running. Export `POSTGRES_USER` and
-`POSTGRES_PASSWORD`, to the database endpoint reachable from inside the container. For a database on a Docker network, pass `--network NETWORK` and use its container name as `host`.
-`localhost` inside Docker refers to the LAVA container itself. Once configured:
+`POSTGRES_PASSWORD`. The launcher defaults to Docker host networking.
+On Linux, this lets LAVA reach PostgreSQL on the host machine; keep
+`"host": "localhost"` and set `"port"` to PostgreSQL's listening port in
+`host.json` (for example, `5433`):
 
 ```bash
-/path/to/lava/scripts/docker-shell.sh --network NETWORK -- lava -ak toy
+/path/to/lava/scripts/docker-shell.sh lava -ak toy
+```
+
+Override the default with `--network NETWORK` for a database container on a
+shared Docker network. Use its container name
+as `"host"` and its internal PostgreSQL port (usually `5432`). Once configured:
+
+```bash
+/path/to/lava/scripts/docker-shell.sh --network NETWORK lava -ak toy
 ```
 
 `-k` deletes existing project data without confirmation. The launcher replaces
-the old project-name-first interface; commands now follow `--`.
+the old project-name-first interface. Put launcher options before the command;
+the `--` separator remains supported but is optional.
 
 ### HPC with Apptainer / Singularity
 
@@ -86,9 +95,9 @@ versioned image once into persistent storage, then reuse it for jobs:
 ```bash
 apptainer pull /path/to/scratch/lava-v3.3.4.sif docker://pandare/lava:v3.3.4
 /path/to/lava/scripts/docker-shell.sh --runtime apptainer \
-  --image /path/to/scratch/lava-v3.3.4.sif -- lava-init
+  --image /path/to/scratch/lava-v3.3.4.sif lava-init
 /path/to/lava/scripts/docker-shell.sh --runtime apptainer \
-  --image /path/to/scratch/lava-v3.3.4.sif -- lava -tc toy
+  --image /path/to/scratch/lava-v3.3.4.sif lava -tc toy
 ```
 
 Use `--runtime singularity` if that is the installed command. These runtimes
@@ -126,8 +135,8 @@ A few values to keep in mind are the following:
 * **host** is the name of the Postgres SQL database with all the LAVA bugs. Currently, it defaults to `database`, although if you installed LAVA locally, you likely should change this to `localhost`
 
 **NOTE**: You also need two environment variables for the Postgres SQL database:
-* `POSTGRES_PASS` This is the password for the Postgres SQL user`
-* `POSTGRES_USER` This is the hostname for the Postgres SQL database
+* `POSTGRES_PASSWORD` This is the password for the Postgres SQL user
+* `POSTGRES_USER` This is the Postgres SQL username
 
 ### Project configurations
 Project configurations are located in the `target_configs` directory, where

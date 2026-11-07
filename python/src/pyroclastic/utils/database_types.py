@@ -21,23 +21,24 @@ from sqlalchemy.dialects.postgresql import ARRAY
 Base = declarative_base()
 
 class FileTaint(Base):
-    """An input path, content hash, invocation, and mining completion marker."""
+    """An input path, content hash, invocation, target, and mining completion marker."""
     __tablename__ = 'filetaint'
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     filename: Mapped[str] = mapped_column(Text, nullable=False)
     sha256: Mapped[str] = mapped_column(Text, nullable=False)
     command: Mapped[str] = mapped_column(Text, nullable=False)
+    architecture: Mapped[str] = mapped_column(Text, nullable=False)
     complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    __table_args__ = (UniqueConstraint('filename', 'sha256', 'command', name='FileTaintUniq'),)
+    __table_args__ = (UniqueConstraint('filename', 'sha256', 'command', 'architecture', name='FileTaintUniq'),)
 
     @staticmethod
-    def identity(filename, command):
+    def identity(filename, command, architecture):
         filename = Path(filename).absolute()
         digest = hashlib.sha256()
         with filename.open('rb') as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b''):
                 digest.update(chunk)
-        return dict(filename=str(filename), sha256=digest.hexdigest(), command=command)
+        return dict(filename=str(filename), sha256=digest.hexdigest(), command=command, architecture=architecture)
 
 
 class BuildBug(Base):
@@ -130,25 +131,30 @@ class LavaDatabase(object):
 
     # If we have over a million bugs, don't bother counting things
     def huge(self):
-        return self.session.query(Bug.id).count() > 1000000
+        return self.scoped_bugs().count() > 1000000
 
-    def uninjected(self):
-        query = self.session.query(Bug).filter(~Bug.builds.any())
-        triggers = self.session.query(DuaBytes.id).join(Dua, DuaBytes.dua == Dua.id).join(
-            FileTaint, Dua.inputfile == FileTaint.id).filter(
-                FileTaint.command == self.project['command'], FileTaint.complete.is_(True))
+    def scoped_inputs(self):
+        return self.session.query(FileTaint.id).filter(
+            FileTaint.command == self.project['command'],
+            FileTaint.architecture == self.project['qemu'], FileTaint.complete.is_(True))
+
+    def scoped_bugs(self):
+        query = self.session.query(Bug)
+        triggers = self.session.query(DuaBytes.id).join(Dua, DuaBytes.dua == Dua.id).filter(
+            Dua.inputfile.in_(self.scoped_inputs()))
         query = query.filter(Bug.trigger.in_(triggers))
         return query
 
+    def uninjected(self):
+        return self.scoped_bugs().filter(~Bug.builds.any())
+
     # returns uninjected (not yet in the build table) possibly fake bugs
     def uninjected2(self, fake, allowed_bugtypes=None):
-        ret = self.uninjected() \
-            .join(Bug.atp) \
-            .join(Bug.trigger) \
-            .join(DuaBytes.dua) \
-            .filter(Dua.fake_dua == fake)
+        ret = self.uninjected().filter(Bug.trigger.in_(
+            self.session.query(DuaBytes.id).join(Dua, DuaBytes.dua == Dua.id)
+            .filter(Dua.fake_dua == fake)))
         if allowed_bugtypes:
-            ret.filter(Bug.type.in_(allowed_bugtypes))
+            ret = ret.filter(Bug.type.in_(allowed_bugtypes))
         return ret
 
     def uninjected_random(self, fake, allowed_bugtypes=None):
@@ -163,16 +169,14 @@ class LavaDatabase(object):
 
     def uninjected_random_balance(self, fake, num_required, bug_types):
         bugs = []
-        types_present = self.session.query(Bug.type) \
-            .filter(~Bug.builds.any()) \
-            .group_by(Bug.type)
+        types_present = self.uninjected2(fake).with_entities(Bug.type).group_by(Bug.type)
         num_avail = 0
         for (i,) in types_present:
             if i in bug_types:
                 num_avail += 1
         print("%d bugs available of allowed types" % num_avail)
         assert num_avail > 0
-        num_per = num_required / num_avail
+        num_per = max(1, num_required // num_avail)
         for (i,) in types_present:
             if i in bug_types:
                 bug_query = self.uninjected_random(fake).filter(Bug.type == i)
@@ -479,10 +483,9 @@ class SourceLval(Base):
 
     # 4. Other Columns
     ast_name: Mapped[str] = mapped_column(Text, nullable=False)
-    len_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
 
     def __str__(self):
-        return f"LVAL[{self.id}](loc={self.loc}, node={self.ast_name}, len={self.len_bytes})"
+        return f"LVAL[{self.id}](loc={self.loc}, node={self.ast_name})"
 
     def __repr__(self):
         return self.__str__()
@@ -781,62 +784,6 @@ class AttackPoint(Base):
                          'loc_end_line', 'loc_end_column', 'type', name='AttackPointUniq'),
     )
 
-class SourceFunction(Base):
-    __tablename__ = 'sourcefunction'
-
-    # Matches: uint64 id = 1
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-
-    # Matches: ASTLoc loc = 2
-    # --- 1. Define the ACTUAL Database Columns ---
-    # These hold the raw data. We prefix them with "loc_" to namespace them.
-    _f: Mapped[str] = mapped_column("loc_filename", Text, nullable=False)
-    _bl: Mapped[int] = mapped_column("loc_begin_line", Integer, nullable=False)
-    _bc: Mapped[int] = mapped_column("loc_begin_column", Integer, nullable=False)
-    _el: Mapped[int] = mapped_column("loc_end_line", Integer, nullable=False)
-    _ec: Mapped[int] = mapped_column("loc_end_column", Integer, nullable=False)
-
-    # --- 2. Define the Composite Bridge ---
-    # This maps the 5 columns above into your ASTLoc class.
-    loc: Mapped[ASTLoc] = composite(create_ast_loc, _f, _bl, _bc, _el, _ec)
-
-    # Matches: string name = 3
-    name: Mapped[str] = mapped_column(Text, nullable=False)
-
-    def __repr__(self):
-        return f"<SourceFunction(name='{self.name}', loc={self.loc})>"
-
-class Call(Base):
-    __tablename__ = 'call'
-
-    # Matches: uint64 id = 1
-    id: Mapped[int] = mapped_column('id', BigInteger, primary_key=True)
-
-    # Matches: uint64 call_instr = 2
-    call_instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
-
-    # Matches: uint64 ret_instr = 3
-    ret_instr: Mapped[int] = mapped_column(BigInteger, nullable=False)
-
-    # Matches: SourceFunction called_function = 4
-    # We name the column 'called_function' to satisfy the Auditor's field check
-    called_function: Mapped[int] = mapped_column(
-        BigInteger,
-        ForeignKey('sourcefunction.id')
-    )
-
-    # Matches: string callsite_file = 5
-    callsite_file: Mapped[str] = mapped_column(Text, nullable=False)
-
-    # Matches: uint32 callsite_line = 6
-    callsite_line: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    # ORM Relationship (Internal use, ignored by Auditor if it looks for the column name)
-    called_function_obj: Mapped["SourceFunction"] = relationship("SourceFunction")
-
-    def __repr__(self):
-        return f"<Call(id={self.id}, file='{self.callsite_file}', line={self.callsite_line})>"
-
 class AtpExecution(Base):
     """Tracks WHEN an attack point was actually hit during the trace."""
     __tablename__ = 'atp_execution'  # Nicer snake_case table name
@@ -925,7 +872,7 @@ def _fmt_loc(loc) -> str:
     return f"{loc.filename}:{loc.begin.line}:{loc.begin.column}:{loc.end.line}:{loc.end.column}"
 
 
-def print_bug_stats(project_data: dict, debug: bool = False):
+def print_bug_stats(project_data: dict, debug: bool = False, all_targets: bool = False):
     """
     Examines and prints the complete structural contents of all mined elements
     in a deterministic order, safely handling any nested database sequences.
@@ -936,23 +883,40 @@ def print_bug_stats(project_data: dict, debug: bool = False):
     stops holding on bigger, more-branching targets.
     """
     with LavaDatabase(project_data) as db:
+        inputs = db.scoped_inputs()
+        def query(model):
+            rows = db.session.query(model)
+            if all_targets:
+                return rows
+            if model is SourceLval:
+                return rows.filter(SourceLval.id.in_(
+                    db.session.query(Dua.lval).filter(Dua.inputfile.in_(inputs))))
+            if model is AttackPoint:
+                return rows.filter(AttackPoint.id.in_(
+                    db.session.query(AtpExecution.atp_id).filter(AtpExecution.inputfile.in_(inputs))))
+            if model is CallTrace:
+                return rows.filter(CallTrace.id.in_(
+                    db.session.query(func.unnest(AtpExecution.calltrace)).filter(
+                        AtpExecution.inputfile.in_(inputs))))
+            return rows.filter(model.inputfile.in_(inputs))
+
         # 1. SourceLvals (SourceLvalUniq: loc, ast_name)
         try:
-            source_lvals = db.session.query(SourceLval).order_by(
+            source_lvals = query(SourceLval).order_by(
                 SourceLval._f, SourceLval._bl, SourceLval._bc, SourceLval._el, SourceLval._ec,
                 SourceLval.ast_name).all()
         except Exception:
-            source_lvals = db.session.query(SourceLval).all()
+            source_lvals = query(SourceLval).all()
         if debug:
-            dump_table("SOURCE LVALS", source_lvals, ['ast_name', 'len_bytes', 'loc'])
+            dump_table("SOURCE LVALS", source_lvals, ['ast_name', 'loc'])
         else:
             print("source_lvals:", len(source_lvals))
 
         # 2. LabelSets (LabelSetUniq: ptr, inputfile -- ptr alone ties across inputs)
         try:
-            label_sets = db.session.query(LabelSet).order_by(LabelSet.inputfile, LabelSet.ptr).all()
+            label_sets = query(LabelSet).order_by(LabelSet.inputfile, LabelSet.ptr).all()
         except Exception:
-            label_sets = db.session.query(LabelSet).all()
+            label_sets = query(LabelSet).all()
         if debug:
             dump_table("LABEL SETS", label_sets, ['ptr', 'inputfile', 'labels'])
         else:
@@ -960,11 +924,11 @@ def print_bug_stats(project_data: dict, debug: bool = False):
 
         # 3. Static attack points (unique: loc, type)
         try:
-            attack_points = db.session.query(AttackPoint).order_by(
+            attack_points = query(AttackPoint).order_by(
                 AttackPoint._f, AttackPoint._bl, AttackPoint._bc, AttackPoint._el, AttackPoint._ec,
                 AttackPoint.type).all()
         except Exception:
-            attack_points = db.session.query(AttackPoint).all()
+            attack_points = query(AttackPoint).all()
         if debug:
             dump_table("ATTACK POINTS", attack_points, ['type', 'loc'])
         else:
@@ -973,27 +937,27 @@ def print_bug_stats(project_data: dict, debug: bool = False):
         # 4. DUAs (DuaUniq: lval, inputfile, instr, fake_dua), instr first so the
         # dump still reads in trace order
         try:
-            duas = db.session.query(Dua).join(SourceLval, Dua.lval == SourceLval.id).options(
+            duas = query(Dua).join(SourceLval, Dua.lval == SourceLval.id).options(
                 joinedload(Dua.lval_relationship)).order_by(
                 Dua.instr, Dua.inputfile,
                 SourceLval._f, SourceLval._bl, SourceLval._bc, SourceLval._el, SourceLval._ec,
                 SourceLval.ast_name, Dua.fake_dua).all()
         except Exception:
-            duas = db.session.query(Dua).all()
+            duas = query(Dua).all()
 
         if debug:
             dump_table("DUAs (Dead Uncomplicated Available)", duas, [
                 ('lval', lambda d: f"{_fmt_loc(d.lval_relationship.loc)} {d.lval_relationship.ast_name}"),
-                'instr', 'fake_dua', 'inputfile',
+                'instr', 'fake_dua', 'inputfile', 'length',
                 'max_tcn', 'max_cardinality', 'all_labels', 'byte_tcn', 'viable_bytes', 'trace_index', 'death_instr'])
         else:
             print("duas:", len(duas))
 
         # 5. CallTrace (unique: caller, source file)
         try:
-            call_traces = db.session.query(CallTrace).order_by(CallTrace.caller, CallTrace.file).all()
+            call_traces = query(CallTrace).order_by(CallTrace.caller, CallTrace.file).all()
         except Exception:
-            call_traces = db.session.query(CallTrace).all()
+            call_traces = query(CallTrace).all()
 
         if debug:
             dump_table("CallTrace", call_traces, ['caller', 'file'])
@@ -1002,9 +966,9 @@ def print_bug_stats(project_data: dict, debug: bool = False):
 
         # 6. Count Attack Point Execution
         #try:
-        #    attack_point_executions = db.session.query(AtpExecution).order_by(AtpExecution.id).all()
+        #    attack_point_executions = query(AtpExecution).order_by(AtpExecution.id).all()
         #except Exception:
-        #    attack_point_executions = db.session.query(AtpExecution).all()
+        #    attack_point_executions = query(AtpExecution).all()
         #if debug:
         #    dump_table("ATTACK POINT EXECUTIONS", attack_point_executions, ['id', 'atp', 'inputfile', 'instr', 'pid', 'tid'])
         #else:
@@ -1087,7 +1051,7 @@ def _dump_bugs(bugs: list[Bug], extras_by_id: Dict[int, DuaBytes]):
             print(f"    - {f'extra_bytes[{i}]':<16}: {extra_bytes_str:<55} | Type: DuaBytes")
 
 
-def print_phase2_stats(project_data: dict, debug: bool = False):
+def print_phase2_stats(project_data: dict, debug: bool = False, all_targets: bool = False):
     """
     Dumps the entities specifically created/managed around Phase II.
     The DuaBytes table isn't dumped on its own: it also holds rows for candidates
@@ -1095,8 +1059,9 @@ def print_phase2_stats(project_data: dict, debug: bool = False):
     bug's trigger and extra DuaBytes are printed inline instead.
     """
     with LavaDatabase(project_data) as db:
+        bugs_query = db.session.query(Bug) if all_targets else db.scoped_bugs()
         if debug:
-            bugs = db.session.query(Bug).options(
+            bugs = bugs_query.options(
                 joinedload(Bug.atp_relationship),
                 joinedload(Bug.lval_relationship),
                 joinedload(Bug.trigger_relationship).joinedload(DuaBytes.dua_relationship),
@@ -1124,16 +1089,16 @@ def print_phase2_stats(project_data: dict, debug: bool = False):
                                      tuple(extra_key(i) for i in b.extra_duas)))
             _dump_bugs(bugs, extras_by_id)
         else:
-            print("bugs:", db.session.query(Bug).count())
+            print("bugs:", bugs_query.count())
 
         print("Count\tBug Num\tName")
         for kind in BugKind:
-            n = db.session.query(Bug).filter(Bug.type == kind).count()
+            n = bugs_query.filter(Bug.type == kind).count()
             print("%d\t%d\t%s" % (n, kind.value, kind.name))
-        print("total bug:", db.session.query(Bug).count())
+        print("total bug:", bugs_query.count())
 
 
-def dump_tables(project_data: dict, phase: str = "all"):
+def dump_tables(project_data: dict, phase: str = "all", all_targets: bool = False):
     """Print the existing Phase I/II diagnostic views without running mining.
 
     These are semantic views, not a complete or lossless database export.
@@ -1141,9 +1106,9 @@ def dump_tables(project_data: dict, phase: str = "all"):
     if phase not in {"all", "1", "2"}:
         raise ValueError(f"Unknown dump phase: {phase}")
     if phase in {"all", "1"}:
-        print_bug_stats(project_data, debug=True)
+        print_bug_stats(project_data, debug=True, all_targets=all_targets)
     if phase in {"all", "2"}:
-        print_phase2_stats(project_data, debug=True)
+        print_phase2_stats(project_data, debug=True, all_targets=all_targets)
 
 
 def main():
@@ -1155,11 +1120,13 @@ def main():
     parser.add_argument("--phase", choices=("all", "1", "2"), default="all",
                         help="Dump both phases (default), taint entities (1), or bugs (2)")
     parser.add_argument("--database", help="Override the resolved database name for saved runs")
+    parser.add_argument("--all-targets", action="store_true",
+                        help="Include every architecture and command in database diagnostics")
     args = parser.parse_args()
     project = parse_vars(args.project)
     if args.database:
         project["db"] = args.database
-    dump_tables(project, args.phase)
+    dump_tables(project, args.phase, all_targets=args.all_targets)
 
 
 if __name__ == "__main__":

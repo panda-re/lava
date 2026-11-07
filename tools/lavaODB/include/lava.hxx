@@ -205,7 +205,6 @@ struct SourceLval {
 
     std::string ast_name;
 
-    uint32_t len_bytes;
 
 #pragma db index("SourceLvalUniq") unique members(loc, ast_name)
 
@@ -227,7 +226,6 @@ struct SourceLval {
         lava::SourceLval p;
         p.set_id(this->id);
         p.set_ast_name(this->ast_name);
-        p.set_len_bytes(this->len_bytes);
         this->loc.__enforce_proto();
     }
 };
@@ -243,13 +241,16 @@ struct FileTaint {
 #pragma db not_null
     std::string command;
 #pragma db not_null
+    std::string architecture;
+#pragma db not_null
     bool complete;
-#pragma db index("FileTaintUniq") unique members(filename, sha256, command)
+#pragma db index("FileTaintUniq") unique members(filename, sha256, command, architecture)
     void __enforce_proto() const {
         enforce_name_match<FileTaint, lava::FileTaint>("FileTaint");
         lava::FileTaint p;
         p.set_id(id); p.set_filename(filename); p.set_sha256(sha256);
         p.set_command(command);
+        p.set_architecture(architecture);
         p.set_complete(complete);
     }
 };
@@ -779,68 +780,6 @@ struct Run {
         p.set_output(this->output);
         p.set_success(this->success);
         p.set_validated(this->validated);
-    }
-};
-
-#pragma db object
-struct SourceFunction {
-#pragma db id auto
-    uint64_t id;
-
-    ASTLoc loc;
-    std::string name;       // Function name
-
-#pragma db index("SourceFunctionUniq") unique members(loc, name)
-
-    bool operator<(const SourceFunction &other) const {
-        return std::tie(loc, name) <
-            std::tie(other.loc, other.name);
-    }
-
-    // SCHEMA ENFORCEMENT:
-    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
-    void __enforce_proto() const {
-        lava::SourceFunction p;
-        p.set_id(this->id);
-        this->loc.__enforce_proto();
-        p.set_name(this->name);
-    }
-};
-
-#pragma db object
-struct Call {
-#pragma db id auto
-    uint64_t id;
-
-    uint64_t call_instr;    // Instruction count at call
-    uint64_t ret_instr;     // Instruction count at ret
-
-#pragma db not_null
-    const SourceFunction* called_function;
-    std::string callsite_file;
-    uint32_t callsite_line;
-
-#pragma db index("CallUniq") unique members(call_instr, ret_instr, called_function, callsite_file, callsite_line)
-
-    bool operator<(const Call &other) const {
-        return std::tie(call_instr, ret_instr, called_function->id,
-                callsite_file, callsite_line) <
-            std::tie(other.call_instr, other.ret_instr,
-                    other.called_function->id, other.callsite_file,
-                    other.callsite_line);
-    }
-
-    // SCHEMA ENFORCEMENT:
-    // This function will cause a COMPILE ERROR, letting you know the schemas are out of sync.
-    void __enforce_proto() const {
-        enforce_name_match<Call, lava::Call>("Call");
-        lava::Call p;
-        p.set_id(this->id);
-        p.set_call_instr(this->call_instr);
-        p.set_ret_instr(this->ret_instr);
-        this->called_function->__enforce_proto();
-        p.set_callsite_file(this->callsite_file);
-        p.set_callsite_line(this->callsite_line);
     }
 };
 

@@ -11,3 +11,17 @@ host.json.example
 install.sh
 lava_template.json
 VERSION.md
+
+# Host environments and generated build outputs must not enter the image.
+venv
+.venv
+build
+tools/build
+tools/install
+tools/lavaODB/generated
+target_generation
+**/__pycache__
+**/*.egg-info
+.aws
+.codex
+.agents

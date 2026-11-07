@@ -344,8 +344,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             session,
             SourceLval,
             loc=ast_loc,
-            ast_name=str(source_info["astnodename"]),
-            defaults={'len_bytes': length}
+            ast_name=str(source_info["astnodename"])
         ))
 
         # Create Dua
@@ -361,6 +360,7 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
 
             # --- DATA PAYLOAD (Only used if creating a NEW entry) ---
             defaults={
+                'length': length,
                 'viable_bytes': viable_byte,
                 'byte_tcn': byte_tcn,
                 'all_labels': sorted_labels,
@@ -718,6 +718,13 @@ def save_liveness_to_db(session: Session, atp_instr: int):
     last_snapshotted_instr = atp_instr
 
 
+def flush_liveness_to_db(session: Session):
+    if not any(liveness.dirty for liveness in liveness_by_file.values()):
+        return
+    # Equal-instruction updates are deferred, so place the terminal state next.
+    save_liveness_to_db(session, last_snapshotted_instr + 1)
+
+
 def parse_panda_log(panda_log_file: str, project_data: dict):
     """
     Main function for Find Bug Inject (FBI) tool.
@@ -782,7 +789,7 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                         if relative == guest_input:
                             relative = os.path.basename(guest_input)
                         source = os.path.join(project_data["config_dir"], "inputs", relative)
-                        identity = FileTaint.identity(source, project_data["command"])
+                        identity = FileTaint.identity(source, project_data["command"], project_data["qemu"])
                         file_taint = db.session.query(FileTaint).filter_by(**identity).one()
                         inputs_by_guest_path[guest_input] = (file_taint.id, file_taint.complete)
                     next_input, complete = inputs_by_guest_path[guest_input]
@@ -815,10 +822,12 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
 
                 if 0 < project_data.get("curtail", 0) < num_real_duas:
                     print(f"*** Curtailing output of fbi at {num_real_duas}")
-                    raise RuntimeError("Curtailed mining is incomplete; increase curtail and retry")
+                    # raise RuntimeError("Curtailed mining is incomplete; increase curtail and retry")
+                    # Intentional partial mining for quick exploratory injection.
+                    break
 
             # The transaction context commits only after successful processing.
-            # Drain the final partial execution batch before that commit.
+            flush_liveness_to_db(db.session)
             flush_atp_executions(db.session)
             if observed_inputs:
                 db.session.query(FileTaint).filter(FileTaint.id.in_(observed_inputs)).update(

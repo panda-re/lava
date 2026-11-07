@@ -13,12 +13,13 @@ def test_validate_bug_ids_resolves_objects_and_checks_each_seed_once(tmp_path, o
     seeds = [tmp_path / 'one', tmp_path / 'two']
     for seed in seeds:
         seed.write_bytes(b'input')
-    inputs = [SimpleNamespace(filename=str(seed), command=f'tool{index} {{input_file}}')
+    inputs = [SimpleNamespace(filename=str(seed), command='tool {input_file}',
+                              architecture='aarch64', complete=True)
               for index, seed in enumerate(seeds)]
-    bugs = [SimpleNamespace(id=bug_id, trigger_relationship=SimpleNamespace(
+    bugs = [SimpleNamespace(id=bug_id, extra_duas=[], execution=None, trigger_relationship=SimpleNamespace(
         dua_relationship=SimpleNamespace(inputfile=input_id + 1, file_taint=inputs[input_id])))
         for bug_id, input_id in [(11, 0), (12, 0), (13, 1)]]
-    database = SimpleNamespace(session=Mock())
+    database = SimpleNamespace(session=Mock(), project=dict(qemu='aarch64', command='tool {input_file}'))
     database.session.query.return_value.filter.return_value.all.return_value = bugs
     paths = SimpleNamespace(bugs_install='/install')
     project = {'config_dir': str(tmp_path)}

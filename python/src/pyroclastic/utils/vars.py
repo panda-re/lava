@@ -239,6 +239,9 @@ def parse_vars(project_name: str) -> dict:
         raise ValueError("recording_timeout must be a positive number of seconds or null")
     project_data["recording_timeout"] = recording_timeout
 
+    # Force all chaff-bugs to DIV_ZERO for testing
+    project_data["force_div_zero"] = project_data.get("force_div_zero", False)
+
     # For now use 'lava1' to mean original LAVA
     project_data["lava_mode"] = host.get("lava_mode", "lava1")
 

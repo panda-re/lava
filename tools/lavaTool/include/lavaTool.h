@@ -29,7 +29,6 @@ extern "C" {
 #include <libgen.h>
 }
 
-#include <json/json.h>
 #include <odb/pgsql/database.hxx>
 
 #include "clang/AST/AST.h"
@@ -153,12 +152,14 @@ static cl::opt<std::string> LavaDB("lava-db",
         "Created in query mode."),
     cl::cat(LavaCategory),
     cl::init("XXX"));
+static cl::opt<std::string> TargetArchitecture("target-arch",
+    cl::desc("Architecture of the selected analysis results (required for injection)."),
+    cl::cat(LavaCategory), cl::init(""));
+static cl::opt<std::string> TargetCommand("target-command",
+    cl::desc("Command of the selected analysis results (required for injection)."),
+    cl::cat(LavaCategory), cl::init(""));
 static cl::opt<std::string> DBName("db",
     cl::desc("database name."),
-    cl::cat(LavaCategory),
-    cl::init("XXX"));
-static cl::opt<std::string> ProjectFile("project-file",
-    cl::desc("Path to project.json file."),
     cl::cat(LavaCategory),
     cl::init("XXX"));
 static cl::opt<std::string> SourceDir("src-prefix",
