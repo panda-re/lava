@@ -187,6 +187,7 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
         panda.record_cmd(
             guest_command=guest_command,
             snap_name=None,
+            recording_name="recording",
         )
         panda.stop_run()
 
