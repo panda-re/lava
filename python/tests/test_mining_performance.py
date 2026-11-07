@@ -603,7 +603,8 @@ def test_lava1_loads_static_atps_once_for_repeated_executions(monkeypatch):
     inputs.create(engine)
     with engine.begin() as connection:
         connection.execute(FileTaint.__table__.insert(), dict(
-            id=1, filename='/input', sha256='hash', command='tool', complete=True))
+            id=1, filename='/input', sha256='hash', command='tool',
+            architecture='i386', complete=True))
         connection.execute(inputs.insert(), dict(id=1, inputfile=1))
         connection.execute(AttackPoint.__table__.insert(), [dict(
             id=i, loc_filename='test.c', loc_begin_line=i, loc_begin_column=1,
@@ -623,5 +624,5 @@ def test_lava1_loads_static_atps_once_for_repeated_executions(monkeypatch):
     monkeypatch.setattr(generate_bugs, 'LavaDatabase', database)
     monkeypatch.setattr(generate_bugs, 'load_lava1_duas', lambda *args: [])
     monkeypatch.setattr(generate_bugs.LivenessTimeline, 'at', lambda *args: {})
-    generate_bugs._record_injectable_bugs_offline_lava1({'command': 'tool'})
+    generate_bugs._record_injectable_bugs_offline_lava1({'command': 'tool', 'qemu': 'i386'})
     assert len(statements) == 2  # Input list, then executions joined to static ATPs.

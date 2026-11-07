@@ -230,7 +230,8 @@ def test_chaff_injection_uses_the_selected_execution_call_stack(tmp_path):
 
 
 @pytest.mark.parametrize('mode', ['lava1', 'lava2'])
-def test_generation_filters_current_command_without_option(mode):
+@pytest.mark.parametrize('architecture', ['i386', 'x86_64', 'arm', 'aarch64'])
+def test_generation_filters_current_command_without_option(mode, architecture):
     from types import SimpleNamespace
     from pyroclastic.taint import generate_bugs
     query = Mock()
@@ -241,11 +242,14 @@ def test_generation_filters_current_command_without_option(mode):
     session.query.return_value = query
     with patch.object(generate_bugs, 'LavaDatabase') as database:
         database.return_value.__enter__.return_value = SimpleNamespace(session=session)
-        getattr(generate_bugs, '_record_injectable_bugs_offline_' + mode)({'command': 'tool {input_file}'})
+        getattr(generate_bugs, '_record_injectable_bugs_offline_' + mode)(
+            {'command': 'tool {input_file}', 'qemu': architecture})
     predicates = query.filter.call_args.args
     assert any('filetaint.command' in str(predicate) and
                predicate.right.value == 'tool {input_file}' for predicate in predicates)
     assert any('filetaint.complete IS true' in str(predicate) for predicate in predicates)
+    assert any('filetaint.architecture' in str(predicate) and
+               predicate.right.value == architecture for predicate in predicates)
 
 
 @pytest.mark.parametrize('steps', [None, ['parse'], ['record'], ['replay']])
