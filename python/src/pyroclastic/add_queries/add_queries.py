@@ -1,9 +1,11 @@
 import os
 import re
 import sys
+import subprocess
 # LAVA
 from ..utils.funcs import read_compile_db, configure_project, run_local, preprocess, unpack_tar, make_and_install, apply_replacements
 from ..utils.vars import LavaPaths
+from ..utils.sanitize import QUERY_SOURCE_REVISION
 from .fninstr import analysis
 
 
@@ -49,6 +51,11 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
         junk = re.compile(r'/(' + exclude_dirs + r')(/|$)')
         c_files = {f for f in c_files if not junk.search(f)}
         c_dirs = {os.path.dirname(f) for f in c_files}
+
+    # Pin the coordinates used below; DUASan must not analyze query edits.
+    revision = subprocess.check_output(
+        ['git', 'rev-parse', 'HEAD'], cwd=lava_path.source_directory, text=True).strip()
+    (lava_path.source_directory / QUERY_SOURCE_REVISION).write_text(revision + '\n')
 
     # 7. lavaFnTool & fninstr.py
     for file in c_files:
