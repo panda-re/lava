@@ -268,8 +268,9 @@ def taint_query_pri(ple: dict, session: Session, ind2str: dict[int, str], projec
             if dead_range.size() >= LAVA_MAGIC_VALUE_SIZE:
                 is_dua = True
 
-    # 4. Fake DUA Logic (The Fix)
-    # If we are making chaff bugs, it's not a real DUA, and we have enough empty space
+    # TODO: Legacy untainted-byte placeholders use empty LabelSets, not input-byte
+    # provenance. This differs from DUASan rejection; separate the meanings and
+    # fix the offset-complement selection below before enabling this path.
     cpp_style_diff = (length - num_tainted)
     if (project_data.get('chaff_bugs', False) and not is_dua and
             cpp_style_diff >= LAVA_MAGIC_VALUE_SIZE):

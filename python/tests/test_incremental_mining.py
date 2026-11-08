@@ -118,6 +118,7 @@ def test_record_filters_inputs_and_parse_reuses_log_without_panda(tmp_path, monk
          patch.object(bug_mining.subprocess, 'check_output', return_value=b'target/\n'), \
          patch.object(bug_mining, 'Panda', return_value=panda) as factory, \
          patch.object(bug_mining, 'parse_panda_log') as parse, \
+         patch.object(bug_mining, 'dua_sanitize'), \
          patch.object(bug_mining, 'record_injectable_bugs_offline'), \
          patch.object(bug_mining, 'print_bug_stats'), patch.object(bug_mining, 'print_phase2_stats'):
         db.return_value.__enter__.return_value = database
@@ -271,6 +272,7 @@ def test_precomputed_json_avoids_qcow_download_unless_live_step_requested(tmp_pa
          patch.object(bug_mining.subprocess, 'check_output', return_value=b'target/\n'), \
          patch.object(bug_mining, 'Panda', side_effect=RuntimeError('PANDA would download QCOW')) as panda, \
          patch.object(bug_mining, 'parse_panda_log') as parse, \
+         patch.object(bug_mining, 'dua_sanitize'), \
          patch.object(bug_mining, 'record_injectable_bugs_offline'), \
          patch.object(bug_mining, 'print_bug_stats'), patch.object(bug_mining, 'print_phase2_stats'):
         db.return_value.__enter__.return_value = database

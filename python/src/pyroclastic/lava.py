@@ -10,7 +10,6 @@ from .inject import inject
 from .taint import bug_mining
 from .add_queries.add_queries import step_add_queries
 from .utils.vars import LavaPaths
-from .utils.sanitize import sanitizer_sources
 from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, \
     print_tail, make_and_install, configure_project, deep_clean_target, read_compile_db
 
@@ -310,23 +309,9 @@ def main():
         # Number might increase with more bug types or debug messages
         print_tail(lf)
 
-    if args.sanitize:
-        # This will assume a compile_commands.json exists to sanitize. If none exists, skip!
-        lf = lava_path.logs_directory / "sanitize.log"
-        progress("everything", 1, f"Sanitize step -- logging to {lf}")
-        source_path = lava_path.source_directory
-        with sanitizer_sources(source_path, lava_path.config.get('instrument_exclude_dirs', '')) as (pristine, c_files):
-            duasan_commands = [
-                "duasan",
-                f"-p={pristine}/compile_commands.json",
-                f"-src-prefix={pristine}",
-                f"-host={lava_path.config['database']}",
-                f"-port={lava_path.config.get('database_port', 5432)}",
-                f"-db={lava_path.config['db']}"
-            ]
-            duasan_commands.extend(c_files)
-            progress("everything", 1, f"Running {subprocess.list2cmdline(duasan_commands)}")
-            run_local(subprocess.list2cmdline(duasan_commands), lf)
+    # Taint already sanitizes before Phase II; retain --sanitize for standalone use.
+    if args.sanitize and not args.taint:
+        bug_mining.dua_sanitize(lava_path.config, lava_path.source_directory)
 
     if args.inject:
         progress("everything", 1, f"Injecting step -- {args.inject} trials")
