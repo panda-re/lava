@@ -732,6 +732,7 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
     """
     global last_snapshotted_instr
     last_snapshotted_instr = -1
+    current_call_stack.clear()
     # maps from ind -> (filename, lvalname, attackpointname)
     root_directory = project_data["output_dir"]
     lavadb = f"{root_directory}/lavadb"
@@ -767,6 +768,15 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
             for ple in parser:
                 num_entries_read += 1
 
+                # Calls can precede the first tainted open or span input changes.
+                # Track execution independently of the active input's taint state.
+                if "dwarf2Call" in ple:
+                    record_call(ple)
+                    continue
+                if "dwarf2Ret" in ple:
+                    record_ret(ple)
+                    continue
+
                 if project_data.get("file_taint_id") is None and "fileTaintMatch" not in ple:
                     continue
                 if "taintQueryPri" in ple:
@@ -775,10 +785,6 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     update_liveness(ple, db.session, project_data)
                 elif "attackPoint" in ple:
                     attack_point_lval_usage(ple, db.session, lava_db, project_data, current_source_trace_id)
-                elif "dwarf2Call" in ple:
-                    record_call(ple)
-                elif "dwarf2Ret" in ple:
-                    record_ret(ple)
                 elif "sourceTraceId" in ple:
                     record_trace(ple, lava_db, db.session, current_source_trace_id, project_data.get("file_taint_id"))
                     current_source_trace_id += 1
@@ -806,14 +812,13 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
                     project_data["tid"] = ple['fileTaintMatch'].get('tid', 0)
                     last_snapshotted_instr = -1
                     db.session.info.pop("mining_liveness_counts", None)
-                    # Nuke the global state
+                    # Reset input-specific taint state; preserve the execution stack.
                     current_source_trace_id = 0
                     liveness_by_file.clear()
                     dua_dependencies.clear()
                     recent_dead_duas.clear()
                     recent_duas_by_instr.clear()
                     ptr_to_labelset.clear()
-                    current_call_stack.clear()
                     _L1_CACHE.clear()
 
                 # Console printing

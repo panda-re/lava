@@ -186,6 +186,20 @@ def test_parameter_availability(duasan_driver, tmp_path, parameter, lvalue, expe
                    f'void subject({parameter}) {{}}', lvalue) == expected
 
 
+def test_toy_record_passed_by_value(duasan_driver, tmp_path):
+    """Toy exposes a complete 24-byte record via the existing value-parameter rule.
+
+    Its checked fread initializes the record before the caller copies it. This
+    pins DUASan acceptance, not taint discovery or eventual RET_BUFFER yield.
+    Passing a pointer still cannot establish initialization of pointed-to bytes.
+    """
+    record = 'struct Record { char bar[16]; unsigned type; unsigned data; };\n'
+    assert analyze(duasan_driver, tmp_path, 'param',
+                   record + 'void subject(Record ent) {}', '&(ent)') == 1
+    assert analyze(duasan_driver, tmp_path, 'param',
+                   record + 'void subject(Record *ent) {}', '(ent)') == 0
+
+
 @pytest.mark.parametrize('code,lvalue,expected_line', [
     ('void subject(int x) {\n typedef int alias;\n int probe = x;\n /*DUA*/;\n}', '(x)', 3),
     ('void subject(int x) {\n struct Local {};\n int probe = x;\n /*DUA*/;\n}', '(x)', 3),
@@ -282,6 +296,9 @@ def test_sparse_ids_and_dry_run(duasan_driver, tmp_path, database, dry_run):
     result = invoke(duasan_driver, tmp_path, socket,
                     'void subject(int x) {\n  int y;\n  x++;\n  y = 1;\n}', dry_run)
     assert result.returncode == 0, result.stderr
+    assert 'DUASan reject DUA 200005 name=(y)' in result.stderr
+    assert 'reason=declaration-barrier:' in result.stderr
+    assert 'not proof of uninitialized bytes' in result.stderr
     if dry_run:
         assert 'checked 2 DUAs; rejected 1' in result.stderr
     assert sql('SELECT id,fake_dua FROM dua ORDER BY id') == (
@@ -300,6 +317,11 @@ def test_trace_relocation_requires_later_matching_trace(duasan_driver, tmp_path,
                     'void use(int);\nvoid subject(int *p) {\n  ;\n  use(*p);\n  ;\n}')
     assert result.returncode == 0, result.stderr
     assert sql('SELECT trace_index,fake_dua FROM dua') == ('20|f' if has_trace else '10|t')
+    if has_trace:
+        assert 'DUASan reject' not in result.stderr
+    else:
+        assert 'reason=missing-source-trace:' in result.stderr
+        assert 'selected=input.cpp:5:3' in result.stderr
 
 
 def test_parse_failure_rolls_back_earlier_dua_updates(duasan_driver, tmp_path, database):

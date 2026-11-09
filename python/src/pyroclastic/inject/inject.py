@@ -16,7 +16,7 @@ from ..utils.vars import LavaPaths
 from ..utils.funcs import get_inject_parser, read_compile_db, unpack_tar, configure_project, preprocess, run_local, make_and_install, git_addable_c_files, apply_replacements
 from sqlalchemy import delete, exists, select
 from ..utils.database_types import Bug, BuildBug, Dua, DuaBytes, SourceLval, Build, Run, BugKind, AtpKind, LavaDatabase, FileTaint
-from ..inject.dataflow import genFnTraceHelper, genStackVarHelper
+from ..inject.dataflow import genFnTraceHelper
 
 NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
 start_time = time.time()
@@ -1272,7 +1272,6 @@ def main(arguments: argparse.Namespace, lp: LavaPaths):
     # Write the fnwhitelist to indicate root && end of dataflow
     function_white_list = os.path.join(project["output_dir"], "fninstr")
     combined_functions = os.path.join(project["output_dir"], "getfns.json")
-    genStackVarHelper(db, bug_list, function_white_list)
     genFnTraceHelper(db, bug_list, function_white_list, combined_functions)
 
     # add all those bugs to the source code and check that it compiles

@@ -138,15 +138,26 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         return result;
     }
 
-    // Architecture-neutral AST helper for divide-by-zero / crash injection
+    // Architecture-neutral AST helper for crash injection via inline assembly
     LExpr InjectDivByZero(LExpr extra_val) {
-        std::string code = "do { "
-                       "(void)(" + extra_val.render() + "); "
-                       "__builtin_trap(); "
-                       "} while (0)";
-       return LBlock({LStr(code)});
+        return LIfDef("__aarch64__", {
+            // ARM64: udiv doesn't trap on zero, so we force a breakpoint/undefined fault right after
+            LAsm({ extra_val }, { "udiv w0, w0, %w0\n\tbrk #0" })
+        }, LIfDef("__arm__", {
+            // ARM32: Same silent zero behavior, force an undefined instruction trap
+            LAsm({ extra_val }, { "udiv r0, r0, %0\n\tudf #0" })
+        }, LIfDef("__x86_64__", {
+            // x86_64 hardware traps natively on div by zero
+            LAsm({ extra_val }, { "divq %0" })
+        }, LIfDef("__i386__", {
+            // x86 32-bit hardware traps natively on div by zero
+            LAsm({ extra_val }, { "divl %0" })
+        }, {
+            LFunc("__builtin_trap", {})
+        }))));
     }
 
+    // Using assembly code directly as Chaff bugs are meant to annoy exploit hunters
     std::string AttackChaffBugs(ASTLoc ast_loc) {
         std::stringstream result_ss;
         auto key = std::make_pair(ast_loc, AttackPoint::QUERY_POINT);
@@ -154,50 +165,58 @@ struct PriQueryPointHandler : public LavaMatchHandler {
         for (const Bug *bug : map_get_default(bugs_with_atp_at, key)) {
             // 1. CHAFF_DIVZERO (or DebugInject evaluation mode for CONST bugs)
             if (bug->type == Bug::CHAFF_DIVZERO || 
-                ((bug->type == Bug::CHAFF_STACK_UNUSED || bug->type == Bug::CHAFF_STACK_CONST || bug->type == Bug::CHAFF_HEAP_CONST) && DebugInject)) {
+                ((bug->type == Bug::CHAFF_STACK_CONST || bug->type == Bug::CHAFF_HEAP_CONST) && DebugInject)) {
                 const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
                 LvalBytes extra_bytes(extra_dua_bytes);
                 LExpr checker = Test(bug) && LFunc("lava_check_state", { LDecimal(extra_data_slots[extra_bytes]) });
-
                 result_ss << LIf(checker.render(), {
+                    // We already know the value is 0 given the constraints
+                    // see lavaTool.h and the overconstaint macros
                     InjectDivByZero(LavaGetExtra(extra_data_slots.at(extra_bytes)))
                 });
-
             // 2. CHAFF_STACK_UNUSED
             } else if (bug->type == Bug::CHAFF_STACK_UNUSED) {
+                // Evaluates target pointer width at target compile time via sizeof(void*)
+                // Explicitly casts to (char*) so subtraction moves by raw bytes, not pointer elements
                 if (DebugInject) {
-                    result_ss << LIf(Test(bug).render(), { InjectDivByZero(LStr("0")) });
-                } else {
-                    // Evaluates target pointer width at target compile time via sizeof(void*)
-                    // Explicitly casts to (char*) so subtraction moves by raw bytes, not pointer elements
+                    // Validation mode: Force a SIGFPE crash using portable multi-arch inline assembly
                     result_ss << LIf(Test(bug).render(), {
-                        LFunc("memcpy", {
-                            LStr("(void*)((char*)&lava_chaff_var_2 - sizeof(void*))"),
-                            LRandomBytes(16),
-                            LStr("sizeof(void*) * 2")
-                        }),
-                        LAssign(LDeref(LStr(ARG_NAME)), LStr("*(int *)&lava_chaff_var_2"))
+                        InjectDivByZero(LDecimal(0))
+                    });
+                } else {
+                    // Normal Chaff mode: Silently corrupt ONLY the 8-byte dummy stack window
+                    result_ss << LIf(Test(bug).render(), {
+                    // 1. Write exactly 8 random bytes starting at lava_chaff_var_1, overflowing into var_0
+                    LFunc("memcpy", {
+                        LCast("void*", LStr("&lava_chaff_var_1")),
+                        LRandomBytes(8),
+                        LStr("sizeof(int) * 2")
+                    }),
+                    // 2. Fake data flow: Pass overwritten dummy value up the caller chain
+                    LAssign(LDeref(LStr(ARG_NAME)), LStr("*(int*)&lava_chaff_var_1"))
                     });
                 }
             // 3. CHAFF_STACK_CONST
             } else if (bug->type == Bug::CHAFF_STACK_CONST) {
+                // Note: do NOT use stackoff set, I tried, it unfortunately does not work
+                // So defaulting to assembly code to implement the Chaff bug
                 const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
                 LvalBytes extra_bytes(extra_dua_bytes);
                 LExpr checker = Test(bug) && LFunc("lava_check_state", { LDecimal(extra_data_slots[extra_bytes]) });
-
-                // Target byte offset calculation evaluated at compile-time
-                std::string target_offset = std::to_string(bug->stackoff) + " + sizeof(void*)";
-                result_ss << LIf(checker.render(), {
-                    LAssign(
-                    LDeref(
-                    LCast("void**",
-                        LBinop("+", LStr("(char*)&lava_chaff_var_2"), LStr(target_offset))
-                        )
-                    ),
-                    LCast("void*", LavaGetExtra(extra_data_slots.at(extra_bytes)))
-                    )
-                });
-            // 4. CHAFF_HEAP_CONST, TODO: It is likely broken, because it only works on an old glibc
+                LExpr stack_payload = LIfDef("__x86_64__", {
+                    LAsm({ LRandomAddressLiteral(8) }, { "movq %0, 8(%%rbp)" })
+                }, LIfDef("__aarch64__", {
+                    LAsm({ LRandomAddressLiteral(8) }, { "str %x0, [x29, #8]" })
+                }, LIfDef("__arm__", {
+                    LAsm({ LRandomAddressLiteral(4) }, { "str %0, [fp, #4]" })
+                }, LIfDef("__i386__", {
+                    LAsm({ LRandomAddressLiteral(4) }, { "movl %0, 4(%%ebp)" })
+                }, {
+                    LFunc("__builtin_trap", {})
+                }))));
+                result_ss << LIf(checker.render(), { stack_payload });
+            // 4. CHAFF_HEAP_CONST
+            // TODO: It is likely broken, because it only works on an old glibc
             } else if (bug->type == Bug::CHAFF_HEAP_CONST) {
                 const DuaBytes *extra_dua_bytes = db->load<DuaBytes>(bug->extra_duas[0]);
                 LvalBytes extra_bytes(extra_dua_bytes);

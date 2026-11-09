@@ -1,4 +1,5 @@
 """Regression checks for input identity and repeat parsing."""
+import json
 from unittest.mock import Mock, patch
 
 import pytest
@@ -164,9 +165,10 @@ def test_import_marks_only_observed_inputs_complete_atomically(tmp_path, monkeyp
         session.add_all([FileTaint(id=i, **FileTaint.identity(inputs / key, 'tool {input_file}', 'i386'), complete=False)
                          for i, key in enumerate(('one', 'two', 'unseen'), start=1)])
         session.commit()
-    events = [dict(fileTaintMatch=dict(filename='/guest/one'))] * 20 + [
+    frame = dict(fileCallee='/src/tool.c', functionNameCallee='tool!parse')
+    events = [dict(dwarf2Call=frame)] + [dict(fileTaintMatch=dict(filename='/guest/one'))] * 20 + [
               dict(sourceTraceId={}), dict(fileTaintMatch=dict(filename='/guest/two')),
-              dict(sourceTraceId={})]
+              dict(sourceTraceId={}), dict(dwarf2Ret=frame), dict(sourceTraceId={})]
     encoded = json.dumps(events)
     log = tmp_path / 'queries.json'
     log.write_text(encoded[:-1] + ', {' if malformed else encoded)
@@ -174,8 +176,15 @@ def test_import_marks_only_observed_inputs_complete_atomically(tmp_path, monkeyp
     monkeypatch.setenv('POSTGRES_USER', 'test')
     monkeypatch.setenv('POSTGRES_PASSWORD', 'test')
     scopes = []
-    monkeypatch.setattr(fbi, 'record_trace', lambda ple, lava_db, session, index, scope:
-                        scopes.append((index, scope)))
+    stacks = []
+    # A new import must discard any stack left by a previous parse.
+    fbi.current_call_stack[:] = [('/stale.c', 'stale')]
+
+    def capture_trace(ple, lava_db, session, index, scope):
+        scopes.append((index, scope))
+        stacks.append(list(fbi.current_call_stack))
+
+    monkeypatch.setattr(fbi, 'record_trace', capture_trace)
 
     @contextmanager
     def database(project):
@@ -194,7 +203,8 @@ def test_import_marks_only_observed_inputs_complete_atomically(tmp_path, monkeyp
     with Session(engine) as session:
         completed = dict(session.execute(select(FileTaint.id, FileTaint.complete)).all())
     assert completed == {1: not malformed, 2: not malformed, 3: False}
-    assert scopes == [(0, 1), (0, 2)]
+    assert scopes == [(0, 1), (0, 2), (1, 2)]
+    assert stacks == [[('/src/tool.c', 'tool!parse')]] * 2 + [[]]
     assert project["file_taint_id"] == 2
     assert "input_file" not in project
     assert identity.call_count == 2  # Repeated opens must not rehash the corpus.
@@ -215,7 +225,7 @@ def test_atp_identity_is_static_and_execution_owns_context():
 
 def test_chaff_injection_uses_the_selected_execution_call_stack(tmp_path):
     from types import SimpleNamespace
-    from pyroclastic.inject.dataflow import genStackVarHelper
+    from pyroclastic.inject.dataflow import genFnTraceHelper
     from pyroclastic.utils.database_types import Bug, CallTrace
     bugs = [SimpleNamespace(atp=1, execution=SimpleNamespace(calltrace=[11])),
             SimpleNamespace(atp=1, execution=SimpleNamespace(calltrace=[22]))]
@@ -226,8 +236,12 @@ def test_chaff_injection_uses_the_selected_execution_call_stack(tmp_path):
     db = SimpleNamespace(session=SimpleNamespace(query=lambda model:
         bug_query if model is Bug else SimpleNamespace(get=traces.get)))
     whitelist = tmp_path / 'whitelist'
-    genStackVarHelper(db, [1, 2], str(whitelist))
-    assert whitelist.read_text().splitlines() == ['NOFILENAME addvar first', 'NOFILENAME addvar second']
+    combined = tmp_path / 'getfns.json'
+    combined.write_text(json.dumps({'fundefs': ['first', 'second'], 'fpas': [], 'calls': {}}))
+    genFnTraceHelper(db, [1, 2], str(whitelist), str(combined))
+    assert whitelist.read_text().splitlines() == [
+        'NOFILENAME root first', 'NOFILENAME root second',
+        'NOFILENAME addvar first', 'NOFILENAME addvar second']
 
 
 @pytest.mark.parametrize('mode', ['lava1', 'lava2'])

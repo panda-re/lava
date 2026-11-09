@@ -193,6 +193,18 @@ LExpr LIfDef(std::string cond, std::initializer_list<LExpr> stmts) {
     return LExpr(LExpr::IFDEF, 0, cond, stmts);
 }
 
+LExpr LIfDef(std::string cond, std::initializer_list<LExpr> if_stmts,
+        std::initializer_list<LExpr> else_stmts) {
+    return LExpr(LExpr::IFDEF, 0, cond,
+            { LBlock(if_stmts), LBlock(else_stmts) });
+}
+
+LExpr LIfDef(std::string cond, std::initializer_list<LExpr> if_stmts,
+        LExpr else_stmt) {
+    return LExpr(LExpr::IFDEF, 0, cond,
+            { LBlock(if_stmts), else_stmt });
+}
+
 LExpr LCast(std::string type, LExpr value) {
     if (value.t == LExpr::CAST) {
         // Casting twice is a no-op.
@@ -229,6 +241,26 @@ LExpr LavaGetExtra(uint32_t slot) {
 
 LExpr DataFlowGet(uint32_t slot) {
     return LIndex(LStr("data_flow"), slot);
+}
+
+LExpr LRandomAddressLiteral(uint32_t len) {
+    std::stringstream ss;
+    ss << "0x";
+    for (uint32_t i = 0; i < len; ++i) {
+        // Generate a random byte between 0x00 and 0xFF
+        unsigned char random_byte = rand() % 256;
+        ss << std::hex << std::setw(2) << std::setfill('0') << (int)random_byte;
+    }
+    
+    // Append C type suffixes based on size to avoid compiler warnings
+    if (len >= 8) {
+        ss << "ULL";
+    } else {
+        ss << "U";
+    }
+    
+    // Return as a raw string token so operator<< renders the literal directly in C code.
+    return LStr(ss.str());
 }
 
 LExpr LRandomBytes(uint32_t len) {

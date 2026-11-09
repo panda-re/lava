@@ -2,7 +2,36 @@ import json
 from ..utils.database_types import LavaDatabase, CallTrace, Bug, BugKind
 
 
-def genFnTraceHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist: str, combined_json: str):
+def genFnTraceHelper(db: LavaDatabase, bug_list: list[int], function_whitelist: str, combined_json: str):
+    """
+    TODO: Technically could be broken! addvar technically is now enforced automatically.
+    Append fake-output-dataflow directives for selected unused-stack bugs.
+
+    ``bug_list`` contains Bug IDs, not ORM objects. Only
+    BUG_CHAFF_STACK_UNUSED rows are used. Walk each bug.execution.calltrace
+    from the innermost frame outward, using combined_json's function
+    definitions (fundefs), functions whose addresses are taken (fpas), and
+    callee-to-callers map (calls). Stop at a missing definition or an
+    address-taken function, whose signature cannot safely be changed.
+
+    Emit ``NOFILENAME df NAME`` for frames needing a data_flow parameter,
+    ``root`` for the outer boundary allocating its backing local, and
+    ``addvar`` for the innermost frame requesting dummy stack locals. Other
+    static callers of df functions also receive root entries. With no usable
+    trace, request root and addvar for main. Append to the existing file;
+    entries are neither deduplicated nor removed between injection runs.
+
+    This prepares the caller-chain disguise for unused-variable overwrites
+    in Chaff Bugs sections IV-C2 / V-C1 (Figure 6). The actual overwrite and
+    copy into *data_flow are emitted by PriQueryPointHandler, not here.
+    Signature/call rewriting requires -arg_dataflow. This helper does not
+    implement the overconstrained-value propagation of section V-C2.
+
+    Current LavaTool limitations: addvarlist is parsed but never consulted;
+    dummy locals are inserted into every eligible function body instead.
+    A root-only caller also fails CallExprArgAdditionHandler's df whitelist
+    check, so these directives alone do not ensure complete call rewriting.
+    """
     with open(combined_json, "r") as f:
         raw_data = json.load(f)
 
@@ -54,24 +83,4 @@ def genFnTraceHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist: 
         for fn in function_root:
             fd.write("NOFILENAME root %s\n" % fn)
         for fn in function_end:
-            fd.write("NOFILENAME addvar %s\n" % fn)
-
-
-def genStackVarHelper(db: LavaDatabase, bug_list: list[Bug], function_whitelist: str):
-    function_list = []
-
-    # append addvar to the functions of stack overflow
-    bug_list = db.session.query(Bug).filter(Bug.id.in_(bug_list)).filter(Bug.type == BugKind.BUG_CHAFF_STACK_CONST).all()
-    for bug in bug_list:
-        execution = bug.execution
-        if execution is not None and execution.calltrace:
-            current_calltrace_id = execution.calltrace[-1]
-            calltrace = db.session.query(CallTrace).get(current_calltrace_id)
-            function = calltrace.caller.split('!')[1]
-            function_list.append(function)
-        else:
-            function_list.append("main")
-
-    with open(function_whitelist, 'a') as fd:
-        for fn in function_list:
             fd.write("NOFILENAME addvar %s\n" % fn)
