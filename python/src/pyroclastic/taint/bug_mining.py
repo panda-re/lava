@@ -23,8 +23,33 @@ from . import dwarfdump
 from ..taint.find_bug_injection import parse_panda_log
 from ..utils.database_types import print_bug_stats, print_phase2_stats
 from ..utils.vars import parse_vars
-from ..utils.funcs import tick, tock, progress
+from ..utils.funcs import tick, tock, progress, run_local
+from ..utils.sanitize import sanitizer_sources
 from ..taint.generate_bugs import record_injectable_bugs_offline
+
+
+def dua_sanitize(project_data: dict, source_directory) -> None:
+    """Require DUASan success on pristine coordinates before generating bugs.
+
+    Missing sources/compile commands and failed coverage checks are fatal, not
+    skipped. run_local's checked logging path stops the pipeline on nonzero exit.
+    The snapshot remains alive until DUASan finishes; the live tree is untouched.
+    """
+    log = Path(project_data['output_dir']) / 'logs' / 'sanitize.log'
+    progress("bug_mining", 1, f"Sanitize step -- logging to {log}")
+    with sanitizer_sources(source_directory, project_data.get('instrument_exclude_dirs', '')) as (pristine, files):
+        if not files:
+            raise RuntimeError('DUASan requires at least one source file after exclusions')
+        command = [
+            'duasan',
+            f'-p={pristine}/compile_commands.json',
+            f'-src-prefix={pristine}',
+            f"-host={project_data['database']}",
+            f"-port={project_data.get('database_port', 5432)}",
+            f"-db={project_data['db']}",
+            *files,
+        ]
+        run_local(command, str(log))
 
 
 def pandalog_conversion_env():
@@ -143,13 +168,18 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
                 pending.append((source.relative_to(input_root), source))
             db.session.commit()
         if not pending:
-            progress("bug_mining", 0, "All inputs have already been mined with this command")
-            return
+            saved_json = Path(project_data['output_dir']) / f"queries-{project_data.get('name', '')}.json"
+            # Phase I may have committed before a failed sanitizer/Phase II run.
+            # Reuse the saved log to retry that boundary without recording again.
+            if not saved_json.is_file() or (steps is not None and 'parse' not in steps):
+                progress("bug_mining", 0, "All inputs have already been mined with this command")
+                return
 
     class State:
         guest_command = ""
         install_directory = ""
         tar_directory = ""
+        recording_name = "recording"
     state = State()
     os.chdir(project_data["output_dir"])
     tar_files = subprocess.check_output(['tar', 'tf', project_data['tarfile']]).decode('utf-8')
@@ -187,6 +217,7 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
         panda.record_cmd(
             guest_command=guest_command,
             snap_name=None,
+            recording_name=state.recording_name,
         )
         panda.stop_run()
 
@@ -315,7 +346,7 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
 
         # Default name is 'recording'
         # https://github.com/panda-re/panda/blob/dev/panda/python/core/pandare/panda.py#L2595
-        panda.run_replay("recording")
+        panda.run_replay(state.recording_name)
 
         replay_time = tock(start)
         progress("bug_mining", 1, f"taint analysis complete {replay_time} seconds")
@@ -350,14 +381,18 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
         """
         Now call find_bug_injection (FBI) on the JSON log to populate the
         database with attack points, DUAs, etc.
+
+        DUASan is mandatory between Phase I and Phase II. Its failure prevents
+        bug generation; success is a filtering heuristic, not a safety proof.
         """
         print("Calling fbi - Mining PANDA log and populating database...")
         start = tick()
         lava_mode = project_data["lava_mode"]
         parse_panda_log(pandalog_json, project_data)
-        record_injectable_bugs_offline(project_data, lava_mode)
-        # Print all states from both Mining and Bug Creation
+        dua_sanitize(project_data, state.tar_directory)
         print_bug_stats(project_data, debug=False)
+
+        record_injectable_bugs_offline(project_data, lava_mode)
         print_phase2_stats(project_data, debug=False)
 
         fib_time = tock(start)

@@ -256,18 +256,34 @@ def most_recent_dua_per_lval(duas: list[Dua]) -> dict[int, Dua]:
     exact "lval reuse" overwrite semantics both find_bug_inj.cpp's recent_dead_duas
     map and _record_injectable_bugs_offline_lava1's reconstruction of it rely on.
     Shared so any offline bug-generation pass (lava1, lava2, future algorithms) that
-    needs "what DUAs are alive at this instant" gets the same answer.
+    needs "what DUAs are alive at this instant" gets the same answer. Rejected
+    latest observations invalidate that lval instead of exposing an older value.
     """
     by_lval: dict[int, Dua] = {}
     for d in duas:
         by_lval[d.lval] = d
-    return by_lval
+    # Filter after replacement: a rejected newer observation invalidates the old
+    # incarnation; filtering before collapse would incorrectly revive it.
+    return {lval: dua for lval, dua in by_lval.items() if not dua.fake_dua}
+
+
+def replace_available_dua(dua, recent_dead_duas, recent_duas_by_instr):
+    """Replace an lvalue observation, evicting rejected DUAs without reviving old ones."""
+    previous = recent_dead_duas.get(dua.lval)
+    if previous is not None:
+        recent_duas_by_instr.pop(previous, None)
+    if dua.fake_dua:
+        recent_dead_duas.pop(dua.lval, None)
+    else:
+        recent_dead_duas[dua.lval] = dua
+        recent_duas_by_instr[dua] = None
 
 
 def load_lava1_duas(session, inputfile, page_size=500):
     """Load ordered DUAs with relationships in bounded SQL batches.
 
-    The existing reconstruction still retains the file's DUA history in memory.
+    Retain fake observations to invalidate older incarnations of the same lval;
+    reconstruction excludes them from candidates after applying replacements.
     """
     result = []
     position = None
@@ -454,7 +470,7 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                 offline_liveness = liveness_timeline.at(instr)
 
                 for d in newly_observed_duas:
-                    if d.length >= 20:
+                    if not d.fake_dua and d.length >= 20:
                         pad = get_dua_exploit_pad(d, offline_liveness)
                         if not pad.empty() and (d.fake_dua or pad.size() >= 20):
                             trigger = get_or_create_dua_bytes(db, dua_bytes_cache, d, pad)
@@ -479,12 +495,8 @@ def _record_injectable_bugs_offline_lava1(project_data: dict):
                                     extra_duas_prechosen=[trigger]
                                 )
 
-                    if d.lval in recent_dead_duas:
-                        old_dua = recent_dead_duas[d.lval]
-                        recent_duas_by_instr.pop(old_dua, None)
-                    recent_dead_duas[d.lval] = d
-                    recent_duas_by_instr[d] = None
-                    if d.death_instr is not None:
+                    replace_available_dua(d, recent_dead_duas, recent_duas_by_instr)
+                    if not d.fake_dua and d.death_instr is not None:
                         heappush(deaths, (d.death_instr, d.id, d))
 
                 # Deaths recorded at this exact same instr are pruned only now, after
@@ -678,6 +690,8 @@ def _record_injectable_bugs_offline_lava2(project_data: dict):
                 if not raw_duas:
                     continue
                 alive = most_recent_dua_per_lval(raw_duas)
+                if not alive:
+                    continue
                 groups[(ex.inputfile, ex.instr)] = sorted(alive.values(), key=lambda d: d.instr)
 
             if not groups:

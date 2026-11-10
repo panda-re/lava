@@ -149,6 +149,67 @@ As alluded to, you should create a Postgres SQL user. You can use a script to [u
 * Create the user with provided username and password from environment variables.
 * Update Postgres SQL database on host to accept traffic from external sources (e. g. LAVA Docker container)
 
+### PostgreSQL in a container (Podman on Linux)
+
+If you cannot install PostgreSQL on the host, run it in a separate rootless
+Podman container. For ease of setup, use host networking for both PostgreSQL
+and LAVA; no `podman network create` or port publishing (`-p`) is needed.
+
+In your workspace (for example, `~/lava`), create a `.env` containing
+`POSTGRES_USER=lava` and `POSTGRES_PASSWORD=your-database-password`, using plain
+`KEY=value` lines without shell `export` statements or surrounding quotes.
+Keep this file out of version control. From that directory, run:
+
+```bash
+chmod 600 .env
+podman volume create lava-pgdata
+podman run -d --name lava-postgres \
+  --network host --shm-size=1g \
+  --env-file .env -e POSTGRES_DB=postgres \
+  -v lava-pgdata:/var/lib/postgresql/data \
+  docker.io/library/postgres:17 \
+  -c listen_addresses=127.0.0.1
+podman logs lava-postgres
+```
+
+Wait for the log to report that the database is ready to accept connections.
+The `-d` option runs PostgreSQL in the background: you can run LAVA from the
+same shell, with no second terminal needed. Stop and restart the existing
+database container with `podman stop lava-postgres` and
+`podman start lava-postgres`; do not repeat `podman run` to restart it.
+Detached operation does not configure startup after a reboot or guarantee
+survival of a lab's logout cleanup policy.
+
+Run the LAVA container with `--network host --env-file .env` too, and set
+`"host": "127.0.0.1"` and `"port": 5432` in `host.json`. Port 5432 must be free
+on the host; if necessary, add `-c port=5433` to the PostgreSQL command and use
+5433 in `host.json`. PostgreSQL listens only on host loopback, although other
+users on the same server can reach that port and must authenticate.
+
+Host networking does not expose host files. Bind-mount the LAVA workspace,
+target data, and PANDA cache into the LAVA container at the same absolute paths
+used in your configurations, with appropriate write permissions. Use the launcher with Podman (it preserves your host UID/GID for mounted files):
+
+```bash
+scripts/docker-shell.sh --runtime podman --env-file .env lava-init
+scripts/docker-shell.sh --runtime podman --env-file .env
+```
+
+The second command opens an interactive LAVA shell. Host networking is the
+default; use `--network NAME` if you prefer a shared container network. Exported
+host credentials override values from `--env-file` when both are provided.
+
+The named volume persists database files independently of the container. Large
+databases still consume real host disk space: check your quota and Podman's
+storage location (`podman info --format '{{.Store.GraphRoot}}'`) before large
+experiments, and budget for indexes, WAL, temporary files, and backups. Use an
+approved persistent data location if home storage is too small; a volume is
+not a backup. The image's user/password variables initialize an empty volume
+only; changing `.env` later does not change existing database credentials.
+Keep the PostgreSQL major version pinned; changing it requires a database
+upgrade procedure. See the [official PostgreSQL image documentation](https://hub.docker.com/_/postgres)
+and [Podman run reference](https://docs.podman.io/en/latest/markdown/podman-run.1.html).
+
 # Usage
 
 Finally, you can run `lava` to actually inject bugs into a program. 

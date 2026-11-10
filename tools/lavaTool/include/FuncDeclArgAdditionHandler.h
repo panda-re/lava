@@ -73,6 +73,8 @@ struct FuncDeclArgAdditionHandler : public LavaMatchHandler {
         }
 
         // 2 & 3. SQUASHED CHAFF INJECTION
+        // Also in Zhenghao's LAVA, there was add_var_list
+        // to limit pre-pending the 3 variables, I dropped it for now.
         if (func->doesThisDeclarationHaveABody()) {
             CompoundStmt *body = dyn_cast<CompoundStmt>(func->getBody());
             assert(body);
