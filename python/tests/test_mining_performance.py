@@ -62,10 +62,10 @@ def test_chaff_extra_selection_prefers_simple_valid_candidate():
 
 
 @pytest.mark.parametrize("instructions, expected", [
-    ([1, 1, 2], [3]),
+    ([1, 1, 2], [(3, 2)]),
     ([1, 2, 2], []),  # One prior DUA fails the historical strict 1 < end_index.
     ([1, 1, 1], []),
-    ([1, 2, 3, 3], [3, 4]),
+    ([1, 2, 3, 3], [(3, 2), (4, 1)]),
 ])
 def test_extra_selection_strict_prior_boundary(instructions, expected):
     accepted = []
@@ -87,8 +87,19 @@ def test_extra_selection_strict_prior_boundary(instructions, expected):
             execution=execution,
         )
 
-    assert [bug["trigger"].id for bug in accepted] == expected
-    assert all(bug["extra_duas"] == [1] for bug in accepted)
+    # Extras rotate deterministically through prior DUAs rather than always
+    # selecting DUA 1. Preserve the strict temporal boundary independently.
+    assert [(bug["trigger"].id, bug["extra_duas"]) for bug in accepted] == [
+        (trigger_id, [extra_id]) for trigger_id, extra_id in expected
+    ]
+    by_id = {dua.id: dua for dua in duas}
+    for bug in accepted:
+        trigger = bug["trigger"]
+        assert len(bug["extra_duas"]) == 1
+        for extra_id in bug["extra_duas"]:
+            assert by_id[extra_id].instr < by_id[trigger.id].instr
+            extra_labels = dua_bytes(None, None, by_id[extra_id], None).all_labels
+            assert set(trigger.all_labels).isdisjoint(extra_labels)
     assert all(bug["execution"] is execution for bug in accepted)
 
 
@@ -512,6 +523,31 @@ def test_skip_cache_preserves_new_atp_and_per_call_visibility():
         run(True)
         assert [bug["trigger_lval"] for bug in accepted] == [10, 10, 9, 10, 10]
     session.query.assert_called_once()
+
+
+def test_rel_write_extra_duas_rotate_instead_of_reusing_first():
+    from unittest.mock import MagicMock
+
+    session = MagicMock()
+    accepted = []
+    session.add.side_effect = accepted.append
+    database = SimpleNamespace(session=session)
+    duas = [SimpleNamespace(id=i, instr=i, lval=i, fake_dua=False)
+            for i in range(1, 7)]
+
+    def make_dua_bytes(db, cache, dua, selected):
+        return SimpleNamespace(id=dua.id, all_labels=[dua.id * 10 + offset for offset in range(4)])
+
+    with patch.object(generate_bugs, "get_dua_dead_range", return_value=Range(0, 4)), \
+            patch.object(generate_bugs, "get_or_create_dua_bytes", side_effect=make_dua_bytes), \
+            patch.object(generate_bugs, "Bug", side_effect=lambda **kwargs: kwargs):
+        generate_bugs._get_or_create_bug_like_cpp(
+            database, {}, SimpleNamespace(id=1), BugKind.BUG_REL_WRITE, 0,
+            duas, {}, {"max_liveness": 0}, True)
+
+    rel_write_bugs = [bug for bug in accepted if bug["bug_type"] == BugKind.BUG_REL_WRITE]
+    assert rel_write_bugs
+    assert any(bug["extra_duas"] != [1, 2] for bug in rel_write_bugs)
 
 
 def test_death_heap_ignores_replaced_incarnations_and_preserves_order():

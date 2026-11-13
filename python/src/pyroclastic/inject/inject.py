@@ -18,7 +18,6 @@ from sqlalchemy import delete, exists, select
 from ..utils.database_types import Bug, BuildBug, Dua, DuaBytes, SourceLval, Build, Run, BugKind, AtpKind, LavaDatabase, FileTaint
 from ..inject.dataflow import genFnTraceHelper
 
-NUM_BUGTYPES = 3  # Make sure this matches what's in lavaTool
 start_time = time.time()
 
 
@@ -442,36 +441,18 @@ def mutate_file(unfuzzed_filename: str, fuzz_labels_list: list, new_filename: st
     if bug.type == BugKind.BUG_REL_WRITE:
         assert len(fuzz_labels_list) == 3  # Must have 3 sets of labels
 
-        m = bug.magic
-        a, b, c = 0, 0, 0
-
-        if solution:
+        if solution is not None:
+            if len(solution) != 3:
+                raise RuntimeError(
+                    f'LavaTool returned {len(solution)} values for REL_WRITE bug {bug.id}; expected 3'
+                )
             a_val = solution[0]
             b_val = solution[1]
             c_val = solution[2]
         else:
-            # If we don't have solutions from lavaTool, hope this code matches
-            # lavaTool and generate non-ascii solutions here
-            if m % NUM_BUGTYPES == 0:  # A + B = M * C
-                b = m
-                c = 1
-                a = 0
-
-            if m % NUM_BUGTYPES == 1:  # B = A*(C+M)
-                a = 1
-                c = 0
-                b = m
-            # C % M == M - A*2 NOT USING B, just a 2-dua
-            if m % NUM_BUGTYPES == 2:
-                a = 5
-                c = m - 10
-            # Intentional chaff bug - don't even bother
-            if m % NUM_BUGTYPES == 3:
-                pass
-
-            a_val = struct.pack("<I", a)
-            b_val = struct.pack("<I", b)
-            c_val = struct.pack("<I", c)
+            raise RuntimeError(
+                f'LavaTool did not provide a solution for REL_WRITE bug {bug.id}'
+            )
 
         for i, offset in zip(range(4), fuzz_labels_list[0]):
             file_bytes[offset] = a_val[i]
@@ -1302,7 +1283,8 @@ def main(arguments: argparse.Namespace, lp: LavaPaths):
     try:
         # determine which of those bugs actually cause a seg fault
         real_bug_list = validate_bugs(bug_list, db, lp, project, input_files, build, arguments,
-                                      bug_results=bug_results)
+                                      bug_results=bug_results,
+                                      bug_solutions=bug_solutions)
 
         def count_bug_types(id_list: list[int]):
             type_count = {}

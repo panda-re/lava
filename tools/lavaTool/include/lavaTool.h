@@ -385,11 +385,12 @@ LExpr threeDuaTest(Bug *bug, LvalBytes x, LvalBytes y) {
     // TEST of bug type 2
     //return (Get(x)%(LHex(bug->magic))) == (LHex(bug->magic) - (Get(bug->trigger)*LHex(2)));
 
-
     // To deterministically generate solutions, we
     // reset RANDOM_SEED and run bugid times
     srand(RANDOM_SEED);
-    for (int i=0;i<bug->id; i++) rand();
+    for (int i = 0; i < bug->id; i++) {
+        rand();
+    }
 
     uint32_t a_sol = alphanum(4);
     uint32_t b_sol = alphanum(4);
@@ -417,26 +418,21 @@ LExpr threeDuaTest(Bug *bug, LvalBytes x, LvalBytes y) {
             break;
 
     }
-    //bug->trigger = a_sol;
 
     switch (oldmagic % NUM_BUGTYPES)  {
         // bug->trigger = A
         // get(x) = B
         // get(y) = C
         // bug->magic = m
-        case 0:     // (A + B)*C == M
-            return (Get(bug->trigger)+Get(x))*Get(y) == (LHex(bug->magic));
-            break;
-        case 1:     //(A*B)-C == M
-            return (Get(bug->trigger)*Get(x))-Get(y) == (LHex(bug->magic));
-            break;
+        case 0:     // (A + B) * C == M
+            return (Get(bug->trigger)+Get(x)) * Get(y) == (LHex(bug->magic));
+        case 1:     // (A * B) - C == M
+            return (Get(bug->trigger)*Get(x)) - Get(y) == (LHex(bug->magic));
         case 2:     // (A+2)(C+3)(B+1) == M
-            return (Get(bug->trigger)+LHex(2))*(Get(y)+LHex(3))*(Get(bug->trigger)+LHex(1))  == LHex(bug->magic);
-            break;
+            return (Get(bug->trigger)+LHex(2)) * (Get(y) + LHex(3)) * (Get(x) + LHex(1)) == LHex(bug->magic);
 
         default: // CHAFF
             return (Get(x) == (Get(x)+ LHex(bug->magic)));
-            break;
     }
 }
 
@@ -449,10 +445,12 @@ bool fninstr(std::pair<std::string, std::string> fnname) {
     std::string filename = fnname.first;
     std::string function_name = fnname.second;
     if (whitelist.size() > 0) {
-        if (whitelist.count(function_name) == 0)
+        if (whitelist.count(function_name) == 0) {
             return false;  // dont instrument
-        else
+        }
+        else {
             return true;  // instrument
+        }
     }
     return false;
 }
@@ -474,7 +472,6 @@ LExpr traditionalAttack(const Bug *bug) {
 
 LExpr knobTriggerAttack(const Bug *bug) {
     LExpr lava_get_lower = Get(bug) & LHex(0x0000ffff);
-    //LExpr lava_get_upper = (LavaGet(bug) >> LDecimal(16)) & LHex(0xffff);
     LExpr lava_get_upper = (Get(bug) & LHex(0xffff0000)) >> LDecimal(16);
     // this is the magic value that will trigger the bug
     // we already know that magic_kt returns uint16_t so we don't have
@@ -498,7 +495,6 @@ std::unique_ptr<SourceTrace> source_trace_at(const FileTaint *input, uint64_t in
 }
 
 void mark_for_siphon(const DuaBytes *dua_bytes) {
-
     LvalBytes lval_bytes(dua_bytes);
     auto tridx = dua_bytes->dua->trace_index;
     auto tr = source_trace_at(dua_bytes->dua->inputfile, tridx);
@@ -512,7 +508,6 @@ void mark_for_siphon(const DuaBytes *dua_bytes) {
 }
 
 void mark_for_siphon_extra(const DuaBytes *dua_bytes) {
-
     LvalBytes lval_bytes(dua_bytes);
     auto tridx = dua_bytes->dua->trace_index;
     auto tr = source_trace_at(dua_bytes->dua->inputfile, tridx);
@@ -525,7 +520,6 @@ void mark_for_siphon_extra(const DuaBytes *dua_bytes) {
 }
 
 void mark_for_overconst_extra(const Bug *bug, const DuaBytes *dua_bytes) {
-
     const AtpExecution *execution = bug->execution;
     const Dua *dua = dua_bytes->dua;
     if (!execution || execution->atp->id != bug->atp->id ||
