@@ -1,6 +1,12 @@
 # Target Programs
 This folder has the list of binaries used in publications.
 
+## FuzzBench harness targets
+
+See [Fuzzbench.md](Fuzzbench.md) for pinned OpenSSL, SQLite, libxml2 and libpng
+sources, per-target dependencies, terminal build commands, default seed corpora,
+and notes on adapting the harness executables to LAVA.
+
 ## Misc binaries
 * The [original toy](https://github.com/AndrewQuijano/toy/) source code.
 * [Graphland](https://github.com/moyix/graphland/), albeit slightly modified to work on run-time
