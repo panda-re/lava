@@ -149,6 +149,37 @@ As alluded to, you should create a Postgres SQL user. You can use a script to [u
 * Create the user with provided username and password from environment variables.
 * Update Postgres SQL database on host to accept traffic from external sources (e. g. LAVA Docker container)
 
+### Database backup and restore
+
+Use PostgreSQL's full custom-format archive to preserve the mined database's
+schema, rows, IDs, relationships, and sequence values. The diagnostic table
+printer is not a backup. After mining finishes, run:
+
+```bash
+./scripts/dump_database.sh toy_andrew toy_andrew.dump
+./scripts/import_database.sh toy_andrew.dump toy_andrew_restored
+```
+
+Pass actual PostgreSQL database names, including the `db_suffix` from
+`host.json` where applicable (for example, `toy_andrew_ubuntu`). These scripts
+use `POSTGRES_USER` and `POSTGRES_PASSWORD`, with standard PostgreSQL variables
+(`PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`) taking precedence. Host and port
+default to `localhost:5432`; PostgreSQL's password file also works. Credentials
+must be exported in the shell; the scripts do not load `.env` automatically.
+
+The dump script refuses to overwrite an archive and publishes it only after
+`pg_dump` succeeds. Import creates a new database and refuses an existing name.
+Restore runs in one transaction, with objects owned by the restoring user and
+original ownership and grants omitted. If restore fails, the new empty database
+remains for inspection. A successful import exercises the backup's restoration.
+Use PostgreSQL client tools matching the source server's major version, and
+restore to the same or a newer supported server version.
+
+Keep matching source code, inputs, configuration, and generated files separately;
+database archives do not contain external files. Restoring does not translate
+mined results to a different source target. Configure LAVA's resolved `db` name
+to use the restored database for subsequent injection experiments.
+
 ### PostgreSQL in a container (Podman on Linux)
 
 If you cannot install PostgreSQL on the host, run it in a separate rootless

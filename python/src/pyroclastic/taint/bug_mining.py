@@ -7,6 +7,8 @@ Second arg is an input file you want to run, under panda, to get taint info.
 """
 
 import os
+import multiprocessing
+import re
 from pathlib import Path
 from ..utils.database_types import FileTaint, LavaDatabase
 import sys
@@ -26,6 +28,19 @@ from ..utils.vars import parse_vars
 from ..utils.funcs import tick, tock, progress, run_local
 from ..utils.sanitize import sanitizer_sources
 from ..taint.generate_bugs import record_injectable_bugs_offline
+
+
+class State:
+    # The command executed inside PANDA
+    guest_command = ""
+    # The directory where the binary and inputs are installed inside PANDA
+    install_directory = ""
+    # The directory where the tarfile is extracted on the host
+    tar_directory = ""
+    # The directory with all PANDA log, one for each file
+    panda_log_directory = ""
+    # Name of the recording when saved
+    recording_name = "recording"
 
 
 def dua_sanitize(project_data: dict, source_directory) -> None:
@@ -134,6 +149,22 @@ def check_dwarf_json_files(install_dir: str) -> None:
     )
 
 
+def check_json_name_arch(install_dir: str, project_data: dict) -> None:
+    """
+    Check that mining JSON filenames have the configured architecture prefix.
+    This checks declared provenance, not the contents of an imported log.
+
+    Raises RuntimeError if validation fails.
+    """
+    prefix = project_data["qemu"] + "-"
+    for path in Path(install_dir).rglob("*.json"):
+        # Accept the previous underscore naming scheme during migration.
+        if not path.name.startswith((prefix, project_data["qemu"] + "_")):
+            raise RuntimeError(
+                f"Architecture mismatch: expected prefix {prefix!r} in {path}"
+            )
+
+
 def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, steps: Optional[list] = None):
     """
     Initializes the project and PANDA object based on arguments.
@@ -150,9 +181,14 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
     step: list of steps to run, can be "record", "replay", or "parse".
     If None, run all steps.
     """
+    # See vars.py, the config_dir already points to the project specific config folder
+    project_config_dir = Path(project_data["config_dir"]).resolve()
+    # See vars.py, the output_dir already points to the project specific output folder
+    project_output_dir = Path(project_data["output_dir"]).resolve()
+
     pending = []
     if raw_command is None:
-        input_root = Path(project_data["config_dir"]).resolve() / "inputs"
+        input_root = project_config_dir / "inputs"
         if not input_root.is_dir():
             raise FileNotFoundError(input_root)
         with LavaDatabase(project_data) as db:
@@ -168,33 +204,21 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
                 pending.append((source.relative_to(input_root), source))
             db.session.commit()
         if not pending:
-            saved_json = Path(project_data['output_dir']) / f"queries-{project_data.get('name', '')}.json"
-            # Phase I may have committed before a failed sanitizer/Phase II run.
-            # Reuse the saved log to retry that boundary without recording again.
-            if not saved_json.is_file() or (steps is not None and 'parse' not in steps):
-                progress("bug_mining", 0, "All inputs have already been mined with this command")
-                return
+            return
 
-    class State:
-        guest_command = ""
-        install_directory = ""
-        tar_directory = ""
-        recording_name = "recording"
     state = State()
-    os.chdir(project_data["output_dir"])
-    tar_files = subprocess.check_output(['tar', 'tf', project_data['tarfile']]).decode('utf-8')
-    state.tar_directory = os.path.abspath(tar_files.splitlines()[0].split(os.path.sep)[0])
-    state.install_directory = os.path.join(state.tar_directory, 'lava-install')
-    # recording_timeout = project_data["recording_timeout"]
-    panda_log = "{}/queries-{}.plog".format(project_data['output_dir'], project_data['name'])
-    pandalog_json = "{}/queries-{}.json".format(project_data['output_dir'], project_data['name'])
-    # TODO: Verify recording/JSON architecture before reuse or --parse; imported
-    # artifacts currently inherit host.json qemu and must match that target.
-    reuse_json = raw_command is None and steps is None and os.path.exists(pandalog_json)
-    # Panda() itself may download a QCOW, so decide whether to reuse JSON first.
-    needs_panda = raw_command is not None or (not reuse_json and (
-        steps is None or any(step in steps for step in ('record', 'replay'))))
-    panda = Panda(generic=project_data['qemu']) if needs_panda else None
+
+    tar_files = subprocess.check_output(['tar', 'tf', os.path.join(project_output_dir, project_data["tarfile"])]).decode('utf-8')
+    # set variables
+    state.tar_directory = str(project_output_dir / tar_files.splitlines()[0].split(os.path.sep)[0])
+    state.install_directory = os.path.join(state.tar_directory, "lava-install")
+
+    # Keep recording pairs and derived logs together, separate from build JSON.
+    state.panda_log_directory = str(project_output_dir/ "panda_logs")
+    os.makedirs(state.panda_log_directory, exist_ok=True)
+    panda_log = None
+    pandalog_json = None
+    panda = None
 
     def create_recording_wrapper():
         """
@@ -203,7 +227,7 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
         to the guest, and starts recording the specified command.
         1. Revert to 'root' snapshot
         2. Copy install_directory to guest
-        3. Start recording the command in state.guest_command, this runs the program on a folder of inputs
+        3. Start recording the command in state.guest_command for one input
         4. Stop the recording after the command completes
         """
         guest_command = state.guest_command
@@ -223,12 +247,11 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
 
     def record():
         start = tick()
-        input_file_directory = os.path.abspath(os.path.join(project_data["config_dir"], "inputs"))
-        progress("bug_mining", 0, "Entering {}".format(project_data['output_dir']))
-        os.chdir(project_data['output_dir'])
+        input_file_directory = os.path.abspath(project_config_dir / "inputs")
+        progress("bug_mining", 0, "Entering {}".format(project_output_dir))
 
         # When you unpack a tarfile, it usually creates a subdirectory.
-        guest_directory_inputs_path = os.path.join(state.install_directory, 'inputs')
+        guest_directory_inputs_path = os.path.join(state.install_directory, "inputs")
 
         progress("bug_mining", 0, f"Copying directory {input_file_directory} to {guest_directory_inputs_path}")
         # copytree requires the destination to NOT exist
@@ -240,45 +263,24 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
             shutil.copytree(input_file_directory, guest_directory_inputs_path)
         else:
             os.makedirs(guest_directory_inputs_path)
-            for relative, source in pending:
-                guest_input = os.path.join(guest_directory_inputs_path, str(relative))
-                os.makedirs(os.path.dirname(guest_input), exist_ok=True)
-                shutil.copyfile(source, guest_input)
+            relative, source = current_input
+            guest_input = os.path.join(guest_directory_inputs_path, str(relative))
+            os.makedirs(os.path.dirname(guest_input), exist_ok=True)
+            shutil.copyfile(source, guest_input)
 
-        # 2. BUILD THE PER-FILE COMMAND, WITH A REAL SHELL VARIABLE DROPPED IN
+        # Build the command for this input (or the explicit smoke test).
         if raw_command is not None:
             # Smoke-test mode: skip the whole per-file batch construction and
             # record exactly what was passed on the command line.
             progress("bug_mining", 0, f"SMOKE TEST: recording raw command as-is: {raw_command}")
             state.guest_command = raw_command
         else:
-            guest_executable_template = project_data['command'].format(
+            relative, source = current_input
+            state.guest_command = project_data['command'].format(
                 install_dir=shlex.quote(state.install_directory),
-                input_file='"$f"'
+                input_file=shlex.quote(os.path.join(guest_directory_inputs_path, str(relative)))
             ).strip()
-
-            # 3. CONSTRUCT THE BATCH COMMAND AS A PLAIN BASH for LOOP.
-            # Deliberately not "find | xargs -I {}": that adds a layer of
-            # placeholder-substitution indirection on top of the one above, is
-            # harder to reproduce by hand when something goes wrong (which it has,
-            # twice), and buys nothing a for loop doesn't already give us --
-            # "for f in dir/*" is safe for filenames with spaces as long as "$f"
-            # stays quoted (glob expansion isn't subject to IFS word-splitting the
-            # way command substitution is). Same semantics either way: one
-            # continuous PANDA recording, one target process per file, run
-            # strictly sequentially.
-            batch_shell_command = (
-                f"for f in {shlex.quote(guest_directory_inputs_path)}/*; do "
-                f"{guest_executable_template}; done"
-            )
-
-            progress("bug_mining", 0, f"Generated Guest Command: {batch_shell_command}")
-
-            # Keep the fully-formed shell string as-is -- see the comment in
-            # create_recording_wrapper() for why round-tripping this through
-            # .split() + subprocess.list2cmdline() (the previous approach) is
-            # actively wrong here, not just unnecessary.
-            state.guest_command = batch_shell_command
+            progress("bug_mining", 0, f"Generated Guest Command: {state.guest_command}")
 
         # In CI/CD, we should try to use complete record and replay
         # Also, please avoid using debug prints in CI/CD, it can cause issues.
@@ -290,7 +292,7 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
         panda.run()
 
         record_time = tock(start)
-        progress("bug_mining", 1, f"panda record complete {record_time} seconds")
+        progress("bug_mining", 1, f"panda record complete {record_time} seconds for {state.guest_command}")
         sys.stdout.flush()
 
     def replay():
@@ -314,7 +316,7 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
 
         proc_name = os.path.basename(guest_executable)
 
-        progress("bug_mining", 1, "Starting first and only replay, tainting on file open...")
+        progress("bug_mining", 1, "Replaying this input, tainting on file open...")
 
         progress("bug_mining", 0, f"pandalog = [{panda_log}]" )
 
@@ -349,9 +351,10 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
         panda.run_replay(state.recording_name)
 
         replay_time = tock(start)
-        progress("bug_mining", 1, f"taint analysis complete {replay_time} seconds")
+        progress("bug_mining", 1, f"taint analysis complete {replay_time} seconds for {state.guest_command}")
         sys.stdout.flush()
         convert_plog_to_json()
+        progress("bug_mining", 1, f"Converted JSON for {state.guest_command}")
 
     # Technically occurs inside replay, but it is just cleaner here.
     def convert_plog_to_json():
@@ -374,8 +377,12 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
             print("The script to convert the panda log into JSON has failed")
             raise e
 
+        # Optional space-saving cleanup after successful conversion; disables replay/reconversion.
+        if project_data["delete_panda_log"]:
+            for path in (panda_log, state.recording_name + "-rr-snp", state.recording_name + "-rr-nondet.log"): 
+                Path(path).unlink(missing_ok=True)
         convert_time = tock(start)
-        progress("bug_mining", 1, f"Converted JSON in {convert_time} seconds")
+        progress("bug_mining", 1, f"Converted JSON in {convert_time} seconds for {state.guest_command}")
 
     def parse_replay_output():
         """
@@ -395,11 +402,15 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
         record_injectable_bugs_offline(project_data, lava_mode)
         print_phase2_stats(project_data, debug=False)
 
+        # Optional cleanup only after mining, sanitization, and bug generation succeed; disables JSON re-import.
+        if project_data["delete_panda_log"]:
+            Path(pandalog_json).unlink(missing_ok=True)
         fib_time = tock(start)
-        progress("bug_mining", 1, f"FBI complete {fib_time} seconds")
+        progress("bug_mining", 1, f"FBI complete {fib_time} seconds for {state.guest_command}")
         sys.stdout.flush()
 
     if raw_command is not None:
+        panda = Panda(generic=project_data["qemu"])
         # pandare.panda's own "debug" name is a plain module-level bool that
         # record_cmd() checks to decide whether to print the guest's raw
         # output -- it's a separate copy from pandare.utils.debug (panda.py
@@ -413,18 +424,42 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
                                    "Check the '[PYPANDA] Result of ...' output above for what the guest actually printed.")
         return
 
-    # Check if there is already a PANDA log...
-    # If there is, skip straight to parsing the replay output, otherwise do the whole pipeline
-    if reuse_json:
-        progress("bug_mining", 0, f"PANDA log json already exists at {pandalog_json}, skipping straight to parsing replay output")
-        parse_replay_output()
-        return
-    if steps is None or "record" in steps:
-        record()
-    if steps is None or "replay" in steps:
-        replay()
-    if steps is None or "parse" in steps:
-        parse_replay_output()
+    check_json_name_arch(state.panda_log_directory, project_data)
+
+    def run_input():
+        nonlocal panda
+        needs_panda = steps is None or any(step in steps for step in ('record', 'replay'))
+        # Construct PANDA only in the child. Never reuse its VM/monitor after
+        # replay for the next input, or initialize libpanda twice in one process.
+        if needs_panda:
+            panda = Panda(generic=project_data['qemu'])
+        if steps is None or "record" in steps:
+            record()
+        if steps is None or "replay" in steps:
+            replay()
+        if steps is None or "parse" in steps:
+            if not os.path.isfile(pandalog_json):
+                raise FileNotFoundError(pandalog_json)
+            parse_replay_output()
+
+    for current_input in pending:
+        relative, source = current_input
+        # Keep monitor-safe, short names. Basename collisions and reuse after
+        # content/command changes are intentionally not distinguished here.
+        basename = re.sub(r"[^A-Za-z0-9_.-]", "_", source.stem)
+        prefix = Path(state.panda_log_directory) / f"{project_data['qemu']}-{basename}"
+        state.recording_name = str(prefix)
+        panda_log = str(prefix) + ".plog"
+        pandalog_json = str(prefix) + ".json"
+        sys.stdout.flush()
+        sys.stderr.flush()
+        # Linux fork lets these small wrappers retain the current input/paths.
+        # Join before continuing: install-directory copies must remain sequential.
+        worker = multiprocessing.get_context("fork").Process(target=run_input)
+        worker.start()
+        worker.join()
+        if worker.exitcode != 0:
+            raise RuntimeError(f"Taint pipeline failed for {source} (exit {worker.exitcode})")
 
 
 def main():
@@ -452,6 +487,7 @@ def main():
         if getattr(args, step)
     ]
     run_taint_pipeline(project, raw_command=args.smoke_test, steps=None if args.all or not steps else steps)
+
 
 if __name__ == "__main__":
     main()

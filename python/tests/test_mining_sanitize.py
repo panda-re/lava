@@ -1,4 +1,4 @@
-"""Phase I -> DUASan -> Phase II is a required gate, including saved-log retries.
+"""Phase I -> DUASan -> Phase II is a required gate, including optional artifact cleanup.
 
 Compile the actual orchestration functions from their AST to isolate these tests
 from PANDA/SQLAlchemy imports. Collaborators are mocks; ordering, snapshot lifetime
@@ -30,10 +30,14 @@ def mining_function(name, namespace, source=MINING):
 
 @pytest.mark.parametrize('error', [None, RuntimeError('bad snapshot'),
                                   subprocess.CalledProcessError(1, ['duasan']), SystemExit(1)])
-def test_phase2_requires_sanitization_success(error):
+@pytest.mark.parametrize('delete_logs', [False, True])
+def test_phase2_requires_sanitization_success(error, delete_logs, tmp_path):
     events = []
-    namespace = dict(project_data={'lava_mode': 'lava1'}, pandalog_json='/log.json',
-                     state=SimpleNamespace(tar_directory='/source'),
+    log = tmp_path / 'log.json'
+    log.write_text('[]')
+    namespace = dict(project_data={'lava_mode': 'lava1', 'delete_panda_log': delete_logs},
+                     pandalog_json=str(log), Path=Path,
+                     state=SimpleNamespace(tar_directory='/source', guest_command='tool input'),
                      tick=lambda: 0, tock=lambda _: 0, progress=Mock(),
                      sys=SimpleNamespace(stdout=Mock()))
     for function, label in [('parse_panda_log', 'mine'), ('dua_sanitize', 'sanitize'),
@@ -53,6 +57,7 @@ def test_phase2_requires_sanitization_success(error):
         with pytest.raises(type(error)):
             parse()
         assert events == ['mine', 'sanitize']
+    assert log.exists() == (error is not None or not delete_logs)
     namespace['dua_sanitize'].assert_called_once_with(namespace['project_data'], '/source')
 
 
@@ -108,13 +113,14 @@ def test_empty_source_selection_blocks_sanitization(tmp_path):
 
 
 @pytest.mark.parametrize('steps', [None, ['parse']])
-def test_completed_phase1_retries_saved_json_without_panda(tmp_path, monkeypatch, steps):
+def test_completed_inputs_skip_saved_json_and_panda(tmp_path, monkeypatch, steps):
     inputs = tmp_path / 'inputs'
     inputs.mkdir()
     (inputs / 'seed').write_bytes(b'input')
     output = tmp_path / 'output'
     output.mkdir()
-    log = output / 'queries-test.json'
+    log = output / 'panda_logs/x86_64-seed.json'
+    log.parent.mkdir()
     log.write_text('[]')
     project = dict(config_dir=str(tmp_path), output_dir=str(output), name='test',
                    tarfile='source.tar', command='tool', qemu='x86_64', lava_mode='lava1')
@@ -133,9 +139,10 @@ def test_completed_phase1_retries_saved_json_without_panda(tmp_path, monkeypatch
     monkeypatch.chdir(tmp_path)
     pipeline(project, steps=steps)
     namespace['Panda'].assert_not_called()
-    namespace['parse_panda_log'].assert_called_once_with(str(log), project)
-    namespace['dua_sanitize'].assert_called_once_with(project, str(output / 'source'))
-    namespace['record_injectable_bugs_offline'].assert_called_once_with(project, 'lava1')
+    namespace['parse_panda_log'].assert_not_called()
+    namespace['dua_sanitize'].assert_not_called()
+    namespace['record_injectable_bugs_offline'].assert_not_called()
+    assert log.read_text() == '[]'
 
 
 @pytest.mark.parametrize('mode', ['lava1', 'lava2'])
@@ -171,3 +178,41 @@ def test_rejected_observation_evicts_previous_candidate(mode):
         assert latest(observations) == {20: unrelated}
         assert latest(observations + [later_accepted]) == {20: unrelated, 10: later_accepted}
         assert latest([rejected]) == {}
+
+
+@pytest.mark.parametrize('delete_logs', [False, True])
+@pytest.mark.parametrize('conversion_fails', [False, True])
+def test_recording_cleanup_requires_successful_conversion(tmp_path, delete_logs, conversion_fails):
+    import sys
+
+    prefix = tmp_path / 'x86_64-seed'
+    artifacts = [Path(str(prefix) + suffix)
+                 for suffix in ('.plog', '-rr-snp', '-rr-nondet.log')]
+    for path in artifacts:
+        path.write_bytes(b'recording')
+    unrelated = tmp_path / 'x86_64-other.plog'
+    unrelated.write_bytes(b'keep')
+    log = Path(str(prefix) + '.json')
+
+    def convert(command, *, stdout, **kwargs):
+        if conversion_fails:
+            raise subprocess.CalledProcessError(1, command)
+        stdout.write(b'[]')
+
+    namespace = dict(project_data={'delete_panda_log': delete_logs},
+                     panda_log=str(artifacts[0]), pandalog_json=str(log), Path=Path,
+                     state=SimpleNamespace(recording_name=str(prefix), guest_command='tool seed'),
+                     tick=lambda: 0, tock=lambda _: 0, progress=Mock(), sys=sys,
+                     pandalog_conversion_env=lambda: {},
+                     subprocess=SimpleNamespace(check_call=convert,
+                                                CalledProcessError=subprocess.CalledProcessError,
+                                                list2cmdline=subprocess.list2cmdline))
+    conversion = mining_function('convert_plog_to_json', namespace)
+    if conversion_fails:
+        with pytest.raises(subprocess.CalledProcessError):
+            conversion()
+    else:
+        conversion()
+        assert log.read_text() == '[]'
+    assert all(path.exists() == (conversion_fails or not delete_logs) for path in artifacts)
+    assert unrelated.read_bytes() == b'keep'

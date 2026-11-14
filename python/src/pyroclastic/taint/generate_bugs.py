@@ -370,11 +370,14 @@ def _get_or_create_bug_like_cpp(
                 tries = 0
                 while tries < RANDOM_DUA_TRIES:
                     tries += 1
-                    # Deterministic parity mode: avoid RNG differences (Python vs C++).
-                    # We intentionally pick the first prior DUA every try to keep outputs
-                    # diff-stable against C++ bug mining logs. Randomized selection can be
-                    # reintroduced later once parity checks are complete.
-                    extra_dua = available_duas[0]
+                    # Keep selection deterministic, but rotate through prior DUAs. Reusing
+                    # available_duas[0] for every trigger can give an entire batch the same
+                    # extra bytes, including bytes that prevent the input reaching the ATP.
+                    prior_duas = available_duas[:end_index]
+                    if not prior_duas:
+                        break
+                    start = (trigger_dua.id + len(extra_duas) + tries - 1) % len(prior_duas)
+                    extra_dua = prior_duas[start]
                     # same requirement as above: to_avoid must be sorted ascending.
                     extra_selected = get_dua_dead_range(
                         extra_dua, sorted(labels_so_far), offline_liveness, project_data

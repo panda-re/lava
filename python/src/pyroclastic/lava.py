@@ -150,24 +150,15 @@ def log_to_file(logfile: str):
 
 def reset(lava_paths: LavaPaths, config: dict, force: bool = False):
     """
-    This function resets the LAVA environment by deleting generated files and resetting the database.
+    This function resets the LAVA environment by deleting the entire project directory, 
+    e.g. target_injections/<project> and resetting the database.
     Args:
         lava_paths: The Paths object containing relevant directories.
         config: The configuration dictionary.
         force: boolean indicating whether to force deletion without confirmation.
     """
     start = tick()
-    delete_directory(lava_paths.source_directory, force)
-    delete_directory(lava_paths.bugs_directory, force)
-    delete_directory(lava_paths.directory / config['name'] / "inputs", force)
-    delete_directory(lava_paths.directory / config['name'] / "recording-rr-nondet.log", force)
-    delete_directory(lava_paths.directory / config['name'] / "recording-rr-snp", force)
-    # remove all plog files in the directory
-    delete_directory(lava_paths.directory / config['name'] / f"queries-{config['name']}.plog", force)
-    delete_directory(lava_paths.directory / config['name'] / f"queries-{config['name']}.json", force)
-    progress("everything", 0, "Truncating logs...")
-    for log_path in Path(lava_paths.logs_directory).glob("*.log"):
-        truncate_file(str(log_path.resolve()))
+    delete_directory(lava_paths.project_dir, force)
     reset_database(lava_paths, config)
     total_time = tock(start)
     progress("everything", 1, f"reset complete {total_time} seconds")

@@ -160,26 +160,27 @@ jobs:
     - name: Handle PANDA Log Sourcing
       run: |
         PROJECT_NAME="toy"
-        TARGET_DIR="target_injections/${PROJECT_NAME}"
-          
+        TARGET_DIR="target_injections/${PROJECT_NAME}/panda_logs"
+        ARCH=$(python3 -c 'import json; print(json.load(open("host.json"))["qemu"])')
+
         mkdir -p "${TARGET_DIR}"
-          
-        if [ "${{ env.USE_PRECOMPUTED_PLOG }}" = "true" ]; then
-          echo "INFO: Skipping live PANDA run. Fetching pre-computed plog directly from website..."
-            
-          # Clean structural URL targeting your public website root
-          PLOG_URL="https://andrewquijano.github.io/files/panda_logs/queries-${PROJECT_NAME}.json"
-            
-          curl -L -s -o "${TARGET_DIR}/queries-${PROJECT_NAME}.json" "${PLOG_URL}"
-            
-          if [ -s "${TARGET_DIR}/queries-${PROJECT_NAME}.json" ]; then
-            echo "SUCCESS: Planted log file at ${TARGET_DIR}/queries-${PROJECT_NAME}.json"
-          else
-            echo "ERROR: File from ${PLOG_URL} is empty or unreachable! Exiting."
-            exit 1
-          fi
+
+        if [ "$USE_PRECOMPUTED_PLOG" = "true" ]; then
+          echo "INFO: Fetching one precomputed JSON per toy input..."
+          INPUT_NAMES=(testsmall)
+          for INPUT_NAME in "${INPUT_NAMES[@]}"; do
+            LOG_NAME="${ARCH}-${INPUT_NAME}.json"
+            PLOG_URL="https://andrewquijano.github.io/files/panda_logs/${LOG_NAME}"
+            curl --fail --location --silent --show-error \
+              --output "${TARGET_DIR}/${LOG_NAME}" "${PLOG_URL}"
+            if [ ! -s "${TARGET_DIR}/${LOG_NAME}" ]; then
+              echo "ERROR: Empty JSON from ${PLOG_URL}"
+              exit 1
+            fi
+            echo "SUCCESS: Downloaded ${TARGET_DIR}/${LOG_NAME}"
+          done
         else
-          echo "INFO: Bypassing download logic. Commencing live dynamic tracing..."
+          echo "INFO: Commencing live recording, replay, and mining..."
         fi
     - name: Add Postgres credentials and Run LAVA
       run: |
@@ -191,10 +192,15 @@ jobs:
         # Making Binary to run in PANDA
         python3 -m coverage run -m pyroclastic.lava -m toy
         
-        # Run taint, but technically if we download PLog, we just convert it to JSON
-        # and skip the PANDA run
-        python3 -m coverage run -m pyroclastic.lava -tc toy
-        # taint-plog --parse -p toy
+        # Create the database
+        python3 -m coverage run -m pyroclastic.lava -c toy
+
+        # Downloaded JSON is already converted; parse it without starting PANDA.
+        if [ "$USE_PRECOMPUTED_PLOG" = "true" ]; then
+          python3 -m coverage run -m pyroclastic.taint.bug_mining --parse -p toy
+        else
+          python3 -m coverage run -m pyroclastic.taint.bug_mining --all -p toy
+        fi
 
         # Run injection step for various kinds of bugs
         # Remember, chaff_stack_unused technically can't crash!
@@ -202,6 +208,7 @@ jobs:
         python3 -m coverage run -m pyroclastic.lava -i 1 toy --bugtypes "ret_buffer"
         python3 -m coverage run -m pyroclastic.lava -i 1 toy --bugtypes "chaff_stack_const"
         python3 -m coverage run -m pyroclastic.lava -i 1 toy --bugtypes "chaff_divzero"
+        python3 -m coverage run -m pyroclastic.lava -i 1 toy --bugtypes "rel_write"
         # python -m pyroclastic.lava -i 1 toy --bugtypes "malloc_off_by_one"
 
       env:
@@ -263,7 +270,7 @@ jobs:
             network=host
 
       - name: Check out
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

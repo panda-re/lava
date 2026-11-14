@@ -54,7 +54,7 @@ dependencies = [
     "numpy",
     "pandare",
     "PyYAML",
-    "sqlalchemy",
+    "sqlalchemy>=2.0",
     "tabulate",
     "psycopg2-binary",
     "ijson"
