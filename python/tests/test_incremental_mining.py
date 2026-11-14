@@ -1,5 +1,7 @@
 """Regression checks for input identity and repeat parsing."""
 import json
+import shlex
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
@@ -7,6 +9,39 @@ import pytest
 from sqlalchemy.orm import configure_mappers
 from pyroclastic.utils.database_types import Dua, FileTaint, SourceTrace
 from pyroclastic.taint import find_bug_injection as fbi
+
+
+@pytest.fixture
+def inline_workers(monkeypatch):
+    """Keep collaborator mocks visible while preserving child exit semantics.
+
+    Real process isolation is exercised separately below.
+    """
+    from pyroclastic.taint import bug_mining
+    workers = []
+
+    class Worker:
+        def __init__(self, *, target):
+            self.target = target
+            self.exitcode = None
+            self.error = None
+            workers.append(self)
+
+        def start(self):
+            try:
+                self.target()
+            except BaseException as exc:
+                self.error = exc
+                self.exitcode = 1
+            else:
+                self.exitcode = 0
+
+        def join(self):
+            assert self.exitcode is not None
+
+    monkeypatch.setattr(bug_mining.multiprocessing, 'get_context',
+                        lambda method: SimpleNamespace(Process=Worker))
+    return workers
 
 
 def test_trace_relationship_is_scoped_to_file_taint():
@@ -67,7 +102,7 @@ def test_completed_input_skips_panda_and_copy(tmp_path):
         assert not (tmp_path / 'output').exists()
 
 
-def test_new_input_tracks_path_hash_and_raw_command_without_archiving(tmp_path, monkeypatch):
+def test_new_input_tracks_path_hash_and_raw_command_without_archiving(tmp_path, monkeypatch, inline_workers):
     import hashlib
     from pyroclastic.taint import bug_mining
     inputs = tmp_path / 'inputs'
@@ -86,8 +121,9 @@ def test_new_input_tracks_path_hash_and_raw_command_without_archiving(tmp_path, 
          patch.object(bug_mining.subprocess, 'check_output', return_value=b'target/\n'), \
          patch.object(bug_mining, 'Panda', side_effect=RuntimeError('stop before recording')):
         db.return_value.__enter__.return_value = database
-        with pytest.raises(RuntimeError, match='stop before recording'):
+        with pytest.raises(RuntimeError, match=r'Taint pipeline failed.*exit 1'):
             bug_mining.run_taint_pipeline(project)
+    assert str(inline_workers[0].error) == 'stop before recording'
     row = database.session.add.call_args.args[0]
     assert row.filename == str(source)
     assert row.sha256 == hashlib.sha256(b'input').hexdigest()
@@ -97,7 +133,7 @@ def test_new_input_tracks_path_hash_and_raw_command_without_archiving(tmp_path, 
     assert source.read_bytes() == b'input'
 
 
-def test_record_filters_inputs_and_parse_reuses_log_without_panda(tmp_path, monkeypatch):
+def test_record_filters_inputs_and_parse_reuses_log_without_panda(tmp_path, monkeypatch, inline_workers):
     from pyroclastic.taint import bug_mining
     inputs = tmp_path / 'inputs'
     inputs.mkdir()
@@ -111,7 +147,7 @@ def test_record_filters_inputs_and_parse_reuses_log_without_panda(tmp_path, monk
         first=lambda: Mock(complete=True) if identity['filename'].endswith('/done') else None)
     project = dict(config_dir=str(tmp_path), output_dir=str(output), name='test',
                    tarfile='target.tar', command='{install_dir}/bin/tool --input {input_file} --flag',
-                   qemu='i386', complete_rr=False, lava_mode='lava1')
+                   qemu='i386', complete_rr=False, lava_mode='lava1', delete_panda_log=False)
     panda = Mock()
     panda.run.side_effect = lambda: panda.queue_blocking.call_args.args[0]()
     monkeypatch.chdir(tmp_path)
@@ -127,23 +163,25 @@ def test_record_filters_inputs_and_parse_reuses_log_without_panda(tmp_path, monk
         factory.assert_called_once()
         command = panda.record_cmd.call_args.kwargs['guest_command']
         guest_input = output / 'target' / 'lava-install' / 'inputs' / source.name
-        assert '--input "$f" --flag' in command
-        assert f"{guest_input.parent}/*" in command
+        assert shlex.split(command) == [str(output / 'target/lava-install/bin/tool'),
+                                        '--input', str(guest_input), '--flag']
+        assert panda.record_cmd.call_args.kwargs['recording_name'] == str(
+            output / 'panda_logs/i386-new_input')
         assert guest_input.read_bytes() == b'new'
         assert not (guest_input.parent / 'done').exists()
+        log = output / 'panda_logs/i386-new_input.json'
+        log.write_text('[]')
         bug_mining.run_taint_pipeline(project, steps=['parse'])
         factory.assert_called_once()  # Parsing must not open PANDA's QCOW.
         log_path = parse.call_args.args[0]
         bug_mining.run_taint_pipeline(project, steps=['parse'])
         assert parse.call_args.args[0] == log_path
 
-        # Preserve the original default behavior: an existing JSON bypasses recording/replay.
-        (output / 'queries-test.json').write_text('[]')
-        bug_mining.run_taint_pipeline(project)
-        assert parse.call_args.args[0] == str(output / 'queries-test.json')
-        factory.assert_called_once()  # JSON reuse must not construct another PANDA.
+        assert log_path == str(log)
         assert panda.run.call_count == 1
         panda.run_replay.assert_not_called()
+        assert len(inline_workers) == 3
+
 
 
 @pytest.mark.parametrize('malformed', [False, True])
@@ -268,19 +306,20 @@ def test_generation_filters_current_command_without_option(mode, architecture):
 
 
 @pytest.mark.parametrize('steps', [None, ['parse'], ['record'], ['replay']])
-def test_precomputed_json_avoids_qcow_download_unless_live_step_requested(tmp_path, monkeypatch, steps):
+def test_precomputed_json_requires_explicit_parse_to_avoid_qcow_download(tmp_path, monkeypatch, steps, inline_workers):
     from pyroclastic.taint import bug_mining
     inputs = tmp_path / 'inputs'
     inputs.mkdir()
     (inputs / 'seed').write_bytes(b'input')
     output = tmp_path / 'output'
     output.mkdir()
-    log = output / 'queries-test.json'
+    log = output / 'panda_logs/x86_64-seed.json'
+    log.parent.mkdir()
     log.write_text('[]')
     database = Mock()
     database.session.query.return_value.filter_by.return_value.first.return_value = None
     project = dict(config_dir=str(tmp_path), output_dir=str(output), name='test',
-                   tarfile='target.tar', command='tool {input_file}', qemu='x86_64', lava_mode='lava1')
+                   tarfile='target.tar', command='tool {input_file}', qemu='x86_64', lava_mode='lava1', delete_panda_log=False)
     monkeypatch.chdir(tmp_path)
     with patch.object(bug_mining, 'LavaDatabase') as db, \
          patch.object(bug_mining.subprocess, 'check_output', return_value=b'target/\n'), \
@@ -290,12 +329,87 @@ def test_precomputed_json_avoids_qcow_download_unless_live_step_requested(tmp_pa
          patch.object(bug_mining, 'record_injectable_bugs_offline'), \
          patch.object(bug_mining, 'print_bug_stats'), patch.object(bug_mining, 'print_phase2_stats'):
         db.return_value.__enter__.return_value = database
-        if steps in (['record'], ['replay']):
-            with pytest.raises(RuntimeError, match='PANDA would download QCOW'):
+        if steps != ['parse']:
+            with pytest.raises(RuntimeError, match=r'Taint pipeline failed.*exit 1'):
                 bug_mining.run_taint_pipeline(project, steps=steps)
             panda.assert_called_once()
+            assert str(inline_workers[0].error) == 'PANDA would download QCOW'
             parse.assert_not_called()
         else:
             bug_mining.run_taint_pipeline(project, steps=steps)
             panda.assert_not_called()
             parse.assert_called_once_with(str(log), project)
+
+
+def test_each_recording_uses_a_fresh_child_process(tmp_path, monkeypatch):
+    """Use real forks: VM construction must happen in distinct child PIDs."""
+    import os
+    from pyroclastic.taint import bug_mining
+
+    inputs = tmp_path / 'inputs'
+    inputs.mkdir()
+    for name in ('seed one.bin', 'seed-two.bin'):
+        (inputs / name).write_bytes(name.encode())
+    output = tmp_path / 'output'
+    output.mkdir()
+    events = tmp_path / 'recordings.jsonl'
+    project = dict(config_dir=str(tmp_path), output_dir=str(output), name='test',
+                   tarfile='target.tar', command='{install_dir}/bin/tool {input_file}',
+                   qemu='x86_64', complete_rr=False)
+    database = Mock()
+    database.session.query.return_value.filter_by.return_value.first.return_value = None
+
+    def create_panda(**kwargs):
+        panda = Mock()
+        panda.run.side_effect = lambda: panda.queue_blocking.call_args.args[0]()
+
+        def record(**record_args):
+            with events.open('a') as stream:
+                stream.write(json.dumps(dict(pid=os.getpid(), **record_args)) + '\n')
+        panda.record_cmd.side_effect = record
+        return panda
+
+    with patch.object(bug_mining, 'LavaDatabase') as db, \
+         patch.object(bug_mining.subprocess, 'check_output', return_value=b'target/\n'), \
+         patch.object(bug_mining, 'Panda', side_effect=create_panda) as factory:
+        db.return_value.__enter__.return_value = database
+        bug_mining.run_taint_pipeline(project, steps=['record'])
+        factory.assert_not_called()  # PANDA is never constructed in the parent.
+
+    records = [json.loads(line) for line in events.read_text().splitlines()]
+    assert len(records) == 2
+    assert len({record['pid'] for record in records}) == 2
+    assert all(record['pid'] != os.getpid() for record in records)
+    assert {record['recording_name'] for record in records} == {
+        str(output / 'panda_logs/x86_64-seed_one'),
+        str(output / 'panda_logs/x86_64-seed-two'),
+    }
+    for record in records:
+        command = shlex.split(record['guest_command'])
+        assert command[0] == str(output / 'target/lava-install/bin/tool')
+        assert command[1] in {str(output / 'target/lava-install/inputs' / name)
+                              for name in ('seed one.bin', 'seed-two.bin')}
+
+
+def test_missing_per_input_json_stops_worker(tmp_path, inline_workers):
+    from pyroclastic.taint import bug_mining
+
+    inputs = tmp_path / 'inputs'
+    inputs.mkdir()
+    (inputs / 'seed.bin').write_bytes(b'input')
+    output = tmp_path / 'output'
+    output.mkdir()
+    database = Mock()
+    database.session.query.return_value.filter_by.return_value.first.return_value = None
+    project = dict(config_dir=str(tmp_path), output_dir=str(output), name='test',
+                   tarfile='target.tar', command='tool {input_file}', qemu='x86_64')
+    with patch.object(bug_mining, 'LavaDatabase') as db, \
+         patch.object(bug_mining.subprocess, 'check_output', return_value=b'target/\n'), \
+         patch.object(bug_mining, 'Panda') as panda, \
+         patch.object(bug_mining, 'parse_panda_log') as parse:
+        db.return_value.__enter__.return_value = database
+        with pytest.raises(RuntimeError, match=r'Taint pipeline failed.*exit 1'):
+            bug_mining.run_taint_pipeline(project, steps=['parse'])
+        assert isinstance(inline_workers[0].error, FileNotFoundError)
+        panda.assert_not_called()
+        parse.assert_not_called()

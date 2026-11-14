@@ -9,17 +9,19 @@ from pathlib import Path
 class LavaPaths(object):
     def __init__(self, args: argparse.Namespace):
         self.config = parse_vars(args.project_name)
-        self.name = self.config['name'] # Project name
-        self.directory = Path(self.config['directory'])
-        self.bugs_directory = self.directory / self.name / "bugs"
-        self.logs_directory = self.directory / self.name / "logs"
+        self.name = self.config["name"] # Project name
+        # Note that "output_dir" already includes the project name,
+        # so we don't need to append it again here.
+        self.project_dir = Path(self.config["output_dir"])
+        self.config_dir = Path(self.config["config_dir"]).resolve()
+        self.bugs_directory = self.project_dir / "bugs"
+        self.logs_directory = self.project_dir / "logs"
         self.sql_file = Path(__file__).parent.parent / "data" / "lava.sql"
         tar_files = subprocess.check_output(['tar', 'tf', self.config['tarfile']], stderr=sys.stderr)
         self.tar_source_root = tar_files.decode().splitlines()[0].split(os.path.sep)[0]
-        self.source_directory = self.directory / self.name / self.tar_source_root
-        self.project_dir = self.directory / self.name
-        self.tar_to_unzip_path = Path(self.config['tarfile'])
-        self.llvm_path = Path(self.config['llvm-dir'])
+        self.source_directory = self.project_dir / self.tar_source_root
+        self.tar_to_unzip_path = Path(self.config["tarfile"])
+        self.llvm_path = Path(self.config["llvm-dir"])
 
         # Used by the Coverage/Generate Inputs step
         self.generate_project_root_directory = Path(self.config['generation_dir']) / self.name
@@ -28,7 +30,7 @@ class LavaPaths(object):
         self.generate_directory_inputs_path = ''
 
         # Injection
-        self.output_dir = self.config['output_dir']
+        self.output_dir = self.config["output_dir"]
         self.lavadb = os.path.join(self.output_dir, 'lavadb')
         self.lava_tool = 'lavaTool'
         self.queries_build = os.path.join(self.output_dir, self.tar_source_root)
@@ -41,34 +43,34 @@ class LavaPaths(object):
         assert self.bugs_top_dir == os.path.dirname(bugs_parent)
         self.bugs_parent = bugs_parent
         self.bugs_build = os.path.join(self.bugs_parent, self.tar_source_root)
-        self.bugs_install = os.path.join(str(self.bugs_build), 'lava-install')
+        self.bugs_install = os.path.join(str(self.bugs_build), "lava-install")
 
 
 def get_valid_architectures() -> list[str]:
-    return ['x86_64', 'aarch64', 'arm', 'i386']
+    return ["x86_64", "aarch64", "arm", "i386"]
 
 
 def validate_host(host: dict):
     # Path to binaries
-    assert 'tar_dir' in host
+    assert "tar_dir" in host
     # Path to configs
-    assert 'config_dir' in host
+    assert "config_dir" in host
     # path to qemu exec (correct guest)
-    assert 'qemu' in host
+    assert "qemu" in host
     # path for input generation/coverage testing
-    assert 'generation_dir' in host
-    assert host['qemu'] in get_valid_architectures()
+    assert "generation_dir" in host
+    assert host["qemu"] in get_valid_architectures()
 
 
 def validate_project(project_dict: dict):
     # name of project
-    assert 'name' in project_dict
+    assert "name" in project_dict
     # command line to run the target program (already instrumented with taint and attack queries)
-    assert 'command' in project_dict
+    assert "command" in project_dict
     # path to tarfile for target (original source)
-    assert 'tarfile' in project_dict
+    assert "tarfile" in project_dict
     # namespace in db for prospective bugs
-    assert 'db' in project_dict
+    assert "db" in project_dict
 
 
 def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default") -> dict:
@@ -209,7 +211,6 @@ def parse_vars(project_name: str) -> dict:
     project_data["qemu"] = host["qemu"]
     project_data["generation_dir"] = host["generation_dir"]
     project_data["output_dir"] = os.path.join(host["output_dir"], project_data["name"])
-    project_data["directory"] = host["output_dir"]
     project_data["config_dir"] = os.path.join(host["config_dir"], project_data["name"])
     project_data["debug"] = host.get("debug", False)
 
@@ -241,6 +242,9 @@ def parse_vars(project_name: str) -> dict:
 
     # Force all chaff-bugs to DIV_ZERO for testing
     project_data["force_div_zero"] = project_data.get("force_div_zero", False)
+
+    # Delete the PANDA Log/JSON upon finishing Database Insert
+    project_data["delete_panda_log"] = project_data.get("delete_panda_log", False)
 
     # For now use 'lava1' to mean original LAVA
     project_data["lava_mode"] = host.get("lava_mode", "lava1")

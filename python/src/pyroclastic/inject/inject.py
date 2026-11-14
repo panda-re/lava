@@ -510,7 +510,7 @@ def run_lavatool(bug_list: List[Bug], lp: LavaPaths, project: dict, filename: st
 
     # Todo either parameterize here or hardcode everywhere else
     # For now, lavaTool will only work if it has a whitelist, so we always pass this
-    fninstr = os.path.join(project['directory'], project['name'], "fninstr")
+    fninstr = os.path.join(lp.project_dir, "fninstr")
     cmd.append('-lava-wl=' + str(fninstr))
 
     if lt_debug:
