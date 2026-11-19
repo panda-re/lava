@@ -1,6 +1,7 @@
 import json
 import os
 import argparse
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -75,8 +76,11 @@ def validate_project(project_dict: dict):
 
 def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default") -> dict:
     """
-    Generates environment variables based on target architecture.
-    mode: 'default', 'inject', 'llvm_cov' or 'panda'
+    Generate one of four build environments for the target architecture:
+    default: base LAVA compiler/debug flags.
+    inject: default plus relaxed pointer/integer conversion diagnostics.
+    panda: default plus static compilation/linking for the guest.
+    llvm_cov: default plus LLVM coverage instrumentation and runtime linking.
 
     "panda" mode's LDFLAGS carry both "-static" and "-all-static". Confirmed
     live: libtool's --mode=link silently swallows a bare "-static" -- it uses
@@ -131,7 +135,9 @@ def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default") 
     }
 
     # Build the final CFLAGS string
-    selected_mode_flags = mode_extras.get(mode, [])
+    if mode not in mode_extras:
+        raise ValueError(f"Unknown build mode {mode!r}; expected one of {tuple(mode_extras)}")
+    selected_mode_flags = mode_extras[mode]
     final_cflags = base_cflags + arch_flags.get(arch, []) + selected_mode_flags
 
     env = {
@@ -157,6 +163,51 @@ def get_project_env(llvm_dir: str, arch: str = "x86_64", mode: str = "default") 
     return env
 
 
+def validate_build_flags(flags: dict) -> dict:
+    """Project flags are trusted additions, appended after each phase's defaults."""
+    if not isinstance(flags, dict):
+        raise ValueError("build_flags must be an object of flag arrays")
+    for key, values in flags.items():
+        if key not in ("CFLAGS", "CXXFLAGS", "LDFLAGS"):
+            raise ValueError(f"Unsupported build_flags key: {key}")
+        if not isinstance(values, list) or any(not isinstance(v, str) or not v for v in values):
+            raise ValueError(f"build_flags.{key} must be an array of nonempty strings")
+    return flags
+
+
+def append_build_flags(env: dict, flags: dict) -> dict:
+    """Return a fresh environment; preserve compiler-token quoting and ordering."""
+    result = env.copy()
+    for key, values in flags.items():
+        if values:
+            result[key] = " ".join(filter(None, (result.get(key, ""), shlex.join(values))))
+    return result
+
+
+def prepare_project(project_data: dict, config_path: Path):
+    """Run the project's own idempotent preflight before LavaPaths lists its tarball.
+
+    The script owns target-specific decisions and may do nothing. No preparation
+    is cached globally by LAVA. All paths passed to the script are absolute, and
+    neither a database nor a compiler is required by this hook itself.
+    """
+    config_dir = Path(project_data["config_dir"]).resolve()
+    script = config_dir / "prepare.sh"
+    if not script.is_file():
+        return
+    tarfile = Path(project_data["tarfile"]).resolve()
+    env = os.environ.copy()
+    env.update(
+        LAVA_PROJECT_CONFIG=str(config_path.resolve()),
+        LAVA_CONFIG_DIR=str(config_dir),
+        LAVA_TARFILE=str(tarfile),
+        LAVA_TAR_DIR=str(tarfile.parent),
+        LAVA_INPUTS_DIR=str(config_dir / "inputs"),
+    )
+    print(f"Preparing project: {script}", flush=True)
+    subprocess.run(["bash", str(script)], cwd=config_dir, env=env, check=True)
+
+
 def parse_vars(project_name: str) -> dict:
     host_json_path = Path.cwd() / "host.json"
     with open(host_json_path, 'r') as f:
@@ -175,6 +226,8 @@ def parse_vars(project_name: str) -> dict:
     with open(config_path, 'r') as host_f:
         project_data = json.load(host_f)
 
+    build_flags = validate_build_flags(project_data.get("build_flags", {}))
+
     try:
         validate_project(project_data)
     except AssertionError as e:
@@ -183,7 +236,7 @@ def parse_vars(project_name: str) -> dict:
 
     project_data["host_path"] = host_json_path
     for field, prefix in [("tarfile", "tar_dir")]:
-        project_data[field] = os.path.join(host[prefix], project_data[field])
+        project_data[field] = str(Path(host[prefix], project_data[field]).resolve())
 
     for field, suffix in [("db", "db_suffix")]:
         project_data[field] = project_data[field] + host[suffix]
@@ -211,7 +264,7 @@ def parse_vars(project_name: str) -> dict:
     project_data["qemu"] = host["qemu"]
     project_data["generation_dir"] = host["generation_dir"]
     project_data["output_dir"] = os.path.join(host["output_dir"], project_data["name"])
-    project_data["config_dir"] = os.path.join(host["config_dir"], project_data["name"])
+    project_data["config_dir"] = str(Path(config_path).resolve().parent)
     project_data["debug"] = host.get("debug", False)
 
     # Replace format strings in project configs
@@ -220,10 +273,12 @@ def parse_vars(project_name: str) -> dict:
     project_data["install"] = project_data.get("install", "make install")
     project_data["llvm-dir"] = host.get("llvm", "/usr/lib/llvm-14")
     project_data["complete_rr"] = host.get("complete_rr", False)
-    project_data["env_var"] = get_project_env(project_data["llvm-dir"], host["qemu"], "default")
-    project_data["inject"] = get_project_env(project_data["llvm-dir"], host["qemu"], "inject")
-    project_data["panda"] = get_project_env(project_data["llvm-dir"], host["qemu"], "panda")
-    project_data["llvm_cov"] = get_project_env(project_data["llvm-dir"], host["qemu"], "llvm_cov")
+    for mode in ("default", "inject", "panda", "llvm_cov"):
+        project_data[mode] = append_build_flags(
+            get_project_env(project_data["llvm-dir"], host["qemu"], mode), build_flags)
+        if any(build_flags.values()):
+            print(f"Project build flags ({mode}): " + " ".join(
+                f"{flag}={project_data[mode].get(flag, '')!r}" for flag in build_flags))
 
     # Set default variables for find bug injection
     project_data["max_liveness"] = project_data.get("max_liveness", 100000)
@@ -272,4 +327,5 @@ def parse_vars(project_name: str) -> dict:
     # should get LAVA query/inject instrumentation. Empty by default (no
     # filtering).
     project_data["instrument_exclude_dirs"] = project_data.get("instrument_exclude_dirs", "")
+    prepare_project(project_data, Path(config_path))
     return project_data

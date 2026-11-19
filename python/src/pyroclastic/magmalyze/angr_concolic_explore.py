@@ -635,7 +635,11 @@ def main():
     parser.add_argument("--no-build", action="store_true",
                         help="reuse the existing build instead of unpacking and building again "
                              "(for SLURM array tasks, after one build)")
+    parser.add_argument("--build-only", action="store_true",
+                        help="prepare/build/install the configured harness and seeds, then stop")
     args = parser.parse_args()
+    if args.build_only and args.no_build:
+        parser.error("--build-only and --no-build cannot be combined")
     lava_paths = LavaPaths(args)
     if args.no_build:
         install_dir = lava_paths.generate_project_root_unpacked_tar_directory / "lava-install"
@@ -646,6 +650,10 @@ def main():
     else:
         setup(lava_paths)
         compile(lava_paths)
+
+    if args.build_only:
+        print(f"Build ready: {lava_paths.generate_executable_install_dir}")
+        return
 
     perform_batch_concolic_exploration(
         lava_paths,

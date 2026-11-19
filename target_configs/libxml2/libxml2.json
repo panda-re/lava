@@ -1,17 +1,27 @@
 {
     "name": "libxml2",
     "db": "libxml2",
-    "tarfile": "libxml2-v2.15.3.tar.gz",
-    "configure": "sh autogen.sh --prefix={install_dir} --disable-shared --without-debug --without-http --without-python --without-docs --without-readline --without-history --without-zlib",
+    "tarfile": "libxml2-fuzzbench-c7260a4.tar.gz",
+    "configure": "./autogen.sh --prefix={install_dir} --disable-shared --without-debug --without-ftp --without-http --without-legacy --without-python",
     "instrument_exclude_dirs": "example",
-    "make": "make",
+    "make": "make -j4 fuzzbench-native",
     "clean": "make clean",
-    "install": "make install",
-    "command": "{install_dir}/bin/xmllint --noout {input_file}",
+    "install": "mkdir -p {install_dir}/bin && install -m 755 fuzz/xml {install_dir}/bin/xml",
+    "command": "{install_dir}/bin/xml {input_file}",
     "main_file": [
-        "lintmain.c",
-        "xmlcatalog.c"
+        "fuzz/fuzzbench_driver.c"
     ],
     "dataflow": false,
-    "curtail" : 5000
+    "curtail": 5000,
+    "pre_make": "bash \"{config_dir}/prepare.sh\" --setup-tree \"$PWD\"",
+    "makefile_append": ".PHONY: fuzzbench-native\nfuzzbench-native: libxml2.la\n\t$(MAKE) -C fuzz fuzz.o xml.o\n\t$(CC) $(CFLAGS) -c fuzz/fuzzbench_driver.c -o fuzz/fuzzbench_driver.o\n\t$(CXX) $(CXXFLAGS) $(LDFLAGS) fuzz/xml.o fuzz/fuzz.o fuzz/fuzzbench_driver.o .libs/libxml2.a -Wl,-Bstatic -lz -llzma -Wl,-Bdynamic -o fuzz/xml\n",
+    "build_flags": {
+        "CFLAGS": [
+            "-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"
+        ],
+        "CXXFLAGS": [
+            "-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"
+        ],
+        "LDFLAGS": []
+    }
 }

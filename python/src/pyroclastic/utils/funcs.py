@@ -285,7 +285,7 @@ def unpack_tar(lava_path: LavaPaths, main_directory: str = ""):
         tar.extractall(path=main_directory)
 
 
-def configure_project(lava_path: LavaPaths, main_directory: str = "", environment: str = "env_var", lf: Optional[str] = None) -> Path:
+def configure_project(lava_path: LavaPaths, main_directory: str = "", environment: str = "default", lf: Optional[str] = None) -> Path:
     """
     This function first creates the install directory. If there is a configure, it will run it 
     and set install to the install path in the current working directory
@@ -312,7 +312,8 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", environmen
         run_local(["git", "add", "-A", "."], cwd=str(main_directory), logfile=lf)
         run_local(["git", "commit", "-m", "Unmodified source."], cwd=str(main_directory), logfile=lf)
 
-    configure_command = lava_path.config.get('configure', '')
+    configure_command = lava_path.config.get('configure', '').replace(
+        "{config_dir}", str(lava_path.config["config_dir"]))
     envv = lava_path.config[environment]
 
     if configure_command != '':
@@ -473,7 +474,7 @@ def _to_preprocess_args(arguments: List[str], real_file: str) -> List[str]:
     return [cc, '-P', '-include', 'stdio.h'] + flags + ['-E', real_file, '-o', real_file + '_pre']
 
 
-def preprocess(lava_path: LavaPaths, main_directory: str = "", environment: str = "env_var",
+def preprocess(lava_path: LavaPaths, main_directory: str = "", environment: str = "default",
                 lf: Optional[str] = None):
     """
     Macro-flatten (-E) every file LAVA will instrument, using each file's OWN
@@ -598,7 +599,7 @@ def preprocess(lava_path: LavaPaths, main_directory: str = "", environment: str 
         run_local(["git", "commit", "-m", "Pre-processed source."], cwd=str(main_directory), logfile=lf)
 
 
-def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment: str = "env_var",
+def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment: str = "default",
                      lf: Optional[str] = None, competition: bool = False,
                      capture_build: bool = False) -> Union[subprocess.CompletedProcess, Tuple[int, Tuple[bytes, bytes]]]:
     if main_directory == "":
@@ -628,7 +629,8 @@ def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment
     # LAVA driver binary against the just-built lib with -Wl,-rpath,{install_dir}/lib
     # as part of its make step, not its install step).
     install_dir = os.path.join(main_directory, "lava-install")
-    make_command = lava_path.config['make'].replace("{install_dir}", str(install_dir))
+    make_command = lava_path.config['make'].replace("{install_dir}", str(install_dir)).replace(
+        "{config_dir}", str(lava_path.config["config_dir"]))
     build_output = run_local(f"compiledb -- {make_command}", env=env, shell=True, cwd=str(main_directory), logfile=lf, capture_output=capture_build, debug=True)
 
     # 3. Determine compilation success based on the return type
@@ -662,7 +664,8 @@ def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment
 
     # Execute final installation step cleanly, have some flags, just in case we have to run make before processing, this avoids extra compiling.
     # In the rare case that the 'install' commands needs an install directory, here it is
-    install_command = lava_path.config["install"].replace("{install_dir}", str(install_dir))
+    install_command = lava_path.config["install"].replace("{install_dir}", str(install_dir)).replace(
+        "{config_dir}", str(lava_path.config["config_dir"]))
 
     run_local(f"{install_command}", env=env, shell=True, debug=True, cwd=str(main_directory), logfile=lf)
     print("Install has completed")

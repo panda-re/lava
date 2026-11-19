@@ -1200,7 +1200,7 @@ def write_build_manifest(db: LavaDatabase, lp: LavaPaths, build: Build, bug_list
         "source_root": Path(lp.bugs_build).resolve().name,
         "command": lp.config['command'],
         "architecture": lp.config['qemu'],
-        # How validation built it (configure: env_var, make: inject). "validated" means
+        # How validation built it (configure: default, make: inject). "validated" means
         # it crashed under THIS build; FuzzBench's own flags/sanitizers may differ.
         "build_env": {k: lp.config['inject'].get(k)
                       for k in ('CC', 'CXX', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS')

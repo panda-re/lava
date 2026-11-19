@@ -1,3 +1,11 @@
+# Current workload
+
+`libpng.json` now builds the pinned FuzzBench `libpng_read_fuzzer` for native
+Magmalyze/coverage runs. Its LAVA injection path has not yet been validated.
+The older `pngtest` notes below describe the previous CLI configuration.
+
+## Previous pngtest integration
+
 The LAVA target is `pngtest`. Keep `bin_PROGRAMS=` and
 `check_PROGRAMS=pngtest` on both the build and install commands: Automake's
 install target can build programs too.
