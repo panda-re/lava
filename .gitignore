@@ -59,6 +59,7 @@ CTestTestfile.cmake
 /target_bins/*
 /target_generation/*
 /target_injections/*
+/target_configs/*/seed-min/
 !/target_bins/.gitkeep
 
 # Byte-compiled / optimized / DLL files

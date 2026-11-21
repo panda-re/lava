@@ -9,6 +9,9 @@ postgresql
 # Install dwarf dump, you need this for 64-bit bugs
 dwarfdump
 
+# Use this for afl-cmin and getting the 'main' path
+afl++
+
 # ==========================================
 # 1. i386 (32-bit x86) Cross-Compile Deps
 # ==========================================
