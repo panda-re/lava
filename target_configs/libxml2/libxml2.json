@@ -14,7 +14,7 @@
     "dataflow": false,
     "curtail": 5000,
     "pre_make": "bash \"{config_dir}/prepare.sh\" --setup-tree \"$PWD\"",
-    "makefile_append": ".PHONY: fuzzbench-native\nfuzzbench-native: libxml2.la\n\t$(MAKE) -C fuzz fuzz.o xml.o\n\t$(CC) $(CFLAGS) -c fuzz/fuzzbench_driver.c -o fuzz/fuzzbench_driver.o\n\t$(CXX) $(CXXFLAGS) $(LDFLAGS) fuzz/xml.o fuzz/fuzz.o fuzz/fuzzbench_driver.o .libs/libxml2.a -Wl,-Bstatic -lz -llzma -Wl,-Bdynamic -o fuzz/xml\n",
+    "makefile_append": ".PHONY: fuzzbench-native\nfuzzbench-native: libxml2.la\n\t$(MAKE) -C fuzz fuzz.o xml.o\n\t$(CC) $(CFLAGS) -c fuzz/fuzzbench_driver.c -o fuzz/fuzzbench_driver.o\n\t$(CXX) $(CXXFLAGS) $(LDFLAGS) fuzz/xml.o fuzz/fuzz.o fuzz/fuzzbench_driver.o .libs/libxml2.a -Wl,--push-state,-Bstatic -lz -llzma -Wl,--pop-state -o fuzz/xml\n",
     "build_flags": {
         "CFLAGS": [
             "-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"

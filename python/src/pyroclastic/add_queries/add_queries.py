@@ -1,9 +1,8 @@
 import os
-import re
 import sys
 import subprocess
 # LAVA
-from ..utils.funcs import read_compile_db, configure_project, run_local, preprocess, unpack_tar, make_and_install, apply_replacements
+from ..utils.funcs import read_compile_db, configure_project, run_local, preprocess, unpack_tar, make_and_install, apply_replacements, should_instrument_source
 from ..utils.vars import LavaPaths
 from ..utils.sanitize import QUERY_SOURCE_REVISION
 from .fninstr import analysis
@@ -47,10 +46,8 @@ def step_add_queries(lava_path: LavaPaths, atp_type=None):
     # real macro). Matches either a directory component (.../tool/...) or an
     # exact trailing filename (.../pnglibconf.c) so one setting covers both.
     exclude_dirs = lava_path.config['instrument_exclude_dirs']
-    if exclude_dirs:
-        junk = re.compile(r'/(' + exclude_dirs + r')(/|$)')
-        c_files = {f for f in c_files if not junk.search(f)}
-        c_dirs = {os.path.dirname(f) for f in c_files}
+    c_files = {f for f in c_files if should_instrument_source(f, exclude_dirs)}
+    c_dirs = {os.path.dirname(f) for f in c_files}
 
     # Pin the coordinates used below; DUASan must not analyze query edits.
     revision = subprocess.check_output(

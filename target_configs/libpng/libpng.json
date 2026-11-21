@@ -3,7 +3,7 @@
     "db": "libpng",
     "tarfile": "libpng-fuzzbench-cd0ea2a.tar.gz",
     "configure": "bash \"{config_dir}/configure.sh\" \"{install_dir}\"",
-    "instrument_exclude_dirs": "pnglibconf\\.c|scripts/vers\\.c",
+    "instrument_exclude_dirs": "pnglibconf\\.c|scripts/(vers|prefix|intprefix)\\.c|contrib/oss-fuzz/libpng_read_fuzzer\\.cc",
     "make": "make -j4 fuzzbench-native",
     "clean": "make clean",
     "install": "mkdir -p {install_dir}/bin && install -m 755 libpng_read_fuzzer {install_dir}/bin/libpng_read_fuzzer",

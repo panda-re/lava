@@ -3,7 +3,7 @@
     "db": "openssl",
     "tarfile": "openssl-fuzzbench-b0593c0.tar.gz",
     "configure": "./config --prefix={install_dir} --debug enable-fuzz-libfuzzer no-shared enable-tls1_3 enable-rc5 enable-md2 enable-ec_nistp_64_gcc_128 enable-ssl3 enable-ssl3-method enable-nextprotoneg enable-weak-ssl-ciphers $CFLAGS",
-    "makefile_append": "Makefile: ; @:\nconfigdata.pm: ; @:\n",
+    "makefile_append": "Makefile: ; @:\nconfigdata.pm: ; @:\nEX_LIBS += -latomic\n",
     "make": "make -j4 fuzz/x509-test LDCMD=\"$CXX $CXXFLAGS $LDFLAGS\"",
     "clean": "make clean",
     "install": "mkdir -p {install_dir}/bin && install -m 755 fuzz/x509-test {install_dir}/bin/x509-test",

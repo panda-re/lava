@@ -326,6 +326,14 @@ the inspected pinned script simply links host `-lz`. This guide freezes the
 pinned script's logic and uses installed zlib. An archived image/script is
 needed to establish the exact historical script/dependency versions.
 
+For LAVA query builds, `instrument_exclude_dirs` also excludes the libpng
+configuration/prefix generators and `contrib/oss-fuzz/libpng_read_fuzzer.cc`.
+The upstream C++ harness is still compiled and linked unchanged; queries and
+eventual bug sites belong to the libpng C library and the small file driver.
+LAVA currently emits invalid edits in implicit/constexpr C++ standard-library
+code when this harness is preprocessed and instrumented. Excluding that file
+avoids changing the harness or dropping the decoder from instrumentation.
+
 ### target_configs: seed provenance and preparation
 
 **Seeds:** all source-tree `*.png`, excluding paths containing `crashers`:
@@ -432,6 +440,53 @@ See [the preparation and flags interface](../docs/lava-target-preparation-plan.m
 for lifecycle details and the distinction between preparation and a completed
 FuzzBench/LAVA target migration.
 
+For `lava -qm`, LAVA selects C/C++ compilation units from the harness build's
+compilation database and applies `instrument_exclude_dirs` before preprocessing
+and query insertion. Assembly and excluded generators still build normally.
+The instrumented trees and installed binaries are under `target_injections/`;
+the pinned source archives remain unchanged. System libc/libstdc++ and the
+separately installed zlib/lzma dependencies are linked without LAVA queries.
+Static linking makes their code available in the guest; mining bug sites inside
+a dependency would additionally require building its source with queries.
+
+Command capture preserves literal quotes in string-valued defines (needed for
+libxml2's `SYSCONFDIR`). Both build helpers live in
+[`build_support.py`](../python/src/pyroclastic/utils/build_support.py), whose
+module docstring describes the pipeline: capture the compiler commands, use
+their flags for `-E`, let `lavaTool` generate source edits, apply those edits,
+then rebuild. The replacement helper runs after preprocessing and analysis.
+Large non-overlapping ASCII replacement sets use a
+validated byte-offset application path; overlapping/same-offset edits,
+formatting requests and unsupported YAML text stay with LLVM's tool. This
+avoids its long application pass on SQLite's amalgamation. Function-analysis
+YAML uses PyYAML's safe C loader when available, with the safe Python loader
+as a fallback. libxml2's custom link rule saves/restores linker state around
+zlib/lzma so it also honors the PANDA environment's static mode.
+OpenSSL appends `-latomic` to `EX_LIBS`, after the objects/libraries that use it:
+its instrumented atomic lock-free check needs `__atomic_is_lock_free`. The
+host compiler's static `libatomic.a` must be installed (provided here by the
+GCC development package); this is an additional query-build link dependency.
+
+With the configured local database and toolchain available, the build-only
+commands from the workspace root are:
+
+```bash
+cd "$LAVA"
+set -a
+source .env
+set +a
+export PATH="$LAVA/venv/bin:$LAVA/tools/build/lavaTool/src:$PATH"
+lava -qm libxml2
+lava -qm openssl
+lava -qm sqlite
+lava -qm libpng
+```
+
+`-q` inserts queries into source files; `-m` rebuilds the query binary for
+PANDA. Neither option records or taints seed inputs. Do not add `-t` for these
+build checks. Logs are in `target_injections/<project>/logs/add_queries.log`
+and `make.log`; binaries are in the extracted tree's `lava-install/bin/`.
+
 ## Verification
 
 The pinned native harness builds and baseline seed inventories were verified
@@ -455,3 +510,43 @@ binaries in the configured generation directory were preserved. The focused
 configuration/preparation/build-CLI suite passed 42 tests, with 3 SQLite-only
 cases skipped for other targets. This does not claim successful deep symbolic
 exploration or LAVA injection.
+
+### Query/static build checks (2026-11-19)
+
+All four targets completed query insertion, static compilation and installation.
+Each installed binary is an x86-64 ELF with no interpreter segment and only
+DWARF version 2 compilation units. Four corpus inputs per target (the three
+smallest nonempty files and the median-sized file) exited successfully in host
+replay with a 30-second timeout per input.
+
+| Target | Installed executable | Instrumented C units | Query calls in source | Host replays |
+| --- | --- | ---: | ---: | ---: |
+| OpenSSL | `bin/x509-test` | 820 | 554,978 | 4/4 |
+| SQLite | `bin/ossfuzz` | 3 | 51,476 | 4/4 |
+| libxml2 | `bin/xml` | 42 | 56,598 | 4/4 |
+| libpng | `bin/libpng_read_fuzzer` | 22 | 7,148 | 4/4 |
+
+These are instrumentation counts, not runtime coverage or bug counts. Binaries
+are under `target_injections/<target>/<source-root>/lava-install/`.
+libxml2, SQLite and libpng passed fresh `lava -qm` runs. OpenSSL's run was
+interrupted during function analysis; recovery reused its completed function
+scans, then called the normal analysis, query insertion, replacement and static
+build functions. Its final `libatomic` dependency was checked by relinking the
+existing instrumented objects. A fresh uninterrupted OpenSSL `lava -qm` run
+with that final link fix has not been repeated.
+
+OpenSSL's final compilation database contains six additional legacy-provider
+files built during the static phase. None is linked into `x509-test`, as checked
+against the executable's DWARF compilation units; all 820 originally selected
+units retained their query headers. libpng's uninstrumented C++ harness was
+also checked byte-for-byte against the pinned source archive. The audit allows
+uninstrumented archive units only when they are absent from the executable;
+the explicit libpng harness exclusion remains described above.
+
+The local report, including binary hashes, per-source query counts and replay
+seed names/results, is `/tmp/lava-fuzzbench-qm/validation.json`. OpenSSL's resumed
+query log is `target_injections/openssl/logs/add_queries-resume.log`; its static
+build/link log is `make.log` in the same directory. The focused regression
+suites passed 62 tests, with 3 target-specific cases skipped. Existing databases
+were retained. No PANDA recording, seed tainting, bug injection or real-target
+concolic execution was performed by these checks.

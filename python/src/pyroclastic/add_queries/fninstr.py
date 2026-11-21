@@ -30,8 +30,8 @@ class Function:
         self.name = fun['name']
         self.extern, self.ret_type, self.params = parse_fundecl(fun['fundecl'])
         self.hasbody = fun['hasbody']
-        if self.hasbody:
-            assert not see
+        # Implicit C++ constructors can have a body but only a point location.
+        # analysis() skips these non-editable definitions below.
 
 
 class FnPtrAssign:
@@ -80,9 +80,18 @@ def analysis(output_file: str, inputs: list[str], project_config: dict, ignore_f
     for filename in inputs:
         print(f"FILE [{filename}]")
         with open(filename, 'r') as file:
-            yaml_content = yaml.safe_load(file)
+            yaml_content = yaml.load(file, Loader=getattr(yaml, 'CSafeLoader', yaml.SafeLoader))
         assert yaml_content is not None, "Missing output file from fninstr"
         for entry in yaml_content:
+            record = entry.get('fun', entry.get('call', entry.get('fnPtrAssign')))
+            if record is not None and ('start' not in record or 'end' not in record):
+                # Clang's implicit operator new/delete declarations have no
+                # source range. There is no definition or call site to edit.
+                continue
+            if record is not None and record['start'] == record['end']:
+                # Implicit C++ special members and calls can be represented by
+                # a single source point rather than an editable range.
+                continue
             if 'fun' in entry:
                 fd = Function(entry['fun'])
                 if fd.start == fd.end:
@@ -241,7 +250,7 @@ def analysis(output_file: str, inputs: list[str], project_config: dict, ignore_f
             if instr_judgement[called_fn_name] is OKI:
                 # We 'think' we can instrument called_fn_name
                 for call in calls[called_fn_name]:
-                    if not (instr_judgement[call.containing_function] is OKI):
+                    if instr_judgement.get(call.containing_function, DIB | DADFA) != OKI:
                         # ... however, it is called from a function that cant be instrumented
                         # thus it cant really be instrumented.
                         any_change = True
