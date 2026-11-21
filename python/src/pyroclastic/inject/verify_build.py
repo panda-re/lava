@@ -7,7 +7,7 @@ reproduces the manifest.
 
 Extracts build<N>/build_<N>_injection.tar.gz into build<N>/rebuild/, configures and
 builds it exactly the way inject.py's validation did (configure with the project's
-env_var environment, make/install with inject), then:
+default environment, make/install with inject), then:
   - runs every clean seed and expects the manifest's expected_exit_code, and
   - runs every input in crashes/ and expects it to crash again.
 

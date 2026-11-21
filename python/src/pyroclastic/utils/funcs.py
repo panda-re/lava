@@ -9,6 +9,7 @@ import argparse
 import json
 import tarfile
 import shlex
+import re
 import tempfile
 from typing import Tuple, Set, Optional, Union, List
 from contextlib import nullcontext
@@ -285,7 +286,7 @@ def unpack_tar(lava_path: LavaPaths, main_directory: str = ""):
         tar.extractall(path=main_directory)
 
 
-def configure_project(lava_path: LavaPaths, main_directory: str = "", environment: str = "env_var", lf: Optional[str] = None) -> Path:
+def configure_project(lava_path: LavaPaths, main_directory: str = "", environment: str = "default", lf: Optional[str] = None) -> Path:
     """
     This function first creates the install directory. If there is a configure, it will run it 
     and set install to the install path in the current working directory
@@ -312,7 +313,8 @@ def configure_project(lava_path: LavaPaths, main_directory: str = "", environmen
         run_local(["git", "add", "-A", "."], cwd=str(main_directory), logfile=lf)
         run_local(["git", "commit", "-m", "Unmodified source."], cwd=str(main_directory), logfile=lf)
 
-    configure_command = lava_path.config.get('configure', '')
+    configure_command = lava_path.config.get('configure', '').replace(
+        "{config_dir}", str(lava_path.config["config_dir"]))
     envv = lava_path.config[environment]
 
     if configure_command != '':
@@ -375,6 +377,8 @@ def apply_replacements(source_directory, c_files, clang_apply: str, extra_args: 
                        remove_yaml: bool = False) -> List[int]:
     """
     Apply lavaTool's <file>.yaml replacements for c_files, each exactly once.
+    First try build_support.apply_large_replacements() for large, unambiguous
+    edit sets. Otherwise delegate to LLVM's clang-apply-replacements below.
     lavaTool writes FilePath as compile_commands.json gave the file, i.e.
     RELATIVE to that entry's "directory", and clang-apply-replacements resolves
     it relative to its own cwd. So: group files by entry directory, copy each
@@ -399,6 +403,13 @@ def apply_replacements(source_directory, c_files, clang_apply: str, extra_args: 
         yamls = [f + '.yaml' for f in files if os.path.isfile(f + '.yaml')]
         if not yamls:
             continue
+        from .build_support import apply_large_replacements
+        if not extra_args and apply_large_replacements(yamls, directory, files):
+            rcs.append(0)
+            if remove_yaml:
+                for y in yamls:
+                    os.remove(y)
+            continue
         with tempfile.TemporaryDirectory() as tmp:
             # Indexed names: basenames can repeat across subdirectories.
             for i, y in enumerate(yamls):
@@ -413,7 +424,7 @@ def apply_replacements(source_directory, c_files, clang_apply: str, extra_args: 
 
 def git_addable_c_files(repo_dir) -> List[str]:
     """
-    Every .c file under repo_dir (relative paths), minus files inside a git
+    Every C/C++ source under repo_dir (relative paths), minus files inside a git
     submodule. Tarballs that are git checkouts (e.g. freetype2's
     subprojects/dlg) record submodules as gitlinks, and naming a file inside
     one makes "git add" fail with "Pathspec ... is in submodule".
@@ -422,8 +433,16 @@ def git_addable_c_files(repo_dir) -> List[str]:
     _, (out, _) = run_local(["git", "ls-files", "-s"], cwd=str(repo_dir), capture_output=True)
     submodules = [line.split('\t', 1)[1] + '/' for line in (out or b'').decode(errors='replace').splitlines()
                   if line.startswith('160000 ')]
-    c_files = [p.relative_to(repo_dir).as_posix() for p in repo_dir.rglob("*.c")]
+    c_files = [p.relative_to(repo_dir).as_posix() for p in repo_dir.rglob("*")
+               if p.is_file() and p.suffix.lower() in {'.c', '.cc', '.cpp', '.cxx'}]
     return [f for f in c_files if not any(f.startswith(s) for s in submodules)]
+
+
+def should_instrument_source(filename: str, exclude_dirs: str = "") -> bool:
+    """Assembly and excluded host-side generators are built, but not AST-instrumented."""
+    if Path(filename).suffix.lower() not in {'.c', '.cc', '.cpp', '.cxx'}:
+        return False
+    return not exclude_dirs or re.search(r'/(' + exclude_dirs + r')(/|$)', filename) is None
 
 
 def _to_preprocess_args(arguments: List[str], real_file: str) -> List[str]:
@@ -447,6 +466,10 @@ def _to_preprocess_args(arguments: List[str], real_file: str) -> List[str]:
     # clang rejects outright. Simplest correct fix: drop all of it.
     dep_flags_with_value = {'-MT', '-MF', '-MQ'}
     dep_flags_no_value = {'-MD', '-MMD', '-MP', '-MG', '-MM'}
+    flags_with_value = {'-I', '-isystem', '-iquote', '-include', '-imacros',
+                        '-isysroot', '--sysroot', '-target', '--target', '-x',
+                        '-Xclang', '-D', '-U', '-idirafter', '-iprefix',
+                        '-iwithprefix', '-iwithprefixbefore'}
 
     flags = []
     i = 1
@@ -456,6 +479,10 @@ def _to_preprocess_args(arguments: List[str], real_file: str) -> List[str]:
             i += 1
             continue
         if arg == '-o' or arg in dep_flags_with_value:
+            i += 2
+            continue
+        if arg in flags_with_value:
+            flags.extend(arguments[i:i + 2])
             i += 2
             continue
         if arg.startswith('-o') and arg != '-o' and len(arg) > 2:
@@ -473,7 +500,7 @@ def _to_preprocess_args(arguments: List[str], real_file: str) -> List[str]:
     return [cc, '-P', '-include', 'stdio.h'] + flags + ['-E', real_file, '-o', real_file + '_pre']
 
 
-def preprocess(lava_path: LavaPaths, main_directory: str = "", environment: str = "env_var",
+def preprocess(lava_path: LavaPaths, main_directory: str = "", environment: str = "default",
                 lf: Optional[str] = None):
     """
     Macro-flatten (-E) every file LAVA will instrument, using each file's OWN
@@ -514,6 +541,8 @@ def preprocess(lava_path: LavaPaths, main_directory: str = "", environment: str 
     failed = []  # (real_file, stderr_tail)
     for entry in entries:
         real_file = os.path.realpath(os.path.join(entry['directory'], entry['file']))
+        if not should_instrument_source(real_file, lava_path.config.get('instrument_exclude_dirs', '')):
+            continue
         if real_file in seen_files:
             continue
         seen_files.add(real_file)
@@ -598,7 +627,7 @@ def preprocess(lava_path: LavaPaths, main_directory: str = "", environment: str 
         run_local(["git", "commit", "-m", "Pre-processed source."], cwd=str(main_directory), logfile=lf)
 
 
-def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment: str = "env_var",
+def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment: str = "default",
                      lf: Optional[str] = None, competition: bool = False,
                      capture_build: bool = False) -> Union[subprocess.CompletedProcess, Tuple[int, Tuple[bytes, bytes]]]:
     if main_directory == "":
@@ -628,8 +657,10 @@ def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment
     # LAVA driver binary against the just-built lib with -Wl,-rpath,{install_dir}/lib
     # as part of its make step, not its install step).
     install_dir = os.path.join(main_directory, "lava-install")
-    make_command = lava_path.config['make'].replace("{install_dir}", str(install_dir))
-    build_output = run_local(f"compiledb -- {make_command}", env=env, shell=True, cwd=str(main_directory), logfile=lf, capture_output=capture_build, debug=True)
+    make_command = lava_path.config['make'].replace("{install_dir}", str(install_dir)).replace(
+        "{config_dir}", str(lava_path.config["config_dir"]))
+    capture = f"{shlex.quote(sys.executable)} -m pyroclastic.utils.build_support"
+    build_output = run_local(f"{capture} -- {make_command}", env=env, shell=True, cwd=str(main_directory), logfile=lf, capture_output=capture_build, debug=True)
 
     # 3. Determine compilation success based on the return type
     if capture_build:
@@ -662,7 +693,8 @@ def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment
 
     # Execute final installation step cleanly, have some flags, just in case we have to run make before processing, this avoids extra compiling.
     # In the rare case that the 'install' commands needs an install directory, here it is
-    install_command = lava_path.config["install"].replace("{install_dir}", str(install_dir))
+    install_command = lava_path.config["install"].replace("{install_dir}", str(install_dir)).replace(
+        "{config_dir}", str(lava_path.config["config_dir"]))
 
     run_local(f"{install_command}", env=env, shell=True, debug=True, cwd=str(main_directory), logfile=lf)
     print("Install has completed")

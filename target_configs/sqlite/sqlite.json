@@ -2,17 +2,32 @@
     "name": "sqlite",
     "db": "sqlite",
     "tarfile": "sqlite-fuzzbench-c78cbf2e86850cc6.tar.gz",
-    "configure": "./configure --prefix={install_dir} --disable-readline",
-    "makefile_append": "# sqlite3.c/shell.c are generated, and LAVA instruments the generated copies.\n# sqlite's own rules would regenerate them (clean removes .target_source), so\n# once they exist their recipes become no-ops.\nifneq ($(wildcard sqlite3.c),)\nsqlite3.c: ; @:\nendif\nifneq ($(wildcard shell.c),)\nshell.c: ; @:\nendif\n\n.PHONY: lava_sqlite3\nshell.lo:\tshell.c\n\t$(LTCOMPILE) $(READLINE_FLAGS) $(SHELL_OPT) -c shell.c\n\nsqlite3.lo:\tsqlite3.c\n\t$(LTCOMPILE) $(TEMP_STORE) $(SHELL_OPT) -c sqlite3.c\n\nlava_sqlite3:\tshell.lo sqlite3.lo\n\t$(LTLINK) -o sqlite3 shell.lo sqlite3.lo $(LIBREADLINE) $(TLIBS)\n",
-    "pre_make": "make sqlite3.h sqlite3.c shell.c",
+    "configure": "./configure --prefix={install_dir}",
+    "makefile_append": "ifneq ($(wildcard sqlite3.c),)\nsqlite3.c: ; @:\nendif\n.PHONY: fuzzbench-native\nfuzzbench-native: sqlite3.lo ossfuzz.o fuzzbench_driver.o\n\t$(CXX) $(CXXFLAGS) $(LDFLAGS) ossfuzz.o fuzzbench_driver.o sqlite3.o -pthread -ldl -lz -o ossfuzz\nossfuzz.o: test/ossfuzz.c sqlite3.h\n\t$(CC) $(CFLAGS) -I. -c test/ossfuzz.c -o $@\nfuzzbench_driver.o: bld/fuzzbench_driver.c\n\t$(CC) $(CFLAGS) -c bld/fuzzbench_driver.c -o $@\n",
+    "pre_make": "make sqlite3.c sqlite3.h && bash \"{config_dir}/prepare.sh\" --setup-tree \"$PWD\"",
     "instrument_exclude_dirs": "tool",
-    "make": "make lava_sqlite3",
+    "make": "make -j4 fuzzbench-native",
     "clean": "make clean",
-    "install": "mkdir -p {install_dir}/bin && cp sqlite3 {install_dir}/bin/sqlite3",
-    "command": "{install_dir}/bin/sqlite3 {input_file} .dump",
+    "install": "mkdir -p {install_dir}/bin && install -m 755 ossfuzz {install_dir}/bin/ossfuzz",
+    "command": "{install_dir}/bin/ossfuzz {input_file}",
     "main_file": [
-        "shell.c"
+        "bld/fuzzbench_driver.c"
     ],
     "dataflow": false,
-    "curtail" : 5000
+    "curtail": 5000,
+    "build_flags": {
+        "CFLAGS": [
+            "-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION",
+            "-DSQLITE_MAX_LENGTH=128000000",
+            "-DSQLITE_MAX_SQL_LENGTH=128000000",
+            "-DSQLITE_MAX_MEMORY=25000000",
+            "-DSQLITE_PRINTF_PRECISION_LIMIT=1048576",
+            "-DSQLITE_DEBUG=1",
+            "-DSQLITE_MAX_PAGE_COUNT=16384"
+        ],
+        "CXXFLAGS": [
+            "-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"
+        ],
+        "LDFLAGS": []
+    }
 }

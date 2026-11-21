@@ -1,16 +1,27 @@
 {
     "name": "libpng",
     "db": "libpng",
-    "tarfile": "libpng-v1.6.53.tar.gz",
-    "configure": "./configure --prefix={install_dir}",
-    "instrument_exclude_dirs": "pnglibconf\\.c|scripts/vers\\.c",
-    "make": "make bin_PROGRAMS= check_PROGRAMS=pngtest",
+    "tarfile": "libpng-fuzzbench-cd0ea2a.tar.gz",
+    "configure": "bash \"{config_dir}/configure.sh\" \"{install_dir}\"",
+    "instrument_exclude_dirs": "pnglibconf\\.c|scripts/(vers|prefix|intprefix)\\.c|contrib/oss-fuzz/libpng_read_fuzzer\\.cc",
+    "make": "make -j4 fuzzbench-native",
     "clean": "make clean",
-    "install": "make bin_PROGRAMS= check_PROGRAMS=pngtest install && ./libtool --mode=install install -m 755 pngtest {install_dir}/bin/pngtest",
-    "command": "{install_dir}/bin/pngtest {input_file}",
+    "install": "mkdir -p {install_dir}/bin && install -m 755 libpng_read_fuzzer {install_dir}/bin/libpng_read_fuzzer",
+    "command": "{install_dir}/bin/libpng_read_fuzzer {input_file}",
     "main_file": [
-        "pngtest.c"
+        "fuzzbench_driver.c"
     ],
     "dataflow": false,
-    "curtail" : 5000
+    "curtail": 5000,
+    "pre_make": "bash \"{config_dir}/prepare.sh\" --setup-tree \"$PWD\"",
+    "makefile_append": ".PHONY: fuzzbench-native\nfuzzbench-native: libpng16.la\n\t$(CC) $(CFLAGS) -c fuzzbench_driver.c -o fuzzbench_driver.o\n\t$(CXX) $(CXXFLAGS) -std=c++11 -I. -c contrib/oss-fuzz/libpng_read_fuzzer.cc -o libpng_read_fuzzer.o\n\t$(CXX) $(CXXFLAGS) $(LDFLAGS) libpng_read_fuzzer.o fuzzbench_driver.o .libs/libpng16.a -lz -o libpng_read_fuzzer\n",
+    "build_flags": {
+        "CFLAGS": [
+            "-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"
+        ],
+        "CXXFLAGS": [
+            "-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"
+        ],
+        "LDFLAGS": []
+    }
 }

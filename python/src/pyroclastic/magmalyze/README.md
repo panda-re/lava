@@ -10,6 +10,13 @@ To get code coverage for a specific LAVA project, run the following:
 lava-coverage -p <project_name>
 ```
 
+The existing `openssl`, `sqlite`, `libxml2`, and `libpng` JSONs now build their
+pinned FuzzBench harnesses. Run `magmalyze -p openssl --build-only` to prepare,
+build and install without starting exploration; substitute the other project
+names as needed. Run `lava-coverage -p openssl` for a fresh LLVM coverage build
+and corpus replay. Both use `generation_dir` from `host.json`. See the
+[source/build guide](../../../../target_bins/Fuzzbench.md) for pins and dependencies.
+
 It will utilize llvm-cov to get code coverage for your project based on the inputs in the `target_configs/<project_name>/inputs` directory.
 
 ## Generating new inputs, utilizing concolic execution
