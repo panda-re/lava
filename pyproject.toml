@@ -87,6 +87,7 @@ lava-dump = "pyroclastic.utils.database_types:main"
 lava-init = "pyroclastic.utils.init_host:main"
 lava-verify = "pyroclastic.inject.verify_build:main"
 lava-coverage = "pyroclastic.magmalyze.coverage:main"
+lava-seed-minimize = "pyroclastic.magmalyze.seed_minimize:main"
 magmalyze = "pyroclastic.magmalyze.angr_concolic_explore:main"
 magmalyze-demo = "pyroclastic.magmalyze.explore_demo:main"
 # Mostly used for Testing
