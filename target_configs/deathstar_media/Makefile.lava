@@ -1,0 +1,26 @@
+# File-backed RPC processor + unchanged upstream MediaHandler.
+# configure.sh supplies DEPS, BOOST_HEADERS, static library paths and PREFIX.
+CPPFLAGS += -I. -Ilava-media -I$(DEPS)/include -I$(BOOST_HEADERS)
+override CXXFLAGS += -std=c++14
+# This build invokes the compiler directly; -all-static belongs to libtool.
+LDFLAGS := $(filter-out -all-static,$(LDFLAGS))
+LDLIBS += $(THRIFT_LIBRARY) $(OPENTRACING_LIBRARY) -pthread -ldl
+SOURCES = lava-media/lava_media_driver.cpp lava-media/media_handler.cpp socialNetwork/gen-cpp/MediaService.cpp socialNetwork/gen-cpp/social_network_types.cpp
+OBJECTS = $(SOURCES:%.cpp=lava-build/%.o)
+
+.PHONY: all clean install
+all: lava-build/lava_media_driver
+
+lava-build/%.o: %.cpp
+	mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
+lava-build/lava_media_driver: $(OBJECTS)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(OBJECTS) $(LDLIBS) -o $@
+
+install: lava-build/lava_media_driver
+	mkdir -p $(PREFIX)/bin
+	install -m 755 $< $(PREFIX)/bin/lava_media_driver
+
+clean:
+	rm -rf lava-build
