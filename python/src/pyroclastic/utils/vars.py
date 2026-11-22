@@ -298,6 +298,8 @@ def parse_vars(project_name: str) -> dict:
     # By default LAVA uses file_taint, but some projects might use tainted_network.
     # So, this can capture that change
     project_data["network_taint"] = project_data.get("network_taint", False)
+    if type(project_data["network_taint"]) is not bool:
+        raise ValueError("network_taint must be a JSON boolean")
 
     # Force all chaff-bugs to DIV_ZERO for testing
     project_data["force_div_zero"] = project_data.get("force_div_zero", False)

@@ -1,8 +1,17 @@
-# Modern nginx: pinned native build-only target
+# Modern nginx: pinned build target
 
 The active `nginx_current` target pins **1.30.6**, the modern archive already
 available in this workspace. It is deliberately not a moving latest-release
-alias. The historical `nginx` 1.13.1 target is unchanged.
+alias.
+
+`lava -qm nginx_current` passed on 2026-11-22: query insertion covered 117 C
+sources, followed by a static x86-64 build with DWARF 2. Three native `nginx -t`
+configuration checks passed. The analysis binary is installed under
+`target_injections/nginx_current/nginx-1.30.6/lava-install/sbin/nginx`.
+No PANDA recording, tainting or injection was run. See the
+[network preparation notes](network/README.md) for plugin selection and the
+remaining server/input-mapping work; the current configuration-parser command
+does not receive HTTP requests.
 
 See [target_bins/README.md](../../target_bins/README.md#nginx-modern) for the
 archive URL/checksum, dependency installation, standalone build commands and

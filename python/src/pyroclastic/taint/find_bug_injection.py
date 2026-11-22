@@ -13,6 +13,7 @@ from ..utils.database_types import AttackPoint, ASTLoc, SourceLval, LabelSet, La
 from ..utils.database_types import AtpKind, AtpExecution, LivenessDelta
 from ..taint.taint_utils import get_dua_dead_range, get_dead_range, merge_into
 from ..utils.vars import parse_vars
+from .input_taint import validate_input_transport
 
 # Matches "libc" at clean boundaries:
 # - Preceded by: start of string (^), a slash (/), or a bang (!)
@@ -730,6 +731,7 @@ def parse_panda_log(panda_log_file: str, project_data: dict):
     """
     Main function for Find Bug Inject (FBI) tool.
     """
+    validate_input_transport(project_data)
     global last_snapshotted_instr
     last_snapshotted_instr = -1
     current_call_stack.clear()

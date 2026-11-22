@@ -121,8 +121,8 @@ cause an error rather than being overwritten. The old decoder-only files under
 ### Target Binary
 
 Target name: **`nginx_current`**, pinned to the existing **nginx 1.30.6** source.
-This is a fixed modern comparison target, not a floating latest-version target;
-the historical 1.13.1 target is unchanged. Source:
+This is a fixed modern comparison target, not a floating latest-version target.
+Source:
 [official nginx-1.30.6.tar.gz](https://nginx.org/download/nginx-1.30.6.tar.gz), saved
 unchanged as `target_bins/nginx-1.30.6.tar.gz`, SHA-256
 `3cf46f5ed7504d460125866b7bea99fb357f31d887e2e63b35503310e9b8b6c8`.
@@ -162,8 +162,17 @@ make install
 ```
 
 The source archive needs no added C driver. Its real `src/core/nginx.c` main
-remains the entry point. The generated `objs/` files are excluded from future
+remains the entry point. The generated `objs/` files are excluded from
 query insertion because configure rewrites them; nginx C sources remain in scope.
+
+On 2026-11-22, `lava -qm nginx_current` also passed: 117 C sources contain
+52,143 query calls, and the installed analysis binary is static x86-64 with
+DWARF 2. Three native configuration checks passed. That binary is at
+`target_injections/nginx_current/nginx-1.30.6/lava-install/sbin/nginx`.
+This verifies query insertion and compilation; no PANDA recording, tainting or
+injection was run. [Network preparation](../target_configs/nginx_current/network/README.md)
+documents the mock-tested plugin selection and the missing network recording
+and packet-to-seed mapping support.
 
 ### Inputs
 

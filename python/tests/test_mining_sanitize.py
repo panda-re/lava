@@ -129,6 +129,7 @@ def test_completed_inputs_skip_saved_json_and_panda(tmp_path, monkeypatch, steps
     connection = MagicMock()
     connection.return_value.__enter__.return_value = database
     namespace = dict(Path=Path, os=os, Optional=Optional, LavaDatabase=connection,
+                     validate_input_transport=Mock(),
                      FileTaint=SimpleNamespace(identity=lambda *args: {}),
                      subprocess=SimpleNamespace(check_output=Mock(return_value=b'source/\n')),
                      Panda=Mock(), tick=lambda: 0, tock=lambda _: 0, progress=Mock(),
@@ -138,6 +139,7 @@ def test_completed_inputs_skip_saved_json_and_panda(tmp_path, monkeypatch, steps
     pipeline = mining_function('run_taint_pipeline', namespace)
     monkeypatch.chdir(tmp_path)
     pipeline(project, steps=steps)
+    namespace['validate_input_transport'].assert_called_once_with(project)
     namespace['Panda'].assert_not_called()
     namespace['parse_panda_log'].assert_not_called()
     namespace['dua_sanitize'].assert_not_called()
