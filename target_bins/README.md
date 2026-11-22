@@ -87,6 +87,15 @@ The harness accepts one frame up to 1 MiB, with protocol string/container limits
 of 1 MiB/65,536 entries. It starts no network server. The protocol is **Apache
 Thrift RPC, not gRPC**.
 
+The query/static build also passed on 2026-11-22: `lava -qm deathstar_media`
+instrumented four `.cpp` translation units and installed a static x86-64/DWARF 2
+binary under `target_injections/deathstar_media/DeathStarBench-6ecb09706140f8730b5385c08f1386c654c3c526/lava-install/bin/lava_media_driver`.
+The real ComposeMedia handler and generated processor both contain query probes;
+all four native fixture responses passed. See the
+[query build instructions and C++ limits](../target_configs/deathstar_media/README.md#querystatic-build).
+This validates compilation and native file-backed execution, not PANDA tainting,
+C++ injection or live RPC deployment.
+
 ### Inputs
 
 There is no claimed official MediaService fuzzing corpus here. The four fixtures

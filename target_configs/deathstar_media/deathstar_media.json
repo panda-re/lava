@@ -13,7 +13,7 @@
   "curtail": 5000,
   "build_flags": {
     "CFLAGS": [],
-    "CXXFLAGS": ["-std=c++14"],
+    "CXXFLAGS": ["-std=c++14", "-Wno-invalid-constexpr"],
     "LDFLAGS": []
   }
 }

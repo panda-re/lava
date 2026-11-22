@@ -75,7 +75,7 @@ class ReplacementLoader(getattr(yaml, 'CSafeLoader', yaml.SafeLoader)):
         return super().construct_scalar(node)
 
 
-def apply_large_replacements(yamls, directory, allowed_files, minimum=10000):
+def apply_large_replacements(yamls, directory, allowed_files, minimum=1000):
     """Apply a large set of lavaTool source edits; return whether it was applied.
 
     ``yamls`` contains lavaTool's replacement files. ``directory`` is the
@@ -88,7 +88,7 @@ def apply_large_replacements(yamls, directory, allowed_files, minimum=10000):
     pass observed on SQLite's amalgamated source.
 
     Return True on success. Return False without changing files when there are
-    fewer than ``minimum`` edits (10,000 by default), overlapping/same-offset
+    fewer than ``minimum`` edits (1,000 by default), overlapping/same-offset
     edits, non-ASCII replacement text, unsupported YAML scalars, disallowed
     paths or invalid ranges. The caller then uses clang-apply-replacements.
     Formatting requests bypass this helper in funcs.apply_replacements().
