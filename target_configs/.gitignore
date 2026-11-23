@@ -1,7 +1,7 @@
 # Local source/seed preparation state, not reviewer source artifacts.
 */.fuzzbench-prepare/
 # These four corpora are reproducible with their local prepare.sh scripts.
-./openssl/inputs/*
-./sqlite/inputs/*
-./libxml2/inputs/*
-./libpng/inputs/*
+/openssl/inputs/*
+/sqlite/inputs/*
+/libxml2/inputs/*
+/libpng/inputs/*

@@ -635,9 +635,12 @@ def make_and_install(lava_path: LavaPaths, main_directory: str = "", environment
     else:
         main_directory = Path(main_directory)
 
-    env = lava_path.config[environment]
+    env = lava_path.config[environment].copy()
     if competition:
-        env["CFLAGS"] += " -DLAVA_LOGGING"
+        for flag in ("CFLAGS", "CXXFLAGS"):
+            value = env.get(flag, "")
+            if "LAVA_LOGGING" not in value:
+                env[flag] = (value + " -DLAVA_LOGGING").strip()
 
     # Check if existing Makefile exists to blind it 
     makefile_path = os.path.join(main_directory, "Makefile")

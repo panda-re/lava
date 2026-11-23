@@ -316,7 +316,8 @@ def inject_bugs(bug_list, db: LavaDatabase, lava_p : LavaPaths, project: dict, a
     return build, input_files, bug_solutions
 
 
-def build_and_package(build: Build, lp: LavaPaths, db: LavaDatabase):
+def build_and_package(build: Build, lp: LavaPaths, db: LavaDatabase,
+                      competition: bool = False):
     """Compiles the mutated source code branch and generates distribution tarballs."""
     build_label = str(build.id)
 
@@ -332,6 +333,7 @@ def build_and_package(build: Build, lp: LavaPaths, db: LavaDatabase):
         lava_path=lp,
         main_directory=lp.bugs_build,
         environment="inject",
+        competition=competition,
         capture_build=True
     )
 
@@ -836,7 +838,7 @@ def fuzzed_input_for_bug(build_dir: Path, bug: Bug, seed_input_file: str) -> str
 
 def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
                  build: Build, arguments: argparse.Namespace,
-                 unfuzzed_outputs=None, competition: bool = False, solution=None) -> dict:
+                 unfuzzed_outputs=None, competition: bool = False, solution=None, runner=None) -> dict:
     """
     Mutate this bug's seed, run the injected build on it, and record whether the bug
     manifested.
@@ -844,6 +846,7 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
         The bug's manifest.json result: seed, fuzzed input and crash paths (relative
         to build<N>/), exit code, and validated.
     """
+    run_program = runner or run_modified_program
     build_dir = get_build_dir(lp, build)
     # Picked once, and from the input the bug was mined from -- not at random --
     # so the filename and the mutated bytes agree and the offsets are right.
@@ -866,7 +869,7 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
     mutate_file(str(unfuzzed_input_file), fuzz_labels_list, fuzzed_input_file_name, bug,
             solution=solution, **mutfile_kwargs)
     file_taint = bug.trigger_relationship.dua_relationship.file_taint
-    rv, output = run_modified_program(project, lp.bugs_install,
+    rv, output = run_program(project, lp.bugs_install,
                                       fuzzed_input_file_name, shell=True,
                                       command=file_taint.command if file_taint else None)
     print(f"retval = {rv}")
@@ -932,12 +935,14 @@ def validate_bug(db: LavaDatabase, lp: LavaPaths, project: dict, bug: Bug,
 def validate_bugs(bug_list: list[int], db: LavaDatabase, lp: LavaPaths,
                   project: dict, input_files: list[str], build : Build,
                   arguments: argparse.Namespace, competition: bool = False, bug_solutions=None,
-                  bug_results: Optional[dict] = None):
+                  bug_results: Optional[dict] = None, runner=None, require_validated: bool = True):
     """
     bug_results, if given, is filled with bug id -> validate_bug() result as each bug
     is tested. It's owned by the caller so results survive an assert partway through,
     and main() can still write a (partial) manifest.json.
     """
+    run_program = runner or run_modified_program
+    runner_kwargs = {"runner": runner} if runner is not None else {}
     bugs_to_inject = validate_bug_targets(db, bug_list)
     if bug_results is None:
         bug_results = {}
@@ -955,7 +960,7 @@ def validate_bugs(bug_list: list[int], db: LavaDatabase, lp: LavaPaths,
             continue
         unfuzzed_input = seed_input_for_bug(project, bug)
         file_taint = bug.trigger_relationship.dua_relationship.file_taint
-        rv, output = run_modified_program(project, lp.bugs_install,
+        rv, output = run_program(project, lp.bugs_install,
                                           unfuzzed_input, shell=True,
                                           command=file_taint.command if file_taint else None)
         unfuzzed_outputs[input_id] = output
@@ -990,18 +995,19 @@ def validate_bugs(bug_list: list[int], db: LavaDatabase, lp: LavaPaths,
             result = validate_bug(db, lp, project, bug, build,
                                   arguments, unfuzzed_outputs,
                                   competition=competition,
-                                  solution=bug_solutions[bug.id])
+                                  solution=bug_solutions[bug.id], **runner_kwargs)
         else:
             print("No known solution for bug with id={}".format(bug.id))
             result = validate_bug(db, lp, project, bug, build,
                                   arguments, unfuzzed_outputs,
-                                  competition=competition)
+                                  competition=competition, **runner_kwargs)
         bug_results[bug.id] = result
         if result["validated"]:
             real_bugs.append(bug.id)
         print()
     # This is assert is needed in case injection fails to plant a bug, especially 50 times, should be flagged.
-    assert len(real_bugs) > 0
+    if require_validated:
+        assert len(real_bugs) > 0
     if len(bugs_to_inject) > 0:
         f = float(len(real_bugs)) / len(bugs_to_inject)
         print(u"yield {:.2f} ({} out of {}) real bugs (95% CI +/- {:.2f}) "
@@ -1024,20 +1030,22 @@ def process_crash(buf: str) -> list[int]:
 
     returns list of bug_ids (ints) seen
     """
-    bugs = []
+    bugs = set()
 
     def get_bug_id(line_iterator: str):
         if len(line_iterator.split(":")) > 2:
             return int(line_iterator.split(": ")[1].split(": ")[0])
         return None
 
+    if isinstance(buf, bytes):
+        buf = buf.decode("utf-8", errors="replace")
     for line in buf.split("\n"):
         if line.startswith("LAVALOG:"):
             bug_id = get_bug_id(line)
             if bug_id:
-                bugs.append(bug_id)
+                bugs.add(bug_id)
 
-    return bugs
+    return sorted(bugs)
 
 
 def check_architecture_compatibility(target_arch: str, strict_64_only: bool = True) -> bool:
@@ -1274,7 +1282,7 @@ def main(arguments: argparse.Namespace, lp: LavaPaths):
         # Graceful exit (or 'continue' if you place this inside a loop!)
         return
 
-    build_success = build_and_package(build, lp, db)
+    build_success = build_and_package(build, lp, db, competition=arguments.competition)
     if not build_success:
         raise RuntimeError("LavaTool failed to build target binary")
 

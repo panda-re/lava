@@ -281,7 +281,7 @@ struct PriQueryPointHandler : public LavaMatchHandler {
                     result_ss << LIf(Test(bug).render(), {
                         LBlock({
                             // It's always safe to call lavalog here since we're in the if
-                            LFunc("LAVALOG", {LDecimal(1), LDecimal(1), LDecimal(bug->id)}),
+                            LFunc("LAVALOG", {LDecimal(bug->id), LDecimal(1), LDecimal(1)}),
                             asm_payload
                         })
                     });
