@@ -81,6 +81,7 @@ classifiers = [
     "Natural Language :: English"
 ]
 [project.scripts]
+lava-competition = "pyroclastic.competition:main"
 lava-compare = "pyroclastic.utils.compare_architectures:main"
 lava = "pyroclastic.lava:main"
 lava-dump = "pyroclastic.utils.database_types:main"
