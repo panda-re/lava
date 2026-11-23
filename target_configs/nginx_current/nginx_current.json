@@ -1,0 +1,22 @@
+{
+    "name": "nginx_current",
+    "db": "nginx_current_config",
+    "tarfile": "nginx-1.30.6.tar.gz",
+    "configure": "bash \"{config_dir}/configure.sh\" \"{install_dir}\"",
+    "make": "make -j4",
+    "clean": "make clean",
+    "install": "make install",
+    "command": "{install_dir}/sbin/nginx -t -q -p {install_dir}/ -c {input_file}",
+    "main_file": [
+        "src/core/nginx.c"
+    ],
+    "instrument_exclude_dirs": "objs",
+    "dataflow": false,
+    "network_taint" : true,
+    "network_taint_options": {
+        "max_packet_size": 65535,
+        "ip_proto": "6",
+        "eth_type": 2048
+    },
+    "curtail": 5000
+}

@@ -1,0 +1,23 @@
+# Draft deserializer-only build; requires matching Thrift 0.12 headers/libraries.
+CXX ?= clang++
+CXXFLAGS ?= -O0 -g -gdwarf-2 -fno-omit-frame-pointer
+CXXFLAGS += -std=c++14
+CPPFLAGS += -I. $(shell pkg-config --cflags thrift)
+# -all-static is a libtool option; this target links directly with the compiler.
+LDFLAGS := $(filter-out -all-static,$(LDFLAGS))
+LDLIBS += $(shell pkg-config --libs --static thrift) -pthread
+SOURCES = lava_media_driver.cpp gen-cpp/MediaService.cpp gen-cpp/social_network_types.cpp
+OBJECTS = $(SOURCES:%.cpp=build/%.o)
+
+.PHONY: all clean
+all: build/lava_media_driver
+
+build/%.o: %.cpp
+	mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
+build/lava_media_driver: $(OBJECTS)
+	$(CXX) $(OBJECTS) $(LDFLAGS) $(LDLIBS) -o $@
+
+clean:
+	rm -f $(OBJECTS) build/lava_media_driver

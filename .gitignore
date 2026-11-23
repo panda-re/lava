@@ -61,6 +61,7 @@ CTestTestfile.cmake
 /target_injections/*
 /target_configs/*/seed-min/
 !/target_bins/.gitkeep
+!/target_bins/Fuzzbench.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,0 +1,19 @@
+{
+  "name": "deathstar_media",
+  "db": "deathstar_media_handler",
+  "tarfile": "deathstarbench-6ecb09706140.tar.gz",
+  "configure": "bash \"{config_dir}/configure.sh\" \"{install_dir}\"",
+  "make": "make -j4",
+  "clean": "make clean",
+  "install": "make install",
+  "command": "{install_dir}/bin/lava_media_driver {input_file}",
+  "main_file": ["lava-media/lava_media_driver.cpp"],
+  "instrument_exclude_dirs": "",
+  "dataflow": false,
+  "curtail": 5000,
+  "build_flags": {
+    "CFLAGS": [],
+    "CXXFLAGS": ["-std=c++14", "-Wno-invalid-constexpr"],
+    "LDFLAGS": []
+  }
+}

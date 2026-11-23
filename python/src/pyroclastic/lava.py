@@ -8,6 +8,7 @@ import subprocess
 # All LAVA steps are imported here
 from .inject import inject
 from .taint import bug_mining
+from .taint.input_taint import validate_input_transport
 from .add_queries.add_queries import step_add_queries
 from .utils.vars import LavaPaths
 from .utils.funcs import progress, run_local, delete_directory, tick, tock, truncate_file, get_inject_parser, \
@@ -210,6 +211,9 @@ def make_panda(lava_paths: LavaPaths):
     for f, data in snapshot.items():
         if not os.path.isfile(f) or Path(f).read_bytes() != data:
             print(f"[*] Restoring instrumented source removed by clean: {f}")
+            # nginx's distclean removes objs/ itself, not only ngx_modules.c.
+            # Other generated inputs can likewise live in deleted directories.
+            Path(f).parent.mkdir(parents=True, exist_ok=True)
             Path(f).write_bytes(data)
     configure_project(lava_paths, main_directory=str(lava_paths.source_directory), environment="panda", lf=lf)
     # Re-configuring rewrites files that generated sources depend on (openssl's
@@ -247,6 +251,10 @@ def main():
         sys.exit(1)
 
     lava_path = LavaPaths(args)
+    # A requested taint run must be rejected before reset/truncate operations
+    # when its transport cannot yet supply canonical input identities/labels.
+    if args.taint:
+        validate_input_transport(lava_path.config)
     # Make the target_injection output directory
     output_directory = Path(lava_path.output_dir)
     if not output_directory.is_dir():

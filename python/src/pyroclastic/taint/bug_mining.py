@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import json
 from pandare import Panda
+from .input_taint import load_input_taint_plugins, validate_input_transport
 import argparse
 from typing import Optional
 
@@ -181,6 +182,8 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
     step: list of steps to run, can be "record", "replay", or "parse".
     If None, run all steps.
     """
+    if raw_command is None:
+        validate_input_transport(project_data)
     # See vars.py, the config_dir already points to the project specific config folder
     project_config_dir = Path(project_data["config_dir"]).resolve()
     # See vars.py, the output_dir already points to the project specific output folder
@@ -316,7 +319,7 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
 
         proc_name = os.path.basename(guest_executable)
 
-        progress("bug_mining", 1, "Replaying this input, tainting on file open...")
+        progress("bug_mining", 1, "Replaying this input with the configured input-taint plugin...")
 
         progress("bug_mining", 0, f"pandalog = [{panda_log}]" )
 
@@ -339,12 +342,7 @@ def run_taint_pipeline(project_data: dict, raw_command: Optional[str] = None, st
             'debug': debug
         })
         panda.load_plugin('tainted_branch')
-        panda.load_plugin("file_taint",
-                          args={
-                              'filename': os.path.join(state.install_directory, 'inputs', '*'),
-                              'pos': True,
-                              'verbose': debug
-                          })
+        load_input_taint_plugins(panda, project_data, state.install_directory)
 
         # Default name is 'recording'
         # https://github.com/panda-re/panda/blob/dev/panda/python/core/pandare/panda.py#L2595

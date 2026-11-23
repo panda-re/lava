@@ -1,0 +1,30 @@
+{
+  "deathstar": {
+    "version": "6ecb09706140f8730b5385c08f1386c654c3c526",
+    "url": "https://codeload.github.com/delimitrou/DeathStarBench/tar.gz/6ecb09706140f8730b5385c08f1386c654c3c526",
+    "archive": "deathstarbench-6ecb09706140.tar.gz",
+    "root": "DeathStarBench-6ecb09706140f8730b5385c08f1386c654c3c526",
+    "sha256": "1042fe02a980d4c8bd191b80a822182e3a9fcb682580874d32a2d0d7b5b72628"
+  },
+  "thrift": {
+    "version": "0.12.0",
+    "url": "https://codeload.github.com/apache/thrift/tar.gz/refs/tags/v0.12.0",
+    "archive": "thrift-0.12.0.tar.gz",
+    "root": "thrift-0.12.0",
+    "sha256": "b7452d1873c6c43a580d2b4ae38cfaf8fa098ee6dc2925bae98dce0c010b1366"
+  },
+  "opentracing": {
+    "version": "1.5.1",
+    "url": "https://codeload.github.com/opentracing/opentracing-cpp/tar.gz/refs/tags/v1.5.1",
+    "archive": "opentracing-cpp-1.5.1.tar.gz",
+    "root": "opentracing-cpp-1.5.1",
+    "sha256": "015c4187f7a6426a2b5196f0ccd982aa87f010cf61f507ae3ce5c90523f92301"
+  },
+  "boost": {
+    "version": "1.69.0 (headers only)",
+    "url": "https://archives.boost.io/release/1.69.0/source/boost_1_69_0.tar.bz2",
+    "archive": "boost_1_69_0.tar.bz2",
+    "root": "boost_1_69_0",
+    "sha256": "8f32d4617390d1c2d16f26a27ab60d97807b35440d45891fa340fc2648b04406"
+  }
+}

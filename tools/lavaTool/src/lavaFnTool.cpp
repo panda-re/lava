@@ -12,6 +12,7 @@
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/Signals.h"
 
 #include <iostream>
 
@@ -145,7 +146,11 @@ class CallPrinter : public MatchFinder::MatchCallback {
             std::string fun_name = get_containing_function_name(Result, *call);
             outfile << "   containing_function: " << fun_name << "\n";
 
-            QualType rt = call->getCallReturnType(*Result.Context);
+            // A dependent C++ call has no resolved callee/function type yet.
+            // getCallReturnType() assumes one exists and can dereference null
+            // for expressions such as a template-dependent member call.
+            QualType rt = call->isTypeDependent()
+                ? call->getType() : call->getCallReturnType(*Result.Context);
             spit_type( "   ret_type: ", rt);
             outfile << "   args: \n";
             for (auto it = call->arg_begin(); it != call->arg_end(); ++it) {
@@ -212,7 +217,12 @@ class VarDeclPrinter : public MatchFinder::MatchCallback {
         const VarDecl *vd = Result.Nodes.getNodeAs<VarDecl>("vd");
         const clang::Type *et = vd->getType().getTypePtr();
         if (vd->hasInit() && et->isPointerType()) {
-            const Expr *init = vd->getInit()->IgnoreParenImpCasts();
+            // C++ initializer lists can be untyped before instantiation, and
+            // some template declarations have an initializer only elsewhere.
+            const Expr *init = vd->getInit();
+            if (!init) return;
+            init = init->IgnoreParenImpCasts();
+            if (init->getType().isNull()) return;
             const clang::Type *it = init->getType().getTypePtr();
             const DeclRefExpr *dre = llvm::dyn_cast<DeclRefExpr>(init);
             const FunctionDecl *fndecl = dre ? llvm::dyn_cast<FunctionDecl>(dre->getDecl()) : nullptr;
@@ -266,6 +276,7 @@ class FunctionPrinter : public MatchFinder::MatchCallback {
 
 
 int main(int argc, const char **argv) {
+    llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
     auto ExpectedParser = CommonOptionsParser::create(argc, argv, LavaFnCategory);
     if (!ExpectedParser) {
         // Print the error message from LLVM

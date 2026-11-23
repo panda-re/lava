@@ -1,0 +1,6 @@
+{
+  "req_id": 87654321,
+  "media_types": ["image/jpeg"],
+  "media_ids": [303],
+  "carrier": {"uber-trace-id": "1234567890abcdef:1234567890abcdef:0:1"}
+}

@@ -1,0 +1,7 @@
+/.target-prepare/
+/__pycache__/
+
+# Required target configuration and authored seed sources, despite root *.json.
+!/deathstar_media.json
+!/pins.json
+!/examples/*.json

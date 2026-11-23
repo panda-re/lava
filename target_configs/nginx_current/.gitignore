@@ -1,0 +1,5 @@
+/.target-prepare/
+/__pycache__/
+
+# Required project configuration, despite root *.json.
+!/nginx_current.json

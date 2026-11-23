@@ -1,16 +1,28 @@
 {
     "name": "openssl",
     "db": "openssl",
-    "tarfile": "openssl-3.0.7.tar.gz",
-    "configure": "./Configure linux-x86_64 --prefix={install_dir} --libdir=lib no-shared no-module no-dso no-asm no-tests no-afalgeng -latomic",
-    "makefile_append": "# compiledb's dry run (make -Bnwk) treats Makefile and configdata.pm as out of\n# date; their recipes re-run Configure and then '@false', aborting the dry run\n# before any compile command is printed (empty compile_commands.json).\n# LAVA never changes Configure inputs after configuring, so make them no-ops.\nMakefile: ; @:\nconfigdata.pm: ; @:\n",
-    "make": "make -j4",
+    "tarfile": "openssl-fuzzbench-b0593c0.tar.gz",
+    "configure": "./config --prefix={install_dir} --debug enable-fuzz-libfuzzer no-shared enable-tls1_3 enable-rc5 enable-md2 enable-ec_nistp_64_gcc_128 enable-ssl3 enable-ssl3-method enable-nextprotoneg enable-weak-ssl-ciphers $CFLAGS",
+    "makefile_append": "Makefile: ; @:\nconfigdata.pm: ; @:\nEX_LIBS += -latomic\n",
+    "make": "make -j4 fuzz/x509-test LDCMD=\"$CXX $CXXFLAGS $LDFLAGS\"",
     "clean": "make clean",
-    "install": "make install_sw",
-    "command": "{install_dir}/bin/openssl x509 -in {input_file} -noout -text",
+    "install": "mkdir -p {install_dir}/bin && install -m 755 fuzz/x509-test {install_dir}/bin/x509-test",
+    "command": "{install_dir}/bin/x509-test {input_file}",
     "main_file": [
-        "apps/openssl.c"
+        "fuzz/test-corpus.c"
     ],
     "dataflow": false,
-    "curtail" : 5000
+    "curtail": 5000,
+    "pre_make": "make -j4 build_generated",
+    "build_flags": {
+        "CFLAGS": [
+            "-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION",
+            "-DPEDANTIC",
+            "-fno-sanitize=alignment"
+        ],
+        "CXXFLAGS": [
+            "-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"
+        ],
+        "LDFLAGS": []
+    }
 }

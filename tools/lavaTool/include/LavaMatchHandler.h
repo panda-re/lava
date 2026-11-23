@@ -277,6 +277,18 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
             }
             bugs_with_atp_at.erase(std::make_pair(ast_loc, atpType));
         } else if (LavaAction == LavaQueries) {
+            if (LangOpts && LangOpts->CPlusPlus) {
+                // Adding zero loses lvalue categories and promotes narrow
+                // integers. A comma probe preserves reference arguments and
+                // overload resolution, without changing the observed value.
+                // Keep null pointer constants intact: (probe, 0) no longer
+                // converts to a pointer as the literal 0 does.
+                if (toAttack->isNullPointerConstant(*AstContext, Expr::NPC_ValueDependentIsNotNull)) return;
+                Mod.Change(toAttack).InsertBefore("((" + LavaAtpQuery(ast_loc, atpType).render() + "), (");
+                Mod.Change(toAttack).InsertAfter("))");
+                num_atp_queries++;
+                return;
+            }
             // call attack point hypercall and return 0
             pointerAddends.push_back(LavaAtpQuery(ast_loc, atpType));
             num_atp_queries++;
@@ -320,9 +332,64 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
     virtual void handle(const MatchFinder::MatchResult &Result) = 0;
     virtual ~LavaMatchHandler() = default;
 
+    // Runtime probes cannot be inserted in constant evaluation or dependent
+    // template definitions. Instantiations also share source offsets with
+    // their pattern, so editing each instantiated AST would duplicate edits.
+    // Keep the first C++ query profile to explicit, non-template block bodies.
+    static bool unsupportedCppFunction(const FunctionDecl *fn) {
+        return fn->isImplicit() || fn->isDefaulted() || fn->isDeleted()
+            || fn->isConstexpr() || fn->isDependentContext()
+            || fn->isTemplateInstantiation()
+            || (fn->doesThisDeclarationHaveABody()
+                && !isa<CompoundStmt>(fn->getBody()));
+    }
+
     virtual void run(const MatchFinder::MatchResult &Result) {
+        AstContext = Result.Context;
         const SourceManager &sm = *Result.SourceManager;
         auto nodesMap = Result.Nodes.getMap();
+
+        if (Result.Context->getLangOpts().CPlusPlus) {
+            for (auto &entry : nodesMap) {
+                if (const auto *fn = entry.second.get<FunctionDecl>()) {
+                    if (unsupportedCppFunction(fn)) return;
+                }
+                if (const auto *stmt = entry.second.get<Stmt>()) {
+                    std::vector<DynTypedNode> pending{DynTypedNode::create(*stmt)};
+                    std::set<const void *> visited;
+                    bool inRuntimeFunction = false;
+                    while (!pending.empty()) {
+                        DynTypedNode node = pending.back();
+                        pending.pop_back();
+                        if (const auto *expr = node.get<Expr>()) {
+                            if (isa<ConstantExpr, UnaryExprOrTypeTraitExpr,
+                                    CXXNoexceptExpr, TypeTraitExpr>(expr)) return;
+                        }
+                        if (node.get<StaticAssertDecl>() || node.get<ParmVarDecl>()) return;
+                        if (const auto *var = node.get<VarDecl>()) {
+                            // A range-for loop's synthesized dereference has
+                            // the ':' token as its location, not editable C++.
+                            if (var->isConstexpr() || var->isImplicit()
+                                || var->isCXXForRangeDecl()) return;
+                        }
+                        if (const void *key = node.getMemoizationData()) {
+                            if (!visited.insert(key).second) continue;
+                        }
+                        for (const auto &parent : Result.Context->getParents(node)) {
+                            if (const auto *fn = parent.get<FunctionDecl>()) {
+                                if (unsupportedCppFunction(fn)) return;
+                                inRuntimeFunction = true;
+                            } else {
+                                pending.push_back(parent);
+                            }
+                        }
+                    }
+                    // Global initializers and declarations may require constant
+                    // expressions and have no local query frame to inspect.
+                    if (!inRuntimeFunction) return;
+                }
+            }
+        }
 
         debug(MATCHER) << "====== Found Match =====\n";
         for (auto &keyValue : nodesMap) {
@@ -344,6 +411,7 @@ struct LavaMatchHandler : public MatchFinder::MatchCallback {
     const LangOptions *LangOpts = nullptr;
 
 protected:
+    ASTContext *AstContext = nullptr;
     Modifier &Mod;
 };
 

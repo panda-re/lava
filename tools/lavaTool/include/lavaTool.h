@@ -317,8 +317,9 @@ bool IsArgAttackable(const Expr *arg) {
     if (QueriableType(t)) {
         if (t->isPointerType()) {
             const clang::Type *pt = t->getPointeeType().getTypePtr();
-            // its a pointer to a non-void
-            if (!(pt->isVoidType())) {
+            // Query probes use pointer arithmetic. A callback is not an
+            // object pointer; adding even zero to it is invalid C++.
+            if (!pt->isVoidType() && !pt->isFunctionType()) {
                 return true;
             }
         }
